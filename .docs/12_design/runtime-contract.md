@@ -1,6 +1,6 @@
 # MVVM UIライブラリ Runtime契約（Slice 1）
 
-- 状態: Review Draft（設計提案。承認前）
+- 状態: R1～R4承認済み（2026-09-26）
 - 作成日: 2026-09-26
 - 対象: Rust Core、C ABI、C++ / C# / Rust / Python wrapper
 - 上位文書: `design-overview.md`、`mvvm-ui-library-requirements.md`、`adr-0001-rust-core.md`
@@ -8,7 +8,7 @@
 
 ## 1. 範囲と判断の区別
 
-ADR-0001が確定したのはRust Core、versioned C ABI、4言語wrapper、組み込みLinux対応である。本書のトークン方式、破棄規則、callback規則、version規則は**今回の設計提案**である。MVVM更新順序や画面制御は別スライスで定義する。
+ADR-0001が確定したのはRust Core、versioned C ABI、4言語wrapper、組み込みLinux対応である。本書のR1～R4は承認済みのRuntime判断である。各項目の未定義事項や後続仕様まで承認済みとはみなさない。MVVM更新順序や画面制御は別スライスで定義する。
 
 ## 2. 用語と基本不変条件
 
@@ -88,9 +88,9 @@ ADR-0001が確定したのはRust Core、versioned C ABI、4言語wrapper、組�
 4. callbackの自己解除、shutdown時の未実行post、wrapper例外の各経路でuserdataが1回だけ破棄される。
 5. buffer不足時に必要容量が得られ、文字列にNUL終端を要求しない。
 
-## 9. 確認を求める判断
+## 9. 承認された設計判断（2026-09-26）
 
-| ID | 提案 | 理由 |
+| ID | 承認済みの判断 | 理由 |
 |---|---|---|
 | R1 | handleを非再利用の64-bit数値トークンにする | stale handleを検出し、Coreポインタを露出させない |
 | R2 | Runtime作成スレッドをUI threadとし、worker releaseのみ遅延破棄する | 4言語で共通のスレッド規則にする |
