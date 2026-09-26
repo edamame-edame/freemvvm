@@ -1,0 +1,1 @@
+Python のコーディングルールは、全面的に [PEP8](https://pep8-ja.readthedocs.io/ja/latest/)に従う。

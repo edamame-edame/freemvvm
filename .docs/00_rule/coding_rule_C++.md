@@ -1,0 +1,1 @@
+C++ のコーディングルールは、全面的に [Google C++ スタイルガイド](https://google.github.io/styleguide/cppguide.html)に従う。

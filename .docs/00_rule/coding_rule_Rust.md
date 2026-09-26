@@ -1,0 +1,1 @@
+Rust のコーディングルールは、全面的に [Rust Compiler Development Guide](https://embedded-rust.com/books/rustc-dev-guide/conventions.html)に従う。
