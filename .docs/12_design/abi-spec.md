@@ -1,6 +1,6 @@
 # MVVM UIライブラリ C ABI仕様案（Slice 1基盤・Slice 2 MVVM）
 
-- 状態: A1～A32承認済み（2026-09-26）。Controlの表示・論理ツリーとIME詳細は後続設計
+- 状態: A1～A32承認済み（2026-09-26）。A5の初期公開値型の範囲は承認済みBD-01で改訂。追加型の具体ABIは後続設計
 - 作成日: 2026-09-26
 - 対象: C++ / C# / Rust / Python 3共通のネイティブ境界
 - 上位決定: `adr-0001-rust-core.md`
@@ -8,7 +8,7 @@
 
 ## 1. 目的と適用範囲
 
-Rust CoreをC++、C#、Rust、Python 3から呼ぶ共通境界の初期形を規定する。A1～A32の設計判断は承認済みである。第7節にProperty値の受け渡し、第9節にProperty生成・通知購読、第11節にBinding ABI、第13節にProperty Validator ABI、第15節に非同期Command ABI、第17節にView入力Validator ABI、第20節にTextBox生成・値接続を示す。ここに示すC宣言は実装前の仕様であり、配布用ヘッダではない。Controlの描画と論理ツリーは別仕様とする。
+Rust CoreをC++、C#、Rust、Python 3から呼ぶ共通境界の初期形を規定する。A1～A32の設計判断は承認済みである。A5の初期公開値型は後続の承認済み上位判断BD-01により拡張された（第22節）。第7節にProperty値の受け渡し、第9節にProperty生成・通知購読、第11節にBinding ABI、第13節にProperty Validator ABI、第15節に非同期Command ABI、第17節にView入力Validator ABI、第20節にTextBox生成・値接続を示す。ここに示すC宣言は実装前の仕様であり、配布用ヘッダではない。Controlの描画と論理ツリーは別仕様とする。
 
 ## 2. 型とシンボル
 
@@ -127,9 +127,9 @@ ui_status ui_abi_1_error_message_utf8(ui_handle error, uint8_t *buffer,
 
 ### 7.1 型とAPIの形
 
-- Propertyの値の種類は作成時に固定する。初期に公開する値型は`BOOL`、`I64`、`UTF8`とし、`OBJECT`は所有の循環防止規則が確定するまで予約型として扱う。getter/setterを種類ごとの別シンボルにし、公開C構造体のtagged unionは使わない。`property_kind`で種類を問い合わせ、未知の種類はwrapperが未対応として扱う。
+- Propertyの値の種類は作成時に固定する。本節の関数宣言はA5当初の`BOOL`、`I64`、`UTF8`を対象とする。初期公開値型の全体はBD-01により`F64`と独自8バイト`DECIMAL`を加えた五種類へ拡張された（第22節）。追加型のkind数値・関数形は後続設計で補い、ここに未定義のシンボルを実装済みとみなさない。`OBJECT`は所有の循環防止規則が確定するまで予約型。getter/setterを種類ごとの別シンボルにし、公開C構造体のtagged unionは使わない。`property_kind`で種類を問い合わせ、未知の種類はwrapperが未対応として扱う。
 - `BOOL`は`ui_bool`（0または1のみ受理）、`I64`は`int64_t`、`UTF8`はbyte列と`uint64_t`長、`OBJECT`は`ui_handle`で表す。C++/C#/Rust/Pythonの数値型から`I64`へ変換するwrapperは、範囲外の値を切り詰めず拒否する。
-- `F64`のNaN・符号付きゼロの等価性、その他の整数幅、nullableな値型、配列・カスタム値は別の値型設計で定める。今回の4種類へ暗黙変換しない。公開後に種類を増やす場合は新しいkindとシンボルを互換追加する。
+- `F64`のNaN・符号付きゼロ、`DECIMAL`の等価性と値域はBD-01が上位規則を定める。追加型の具体ABI・Validator・演算は後続で定める。その他の整数幅、nullableな値型、配列・カスタム値は別設計。異なる種類へ暗黙変換しない。種類を増やす場合は新しいkindとシンボルを互換追加する。
 
 ```c
 /* 追加シンボルのレビュー用抜粋。ui_handle / ui_status / ui_boolは第2節。 */
@@ -186,14 +186,14 @@ ui_status ui_abi_1_property_set_object(ui_handle property, ui_handle borrowed,
 
 | ID | 承認済みの判断 | 主な影響 |
 |---|---|---|
-| A5 | 初期公開値はBOOL / I64 / UTF8を種類別関数で読み書きする。OBJECTは型と所有権の案を記載するが、循環防止規則まで公開しない | wrapper実装と値型の拡張 |
+| A5（当初の判断） | BOOL / I64 / UTF8を種類別関数で読み書きし、OBJECTを予約とした。初期公開値の**種類数はBD-01で改訂**し、F64とDECIMALを追加した（第22節） | wrapper実装と値型の拡張 |
 | A6 | UTF-8は借用入力とcaller buffer出力にし、容量不足時は再試行できる | コピーと文字列の所有権 |
 | A7 | object入力は借用、getter出力は新しい所有トークンとし、nullable OBJECTの0だけをnullにする | handle寿命とnull表現 |
 | A8 | 値の種類違い・入力不正・Validation失敗・スレッド違反を区別し、setter成功と通知完了を分ける | 4言語のエラー処理と更新タイミング |
 
 ## 9. Property生成と通知購読のC ABI（承認済み）
 
-この節は、第7節の初期公開値型BOOL / I64 / UTF8だけを生成対象とする。Binding、検証規則の登録、OBJECT Propertyの生成は別設計とする。関数名・引数の形はレビュー用であり、正式ヘッダではない。
+この節に記載した生成関数は、A9の段階で定めたBOOL / I64 / UTF8だけを対象とする。BD-01で初期公開範囲へ加わったF64 / DECIMALの生成関数は後続設計で補う。Binding、検証規則の登録、OBJECT Propertyの生成は別設計とする。関数名・引数の形はレビュー用であり、正式ヘッダではない。
 
 ```c
 ui_status ui_abi_1_property_create_bool(ui_handle runtime, ui_bool initial,
@@ -308,7 +308,7 @@ ui_status ui_abi_1_binding_subscribe_error(ui_handle binding,
 
 ## 13. Property ValidatorのC ABI（承認済み）
 
-本節はCore管理のBOOL / I64 / UTF8 Propertyに付ける同期Validatorだけを対象とする。View入力Validatorの`Accept / Incomplete / Reject`、非同期検証、複数Propertyをまたぐ検証、validatorの差し替えと値の再検証は別設計とする。
+本節に記載した同期Validator関数はCore管理のBOOL / I64 / UTF8 Propertyだけを対象とする。BD-01で初期公開範囲へ加わったF64 / DECIMALのValidator関数は後続設計で補う。View入力Validatorの`Accept / Incomplete / Reject`、非同期検証、複数Propertyをまたぐ検証、validatorの差し替えと値の再検証は別設計とする。
 
 ```c
 /* 戻り値: UI_OK=受理、UI_VALIDATION_FAILED=拒否、UI_INTERNAL_ERROR=検証処理の異常。 */
@@ -550,7 +550,7 @@ ui_status ui_abi_1_text_box_input_subscribe(ui_handle text_box,
 
 ## 19. 今後に送る項目
 
-IME・Undo/Redoの詳細、Commandの進捗専用APIと結果値、値変換・浮動小数点・objectの循環防止、Collectionの配列形式、Platform event loopのポンプ方法、ネイティブ配布・CIのtarget matrixは後続の設計で定義する。
+IME・Undo/Redoの詳細、Commandの進捗専用APIと結果値、F64 / DECIMALの具体ABI・Validatorと文字列変換、objectの循環防止、Collectionの配列形式、Platform event loopのポンプ方法、ネイティブ配布・CIのtarget matrixは後続の設計で定義する。
 
 ## 20. TextBox生成と値Propertyの接続（承認済み）
 
@@ -597,3 +597,12 @@ ui_status ui_abi_1_text_box_value_property(ui_handle text_box,
 | A30 | 確定値を同一のCore管理UTF8 Propertyとして公開し、通常のBindingにつなぐ | ViewModel接続と4言語wrapper |
 | A31 | 外部から異なる値が確定した場合は編集中の値も上書きし、入力状態・理由を初期化する | 入力途中とTwoWay更新の競合 |
 | A32 | TextBox破棄時は入力用closureを解除し、別途保持されたPropertyにはTextBoxを保持させない | UI寿命と参照循環 |
+
+## 22. 上位判断BD-01によるA5の改訂（2026-09-26承認）
+
+承認済み上位文書`value-types-upper-design.md`のBD-01により、A5の**初期公開値型の種類数**をBOOL / I64 / UTF8の三種類から、F64と独自8バイトDECIMALを加えた五種類へ改訂する。A5が定めた元の三種類の値の受渡しとOBJECT予約、A6～A8、A9～A20等の既存の意味論は、変更を明記した範囲以外は維持する。既存の第7・9・13節のC宣言と検証項目は三種類を対象に作成された段階の仕様であり、この改訂だけでF64 / DECIMALの公開ABIが完成したことにはならない。
+
+- F64の上位規則はBD-01に従う。`+0`と`-0`は値として等価、すべてのNaNは互いに等価とし、等価な再設定では格納済みのbit表現を保持して値通知を出さない。無限大は許し、アプリ固有の有限値制限はValidatorで扱う。`double`を用いる具体ABI、NaN payloadとtarget互換の検証は後続設計。
+- DECIMALは符号1ビット、非負のscale 5ビット（0～31）、非負の係数58ビットとし、値は`±係数 ÷ 10^scale`。最大・最小値は`±288230376151711743`、最小の正の表現可能値は`10^-31`。最大・最小値をsentinelとして予約しない。数値上同じ`1.0`と`1.00`、符号・scaleの異なるゼロは等価とし、等価な再設定では値通知を出さない。値域外を黙って丸めず、入力原文と表示桁数はView側で扱う。内部符号化と演算の具体仕様は後続設計。
+- DECIMALを受け先に指定するView入力では、候補UTF8の途中入力は第17節の`INCOMPLETE`として保持でき、完成した数値候補をDECIMALへ正確に変換して表現範囲と欄の指定範囲を検査する。表現不能・指定範囲外は理由付きの`REJECT`とし、IME確定ではA26に従って入力を保持する。Viewを経由しないsetterについてもProperty自体が表現可能性を守り、アプリの不変条件はProperty Validatorで検査する。UTF8 TextBoxからDECIMAL Propertyへの双方向変換、Bindingエラーの統合、callbackの具体形は後続の上位・詳細設計が必要。
+- F64 / DECIMALのkind、生成・getter/setter・Validatorの関数形、4言語wrapper、およびBindingとControlへ接続する具体APIは別途設計する。公開する際は第3節のABI互換性規則に従って追加する。詳細設計DD-01以降や、独立したCollection/Gridの判断は本節の承認範囲ではない。

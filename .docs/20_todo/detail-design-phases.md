@@ -1,6 +1,6 @@
 # 詳細設計フェーズ計画（`.docs/13_detail_design/`）
 
-- 状態: 計画案。詳細設計の個別判断は未承認
+- 状態: 運用中。詳細設計の個別判断は各フェーズで確認する
 - 作成日: 2026-09-26
 - 対象: Rust Core、versioned C ABI、C++ / C# / Rust / Python 3 wrapper、初期縦断シナリオ
 - この計画の目的: 小さな設計範囲ごとにレビューし、承認された判断だけを詳細設計として積み上げる
@@ -16,7 +16,7 @@
 ## 前提と現在の承認境界
 
 - `.docs/04_approval/adr-0001-rust-core.md` は `Accepted`。Rust Core、versioned C ABI、4言語の薄いwrapper、組み込みLinux対応を前提とする。
-- `.docs/11_requirements/mvvm-ui-library-requirements.md` は `Draft`。`.docs/12_design/design-overview.md` は `Accepted`。設計範囲と初期縦断シナリオの参照元として扱う。
+- `.docs/11_requirements/mvvm-ui-library-requirements.md` と `.docs/12_design/design-overview.md` は `Accepted`。設計範囲と初期縦断シナリオの参照元として扱う。要件内の未決事項は別途判断する。
 - `.docs/12_design/runtime-contract.md` のR1～R4は承認済み。後続仕様として残された事項は別途判断する。
 - `.docs/12_design/abi-spec.md` はA1～A32、`.docs/12_design/mvvm-semantics.md` はP1～P4・B1～B4・C1～C4・D1～D4・V1～V8、`.docs/12_design/language-bindings.md` はL1～L4を承認済みと記す。各文書の未定義事項は承認済みとはみなさない。
 - `abi-spec.md` のC宣言は設計レビュー用であり、配布用ヘッダや実装済みAPIではない。
@@ -27,7 +27,7 @@
 
 ### 基盤と初期縦断シナリオ
 
-- [ ] **DD-00 出典と判断の対応表** — `.docs/13_detail_design/00-decision-map.md`。上位文書の状態、承認済みID、未決事項、初期縦断シナリオへの対応を列挙する。R1～R4を承認済みとして記録し、後続フェーズの入口条件を定める。
+- [ ] **DD-00 出典と判断の対応表（レビュー案作成済み・未承認）** — `.docs/13_detail_design/00-decision-map.md`。上位文書の状態、承認済みID、未決事項、初期縦断シナリオへの対応を列挙する。R1～R4を承認済みとして記録し、後続フェーズの入口条件を定める。
 - [ ] **DD-01 Handle登録と検証** — `01-handle-registry.md`。トークン発行、種類・Runtime照合、retain/release、無効・二重releaseの扱い、単体確認観点。前提: R1の承認。
 - [ ] **DD-02 所有権と終了** — `02-runtime-lifetime.md`。公開参照と内部参照、Subscription・Bindingの参照方向、shutdown、worker release後の破棄順。前提: DD-01、R2の承認。
 - [ ] **DD-03 UI threadと投稿キュー** — `03-dispatcher.md`。UI thread判定、post受付・実行順・停止時の処理、イベントループへの接点、競合時の観測。前提: DD-02、R2の承認。

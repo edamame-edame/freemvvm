@@ -1,8 +1,8 @@
-# MVVM UIライブラリ 要求仕様ドラフト
+# MVVM UIライブラリ 要求仕様
 
 - 作成日: 2026-09-25
 - 対象言語: C++ / C# / Rust / Python 3
-- ステータス: Draft
+- ステータス: Accepted（利用者確認、2026-09-26）
 
 ## 1. 文書の位置づけ
 
@@ -171,7 +171,8 @@ Window
 ### 6.1 初期実装
 
 - Window
-- Element
+- Widget
+- Container
 - Text
 - TextBox
 - Button
@@ -190,8 +191,8 @@ Window
 - Border
 - Separator
 - ProgressBar
-- CollectionModel
-- SelectionModel
+- CollectionModel（BD-33承認済み: Value kind／Widget treeと独立したCore object。stable item ID、構造化change set、visible range snapshot。BD-35承認済み: batch atomicityはModel整合性に限り、独立入力の値／業務validationをまとめて待たせない）
+- SelectionModel（BD-33／BD-34承認済み: stable item ID参照。Single/Multiple cardinalityを持ち、current itemはselection・keyboard focusと独立。削除itemのselection/current状態は消去する）
 - ListView
 - virtualized list
 - Style
@@ -212,7 +213,7 @@ Window
 - binding診断
 - UIテスト支援
 
-List、ComboBox、Tree、Tableに共通するModel、Selection、Item template、Collection差分通知、virtualizationの契約を、個別Controlより先に設計する。
+List、ComboBox、Tree、Tableに共通するModel、Selection、Item template、Collection差分通知、virtualizationの契約を、個別Controlより先に設計する。BD-33は共通CollectionModelの境界とGrid virtualization方針、BD-34はSelection cardinalityとcurrent itemの上位意味論を承認済み。BD-35承認済み（2026-09-27）: change batchはCollection Model整合性について全件適用／全件拒否とし、独立入力欄の有効なcommitを別入力のvalidation待ちにしない。各Controlの既定mode・gesture/navigationは後続。
 
 ## 7. Accessibility要求
 
@@ -271,9 +272,15 @@ GPU、input device、IME、display rotation、power management、window system�
 - target tripleごとにnative artifactを生成する。
 - OS・CPU architectureごとにライブラリを用意する。
 - 同一targetのC ABI artifactを4言語で共有する。
+- BD-19承認により、C++向け標準integrationをCMake install/export packageとし、public C++ wrapperと対象targetの共通C ABI native libraryを含める。初期targetはWindows x64／Linux x64とし、downstream projectは`find_package(... CONFIG)`を使う。vcpkg／Conan等のregistryは未決。
+- BD-20承認により、Rust wrapperをraw FFIの`-sys` crateとsafe API crateに分け、Rust Coreは同梱せず共通C ABI runtimeを別artifactとして利用する。別環境で生成したtarget artifactを取得して取り込む機能を備え、featureで有効化する。Cargo `--target`でtarget triple、artifact profileでboard/toolchain差を選び、target/profile/ABIの不一致を検出する。registry、fetch command、cache、signature等は未決。
 - C#はRIDごとのnative assetをパッケージに含める。
-- Pythonは当初ctypesまたはcffiを優先する。
+- BD-18承認により、C# managed wrapperとRID別native C ABI libraryを同一NuGet packageの`runtimes/{rid}/native/`に含め、初期RIDは`win-x64`／`linux-x64`とする。組み込みARM向けRID packageはprofile互換性確認後に判断する。NuGet feed、package ID、TFM等は未決。
+- Python wrapperはBD-14に従い標準ライブラリ`ctypes`を使い、compiled extensionを必須としない。
+- BD-17承認により、Python wrapper distributionとtarget別native runtime distributionを分け、初期native wheelはWindows x64／Linux x64から始める。組み込みLinux ARM向けは、対象profileの互換性確認前にmanylinux/musllinux wheelとみなさない。package名、index、exact tag等は未決。
 - Yocto SDK、sysroot、linker、C library設定をCIで固定する。
+
+BD-16承認により、初期CI targetはWindows x64、Linux x64、組み込みLinux ARMv7/AArch64の順に追加する。Linux x64 hostからARM向けartifactをcross-compileし、Build/link verifiedと実機Runtime verifiedを区別する。ARM実機のhardware profile検証は別gateとする。exact compiler、sysroot、board、正式release matrixは後続判断で固定する。
 
 ## 10. 非機能要求
 
@@ -308,26 +315,28 @@ GPU、input device、IME、display rotation、power management、window system�
 12. 実機性能を測定する。
 13. 必要な箇所だけbatch APIや最適化を追加する。
 
-## 12. 未決事項
+## 12. 未決事項と後続の判断状況
 
-次の項目は要求仕様として追加決定が必要である。
+次の項目は本書の作成時に追加決定が必要とされた論点である。承認済みの判断は項目に追記し、それ以外は関連する上位設計で確認する。
 
-- 対象OSの正式な優先順位
-- native controlか独自描画か
-- RendererのAPIと描画モデル
-- text shaping、Unicode、RTL対応範囲
-- IME compositionの詳細
-- binding循環の扱い
-- validationの標準モデル
-- async Commandのキャンセル仕様
-- UI transactionの有無
-- error objectの詳細構造
-- ABI互換性ポリシー
-- Python wrapperの最終方式
-- ライセンス
-- 配布形式
-- CIで検証するコンパイラとtarget matrix
-- accessibility APIの対象範囲
+- 対象OSの正式な優先順位（BD-12承認済み、2026-09-26: 対応・検証はWindows→Linux x64→組み込みLinux ARMv7/AArch64→その他の順。Linux x64の共通資産を使いARM向けはcross-compileする。正式な公開順位・CI matrixは後続判断）
+- native controlか独自描画か（BD-12承認済み、2026-09-26: 初期Controlは共通Rendererで描画し、native controlを意味・状態のsource-of-truthにしない）
+- RendererのAPIと描画モデル（BD-12承認済み範囲: Core Visual Tree／LayoutとPlatform描画backendを分離。API、scene/command、更新領域は未決）
+- 初期Controlの共通抽象と責務（BD-11承認済み、2026-09-26: `Element`を`Widget`に改め、子を持ちうる抽象分類`Container`を追加。Window／StackPanelはContainer、TextBox／Text／Buttonは葉Widgetとする。個別PropertyとContainer APIは後続判断）
+- text shaping、Unicode、RTL対応範囲（BD-23承認済み、2026-09-27: UTF-8 encodingと初版Latin＋日本語UI文字列の表示・編集を採用。Windows／Linux x64／組み込みLinuxごとにfont discovery/fallback、shaping/rasterization、font assets/dependencies、IME、実機verificationを管理する。Windows DirectWrite、Linux Fontconfig＋shaper/rasterizer、Noto Sans CJK JP等は候補。exact Japanese corpus/font package・version、Chinese/Korean/RTL/emoji coverage、caret/navigation細則は未決）
+- IME compositionの詳細（BD-09／BD-10／BD-24承認済み、2026-09-27: Focus離脱時はpreeditと位置を保持してIME sessionを終了。IME session識別、明示cancel時はcomposition開始snapshotへ復元、commitとFocusLostはAdapter受信順で処理し終了済みsessionの遅延eventを破棄。Undo/Redo・OS APIは後続）
+- binding循環の扱い（BD-03／BD-15承認済み、2026-09-26: 静的解析でControlとPropertyを解決できる言語・箇所は同一ControlのPropertyアクセスを警告し、Pythonもlibrary compilerのlint/type checkで解決できる範囲を含む。Runtimeは全言語で有限作業枠・保留・診断・非収束連鎖の停止により保護。dynamic Python全件検出や作業枠・復旧の詳細は後続設計）
+- validationの標準モデル（一部判断済み。V1～V8承認済み。BD-25承認済み: 初版のCore Property/View Input Validatorは短時間同期とし、Core-managed async Validator/pending stateは設けない。remote/long-running checkはViewModel AsyncCommand＋状態Propertyで表現し、stale result識別はアプリ側で行う。複数Property、共通表示・再評価、将来のCore async APIは後続判断）
+- async Commandのキャンセル・進捗仕様（一部判断済み。C1～C4・BD-26承認済み: 中間進捗は最新値へ集約でき、終端結果は進捗と独立して一度だけ反映する。operation IDとUI thread上の処理順で古い／終端後通知を破棄する。集約方式、頻度・時間閾値、進捗型・複数channelは後続詳細）
+- UI transactionの有無（BD-02承認済み、2026-09-26: 初期版では明示transactionを設けない。外側のUI処理後にBindingと通知をまとめ、複数setterの自動rollbackは保証しない）
+- error objectの詳細構造（一部判断済み。A2／A15／A18およびBD-27承認済み: status、domain/code/message、snapshotと寿命を定義。機械判定はdomain/code/status、messageは説明用とし、causeとdiagnosticを分離する。完全なcode catalog、ABI表現、診断payloadは未決）
+- ABI互換性ポリシー（一部判断済み。A3およびBD-28承認済み: 安定版native runtimeはMAJOR.MINOR.PATCH、MAJORをABI symbol majorと一致させ、minorを後方互換追加、patchを互換fixとする。初回stable番号・pre-release policy・各wrapper package制約は後続）
+- Python wrapperの最終方式（BD-14／BD-15承認済み、2026-09-26: 初期Python 3 wrapperは標準ライブラリ`ctypes`でversioned C ABIを呼び、compiled extensionを必須としない。強いlint/type check、MCP/CLI/CI共通diagnostics、Temp cache増分解析を承認。checker選定・package形式等は後続判断）
+- ライセンス（BD-21承認済み、2026-09-26: first-party source、C ABI/header、language wrapper、source package、target-specific binary SDKにApache-2.0を適用し、source／改変source／改変binary／app binaryの再配布を許可する。配布時のlicense/notice条件とthird-party dependencyの個別license維持を含む。repository公開、CLA/DCO、docs/assets license、SBOM等の運用詳細は未決）
+- サポート期間（BD-22承認済み、2026-09-27: 最新安定ABI majorを通常保守し、直前majorは新major安定版公開後24か月security fix／重大障害修正のみ保守する。サポート状態はABI majorとtarget profileの組で公表し、build verifiedとruntime verifiedを区別する。profile非推奨は原則12か月前通知とし、EOLは公式保守終了とする。security response SLA、LTS、exact target matrixは未決）
+- 配布形式（PythonはBD-17、C# NuGetはBD-18、C++ CMake packageはBD-19、Rust Cargo wrapper/native runtime境界と別環境artifactの取得featureはBD-20で承認済み。BD-29～BD-30でimmutable signed artifact、公式catalog、各言語package manager、target明示とversion/digest pinningを承認。BD-31承認済み: 独立provision済みtrust root、認証済みkey rotation/revocation、明示trust bundleによるoffline verificationを要求する。BD-32はmanifest schemaのversioning・互換規則を承認済み。暗号形式、registry実装、fetch/cache詳細は後続）
+- CIで検証するコンパイラとtarget matrix（BD-16承認済み、2026-09-27: 初期順はWindows x64→Linux x64→組み込みLinux ARMv7/AArch64。Linux x64 hostから両ARM targetをcross-compileし、実機hardware verificationとは区別する。exact compiler/sysroot/board/release matrixは後続判断）
+- accessibility APIの対象範囲（BD-13承認済み、2026-09-26: Core Widgetが共通role/name/state/focusability/focus/enabled/keyboard意味情報を持ち、Platform AdapterがOS APIへ写像する。初期Accessibility treeはLogical Treeを基礎とし、template内Visual要素は既定で公開しない。OS別写像、name fallback、ABI/API詳細は後続判断）
 
 特に優先して決めるべきなのは、以下の4点である。
 
@@ -340,5 +349,5 @@ GPU、input device、IME、display rotation、power management、window system�
 
 - ADRはアーキテクチャ上の決定を記録する。
 - 調査資料は外部根拠、比較、代替案、未決事項を記録する。
-- 本書は要求仕様のドラフトとして管理する。
+- 本書はAcceptedの要求仕様として管理する。変更は承認済み判断との整合を確認してレビューする。
 - ADRと要求仕様が矛盾する場合、Accepted状態のADRを優先し、必要に応じてADRを更新する。
