@@ -237,6 +237,21 @@ pub(crate) enum ShutdownWaitResult {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[allow(dead_code)]
+pub(crate) enum ShutdownRequestMode {
+    Async,
+    Sync,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(dead_code)]
+pub(crate) enum ShutdownRequestOutcome {
+    Pending,
+    Completed,
+    HostUnavailable { reason: u32 },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(dead_code)]
 pub(crate) enum ShutdownCompletionError {
     WrongThread,
     InvalidState,
@@ -491,6 +506,37 @@ impl HostRegistration {
         Ok(())
     }
 
+    /// Wait for shutdown only when synchronous mode is requested from a worker thread.
+    pub(crate) fn request_shutdown_with_mode(
+        &self,
+        dispatcher: &Dispatcher,
+        completion: &ShutdownCompletion,
+        mode: ShutdownRequestMode,
+    ) -> Result<ShutdownRequestOutcome, HostRegistrationError> {
+        self.request_shutdown(dispatcher, completion)?;
+        if mode == ShutdownRequestMode::Sync && std::thread::current().id() != self.ui_thread {
+            return completion
+                .wait()
+                .map(|result| match result {
+                    ShutdownWaitResult::Completed => ShutdownRequestOutcome::Completed,
+                    ShutdownWaitResult::HostUnavailable { reason } => {
+                        ShutdownRequestOutcome::HostUnavailable { reason }
+                    }
+                })
+                .map_err(HostRegistrationError::Completion);
+        }
+        completion
+            .query()
+            .map(|state| match state {
+                ShutdownCompletionState::Pending => ShutdownRequestOutcome::Pending,
+                ShutdownCompletionState::Completed => ShutdownRequestOutcome::Completed,
+                ShutdownCompletionState::HostUnavailable { reason } => {
+                    ShutdownRequestOutcome::HostUnavailable { reason }
+                }
+            })
+            .map_err(HostRegistrationError::Completion)
+    }
+
     /// Notify registered waiters without claiming that cleanup has completed.
     pub(crate) fn notify_stopped(&self, reason: u32) -> Result<(), HostRegistrationError> {
         let records = {
@@ -709,7 +755,8 @@ impl ShutdownCompletion {
 mod tests {
     use super::{
         HostRegistration, HostRegistrationError, RuntimeCleanupQueue, RuntimeState,
-        ShutdownCompletion, ShutdownCompletionError, ShutdownCompletionState, ShutdownWaitResult,
+        ShutdownCompletion, ShutdownCompletionError, ShutdownCompletionState, ShutdownRequestMode,
+        ShutdownRequestOutcome, ShutdownWaitResult,
     };
     use crate::dispatcher::{Dispatcher, UiLoopBridge};
     use crate::handle_registry::registry::{
@@ -717,6 +764,7 @@ mod tests {
     };
     use std::num::NonZeroU64;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::mpsc;
     use std::sync::{Arc, Barrier};
     use std::thread;
 
@@ -728,6 +776,16 @@ mod tests {
     impl UiLoopBridge for TestUiLoopBridge {
         fn schedule_wake(&self) {
             self.wakes.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    struct WakeSignalBridge {
+        wake_sender: mpsc::Sender<()>,
+    }
+
+    impl UiLoopBridge for WakeSignalBridge {
+        fn schedule_wake(&self) {
+            let _ = self.wake_sender.send(());
         }
     }
 
@@ -792,12 +850,61 @@ mod tests {
             ShutdownCompletionState::Pending
         );
 
+        let (wake_sender, wake_receiver) = mpsc::channel();
+        let sync_host = Arc::new(HostRegistration::new());
+        let sync_dispatcher = Dispatcher::new(Arc::new(WakeSignalBridge { wake_sender }));
+        let sync_completion = ShutdownCompletion::new();
+        let request_host = Arc::clone(&sync_host);
+        let request_dispatcher = sync_dispatcher.clone();
+        let request_completion = sync_completion.clone();
+        let sync_request = thread::spawn(move || {
+            request_host.request_shutdown_with_mode(
+                &request_dispatcher,
+                &request_completion,
+                ShutdownRequestMode::Sync,
+            )
+        });
+        wake_receiver
+            .recv()
+            .expect("worker synchronous request is admitted before waiting");
+        let sync_cleanup = RuntimeCleanupQueue::new();
+        let sync_scope = sync_host
+            .begin_event()
+            .expect("begin sync shutdown boundary");
+        assert!(
+            sync_host
+                .end_event_and_commit_shutdown(
+                    sync_scope,
+                    &sync_dispatcher,
+                    &sync_cleanup,
+                    &sync_completion,
+                )
+                .expect("commit worker synchronous request")
+        );
+        assert_eq!(
+            sync_request
+                .join()
+                .expect("worker sync request joins")
+                .expect("worker sync request completes"),
+            ShutdownRequestOutcome::Completed
+        );
+
         let completion = ShutdownCompletion::new();
         let host = Arc::new(HostRegistration::new());
         let dispatcher_bridge = Arc::new(TestUiLoopBridge::default());
         let dispatcher = Dispatcher::new(dispatcher_bridge.clone());
-        host.request_shutdown(&dispatcher, &completion)
-            .expect("admit request and arm priority dispatch");
+        let ui_scope = host
+            .begin_event()
+            .expect("begin callback-like request scope");
+        assert_eq!(
+            host.request_shutdown_with_mode(&dispatcher, &completion, ShutdownRequestMode::Async,),
+            Ok(ShutdownRequestOutcome::Pending)
+        );
+        assert_eq!(
+            host.request_shutdown_with_mode(&dispatcher, &completion, ShutdownRequestMode::Sync,),
+            Ok(ShutdownRequestOutcome::Pending)
+        );
+        assert!(host.end_event(ui_scope).expect("end request scope"));
         assert_eq!(dispatcher_bridge.wakes.load(Ordering::SeqCst), 1);
         assert_eq!(
             completion.query().expect("initial state"),
