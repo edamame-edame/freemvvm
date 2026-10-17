@@ -2,7 +2,7 @@ use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission};
 use crate::handle_registry::registry::{CleanupQueue, CleanupReservation, ObjectIdentity};
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::sync::{Arc, Condvar, Mutex, Weak};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread::ThreadId;
 
 type Finalizer = Box<dyn FnOnce() + Send>;
@@ -124,18 +124,6 @@ impl RuntimeCleanupQueue {
                 }
             }
         }
-    }
-
-    /// Publish completion only after all accepted cleanup has reached Closed.
-    pub(crate) fn drain_shutdown_and_complete(
-        &self,
-        completion: &ShutdownCompletion,
-    ) -> Result<(), ShutdownCommitError> {
-        self.drain_shutdown()
-            .map_err(ShutdownCommitError::Cleanup)?;
-        completion
-            .mark_completed()
-            .map_err(ShutdownCommitError::Completion)
     }
 
     fn ensure_ui_thread(&self) -> Result<(), ShutdownError> {
@@ -281,7 +269,7 @@ enum HostPumpState {
 struct HostRegistrationState {
     pump: HostPumpState,
     next_scope_id: Option<u64>,
-    completion_records: Vec<Weak<CompletionInner>>,
+    completion_records: Vec<Arc<CompletionInner>>,
 }
 
 thread_local! {
@@ -406,16 +394,51 @@ impl HostRegistration {
         let mut commit_result = None;
         let dispatched = self
             .end_event_and_dispatch_shutdown(scope_id, dispatcher, || {
-                commit_result = Some(cleanup.drain_shutdown_and_complete(completion));
+                commit_result =
+                    Some(self.drain_shutdown_and_complete_requests(cleanup, completion));
             })
             .map_err(HostShutdownCommitError::Boundary)?;
         if !dispatched {
             return Ok(false);
         }
-        commit_result
-            .expect("shutdown handler stores its commit result")
-            .map_err(HostShutdownCommitError::Commit)?;
+        commit_result.expect("shutdown handler stores its commit result")?;
         Ok(true)
+    }
+
+    fn drain_shutdown_and_complete_requests(
+        &self,
+        cleanup: &RuntimeCleanupQueue,
+        fallback_completion: &ShutdownCompletion,
+    ) -> Result<(), HostShutdownCommitError> {
+        cleanup
+            .drain_shutdown()
+            .map_err(ShutdownCommitError::Cleanup)
+            .map_err(HostShutdownCommitError::Commit)?;
+        let records = {
+            let mut state = self.lock_state().map_err(|error| {
+                HostShutdownCommitError::Boundary(HostBoundaryError::Host(error))
+            })?;
+            std::mem::take(&mut state.completion_records)
+        };
+        let fallback_registered = records
+            .iter()
+            .any(|record| Arc::ptr_eq(record, &fallback_completion.inner));
+        for record in records {
+            ShutdownCompletion {
+                ui_thread: self.ui_thread,
+                inner: record,
+            }
+            .mark_completed()
+            .map_err(ShutdownCommitError::Completion)
+            .map_err(HostShutdownCommitError::Commit)?;
+        }
+        if !fallback_registered {
+            fallback_completion
+                .mark_completed()
+                .map_err(ShutdownCommitError::Completion)
+                .map_err(HostShutdownCommitError::Commit)?;
+        }
+        Ok(())
     }
 
     /// Drain an accepted shutdown before closing host admission for loop teardown.
@@ -454,7 +477,7 @@ impl HostRegistration {
 
         let mut commit_result = None;
         let dispatched = match dispatcher.run_pending_shutdown(|| {
-            commit_result = Some(cleanup.drain_shutdown_and_complete(completion));
+            commit_result = Some(self.drain_shutdown_and_complete_requests(cleanup, completion));
         }) {
             Ok(dispatched) => dispatched,
             Err(DispatchError::AlreadyDispatching) => {
@@ -476,9 +499,7 @@ impl HostRegistration {
         if !dispatched {
             return Ok(false);
         }
-        commit_result
-            .expect("shutdown handler stores its commit result")
-            .map_err(HostShutdownCommitError::Commit)?;
+        commit_result.expect("shutdown handler stores its commit result")?;
         Ok(true)
     }
 
@@ -491,16 +512,8 @@ impl HostRegistration {
         }
         let mut state = self.lock_state()?;
         self.ensure_available(state.pump)?;
-        state
-            .completion_records
-            .retain(|record| record.strong_count() > 0);
-        state
-            .completion_records
-            .try_reserve(1)
-            .map_err(|_| HostRegistrationError::OutOfMemory)?;
-        state
-            .completion_records
-            .push(Arc::downgrade(&completion.inner));
+        Self::reserve_completion_record(&mut state, &completion.inner)?;
+        Self::store_completion_record(&mut state, &completion.inner);
         Ok(())
     }
 
@@ -524,13 +537,7 @@ impl HostRegistration {
         let admission = {
             let mut state = self.lock_state()?;
             self.ensure_available(state.pump)?;
-            state
-                .completion_records
-                .retain(|record| record.strong_count() > 0);
-            state
-                .completion_records
-                .try_reserve(1)
-                .map_err(|_| HostRegistrationError::OutOfMemory)?;
+            Self::reserve_completion_record(&mut state, &completion.inner)?;
             let admission = dispatcher
                 .prepare_shutdown_request()
                 .map_err(|error| match error {
@@ -544,13 +551,41 @@ impl HostRegistration {
             if admission == ShutdownRequestAdmission::Closed {
                 return Err(HostRegistrationError::InvalidState);
             }
-            state
-                .completion_records
-                .push(Arc::downgrade(&completion.inner));
+            Self::store_completion_record(&mut state, &completion.inner);
             admission
         };
         dispatcher.schedule_shutdown_wake(admission);
         Ok(())
+    }
+
+    fn reserve_completion_record(
+        state: &mut HostRegistrationState,
+        completion: &Arc<CompletionInner>,
+    ) -> Result<(), HostRegistrationError> {
+        if !state
+            .completion_records
+            .iter()
+            .any(|record| Arc::ptr_eq(record, completion))
+        {
+            state
+                .completion_records
+                .try_reserve(1)
+                .map_err(|_| HostRegistrationError::OutOfMemory)?;
+        }
+        Ok(())
+    }
+
+    fn store_completion_record(
+        state: &mut HostRegistrationState,
+        completion: &Arc<CompletionInner>,
+    ) {
+        if !state
+            .completion_records
+            .iter()
+            .any(|record| Arc::ptr_eq(record, completion))
+        {
+            state.completion_records.push(Arc::clone(completion));
+        }
     }
 
     /// Wait for shutdown only when synchronous mode is requested from a worker thread.
@@ -593,14 +628,12 @@ impl HostRegistration {
         };
         let mut first_error = None;
         for record in records {
-            if let Some(record) = record.upgrade() {
-                let completion = ShutdownCompletion {
-                    ui_thread: self.ui_thread,
-                    inner: record,
-                };
-                if let Err(error) = completion.mark_host_unavailable(reason) {
-                    first_error.get_or_insert(HostRegistrationError::Completion(error));
-                }
+            let completion = ShutdownCompletion {
+                ui_thread: self.ui_thread,
+                inner: record,
+            };
+            if let Err(error) = completion.mark_host_unavailable(reason) {
+                first_error.get_or_insert(HostRegistrationError::Completion(error));
             }
         }
         first_error.map_or(Ok(()), Err)
@@ -640,13 +673,7 @@ impl HostRegistration {
             ) {
                 return Err(HostRegistrationError::InvalidState);
             }
-            state
-                .completion_records
-                .retain(|record| record.strong_count() > 0);
-            state
-                .completion_records
-                .try_reserve(1)
-                .map_err(|_| HostRegistrationError::OutOfMemory)?;
+            Self::reserve_completion_record(&mut state, &completion.inner)?;
             if !dispatcher
                 .prepare_shutdown_retry()
                 .map_err(|error| match error {
@@ -663,9 +690,7 @@ impl HostRegistration {
             completion
                 .retry_on_ui_thread()
                 .map_err(HostRegistrationError::Completion)?;
-            state
-                .completion_records
-                .push(Arc::downgrade(&completion.inner));
+            Self::store_completion_record(&mut state, &completion.inner);
         }
         dispatcher.schedule_shutdown_retry_wake();
         Ok(())
@@ -996,6 +1021,18 @@ mod tests {
             Ok(ShutdownRequestOutcome::Pending)
         );
         assert!(host.end_event(ui_scope).expect("end request scope"));
+        let coalesced_completion = ShutdownCompletion::new();
+        host.request_shutdown(&dispatcher, &coalesced_completion)
+            .expect("admit a distinct request onto pending shutdown");
+        let abandoned_completion = ShutdownCompletion::new();
+        let abandoned_record = Arc::downgrade(&abandoned_completion.inner);
+        host.request_shutdown(&dispatcher, &abandoned_completion)
+            .expect("admit request whose observer is released");
+        drop(abandoned_completion);
+        assert!(
+            abandoned_record.upgrade().is_some(),
+            "host keeps accepted completion alive after observer release"
+        );
         assert_eq!(dispatcher_bridge.wakes.load(Ordering::SeqCst), 1);
         assert_eq!(
             completion.query().expect("initial state"),
@@ -1048,9 +1085,19 @@ mod tests {
             stopped_waiter.join().expect("stopped waiter completes"),
             ShutdownWaitResult::HostUnavailable { reason: 7 }
         );
+        assert!(
+            abandoned_record.upgrade().is_none(),
+            "host releases stopped completion after terminal notification"
+        );
 
         assert_eq!(
             completion.query().expect("host-stop state"),
+            ShutdownCompletionState::HostUnavailable { reason: 7 }
+        );
+        assert_eq!(
+            coalesced_completion
+                .query()
+                .expect("coalesced host-stop state"),
             ShutdownCompletionState::HostUnavailable { reason: 7 }
         );
         let stopped_bridge = Arc::new(TestUiLoopBridge::default());
@@ -1098,7 +1145,9 @@ mod tests {
         );
         host.retry_on_ui_thread(&completion, &dispatcher)
             .expect("UI host retry explicitly re-arms request");
-        assert_eq!(dispatcher_bridge.wakes.load(Ordering::SeqCst), 2);
+        host.retry_on_ui_thread(&coalesced_completion, &dispatcher)
+            .expect("retry distinct coalesced request");
+        assert_eq!(dispatcher_bridge.wakes.load(Ordering::SeqCst), 3);
         let unaccepted_completion = ShutdownCompletion::new();
         assert_eq!(
             host.request_shutdown(&closed_dispatcher, &unaccepted_completion),
@@ -1150,7 +1199,7 @@ mod tests {
         .join()
         .expect("duplicate worker request completes")
         .expect("same request coalesces");
-        assert_eq!(dispatcher_bridge.wakes.load(Ordering::SeqCst), 2);
+        assert_eq!(dispatcher_bridge.wakes.load(Ordering::SeqCst), 3);
         let shutdown_scope = host.begin_event().expect("begin shutdown boundary");
         assert!(
             host.end_event_and_commit_shutdown(shutdown_scope, &dispatcher, &runtime, &completion,)
@@ -1162,6 +1211,12 @@ mod tests {
         );
         assert_eq!(runtime.state(), RuntimeState::Closed);
         assert_eq!(cleanup_count.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            coalesced_completion
+                .query()
+                .expect("coalesced request completes with shared cleanup"),
+            ShutdownCompletionState::Completed
+        );
 
         assert_eq!(
             host.before_stop(&dispatcher, &runtime, &completion),

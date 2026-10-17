@@ -414,6 +414,27 @@
       "tests": [
         {"id": "UT-RUNTIME-005", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-018",
+      "state": "ready",
+      "scope": "coalesced-shutdown-completes-every-accepted-request",
+      "sources": ["crates/core-runtime/src/runtime.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml"],
+      "depends_on": ["UNIT-CORE-013", "UNIT-CORE-014", "UNIT-CORE-017"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host境界・終了要求・完了観測 / CompletionRecord"
+        }
+      ],
+      "requirements": ["RQ-06-006", "RQ-06-012"],
+      "cases": ["TC-THREAD-01", "TC-LIFE-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-RUNTIME-005", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"]}
+      ]
     }
   ]
 }
