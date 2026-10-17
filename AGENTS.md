@@ -3,7 +3,9 @@
 - コーディング規則は '.docs/00_rule/coding_rule_<言語名>.md' を参照する。
 - 機能は単体で実装・動作確認を進められる範囲までユニット化する。
 - 実装前に計画をたて、文書化して保存 (`.docs/20_todo/*.md`) 、常に抜け漏れがないようにする。
-- テスト規約に関しては、`.docs/3*` を参照する。
-- 実装・設計の前に `.docs/04_approval/adr-0001-rust-core.md`、`.docs/11_requirements/mvvm-ui-library-requirements.md`、`.docs/12_design/` の関連文書を読む。各文書の状態と判断ごとの承認状況を本文で確認し、承認済みのADR・設計判断を優先して、黙って変更しない。
-- 設計は一度に小さな範囲を扱い、判断にIDを付けたレビュー案を文書化して利用者の確認を受ける。承認前の案を確定仕様として扱わず、承認後は同じ文書に結果を反映する。
+- テスト設計・traceabilityは `.docs/32_unit_test/unit-test-strategy.md` と `.docs/30_release_test/`・`.docs/31_version_test/` を参照し、実行規約は `.docs/3*` を確認する。unit-testは実装単位に対応させ、実装と同じ変更revisionを検証する。
+- 実装・設計の前に `.docs/11_requirements/reqirements-specification.md` と該当RQ章、`.docs/04_approval/adr-0001-rust-core.md`、`.docs/12_design/` の関連文書を読む。要求の承認はRQ本文・承認履歴で確認し、基本設計の承認を前提にしない。下流設計は承認済み要求に対応付け、要求・ADR・設計の不整合は差異と変更対象を記録して承認する。既存の承認範囲を黙って変更しない。
+- 設計は分野ごとに適度な責務単位へまとめ、要求IDと設計項目を対応付ける。設計独自ID・項目別承認台帳による追跡は行わず、文書名・対象版全体を単位にレビュー・承認する。設計正本はソフトウェアへ反映する実現仕様として扱い、承認前の新規方式を確定仕様として扱わない。旧基本設計・旧詳細設計のローカルarchiveはGit管理対象外とする。
 - 設計文書内のレビュー用C宣言を配布用ヘッダや実装済みAPIとして扱わない。未定義の事項を実装上の都合だけで確定しない。
+- 要求ID・要求と設計/testの関係・承認履歴と改訂履歴の管理は `.docs/11_requirements/reqirements-specification.md` に従う。文書参照は仕様の依存関係と逆向きにし、下流文書から上流の要求・設計根拠へ向ける。要求仕様から下流成果物への参照は作らない。参照リンクだけで下流文書を承認済み・実装済みと扱わない。
+- 文書ロールは要求仕様索引とRQ-16に従う。利用者に見える保証・例外・結果はRQ、BD（design = basic-design）は層の責務と主要なdata/ownership flow・state、DDはclass/interface・method・call flowと詳細なdata/ownership/lifecycleを記す。SDはRQに基づくsecurityの実現設計とする。新しい外部条件を設計内だけで決めない。
