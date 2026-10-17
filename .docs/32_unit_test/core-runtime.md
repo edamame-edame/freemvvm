@@ -1,7 +1,7 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 0.1
-- 状態: レビュー案・未承認。全項目planned / 未実装 / not-run
+- 文書版: 0.4
+- 状態: 0.4全文承認済み（利用者、2026-10-17）。製品test実装中
 - 更新日: 2026-10-17
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
@@ -27,6 +27,39 @@
 | <a id="ut-numeric-001"></a>UT-NUMERIC-001 | F32完全表現値、隣接F32の中点を二つの偶奇方向、signed zero、infinity、NaN、有限範囲超過で変換する | EXACTは非完全値を拒否、NEAREST_EVENは偶数側。zero符号とinfinityの意味を保持、NaN payload一致は要求しない | [RQ-04-029](../11_requirements/RQ-04_abi-boundary.md#rq-04-029)<br/>[TC-NUM-01](../30_release_test/requirement-test-matrix.md#case-tc-num-01) |
 | <a id="ut-abi-001"></a>UT-ABI-001 | required outが有効な各入口で失敗させ、optional error有無とerror生成OOMを組み合わせる | 定義済みout初期値と元statusを保持。任意の不正addressが安全に読書きできる保証を追加しない | [RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-022](../11_requirements/RQ-04_abi-boundary.md#rq-04-022)<br/>[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01)、[TC-TRACE-01](../30_release_test/requirement-test-matrix.md#case-tc-trace-01) |
 | <a id="ut-error-001"></a>UT-ERROR-001 | error/cause snapshotを保持後に別エラーを発生。未知status/domain/codeを渡す | 保持済みsnapshotの数値・message・causeは不変。未知数値を失わずmessageを機械判定に使わない | [RQ-04-022](../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-027](../11_requirements/RQ-04_abi-boundary.md#rq-04-027)<br/>[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01)、[TC-TRACE-01](../30_release_test/requirement-test-matrix.md#case-tc-trace-01) |
+
+### Token issuer — implementation slice 1
+
+以下は承認済みDD v1.1「handle登録と検証」の非zero・非再利用・枯渇時失敗を、最初の実装slice向けに具体化した試験追補案。成功した最大値の扱い、Mutex poison時の内部失敗扱いは本試験で検査するための実装選択であり、公開ABI status/error契約を追加しない。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-handle-alloc-001"></a>UT-HANDLE-ALLOC-001 | 新しいissuerから連続してtokenを要求する | 異なる非zero tokenを単調増加で返す | [RQ-04-018](../11_requirements/RQ-04_abi-boundary.md#rq-04-018)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01) |
+| <a id="ut-handle-alloc-002"></a>UT-HANDLE-ALLOC-002 | 次tokenを`u64::MAX`として初期化し、二度以上要求する | 最大値は一度だけ返し、その後は常に発行不能。周回・再利用しない | [RQ-04-018](../11_requirements/RQ-04_abi-boundary.md#rq-04-018)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01) |
+| <a id="ut-handle-alloc-003"></a>UT-HANDLE-ALLOC-003 | 複数threadから同一issuerへ同時にtokenを要求する | 返されたtokenはすべて一意な非zero値 | [RQ-04-018](../11_requirements/RQ-04_abi-boundary.md#rq-04-018)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01) |
+| <a id="ut-handle-alloc-004"></a>UT-HANDLE-ALLOC-004 | 同期mutexをpoison状態にしてtokenを要求する | 新tokenを返さず失敗する。既発行tokenへ戻らない | [RQ-04-018](../11_requirements/RQ-04_abi-boundary.md#rq-04-018)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01) |
+
+### HandleEntry — implementation slice 3
+
+以下は承認済みDD v1.1のHandleEntry（kind、optional Runtime identity、一つの公開owner参照）のうち、entry-localな照合と参照消費を試験する。型とRuntime identityの具体表現、registry tableや実objectの保持方式はこの追補で決定しない。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-handle-entry-001"></a>UT-HANDLE-ENTRY-001 | kindとRuntime identityが設定されたentryに一致/不一致の期待値を照合し、RuntimeなしentryにもRuntime照合する | 一致だけtrue。不一致とRuntimeなしはfalse。どの照合でもentryのlive状態とowner参照を変更しない | [RQ-04-019](../11_requirements/RQ-04_abi-boundary.md#rq-04-019)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01) |
+| <a id="ut-handle-entry-002"></a>UT-HANDLE-ENTRY-002 | 同じ対象を所有する二entryの一方だけ参照をconsumeし、重複consumeする | 一entryの参照は一度だけ返る。他entryの参照は有効で同じ対象を示す | [RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-OWN-01](../30_release_test/requirement-test-matrix.md#case-tc-own-01) |
+
+### Runtime HandleRegistry — implementation slice 4
+
+以下は承認済みDD v1.2のRuntime-owned object registry、thread-safe control block、ValidationPin、cleanup reservationを試験する。fixtureはUI object state、Runtime cleanup queue、ticket reservationを手動制御し、thread順序はbarrierで固定する。Runtime非依存ErrorSnapshotのowner方式は本追補の対象外。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-handle-reg-001"></a>UT-HANDLE-REG-001 | Runtime identityとgeneration付きobject identityを持つobjectを登録し、tokenでentryを検証する。token/table確保失敗も個別注入する | 登録成功だけが完全なentryを公開する。失敗時は部分entryとowner増分を残さない。kind/Runtimeの照合はentry-local規則どおり | [RQ-04-018](../11_requirements/RQ-04_abi-boundary.md#rq-04-018)、[RQ-04-019](../11_requirements/RQ-04_abi-boundary.md#rq-04-019)、[RQ-06-003](../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01) |
+| <a id="ut-handle-pin-001"></a>UT-HANDLE-PIN-001 | UI threadでValidationPinを取得し、最後の公開tokenをreleaseした後にpinを保持・解放する | ticketは受付済みでもpin中はobject stateを破棄しない。最後のpin後、UI safe pointでstateを一度だけ破棄する | [RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+| <a id="ut-handle-release-001"></a>UT-HANDLE-RELEASE-001 | worker threadから最後のtokenをreleaseし、queue受理後にUI queueを手動drainする | release成功はtoken消費とcleanup受付を示す。worker上でUI stateを触らず、drain前は未破棄、drain後はUI thread上で破棄済み | [RQ-05-010](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-010)、[RQ-06-002](../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+| <a id="ut-handle-release-002"></a>UT-HANDLE-RELEASE-002 | 最終releaseのCleanupReservation取得を失敗させ、queueを復旧して同じtokenを再releaseする | 失敗したreleaseではtokenと公開参照がliveのままで、再試行できる。再試行成功時だけtokenを消費する | [RQ-05-012](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-OWN-01](../30_release_test/requirement-test-matrix.md#case-tc-own-01) |
+| <a id="ut-handle-release-003"></a>UT-HANDLE-RELEASE-003 | barrierで同tokenのretain/releaseを競合させ、両方のlinearization順を再現する | retain先行なら新tokenが独立してlive。release先行ならretainは失敗しtoken resurrectionなし。重複releaseは高々一度だけ成功し、別tokenを変えない | [RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-011](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-011)、[RQ-06-003](../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)<br/>[TC-OWN-01](../30_release_test/requirement-test-matrix.md#case-tc-own-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+| <a id="ut-handle-shutdown-001"></a>UT-HANDLE-SHUTDOWN-001 | cleanup ticket予約後にRuntimeをClosingへ進め、全ticket drain前後で状態を観測する。shutdown後に残るclosed shellもreleaseする | Runtimeはticket処理前にClosedにならない。UI state cleanupはUI threadで一度だけ。Closed後のshell releaseはUI stateへ触れず完了する | [RQ-05-003](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-06-005](../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-06-006](../11_requirements/RQ-06_threading-dispatch.md#rq-06-006)、[RQ-06-012](../11_requirements/RQ-06_threading-dispatch.md#rq-06-012)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 ## dispatchと終了
 
 fake hostはturn進行・wake受付・host停止を手動制御する。workerはbarrierでqueue登録と終了受付の前後へ固定し、sleepの長さで順序を推測しない。
@@ -47,9 +80,19 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
 | --- | --- | --- | --- |
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
+| 2026-10-17 | 0.1全文 | 利用者 | 「OK そろそろスクラッチを開始しましょうか。環境整備から始めてください。」により既存試験案を承認し環境整備を開始。製品test実装・合格を意味しない |
+| 2026-10-17 | 0.2 token issuer追補 | — | 承認済みDD v1.1から試験oracleを具体化したレビュー案。承認前の追補を公開契約へ拡張しない |
+| 2026-10-17 | 0.2全文 | 利用者 | token issuer追補を含む本版全文を承認。テスト設計の承認であり製品test合格を意味しない |
+| 2026-10-17 | 0.3 HandleEntry追補 | — | 承認済みDD v1.1からentry-localなoracleを具体化したレビュー案。具体owner型やRegistry policyを追加しない |
+| 2026-10-17 | 0.3全文 | 利用者 | 「ok」によりHandleEntry追補を含む本版全文を承認。テスト設計の承認であり製品test合格を意味しない |
+| 2026-10-17 | 0.4 Runtime HandleRegistry追補 | — | 承認済みDD v1.2のRuntime-owner/pin/finalizer境界を具体化したレビュー案。実装・test合格を意味しない |
+| 2026-10-17 | 0.4全文 | 利用者 | 「ok」によりRuntime HandleRegistry追補を含む本版全文を承認。テスト設計の承認であり製品test合格を意味しない |
 
 ## 改訂履歴
 
 | 版 | 日付 | 内容・理由 | 作成者 | 承認との対応 |
 | --- | --- | --- | --- | --- |
 | 0.1 | 2026-10-17 | テスト文書作成指示に基づき前提・操作・観測・期待値・後始末を具体化 | Codex | 本版全文のレビュー待ち。未実装・未実行 |
+| 0.2 | 2026-10-17 | HandleRegistry全体に先行するtoken issuerの最小sliceと4件の局所oracleを追補 | Codex | 本版全文承認済み |
+| 0.3 | 2026-10-17 | HandleEntryのkind/Runtime照合と一公開参照のconsumeを試験追補 | Codex | 利用者が本版全文を承認 |
+| 0.4 | 2026-10-17 | Runtime HandleRegistryの登録、pin、final release、reservation失敗、競合、shutdown drainを追補 | Codex | 利用者が本版全文を承認 |

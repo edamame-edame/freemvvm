@@ -1,0 +1,11 @@
+[package]
+name = "freemvvm-sys"
+description = "Raw FFI declarations for the shared native runtime; bootstrap skeleton"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

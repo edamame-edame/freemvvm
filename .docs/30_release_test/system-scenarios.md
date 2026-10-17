@@ -1,7 +1,7 @@
 # Release試験：共通UI縦断・profile・配布物
 
 - 文書版: 0.1
-- 状態: レビュー案・未承認。全scenario planned / 未実装 / not-run
+- 状態: 0.1全文承認済み（利用者、2026-10-17）。製品testは未実装・未実行。接続gapは別管理
 - 更新日: 2026-10-17
 
 上位規約は[release-test](release-test.md)、[共通manifest](requirements-test-manifest.md)、[要求対応表](requirement-test-matrix.md)。実現根拠は[BD全体構成](../12_design/architecture.md) 1.0、[DD入口](../13_detail_design/README.md)と各分野の1.1。単体のfake成功を実OS・配布物の成功へ読み替えない。下記IDは予定実test識別子であり、既存TCを置き換えない。
@@ -41,6 +41,7 @@ reportは予定test ID、TC/RQ別assertion、SHA、profile、wrapper/ABI/feature
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
 | --- | --- | --- | --- |
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
+| 2026-10-17 | 0.1全文 | 利用者 | 「OK そろそろスクラッチを開始しましょうか。環境整備から始めてください。」により既存試験案を承認し環境整備を開始。製品test実装・合格を意味しない |
 
 ## 改訂履歴
 

@@ -1,7 +1,7 @@
 # テスト設計の入口
 
 - 文書版: 0.1
-- 状態: レビュー案・未承認。今回作成した試験項目はplanned / 未実装 / not-run
+- 状態: 0.1全文承認済み（利用者、2026-10-17）。製品testは未実装・未実行。接続gapは別管理
 - 更新日: 2026-10-17
 
 要求の280RQ・92論理caseは[要求対応表](../30_release_test/requirement-test-matrix.md)と[要求別assertion](../30_release_test/requirements-test-assertions.md)を正本とする。ここでは承認済みDD1.1を操作・観測可能な試験設計へ具体化する。文書作成だけで全RQの詳細試験設計が完了したことにはしない。
@@ -41,7 +41,7 @@ fake host/clock/OS/FSは確定的に進行し、並行testはbarrierで開始/�
 | 結果 | 現在はnot-run。将来pass/fail/blockedと理由・各assertionログを記録 |
 | artifact | package/platform試験はidentity・digest、OS/driver/font/IME環境も保存 |
 
-未実装・未実行と、oracleが不整合で実装へ進めないblockedを区別する。今回作成した文書の承認は別途文書版全体で行い、DD承認をテスト文書へ拡張しない。ソースもworkflowも未作成のため、実行command・test symbol・coverage閾値を仮定で埋めない。
+未実装・未実行と、oracleが不整合で実装へ進めないblockedを区別する。本索引と今回の試験設計8文書は0.1全文承認済み。製品testの実装・実行状態は承認と別管理し、実command・test symbol・coverage閾値を仮定で埋めない。開発基盤のみ、[bootstrap検証](development-bootstrap.md)と[開発手順](../../DEVELOPMENT.md)を追加した。
 
 ## 設計との接続gap
 
@@ -62,6 +62,7 @@ fake host/clock/OS/FSは確定的に進行し、並行testはbarrierで開始/�
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
 | --- | --- | --- | --- |
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
+| 2026-10-17 | 0.1全文 | 利用者 | 「OK そろそろスクラッチを開始しましょうか。環境整備から始めてください。」により既存試験案を承認し環境整備を開始。製品test実装・合格を意味しない |
 
 ## 改訂履歴
 

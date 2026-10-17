@@ -1,7 +1,7 @@
 # 単体試験：Collection・batch・Selection・snapshot
 
 - 文書版: 0.1
-- 状態: レビュー案・未承認。全項目planned / 未実装 / not-run
+- 状態: 0.1全文承認済み（利用者、2026-10-17）。製品testは未実装・未実行。接続gapは別管理
 - 更新日: 2026-10-17
 
 候補単位はCollectionModel/ModelState、BatchBuilder/PreparedState、SelectionValidator。次段階Collectionの試験設計であり、初期releaseの未提供featureを必須passに含めない。
@@ -31,6 +31,7 @@
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
 | --- | --- | --- | --- |
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
+| 2026-10-17 | 0.1全文 | 利用者 | 「OK そろそろスクラッチを開始しましょうか。環境整備から始めてください。」により既存試験案を承認し環境整備を開始。製品test実装・合格を意味しない |
 
 ## 改訂履歴
 
