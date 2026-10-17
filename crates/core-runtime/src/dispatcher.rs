@@ -122,6 +122,13 @@ struct DispatcherInner {
     state: Mutex<QueueState>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ShutdownRequestAdmission {
+    NewlyPending { schedule_wake: bool },
+    AlreadyPending,
+    Closed,
+}
+
 /// FIFO, non-reentrant post dispatcher. Each call to `dispatch_turn` invokes
 /// at most one callback and schedules another turn when work remains.
 #[derive(Clone)]
@@ -196,20 +203,57 @@ impl Dispatcher {
 
     /// Request shutdown without interrupting the active UI callback. Repeated requests coalesce.
     pub(crate) fn request_shutdown(&self) -> Result<(), DispatchError> {
-        let schedule = {
-            let mut state = self.lock_state()?;
-            if state.lifecycle != DispatcherLifecycle::Running || state.shutdown_pending {
-                return Ok(());
+        let admission = self.prepare_shutdown_request()?;
+        self.schedule_shutdown_wake(admission);
+        Ok(())
+    }
+
+    /// Reserve the priority shutdown state without invoking the host wake bridge.
+    pub(crate) fn prepare_shutdown_request(
+        &self,
+    ) -> Result<ShutdownRequestAdmission, DispatchError> {
+        let mut state = self.lock_state()?;
+        if state.lifecycle != DispatcherLifecycle::Running {
+            return Ok(ShutdownRequestAdmission::Closed);
+        }
+        if state.shutdown_pending {
+            return Ok(ShutdownRequestAdmission::AlreadyPending);
+        }
+        state.shutdown_pending = true;
+        let schedule_wake = !state.wake_pending;
+        state.wake_pending = true;
+        Ok(ShutdownRequestAdmission::NewlyPending { schedule_wake })
+    }
+
+    /// Notify the host only after any coordinating owner lock has been released.
+    pub(crate) fn schedule_shutdown_wake(&self, admission: ShutdownRequestAdmission) {
+        if matches!(
+            admission,
+            ShutdownRequestAdmission::NewlyPending {
+                schedule_wake: true
             }
-            state.shutdown_pending = true;
-            let schedule = !state.wake_pending;
-            state.wake_pending = true;
-            schedule
-        };
-        if schedule {
+        ) {
             self.inner.bridge.schedule_wake();
         }
-        Ok(())
+    }
+
+    /// Re-arm a pending shutdown after an explicitly requested host restart retry.
+    pub(crate) fn prepare_shutdown_retry(&self) -> Result<bool, DispatchError> {
+        let mut state = self.lock_state()?;
+        if state.lifecycle != DispatcherLifecycle::Running || !state.shutdown_pending {
+            return Ok(false);
+        }
+        state.wake_pending = true;
+        Ok(true)
+    }
+
+    /// Always schedule a fresh turn for an explicit retry; a prior host wake may have been lost.
+    pub(crate) fn schedule_shutdown_retry_wake(&self) {
+        self.inner.bridge.schedule_wake();
+    }
+
+    pub(crate) fn belongs_to_thread(&self, thread_id: ThreadId) -> bool {
+        self.inner.ui_thread == thread_id
     }
 
     /// Dispatch at most one normal callback, or service the priority shutdown request.

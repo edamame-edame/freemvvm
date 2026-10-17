@@ -1,4 +1,4 @@
-use crate::dispatcher::{DispatchError, Dispatcher};
+use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission};
 use crate::handle_registry::registry::{CleanupQueue, CleanupReservation, ObjectIdentity};
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -442,6 +442,55 @@ impl HostRegistration {
         Ok(())
     }
 
+    /// Admit one prepared completion record and arm priority shutdown atomically with host stop.
+    pub(crate) fn request_shutdown(
+        &self,
+        dispatcher: &Dispatcher,
+        completion: &ShutdownCompletion,
+    ) -> Result<(), HostRegistrationError> {
+        if self.ui_thread != completion.ui_thread || !dispatcher.belongs_to_thread(self.ui_thread) {
+            return Err(HostRegistrationError::InvalidContext);
+        }
+        if completion
+            .query()
+            .map_err(HostRegistrationError::Completion)?
+            != ShutdownCompletionState::Pending
+        {
+            return Err(HostRegistrationError::InvalidState);
+        }
+
+        let admission = {
+            let mut state = self.lock_state()?;
+            self.ensure_available(state.pump)?;
+            state
+                .completion_records
+                .retain(|record| record.strong_count() > 0);
+            state
+                .completion_records
+                .try_reserve(1)
+                .map_err(|_| HostRegistrationError::OutOfMemory)?;
+            let admission = dispatcher
+                .prepare_shutdown_request()
+                .map_err(|error| match error {
+                    DispatchError::WrongThread | DispatchError::AlreadyDispatching => {
+                        HostRegistrationError::InvalidContext
+                    }
+                    DispatchError::SynchronizationPoisoned => {
+                        HostRegistrationError::SynchronizationPoisoned
+                    }
+                })?;
+            if admission == ShutdownRequestAdmission::Closed {
+                return Err(HostRegistrationError::InvalidState);
+            }
+            state
+                .completion_records
+                .push(Arc::downgrade(&completion.inner));
+            admission
+        };
+        dispatcher.schedule_shutdown_wake(admission);
+        Ok(())
+    }
+
     /// Notify registered waiters without claiming that cleanup has completed.
     pub(crate) fn notify_stopped(&self, reason: u32) -> Result<(), HostRegistrationError> {
         let records = {
@@ -481,26 +530,51 @@ impl HostRegistration {
     pub(crate) fn retry_on_ui_thread(
         &self,
         completion: &ShutdownCompletion,
+        dispatcher: &Dispatcher,
     ) -> Result<(), HostRegistrationError> {
         self.ensure_ui_thread()?;
-        if self.ui_thread != completion.ui_thread {
+        if self.ui_thread != completion.ui_thread || !dispatcher.belongs_to_thread(self.ui_thread) {
             return Err(HostRegistrationError::InvalidContext);
         }
-        let mut state = self.lock_state()?;
-        self.ensure_available(state.pump)?;
-        state
-            .completion_records
-            .retain(|record| record.strong_count() > 0);
-        state
-            .completion_records
-            .try_reserve(1)
-            .map_err(|_| HostRegistrationError::OutOfMemory)?;
-        completion
-            .retry_on_ui_thread()
-            .map_err(HostRegistrationError::Completion)?;
-        state
-            .completion_records
-            .push(Arc::downgrade(&completion.inner));
+        {
+            let mut state = self.lock_state()?;
+            self.ensure_available(state.pump)?;
+            if !matches!(
+                completion
+                    .query()
+                    .map_err(HostRegistrationError::Completion)?,
+                ShutdownCompletionState::HostUnavailable { .. }
+            ) {
+                return Err(HostRegistrationError::InvalidState);
+            }
+            state
+                .completion_records
+                .retain(|record| record.strong_count() > 0);
+            state
+                .completion_records
+                .try_reserve(1)
+                .map_err(|_| HostRegistrationError::OutOfMemory)?;
+            if !dispatcher
+                .prepare_shutdown_retry()
+                .map_err(|error| match error {
+                    DispatchError::WrongThread | DispatchError::AlreadyDispatching => {
+                        HostRegistrationError::InvalidContext
+                    }
+                    DispatchError::SynchronizationPoisoned => {
+                        HostRegistrationError::SynchronizationPoisoned
+                    }
+                })?
+            {
+                return Err(HostRegistrationError::InvalidState);
+            }
+            completion
+                .retry_on_ui_thread()
+                .map_err(HostRegistrationError::Completion)?;
+            state
+                .completion_records
+                .push(Arc::downgrade(&completion.inner));
+        }
+        dispatcher.schedule_shutdown_retry_wake();
         Ok(())
     }
 
@@ -647,10 +721,14 @@ mod tests {
     use std::thread;
 
     #[derive(Default)]
-    struct TestUiLoopBridge;
+    struct TestUiLoopBridge {
+        wakes: AtomicUsize,
+    }
 
     impl UiLoopBridge for TestUiLoopBridge {
-        fn schedule_wake(&self) {}
+        fn schedule_wake(&self) {
+            self.wakes.fetch_add(1, Ordering::SeqCst);
+        }
     }
 
     #[test]
@@ -693,10 +771,34 @@ mod tests {
 
     #[test]
     fn completion_record_distinguishes_host_stop_and_allows_ui_retry() {
+        let no_op_host = HostRegistration::new();
+        let no_op_dispatcher = Dispatcher::new(Arc::new(TestUiLoopBridge::default()));
+        let no_op_completion = ShutdownCompletion::new();
+        let no_op_cleanup = RuntimeCleanupQueue::new();
+        let no_op_scope = no_op_host.begin_event().expect("begin no-op boundary");
+        assert!(
+            !no_op_host
+                .end_event_and_commit_shutdown(
+                    no_op_scope,
+                    &no_op_dispatcher,
+                    &no_op_cleanup,
+                    &no_op_completion,
+                )
+                .expect("no pending shutdown remains a no-op")
+        );
+        assert_eq!(no_op_cleanup.state(), RuntimeState::Running);
+        assert_eq!(
+            no_op_completion.query().expect("no-op completion state"),
+            ShutdownCompletionState::Pending
+        );
+
         let completion = ShutdownCompletion::new();
         let host = Arc::new(HostRegistration::new());
-        host.register_completion(&completion)
-            .expect("register pending shutdown with host");
+        let dispatcher_bridge = Arc::new(TestUiLoopBridge::default());
+        let dispatcher = Dispatcher::new(dispatcher_bridge.clone());
+        host.request_shutdown(&dispatcher, &completion)
+            .expect("admit request and arm priority dispatch");
+        assert_eq!(dispatcher_bridge.wakes.load(Ordering::SeqCst), 1);
         assert_eq!(
             completion.query().expect("initial state"),
             ShutdownCompletionState::Pending
@@ -754,9 +856,64 @@ mod tests {
             completion.query().expect("host-stop state"),
             ShutdownCompletionState::HostUnavailable { reason: 7 }
         );
+        let stopped_bridge = Arc::new(TestUiLoopBridge::default());
+        let stopped_dispatcher = Dispatcher::new(stopped_bridge.clone());
+        let rejected_completion = ShutdownCompletion::new();
+        assert_eq!(
+            host.request_shutdown(&stopped_dispatcher, &rejected_completion),
+            Err(HostRegistrationError::HostUnavailable { reason: 7 })
+        );
+        assert_eq!(stopped_bridge.wakes.load(Ordering::SeqCst), 0);
+        assert!(
+            !stopped_dispatcher
+                .run_pending_shutdown(|| {})
+                .expect("stopped host request did not arm dispatcher")
+        );
+        assert_eq!(
+            rejected_completion.query().expect("rejected record state"),
+            ShutdownCompletionState::Pending
+        );
+
         host.resume_on_ui_thread().expect("same UI host resumes");
-        host.retry_on_ui_thread(&completion)
+        let idle_bridge = Arc::new(TestUiLoopBridge::default());
+        let idle_dispatcher = Dispatcher::new(idle_bridge.clone());
+        assert_eq!(
+            host.retry_on_ui_thread(&completion, &idle_dispatcher),
+            Err(HostRegistrationError::InvalidState)
+        );
+        assert_eq!(idle_bridge.wakes.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            completion.query().expect("idle dispatcher retry state"),
+            ShutdownCompletionState::HostUnavailable { reason: 7 }
+        );
+        let closed_bridge = Arc::new(TestUiLoopBridge::default());
+        let closed_dispatcher = Dispatcher::new(closed_bridge.clone());
+        closed_dispatcher
+            .close_and_cancel()
+            .expect("prepare closed dispatcher");
+        assert_eq!(
+            host.retry_on_ui_thread(&completion, &closed_dispatcher),
+            Err(HostRegistrationError::InvalidState)
+        );
+        assert_eq!(
+            completion.query().expect("rejected retry state"),
+            ShutdownCompletionState::HostUnavailable { reason: 7 }
+        );
+        host.retry_on_ui_thread(&completion, &dispatcher)
             .expect("UI host retry explicitly re-arms request");
+        assert_eq!(dispatcher_bridge.wakes.load(Ordering::SeqCst), 2);
+        let unaccepted_completion = ShutdownCompletion::new();
+        assert_eq!(
+            host.request_shutdown(&closed_dispatcher, &unaccepted_completion),
+            Err(HostRegistrationError::InvalidState)
+        );
+        assert_eq!(closed_bridge.wakes.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            unaccepted_completion
+                .query()
+                .expect("closed dispatcher record state"),
+            ShutdownCompletionState::Pending
+        );
         assert_eq!(
             completion.query().expect("retry is pending"),
             ShutdownCompletionState::Pending
@@ -778,27 +935,25 @@ mod tests {
                 cleanup_count_for_callback.fetch_add(1, Ordering::SeqCst);
             }))
             .expect("track UI state for shutdown cleanup");
-        let dispatcher = Dispatcher::new(Arc::new(TestUiLoopBridge));
-        let no_shutdown_scope = host.begin_event().expect("begin no-op boundary");
-        assert!(
-            !host
-                .end_event_and_commit_shutdown(
-                    no_shutdown_scope,
-                    &dispatcher,
-                    &runtime,
-                    &completion,
-                )
-                .expect("no pending shutdown remains a no-op")
-        );
-        assert_eq!(runtime.state(), RuntimeState::Running);
-        assert_eq!(
-            completion.query().expect("still-pending request"),
-            ShutdownCompletionState::Pending
-        );
-
-        dispatcher
-            .request_shutdown()
-            .expect("request priority shutdown");
+        let request_host = Arc::clone(&host);
+        let request_dispatcher = dispatcher.clone();
+        let request_completion = completion.clone();
+        thread::spawn(move || {
+            request_host.request_shutdown(&request_dispatcher, &request_completion)
+        })
+        .join()
+        .expect("worker request admission completes")
+        .expect("shutdown request is admitted");
+        let duplicate_host = Arc::clone(&host);
+        let duplicate_dispatcher = dispatcher.clone();
+        let duplicate_completion = completion.clone();
+        thread::spawn(move || {
+            duplicate_host.request_shutdown(&duplicate_dispatcher, &duplicate_completion)
+        })
+        .join()
+        .expect("duplicate worker request completes")
+        .expect("same request coalesces");
+        assert_eq!(dispatcher_bridge.wakes.load(Ordering::SeqCst), 2);
         let shutdown_scope = host.begin_event().expect("begin shutdown boundary");
         assert!(
             host.end_event_and_commit_shutdown(shutdown_scope, &dispatcher, &runtime, &completion,)

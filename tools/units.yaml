@@ -330,6 +330,48 @@
       "tests": [
         {"id": "UT-RUNTIME-005", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-014",
+      "state": "ready",
+      "scope": "host-serialized-shutdown-admission-and-priority-wake",
+      "sources": ["crates/core-runtime/src/dispatcher.rs", "crates/core-runtime/src/runtime.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml"],
+      "depends_on": ["UNIT-CORE-009", "UNIT-CORE-011", "UNIT-CORE-012"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host境界・終了要求・完了観測 / Prepared → Pending"
+        }
+      ],
+      "requirements": ["RQ-06-003", "RQ-06-006", "RQ-06-012"],
+      "cases": ["TC-THREAD-01", "TC-LIFE-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-RUNTIME-005", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"]}
+      ]
+    },
+    {
+      "id": "UNIT-CORE-015",
+      "state": "ready",
+      "scope": "same-host-shutdown-retry-rearms-dispatcher-wake",
+      "sources": ["crates/core-runtime/src/dispatcher.rs", "crates/core-runtime/src/runtime.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml"],
+      "depends_on": ["UNIT-CORE-009", "UNIT-CORE-011", "UNIT-CORE-014"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host境界・終了要求・完了観測 / HostUnavailable → Pending"
+        }
+      ],
+      "requirements": ["RQ-06-007", "RQ-06-012"],
+      "cases": ["TC-THREAD-01", "TC-LIFE-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-RUNTIME-005", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"]}
+      ]
     }
   ]
 }
