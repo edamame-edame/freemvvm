@@ -95,6 +95,12 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | --- | --- | --- | --- |
 | <a id="ut-runtime-owner-001"></a>UT-RUNTIME-OWNER-001 | RuntimeCoreをbridgeなしで生成し、同threadからqueryする。次にUI threadでbridgeを登録し、重複登録、worker登録、shutdown開始後の登録も試す | bridgeなし生成とthread queryは成功。一度目だけ登録成功。重複・worker・Closing後は失敗し、既存bridgeは置換されず、拒否されたbridgeは呼出し側が保持する | [RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)<br/>[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### RuntimeCore identity issuance — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-runtime-identity-001"></a>UT-RUNTIME-IDENTITY-001 | 複数threadからRuntimeCoreを同時生成し、各identityを取得する | 全生成が成功しidentityは非zeroかつ相互に異なる。共有token issuerの排他下で割当てられる | [RQ-04-018](../11_requirements/RQ-04_abi-boundary.md#rq-04-018)、[RQ-04-019](../11_requirements/RQ-04_abi-boundary.md#rq-04-019)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+
 ## 承認履歴
 
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
@@ -110,6 +116,7 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | 2026-10-18 | Runtime UI thread identity追補 | 利用者 | 「ok」により、Runtime作成thread identity contextのfocused unit-test設計を追加。RQ-06-001全体の検証完了や公開Runtime APIの承認を意味しない |
 | 2026-10-18 | Runtime UI thread context propagation追補 | 利用者 | 「ok」により、共有context注入に対するfocused unit-test設計を追加。Runtime facadeや公開ABIの承認を意味しない |
 | 2026-10-18 | RuntimeCore bridge registration追補 | 利用者 | 「OK」により、bridgeなし生成とRuntimeCore内の一度限りのbridge登録に対するfocused unit-test設計を追加。公開C ABIやRuntime handle実装の承認を意味しない |
+| 2026-10-18 | RuntimeCore identity issuance追補 | Codex | RQ-04-018/019と承認済みRuntime identity設計から、共有token issuerを使う一意性のfocused test案を追加。Runtime identityの公開やC ABIの承認を意味しない |
 
 ## 改訂履歴
 

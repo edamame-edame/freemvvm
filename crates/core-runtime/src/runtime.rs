@@ -2,6 +2,7 @@
 use crate::handle_registry::registry::{CleanupQueue, CleanupReservation, ObjectIdentity};
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::num::NonZeroU64;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::ThreadId;
 
@@ -751,15 +752,32 @@ impl HostRegistration {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[allow(dead_code)]
 pub(crate) enum RuntimeCoreError {
+    IdentityUnavailable,
     WrongThread,
     Closed,
     BridgeAlreadyRegistered,
     SynchronizationPoisoned,
 }
 
+/// Process-unique internal identity for one Runtime owner.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct RuntimeIdentity(NonZeroU64);
+
+impl RuntimeIdentity {
+    fn issue() -> Option<Self> {
+        crate::handle_registry::issue_runtime_identity().map(Self)
+    }
+
+    #[cfg(test)]
+    fn get(self) -> NonZeroU64 {
+        self.0
+    }
+}
+
 /// Internal Runtime owner. A host loop bridge is optional at creation.
 #[allow(dead_code)]
 pub(crate) struct RuntimeCore {
+    identity: RuntimeIdentity,
     ui_thread: UiThreadContext,
     cleanup: Arc<RuntimeCleanupQueue>,
     host: HostRegistration,
@@ -768,14 +786,20 @@ pub(crate) struct RuntimeCore {
 
 #[allow(dead_code)]
 impl RuntimeCore {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new() -> Result<Self, RuntimeCoreError> {
+        let identity = RuntimeIdentity::issue().ok_or(RuntimeCoreError::IdentityUnavailable)?;
         let ui_thread = UiThreadContext::capture();
-        Self {
+        Ok(Self {
+            identity,
             ui_thread,
             cleanup: RuntimeCleanupQueue::new_for_ui_thread(ui_thread),
             host: HostRegistration::new_for_ui_thread(ui_thread),
             dispatcher: Mutex::new(None),
-        }
+        })
+    }
+
+    pub(crate) fn identity(&self) -> RuntimeIdentity {
+        self.identity
     }
 
     pub(crate) fn is_ui_thread(&self) -> bool {
@@ -965,7 +989,7 @@ mod tests {
 
     #[test]
     fn runtime_core_registers_bridge_once_on_owner_thread() {
-        let runtime = Arc::new(RuntimeCore::new());
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
         assert!(runtime.is_ui_thread());
         let host_scope = runtime
             .host_registration()
@@ -1024,6 +1048,37 @@ mod tests {
                 .expect("installed dispatcher remains")
                 .is_some()
         );
+    }
+
+    #[test]
+    fn runtime_core_identities_are_unique_across_concurrent_creation() {
+        const THREADS: usize = 8;
+        const RUNTIMES_PER_THREAD: usize = 32;
+
+        let identities = thread::scope(|scope| {
+            (0..THREADS)
+                .map(|_| {
+                    scope.spawn(|| {
+                        (0..RUNTIMES_PER_THREAD)
+                            .map(|_| {
+                                RuntimeCore::new()
+                                    .expect("Runtime identity is available")
+                                    .identity()
+                                    .get()
+                                    .get()
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .map(|task| task.join().expect("Runtime creation worker completes"))
+                .collect::<Vec<_>>()
+        });
+
+        let mut identities = identities.into_iter().flatten().collect::<Vec<_>>();
+        assert_eq!(identities.len(), THREADS * RUNTIMES_PER_THREAD);
+        assert!(identities.iter().all(|identity| *identity > 0));
+        identities.sort_unstable();
+        assert!(identities.windows(2).all(|pair| pair[0] != pair[1]));
     }
 
     #[test]
