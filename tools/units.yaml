@@ -765,6 +765,33 @@
       "tests": [
         {"id": "UT-ABI-005", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "runtime_is_ui_thread"]}
       ]
+    },
+    {
+      "id": "UNIT-ABI-006",
+      "state": "ready",
+      "scope": "c-abi-runtime-handle-retain",
+      "sources": ["crates/core-runtime/src/lib.rs", "crates/core-runtime/src/runtime_handles.rs", "crates/c-abi/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-026", "UNIT-ABI-001", "UNIT-ABI-004"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "Ownership API / handle_retain / common status / output initialization"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "HandleRegistry retain preserves input token and issues a token to the same object"
+        }
+      ],
+      "requirements": ["RQ-04-005", "RQ-04-006", "RQ-04-015", "RQ-04-018", "RQ-04-019", "RQ-05-002"],
+      "cases": ["TC-CORE-OBJ-01", "TC-LIFE-01", "TC-ABI-REP-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-RUNTIME-HANDLE-RET-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_handles::tests::retain_issues_independent_token_to_same_runtime"]},
+        {"id": "UT-ABI-006", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "handle_retain"]}
+      ]
     }
   ]
 }

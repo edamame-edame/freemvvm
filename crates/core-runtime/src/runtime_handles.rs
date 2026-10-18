@@ -54,6 +54,23 @@ impl RuntimeHandleRegistry {
             .cloned()
             .ok_or(RuntimeHandleError::InvalidToken)
     }
+
+    pub(crate) fn retain(&self, token: HandleToken) -> Result<HandleToken, RuntimeHandleError> {
+        let mut entries = self
+            .entries
+            .lock()
+            .map_err(|_| RuntimeHandleError::SynchronizationPoisoned)?;
+        let runtime = entries
+            .get(&token)
+            .cloned()
+            .ok_or(RuntimeHandleError::InvalidToken)?;
+        entries
+            .try_reserve(1)
+            .map_err(|_| RuntimeHandleError::OutOfMemory)?;
+        let retained_token = issue_handle_token().ok_or(RuntimeHandleError::TokenUnavailable)?;
+        entries.insert(retained_token, runtime);
+        Ok(retained_token)
+    }
 }
 
 static PROCESS_RUNTIME_HANDLES: OnceLock<RuntimeHandleRegistry> = OnceLock::new();
@@ -143,5 +160,42 @@ mod tests {
             Some(RuntimeHandleError::SynchronizationPoisoned)
         );
         assert_eq!(Arc::strong_count(&runtime), 1);
+    }
+
+    #[test]
+    fn retain_issues_independent_token_to_same_runtime() {
+        let registry = RuntimeHandleRegistry::new();
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime is created"));
+        let original = registry
+            .insert(&runtime)
+            .expect("original Runtime handle is issued");
+        let retained = registry
+            .retain(original)
+            .expect("retained Runtime handle is issued");
+
+        assert_ne!(original, retained);
+        assert!(Arc::ptr_eq(
+            &registry.resolve(original).expect("original remains valid"),
+            &runtime
+        ));
+        assert!(Arc::ptr_eq(
+            &registry
+                .resolve(retained)
+                .expect("new token resolves to same owner"),
+            &runtime
+        ));
+        assert_eq!(Arc::strong_count(&runtime), 3);
+
+        let unknown = HandleToken::from_abi(u64::MAX).expect("nonzero unknown token");
+        assert_eq!(
+            registry.retain(unknown).err(),
+            Some(RuntimeHandleError::InvalidToken)
+        );
+        assert!(Arc::ptr_eq(
+            &registry
+                .resolve(original)
+                .expect("rejected retain preserves source"),
+            &runtime
+        ));
     }
 }

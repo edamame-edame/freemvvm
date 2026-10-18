@@ -30,6 +30,14 @@ pub mod abi_support {
         Internal,
     }
 
+    /// Failure categories needed by the versioned C ABI handle retain entrypoint.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum RuntimeRetainError {
+        InvalidHandle,
+        OutOfMemory,
+        Internal,
+    }
+
     /// Creates one Runtime and registers its owning opaque handle.
     pub fn runtime_create_handle() -> Result<u64, RuntimeCreateError> {
         let runtime = Arc::new(RuntimeCore::new().map_err(|_| RuntimeCreateError::Internal)?);
@@ -56,5 +64,19 @@ pub mod abi_support {
                 | RuntimeHandleError::SynchronizationPoisoned => RuntimeQueryError::Internal,
             })?;
         Ok(runtime.is_ui_thread())
+    }
+
+    /// Creates an independent owner token for an existing Runtime handle.
+    pub fn runtime_retain_handle(handle: u64) -> Result<u64, RuntimeRetainError> {
+        let token = HandleToken::from_abi(handle).ok_or(RuntimeRetainError::InvalidHandle)?;
+        process_runtime_handles()
+            .retain(token)
+            .map(HandleToken::into_abi)
+            .map_err(|error| match error {
+                RuntimeHandleError::InvalidToken => RuntimeRetainError::InvalidHandle,
+                RuntimeHandleError::OutOfMemory => RuntimeRetainError::OutOfMemory,
+                RuntimeHandleError::TokenUnavailable
+                | RuntimeHandleError::SynchronizationPoisoned => RuntimeRetainError::Internal,
+            })
     }
 }

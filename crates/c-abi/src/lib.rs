@@ -3,8 +3,9 @@
 //! The public API is under construction and is not distributable yet.
 
 use freemvvm_core::abi_support::{
-    RuntimeCreateError, RuntimeQueryError, runtime_create_handle,
+    RuntimeCreateError, RuntimeQueryError, RuntimeRetainError, runtime_create_handle,
     runtime_is_ui_thread as core_runtime_is_ui_thread,
+    runtime_retain_handle as core_runtime_retain_handle,
 };
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -37,6 +38,17 @@ fn catch_runtime_query(
         Ok(Ok(is_ui_thread)) => Ok(is_ui_thread),
         Ok(Err(RuntimeQueryError::InvalidHandle)) => Err(UI_INVALID_HANDLE),
         Ok(Err(RuntimeQueryError::Internal)) | Err(_) => Err(UI_INTERNAL_ERROR),
+    }
+}
+
+fn catch_runtime_retain(
+    operation: impl FnOnce() -> Result<u64, RuntimeRetainError>,
+) -> Result<u64, u32> {
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(Ok(handle)) => Ok(handle),
+        Ok(Err(RuntimeRetainError::InvalidHandle)) => Err(UI_INVALID_HANDLE),
+        Ok(Err(RuntimeRetainError::OutOfMemory)) => Err(UI_OUT_OF_MEMORY),
+        Ok(Err(RuntimeRetainError::Internal)) | Err(_) => Err(UI_INTERNAL_ERROR),
     }
 }
 
@@ -90,6 +102,30 @@ pub unsafe extern "C" fn ui_abi_1_runtime_is_ui_thread(runtime: u64, out_yes: *m
         Ok(is_ui_thread) => {
             // SAFETY: the required output pointer was checked non-null above.
             unsafe { out_yes.write(u8::from(is_ui_thread)) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Create a new owned token for the same object while keeping the borrowed token valid.
+///
+/// # Safety
+/// `out_owned` must be null or point to writable storage for one ABI handle (`u64`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_handle_retain(borrowed: u64, out_owned: *mut u64) -> u32 {
+    if !out_owned.is_null() {
+        // SAFETY: the caller guarantees that a non-null owned output is writable.
+        unsafe { out_owned.write(0) };
+    }
+    if out_owned.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+
+    match catch_runtime_retain(|| core_runtime_retain_handle(borrowed)) {
+        Ok(handle) => {
+            // SAFETY: the required output pointer was checked non-null above.
+            unsafe { out_owned.write(handle) };
             UI_OK
         }
         Err(status) => status,
@@ -229,8 +265,9 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
 #[cfg(test)]
 mod tests {
     use super::{
-        UI_INTERNAL_ERROR, UI_INVALID_ARGUMENT, UI_INVALID_HANDLE, UI_OK, catch_runtime_creation,
-        catch_runtime_query, ui_abi_1_get_version, ui_abi_1_has_feature,
+        RuntimeRetainError, UI_INTERNAL_ERROR, UI_INVALID_ARGUMENT, UI_INVALID_HANDLE, UI_OK,
+        UI_OUT_OF_MEMORY, catch_runtime_creation, catch_runtime_query, catch_runtime_retain,
+        ui_abi_1_get_version, ui_abi_1_handle_retain, ui_abi_1_has_feature,
         ui_abi_1_numeric_expand_f32, ui_abi_1_numeric_narrow_f64, ui_abi_1_runtime_create,
         ui_abi_1_runtime_is_ui_thread,
     };
@@ -327,6 +364,58 @@ mod tests {
         let result = catch_runtime_query(|| panic!("injected Runtime query panic"));
 
         assert_eq!(result, Err(UI_INTERNAL_ERROR));
+    }
+
+    #[test]
+    fn handle_retain_returns_distinct_token_and_keeps_source_valid() {
+        let mut runtime = 0;
+        // SAFETY: `runtime` is writable output storage and the optional error output is null.
+        let create_status = unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) };
+        assert_eq!(create_status, UI_OK);
+
+        let mut retained = u64::MAX;
+        // SAFETY: `retained` is writable output storage.
+        let retain_status = unsafe { ui_abi_1_handle_retain(runtime, &mut retained) };
+        assert_eq!(retain_status, UI_OK);
+        assert_ne!(retained, 0);
+        assert_ne!(retained, runtime);
+
+        for handle in [runtime, retained] {
+            let mut is_ui_thread = 0;
+            // SAFETY: `is_ui_thread` is writable storage and both tokens remain registered.
+            let status = unsafe { ui_abi_1_runtime_is_ui_thread(handle, &mut is_ui_thread) };
+            assert_eq!(status, UI_OK);
+            assert_eq!(is_ui_thread, 1);
+        }
+    }
+
+    #[test]
+    fn handle_retain_rejects_invalid_token_and_null_output() {
+        for borrowed in [0, u64::MAX] {
+            let mut owned = u64::MAX;
+            // SAFETY: `owned` is writable output storage.
+            let status = unsafe { ui_abi_1_handle_retain(borrowed, &mut owned) };
+            assert_eq!(status, UI_INVALID_HANDLE);
+            assert_eq!(owned, 0);
+        }
+
+        // SAFETY: a null required output is handled before dereferencing.
+        let status = unsafe { ui_abi_1_handle_retain(0, std::ptr::null_mut()) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+    }
+
+    #[test]
+    fn handle_retain_catches_core_panics_as_internal_error() {
+        let result = catch_runtime_retain(|| panic!("injected Runtime retain panic"));
+
+        assert_eq!(result, Err(UI_INTERNAL_ERROR));
+    }
+
+    #[test]
+    fn handle_retain_maps_core_resource_failure_to_out_of_memory() {
+        let result = catch_runtime_retain(|| Err(RuntimeRetainError::OutOfMemory));
+
+        assert_eq!(result, Err(UI_OUT_OF_MEMORY));
     }
 
     #[test]

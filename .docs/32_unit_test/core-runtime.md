@@ -1,7 +1,7 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 0.5
-- 状態: 0.5全文承認済み（利用者、2026-10-18）。製品test実装中
+- 文書版: 0.6
+- 状態: 0.6全文承認済み（利用者、2026-10-18）。製品test実装中
 - 更新日: 2026-10-18
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
@@ -30,6 +30,8 @@
 | <a id="ut-abi-002"></a>UT-ABI-002 | `get_version`を3つの有効なout pointerで呼び、次に各pointerを個別にnullにして呼ぶ | 成功時は`UI_OK`と`1.0.0`。nullがある呼出しは`UI_INVALID_ARGUMENT`で、非nullの全out値は0。任意の不正addressの安全性は保証しない | [RQ-04-009](../11_requirements/RQ-04_abi-boundary.md#rq-04-009)、[RQ-04-028](../11_requirements/RQ-04_abi-boundary.md#rq-04-028)、[RQ-04-030](../11_requirements/RQ-04_abi-boundary.md#rq-04-030)<br/>[TC-ABI-COMP-02](../30_release_test/requirement-test-matrix.md#case-tc-abi-comp-02)、[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01) |
 | <a id="ut-abi-004"></a>UT-ABI-004 | `runtime_create`を有効なout pointerとoptional error pointerで呼び、required runtime outputをnullにして呼ぶ。Core creation panicも注入する | 成功時は`UI_OK`、非zero opaque handle、`out_error = 0`。null required outputは`UI_INVALID_ARGUMENT`。panicは`UI_INTERNAL_ERROR`へ変換される。任意の不正addressの安全性は保証しない | [RQ-04-004](../11_requirements/RQ-04_abi-boundary.md#rq-04-004)、[RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-015](../11_requirements/RQ-04_abi-boundary.md#rq-04-015)、[RQ-04-018](../11_requirements/RQ-04_abi-boundary.md#rq-04-018)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01) |
 | <a id="ut-abi-005"></a>UT-ABI-005 | `runtime_create`で得たhandleを作成threadとworkerから`runtime_is_ui_thread`へ渡す。zero/unknown handle、null required output、query panicも個別に試す | 作成threadは`UI_OK/1`、workerは`UI_OK/0`。zero/unknown handleは`UI_INVALID_HANDLE`で有効なscalar出力を0にする。null outputは`UI_INVALID_ARGUMENT`。panicは`UI_INTERNAL_ERROR`へ変換される | [RQ-04-004](../11_requirements/RQ-04_abi-boundary.md#rq-04-004)、[RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-015](../11_requirements/RQ-04_abi-boundary.md#rq-04-015)、[RQ-04-019](../11_requirements/RQ-04_abi-boundary.md#rq-04-019)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01) |
+| <a id="ut-runtime-handle-ret-001"></a>UT-RUNTIME-HANDLE-RET-001 | ローカルRuntime handle registryにRuntimeを登録し、同一tokenをretain。元tokenと新tokenを解決し、unknown tokenもretainする | 新tokenは元と異なる非zero tokenで同じRuntimeCoreを指す。元tokenは有効なまま。unknown tokenはInvalidTokenで拒否されregistryは変化しない | [RQ-04-005](../11_requirements/RQ-04_abi-boundary.md#rq-04-005)、[RQ-04-018](../11_requirements/RQ-04_abi-boundary.md#rq-04-018)、[RQ-04-019](../11_requirements/RQ-04_abi-boundary.md#rq-04-019)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01) |
+| <a id="ut-abi-006"></a>UT-ABI-006 | C ABI `handle_retain`でRuntime handleを複製し、元と新token双方でthread query。zero/unknown token、null output、OOM status、panicも個別に試す | 成功時は異なる非zero tokenが同じRuntimeを参照し、元tokenも有効。失敗時は有効な`out_owned`を0に初期化。invalid tokenは`UI_INVALID_HANDLE`、null outputは`UI_INVALID_ARGUMENT`、確保失敗は`UI_OUT_OF_MEMORY`、panicは`UI_INTERNAL_ERROR` | [RQ-04-005](../11_requirements/RQ-04_abi-boundary.md#rq-04-005)、[RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-015](../11_requirements/RQ-04_abi-boundary.md#rq-04-015)、[RQ-04-018](../11_requirements/RQ-04_abi-boundary.md#rq-04-018)、[RQ-04-019](../11_requirements/RQ-04_abi-boundary.md#rq-04-019)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01) |
 | <a id="ut-error-001"></a>UT-ERROR-001 | error/cause snapshotを保持後に別エラーを発生。未知status/domain/codeを渡す | 保持済みsnapshotの数値・message・causeは不変。未知数値を失わずmessageを機械判定に使わない | [RQ-04-022](../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-027](../11_requirements/RQ-04_abi-boundary.md#rq-04-027)<br/>[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01)、[TC-TRACE-01](../30_release_test/requirement-test-matrix.md#case-tc-trace-01) |
 
 ### Token issuer — implementation slice 1
@@ -133,6 +135,7 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | 2026-10-18 | RuntimeCore identity issuance追補 | Codex | RQ-04-018/019と承認済みRuntime identity設計から、共有token issuerを使う一意性のfocused test案を追加。Runtime identityの公開やC ABIの承認を意味しない |
 | 2026-10-18 | Runtime-bound CoreObjectControl追補 | 利用者 | 「OK」により、Runtime identityとcleanup queueの組合せを生成元Runtimeへ固定するfocused test案を追加。object storeや公開handleの承認を意味しない |
 | 2026-10-18 | Runtime handle registration追補 | 利用者 | 「OK」により、process tokenを使うRuntime handleの登録・borrowed lookupをfocused test案として追加。public C ABI entry pointやlast-token releaseの承認を意味しない |
+| 2026-10-18 | C ABI Runtime handle retain追補 | 利用者 | 「OK」により、既存Runtime ownerを維持した別token発行とinvalid source拒否をfocused test案として追加。Runtime releaseやshutdown動作の承認を意味しない |
 | 2026-10-18 | C ABI Runtime UI thread query追補 | 利用者 | 「OK」により、creator/worker threadからの照会とinvalid handle statusをfocused testとして追加。承認済みRQ/DDの範囲内であり、Runtime APIの追加設計や製品test合格を意味しない |
 
 ## 改訂履歴
@@ -144,3 +147,4 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | 0.3 | 2026-10-17 | HandleEntryのkind/Runtime照合と一公開参照のconsumeを試験追補 | Codex | 利用者が本版全文を承認 |
 | 0.4 | 2026-10-17 | Runtime HandleRegistryの登録、pin、final release、reservation失敗、競合、shutdown drainを追補 | Codex | 利用者が本版全文を承認 |
 | 0.5 | 2026-10-18 | C ABI `runtime_is_ui_thread`のthread別結果、invalid handle、output初期化、panic変換を追補 | Codex | 利用者が本版全文を承認 |
+| 0.6 | 2026-10-18 | Runtime handle retainのregistry/C ABI動作、失敗時初期化、panic変換を追補 | Codex | 利用者が本版全文を承認 |
