@@ -2,12 +2,16 @@
 //!
 //! The public API is under construction and is not distributable yet.
 
-use freemvvm_core::abi_support::{RuntimeCreateError, runtime_create_handle};
+use freemvvm_core::abi_support::{
+    RuntimeCreateError, RuntimeQueryError, runtime_create_handle,
+    runtime_is_ui_thread as core_runtime_is_ui_thread,
+};
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 const UI_OK: u32 = 0;
 const UI_INVALID_ARGUMENT: u32 = 1;
+const UI_INVALID_HANDLE: u32 = 2;
 const UI_OUT_OF_MEMORY: u32 = 8;
 const UI_INTERNAL_ERROR: u32 = 9;
 const NUMERIC_NARROW_EXACT: u32 = 0;
@@ -23,6 +27,16 @@ fn catch_runtime_creation(
         Ok(Ok(handle)) => Ok(handle),
         Ok(Err(RuntimeCreateError::OutOfMemory)) => Err(UI_OUT_OF_MEMORY),
         Ok(Err(RuntimeCreateError::Internal)) | Err(_) => Err(UI_INTERNAL_ERROR),
+    }
+}
+
+fn catch_runtime_query(
+    operation: impl FnOnce() -> Result<bool, RuntimeQueryError>,
+) -> Result<bool, u32> {
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(Ok(is_ui_thread)) => Ok(is_ui_thread),
+        Ok(Err(RuntimeQueryError::InvalidHandle)) => Err(UI_INVALID_HANDLE),
+        Ok(Err(RuntimeQueryError::Internal)) | Err(_) => Err(UI_INTERNAL_ERROR),
     }
 }
 
@@ -52,6 +66,30 @@ pub unsafe extern "C" fn ui_abi_1_runtime_create(
         Ok(handle) => {
             // SAFETY: the required output pointer was checked non-null above.
             unsafe { out_runtime.write(handle) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Report whether the caller is the UI thread captured when this Runtime was created.
+///
+/// # Safety
+/// `out_yes` must be null or point to writable storage for one `u8`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_runtime_is_ui_thread(runtime: u64, out_yes: *mut u8) -> u32 {
+    if !out_yes.is_null() {
+        // SAFETY: the caller guarantees that a non-null output is writable.
+        unsafe { out_yes.write(0) };
+    }
+    if out_yes.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+
+    match catch_runtime_query(|| core_runtime_is_ui_thread(runtime)) {
+        Ok(is_ui_thread) => {
+            // SAFETY: the required output pointer was checked non-null above.
+            unsafe { out_yes.write(u8::from(is_ui_thread)) };
             UI_OK
         }
         Err(status) => status,
@@ -191,9 +229,10 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
 #[cfg(test)]
 mod tests {
     use super::{
-        UI_INTERNAL_ERROR, UI_INVALID_ARGUMENT, UI_OK, catch_runtime_creation,
-        ui_abi_1_get_version, ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32,
-        ui_abi_1_numeric_narrow_f64, ui_abi_1_runtime_create,
+        UI_INTERNAL_ERROR, UI_INVALID_ARGUMENT, UI_INVALID_HANDLE, UI_OK, catch_runtime_creation,
+        catch_runtime_query, ui_abi_1_get_version, ui_abi_1_has_feature,
+        ui_abi_1_numeric_expand_f32, ui_abi_1_numeric_narrow_f64, ui_abi_1_runtime_create,
+        ui_abi_1_runtime_is_ui_thread,
     };
 
     #[test]
@@ -240,6 +279,52 @@ mod tests {
     #[test]
     fn runtime_create_catches_core_panics_as_internal_error() {
         let result = catch_runtime_creation(|| panic!("injected Runtime creation panic"));
+
+        assert_eq!(result, Err(UI_INTERNAL_ERROR));
+    }
+
+    #[test]
+    fn runtime_is_ui_thread_reports_creator_and_worker_threads() {
+        let mut runtime = 0;
+        // SAFETY: `runtime` is writable output storage and the optional error output is null.
+        let create_status = unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) };
+        assert_eq!(create_status, UI_OK);
+
+        let mut is_ui_thread = u8::MAX;
+        // SAFETY: `is_ui_thread` is writable output storage.
+        let status = unsafe { ui_abi_1_runtime_is_ui_thread(runtime, &mut is_ui_thread) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(is_ui_thread, 1);
+
+        let worker_result = std::thread::spawn(move || {
+            let mut is_ui_thread = u8::MAX;
+            // SAFETY: the output is writable, and the Runtime handle was created and remains registered.
+            let status = unsafe { ui_abi_1_runtime_is_ui_thread(runtime, &mut is_ui_thread) };
+            (status, is_ui_thread)
+        })
+        .join()
+        .expect("worker query completes");
+        assert_eq!(worker_result, (UI_OK, 0));
+    }
+
+    #[test]
+    fn runtime_is_ui_thread_rejects_invalid_handles_and_null_output() {
+        for runtime in [0, u64::MAX] {
+            let mut is_ui_thread = u8::MAX;
+            // SAFETY: `is_ui_thread` is writable output storage.
+            let status = unsafe { ui_abi_1_runtime_is_ui_thread(runtime, &mut is_ui_thread) };
+            assert_eq!(status, UI_INVALID_HANDLE);
+            assert_eq!(is_ui_thread, 0);
+        }
+
+        // SAFETY: a null required output is handled before dereferencing.
+        let status = unsafe { ui_abi_1_runtime_is_ui_thread(0, std::ptr::null_mut()) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+    }
+
+    #[test]
+    fn runtime_is_ui_thread_catches_core_panics_as_internal_error() {
+        let result = catch_runtime_query(|| panic!("injected Runtime query panic"));
 
         assert_eq!(result, Err(UI_INTERNAL_ERROR));
     }

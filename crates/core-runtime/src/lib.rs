@@ -23,6 +23,13 @@ pub mod abi_support {
         Internal,
     }
 
+    /// Failure categories needed by the versioned C ABI Runtime query entrypoint.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum RuntimeQueryError {
+        InvalidHandle,
+        Internal,
+    }
+
     /// Creates one Runtime and registers its owning opaque handle.
     pub fn runtime_create_handle() -> Result<u64, RuntimeCreateError> {
         let runtime = Arc::new(RuntimeCore::new().map_err(|_| RuntimeCreateError::Internal)?);
@@ -35,5 +42,19 @@ pub mod abi_support {
                 | RuntimeHandleError::TokenUnavailable
                 | RuntimeHandleError::SynchronizationPoisoned => RuntimeCreateError::Internal,
             })
+    }
+
+    /// Reports whether the current thread is the one captured by this Runtime.
+    pub fn runtime_is_ui_thread(handle: u64) -> Result<bool, RuntimeQueryError> {
+        let token = HandleToken::from_abi(handle).ok_or(RuntimeQueryError::InvalidHandle)?;
+        let runtime = process_runtime_handles()
+            .resolve(token)
+            .map_err(|error| match error {
+                RuntimeHandleError::InvalidToken => RuntimeQueryError::InvalidHandle,
+                RuntimeHandleError::TokenUnavailable
+                | RuntimeHandleError::OutOfMemory
+                | RuntimeHandleError::SynchronizationPoisoned => RuntimeQueryError::Internal,
+            })?;
+        Ok(runtime.is_ui_thread())
     }
 }
