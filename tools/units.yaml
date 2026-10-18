@@ -578,6 +578,32 @@
       ]
     },
     {
+      "id": "UNIT-CORE-025",
+      "state": "ready",
+      "scope": "runtime-bound-core-object-control-factory",
+      "sources": ["crates/core-runtime/src/runtime.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-024", "UNIT-CORE-005"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Runtime identity / CoreObjectControl / HandleRegistry"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Runtime ownership / RuntimeCleanupQueue"
+        }
+      ],
+      "requirements": ["RQ-04-019", "RQ-05-010", "RQ-06-003"],
+      "cases": ["TC-CORE-OBJ-01", "TC-LIFE-01", "TC-THREAD-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-RUNTIME-OBJECT-CONTROL-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::runtime_core_binds_object_control_to_its_identity_and_cleanup_queue"]}
+      ]
+    },
+    {
       "id": "UNIT-ABI-001",
       "state": "ready",
       "scope": "c-abi-feature-query",

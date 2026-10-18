@@ -1,5 +1,7 @@
-﻿use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission, UiLoopBridge};
-use crate::handle_registry::registry::{CleanupQueue, CleanupReservation, ObjectIdentity};
+use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission, UiLoopBridge};
+use crate::handle_registry::registry::{
+    CleanupQueue, CleanupReservation, CoreObjectControl, ObjectIdentity,
+};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::num::NonZeroU64;
@@ -802,6 +804,15 @@ impl RuntimeCore {
         self.identity
     }
 
+    /// Creates thread-safe ownership metadata bound to this Runtime and its cleanup queue.
+    pub(crate) fn new_object_control(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Arc<CoreObjectControl<RuntimeIdentity>> {
+        let cleanup_queue: Arc<dyn CleanupQueue> = self.cleanup.clone();
+        CoreObjectControl::new(self.identity, identity, cleanup_queue)
+    }
+
     pub(crate) fn is_ui_thread(&self) -> bool {
         self.ui_thread.is_current()
     }
@@ -979,7 +990,7 @@ mod tests {
     };
     use crate::dispatcher::{Dispatcher, PostedWork, UiLoopBridge};
     use crate::handle_registry::registry::{
-        CleanupQueue, CoreObjectControl, HandleRegistry, ObjectIdentity,
+        CleanupQueue, CoreObjectControl, HandleRegistry, ObjectIdentity, RegistryError,
     };
     use std::num::NonZeroU64;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1079,6 +1090,47 @@ mod tests {
         assert!(identities.iter().all(|identity| *identity > 0));
         identities.sort_unstable();
         assert!(identities.windows(2).all(|pair| pair[0] != pair[1]));
+    }
+
+    #[test]
+    fn runtime_core_binds_object_control_to_its_identity_and_cleanup_queue() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let other_runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = Arc::new(HandleRegistry::<u8, super::RuntimeIdentity>::new());
+        let identity = ObjectIdentity::new(17, NonZeroU64::new(3).expect("nonzero generation"));
+        let control = runtime.new_object_control(identity);
+
+        assert_eq!(*control.runtime_id(), runtime.identity());
+        assert_eq!(control.identity(), identity);
+        let token = registry
+            .register(7, runtime.identity(), Arc::clone(&control))
+            .expect("register Runtime-owned control");
+        let pin = registry
+            .validate(token, &7, &runtime.identity())
+            .expect("owning Runtime validates control");
+        assert_eq!(pin.identity(), identity);
+        assert_eq!(
+            registry
+                .validate(token, &7, &other_runtime.identity())
+                .err(),
+            Some(RegistryError::WrongRuntime)
+        );
+        drop(pin);
+
+        let worker_registry = Arc::clone(&registry);
+        let outcome = thread::spawn(move || worker_registry.release(token))
+            .join()
+            .expect("worker release completes")
+            .expect("release final owner");
+        assert!(outcome.cleanup_accepted);
+        assert_eq!(runtime.cleanup_queue().queued_count(), 1);
+        assert_eq!(other_runtime.cleanup_queue().queued_count(), 0);
+        runtime
+            .cleanup_queue()
+            .drain_shutdown()
+            .expect("owning Runtime drains object cleanup");
+        assert_eq!(runtime.cleanup_queue().state(), RuntimeState::Closed);
+        assert_eq!(other_runtime.cleanup_queue().state(), RuntimeState::Running);
     }
 
     #[test]

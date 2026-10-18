@@ -101,6 +101,12 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | --- | --- | --- | --- |
 | <a id="ut-runtime-identity-001"></a>UT-RUNTIME-IDENTITY-001 | 複数threadからRuntimeCoreを同時生成し、各identityを取得する | 全生成が成功しidentityは非zeroかつ相互に異なる。共有token issuerの排他下で割当てられる | [RQ-04-018](../11_requirements/RQ-04_abi-boundary.md#rq-04-018)、[RQ-04-019](../11_requirements/RQ-04_abi-boundary.md#rq-04-019)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### Runtime-bound CoreObjectControl creation — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-runtime-object-control-001"></a>UT-RUNTIME-OBJECT-CONTROL-001 | RuntimeCoreからobject identityを指定してcontrolを作り、共有HandleRegistryへ登録。自身と別Runtimeを指定して検証し、最後の参照をworkerからreleaseした後にRuntime queueをdrainする | 登録controlのRuntime identityとcleanup queueは生成元Runtimeに結び付く。自身のRuntime検証だけ成功し、他Runtime検証はWrongRuntimeで拒否される。worker release後の最終cleanupは生成元RuntimeのUI thread queueで完了する | [RQ-04-019](../11_requirements/RQ-04_abi-boundary.md#rq-04-019)、[RQ-05-010](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-010)、[RQ-06-003](../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+
 ## 承認履歴
 
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
@@ -117,6 +123,7 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | 2026-10-18 | Runtime UI thread context propagation追補 | 利用者 | 「ok」により、共有context注入に対するfocused unit-test設計を追加。Runtime facadeや公開ABIの承認を意味しない |
 | 2026-10-18 | RuntimeCore bridge registration追補 | 利用者 | 「OK」により、bridgeなし生成とRuntimeCore内の一度限りのbridge登録に対するfocused unit-test設計を追加。公開C ABIやRuntime handle実装の承認を意味しない |
 | 2026-10-18 | RuntimeCore identity issuance追補 | Codex | RQ-04-018/019と承認済みRuntime identity設計から、共有token issuerを使う一意性のfocused test案を追加。Runtime identityの公開やC ABIの承認を意味しない |
+| 2026-10-18 | Runtime-bound CoreObjectControl追補 | 利用者 | 「OK」により、Runtime identityとcleanup queueの組合せを生成元Runtimeへ固定するfocused test案を追加。object storeや公開handleの承認を意味しない |
 
 ## 改訂履歴
 
