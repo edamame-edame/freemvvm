@@ -1,7 +1,7 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 0.6
-- 状態: 0.6全文承認済み（利用者、2026-10-18）。製品test実装中
+- 文書版: 0.7
+- 状態: 0.7 Runtime bridge試験追補はレビュー案。既存承認範囲を継承（2026-10-18）。製品test実装中
 - 更新日: 2026-10-18
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
@@ -117,6 +117,16 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | --- | --- | --- | --- |
 | <a id="ut-runtime-handle-reg-001"></a>UT-RUNTIME-HANDLE-REG-001 | 異なるRuntimeCoreをtableへ登録し、得られたtokenを同threadとworkerから解決。未登録tokenとzero tokenも解決し、table lockをpoisonさせたinsertも試す | tokenは非zeroかつ別Runtime間で異なる。解決結果は該当RuntimeCoreと同一ownerを指す。未登録/zero tokenはInvalidTokenで拒否され、tableを変更しない。worker解決も安全だがUI操作権を与えない。poison時は失敗し、callerのRuntime ownerを維持する | [RQ-04-004](../11_requirements/RQ-04_abi-boundary.md#rq-04-004)、[RQ-04-018](../11_requirements/RQ-04_abi-boundary.md#rq-04-018)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### C ABI Runtime UI-loop bridge registration — implementation slice
+
+The C ABI bridge transfers one `(wake, userdata, destroy)` tuple to the Runtime only after successful UI-thread registration. The wake callback may run from any thread and only schedules a future host-loop turn. Dispatcher reports normal work and shutdown control work with the corresponding approved priority.
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-abi-007"></a>UT-ABI-007 | Runtimeを作成し、UI threadからbridgeを登録。通常dispatchとshutdown優先wakeを起こす。次に重複登録、worker登録、無効Runtime、null callbackを個別に試す | 成功時だけwake/userdata/destroyの所有がRuntimeへ移る。通常workは`UI_WAKE_NORMAL`、shutdown controlは`UI_WAKE_CONTROL`を一度通知する。登録失敗は元ownerを保ち、bridge登録状態を変えない。callbackはthread-safe userdataを使いunwindしない契約とする（panic注入試験はしない） | [RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)<br/>[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+| <a id="ut-abi-shutdown-001"></a>UT-ABI-SHUTDOWN-001 | C ABIでASYNC/SYNC shutdownを要求し、host event scopeを閉じてcleanup。requestを任意threadからquery・releaseし、無効mode/handleとnull required outputも試す | callback境界ではUI_PENDINGとowned receiptを返し、outer scope endでのみCompleted。worker SYNCはcleanup後にUI_OK、release済みreceiptは以後無効だが要求は取消されない。失敗時out handleは0 | [RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-05-003](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-06-005](../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-06-006](../11_requirements/RQ-06_threading-dispatch.md#rq-06-006)、[RQ-06-012](../11_requirements/RQ-06_threading-dispatch.md#rq-06-012)<br/>[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01) |
+| <a id="ut-abi-host-stop-001"></a>UT-ABI-HOST-STOP-001 | 受付前のhost停止、受付後の停止、同一UI host再開後の同request retryを個別に順序制御する | 受付前停止はUI_UNSUPPORTED/out=0。受付後停止はUI_PENDINGのままqueryでHostUnavailableとreasonを返しClosed扱いにしない。resume後の明示retryは同じrequestをPendingへ戻し、再度outer boundaryでCompleted | [RQ-06-007](../11_requirements/RQ-06_threading-dispatch.md#rq-06-007)、[RQ-06-012](../11_requirements/RQ-06_threading-dispatch.md#rq-06-012)<br/>[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01) |
+
 ## 承認履歴
 
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
@@ -137,6 +147,7 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | 2026-10-18 | Runtime handle registration追補 | 利用者 | 「OK」により、process tokenを使うRuntime handleの登録・borrowed lookupをfocused test案として追加。public C ABI entry pointやlast-token releaseの承認を意味しない |
 | 2026-10-18 | C ABI Runtime handle retain追補 | 利用者 | 「OK」により、既存Runtime ownerを維持した別token発行とinvalid source拒否をfocused test案として追加。Runtime releaseやshutdown動作の承認を意味しない |
 | 2026-10-18 | C ABI Runtime UI thread query追補 | 利用者 | 「OK」により、creator/worker threadからの照会とinvalid handle statusをfocused testとして追加。承認済みRQ/DDの範囲内であり、Runtime APIの追加設計や製品test合格を意味しない |
+| 2026-10-18 | C ABI Runtime UI-loop bridge追補 | — | DD v1.1のwake priorityとone-time bridge registrationをUT-ABI-007として具体化したレビュー案。公開契約の追加やtest合格を意味しない |
 
 ## 改訂履歴
 
@@ -148,3 +159,4 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | 0.4 | 2026-10-17 | Runtime HandleRegistryの登録、pin、final release、reservation失敗、競合、shutdown drainを追補 | Codex | 利用者が本版全文を承認 |
 | 0.5 | 2026-10-18 | C ABI `runtime_is_ui_thread`のthread別結果、invalid handle、output初期化、panic変換を追補 | Codex | 利用者が本版全文を承認 |
 | 0.6 | 2026-10-18 | Runtime handle retainのregistry/C ABI動作、失敗時初期化、panic変換を追補 | Codex | 利用者が本版全文を承認 |
+| 0.7 | 2026-10-18 | DD v1.1のUI-loop bridge登録とwake priorityをUT-ABI-007として具体化 | Codex | Runtime bridge追補はレビュー案。既存承認範囲と分離 |

@@ -563,6 +563,7 @@ impl HostRegistration {
                     DispatchError::SynchronizationPoisoned => {
                         HostRegistrationError::SynchronizationPoisoned
                     }
+                    DispatchError::Closed => HostRegistrationError::InvalidState,
                 })?;
             if admission == ShutdownRequestAdmission::Closed {
                 return Err(HostRegistrationError::InvalidState);
@@ -711,6 +712,7 @@ impl HostRegistration {
                     DispatchError::SynchronizationPoisoned => {
                         HostRegistrationError::SynchronizationPoisoned
                     }
+                    DispatchError::Closed => HostRegistrationError::InvalidState,
                 })?
             {
                 return Err(HostRegistrationError::InvalidState);
@@ -758,7 +760,10 @@ pub(crate) enum RuntimeCoreError {
     WrongThread,
     Closed,
     BridgeAlreadyRegistered,
+    BridgeNotRegistered,
     SynchronizationPoisoned,
+    Host(HostRegistrationError),
+    Shutdown(HostShutdownCommitError),
 }
 
 /// Process-unique internal identity for one Runtime owner.
@@ -784,6 +789,7 @@ pub(crate) struct RuntimeCore {
     cleanup: Arc<RuntimeCleanupQueue>,
     host: HostRegistration,
     dispatcher: Mutex<Option<Dispatcher>>,
+    shutdown_completion: Mutex<Option<ShutdownCompletion>>,
 }
 
 #[allow(dead_code)]
@@ -797,6 +803,7 @@ impl RuntimeCore {
             cleanup: RuntimeCleanupQueue::new_for_ui_thread(ui_thread),
             host: HostRegistration::new_for_ui_thread(ui_thread),
             dispatcher: Mutex::new(None),
+            shutdown_completion: Mutex::new(None),
         })
     }
 
@@ -855,6 +862,86 @@ impl RuntimeCore {
             .lock()
             .map(|dispatcher| dispatcher.clone())
             .map_err(|_| RuntimeCoreError::SynchronizationPoisoned)
+    }
+
+    pub(crate) fn begin_host_event(&self) -> Result<u64, RuntimeCoreError> {
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeCoreError::Closed);
+        }
+        self.host
+            .resume_on_ui_thread()
+            .and_then(|()| self.host.begin_event())
+            .map_err(RuntimeCoreError::Host)
+    }
+
+    /// Close one host scope and commit shutdown cleanup at the outer boundary.
+    pub(crate) fn end_host_event(&self, scope_id: u64) -> Result<bool, RuntimeCoreError> {
+        let Some(dispatcher) = self.dispatcher()? else {
+            return self
+                .host
+                .end_event(scope_id)
+                .map(|_| false)
+                .map_err(RuntimeCoreError::Host);
+        };
+        let committed = self
+            .host
+            .end_event_and_commit_shutdown(scope_id, &dispatcher, &self.cleanup)
+            .map_err(RuntimeCoreError::Shutdown)?;
+        if committed {
+            dispatcher
+                .destroy_bridge_at_safe_point()
+                .map_err(|_| RuntimeCoreError::Closed)?;
+        }
+        Ok(committed)
+    }
+
+    pub(crate) fn notify_host_stopped(&self, reason: u32) -> Result<(), RuntimeCoreError> {
+        self.host
+            .notify_stopped(reason)
+            .map_err(RuntimeCoreError::Host)
+    }
+
+    pub(crate) fn request_shutdown(
+        &self,
+        mode: ShutdownRequestMode,
+    ) -> Result<(ShutdownRequest, ShutdownRequestOutcome), RuntimeCoreError> {
+        let dispatcher = self
+            .dispatcher()?
+            .ok_or(RuntimeCoreError::BridgeNotRegistered)?;
+        let mut stored = self
+            .shutdown_completion
+            .lock()
+            .map_err(|_| RuntimeCoreError::SynchronizationPoisoned)?;
+        let completion = stored
+            .clone()
+            .unwrap_or_else(|| ShutdownCompletion::new_for_ui_thread(self.ui_thread));
+
+        match completion
+            .query()
+            .map_err(|_| RuntimeCoreError::SynchronizationPoisoned)?
+        {
+            ShutdownCompletionState::Completed => {
+                return Ok((
+                    ShutdownRequest { completion },
+                    ShutdownRequestOutcome::Completed,
+                ));
+            }
+            ShutdownCompletionState::HostUnavailable { .. } => {
+                self.host
+                    .retry_on_ui_thread(&completion, &dispatcher)
+                    .map_err(RuntimeCoreError::Host)?;
+            }
+            ShutdownCompletionState::Pending => {}
+        }
+
+        let result = self
+            .host
+            .request_shutdown_with_mode(&dispatcher, &completion, mode)
+            .map_err(RuntimeCoreError::Host)?;
+        if stored.is_none() {
+            *stored = Some(completion.clone());
+        }
+        Ok((ShutdownRequest { completion }, result))
     }
 }
 
@@ -988,7 +1075,7 @@ mod tests {
         ShutdownCompletionError, ShutdownCompletionState, ShutdownRequestMode,
         ShutdownRequestOutcome, ShutdownWaitResult, UiThreadContext,
     };
-    use crate::dispatcher::{Dispatcher, PostedWork, UiLoopBridge};
+    use crate::dispatcher::{Dispatcher, PostedWork, UiLoopBridge, WakePriority};
     use crate::handle_registry::registry::{
         CleanupQueue, CoreObjectControl, HandleRegistry, ObjectIdentity, RegistryError,
     };
@@ -1151,7 +1238,7 @@ mod tests {
     }
 
     impl UiLoopBridge for TestUiLoopBridge {
-        fn schedule_wake(&self) {
+        fn schedule_wake(&self, _priority: WakePriority) {
             self.wakes.fetch_add(1, Ordering::SeqCst);
         }
     }
@@ -1161,7 +1248,7 @@ mod tests {
     }
 
     impl UiLoopBridge for WakeSignalBridge {
-        fn schedule_wake(&self) {
+        fn schedule_wake(&self, _priority: WakePriority) {
             let _ = self.wake_sender.send(());
         }
     }

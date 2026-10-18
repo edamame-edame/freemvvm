@@ -71,6 +71,15 @@ impl RuntimeHandleRegistry {
         entries.insert(retained_token, runtime);
         Ok(retained_token)
     }
+
+    pub(crate) fn remove(&self, token: HandleToken) -> Result<(), RuntimeHandleError> {
+        self.entries
+            .lock()
+            .map_err(|_| RuntimeHandleError::SynchronizationPoisoned)?
+            .remove(&token)
+            .map(|_| ())
+            .ok_or(RuntimeHandleError::InvalidToken)
+    }
 }
 
 static PROCESS_RUNTIME_HANDLES: OnceLock<RuntimeHandleRegistry> = OnceLock::new();

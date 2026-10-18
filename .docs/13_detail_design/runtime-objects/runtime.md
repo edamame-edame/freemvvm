@@ -246,6 +246,8 @@ request tokenのreleaseは待機取消やRuntime終了取消ではない。reque
 
 queryはUI_OKとstate/reasonを返し、Completedだけがcleanup完了を示す。通知callbackを新設せずpoll/言語Async wrapperをqueryへ接続する。worker waitはcondition variableでlockを解放し、Closed commitとhost-stoppedの競合ではcompletion recordを同じlockで判定しCompletedを優先する。UI threadからのrequest_waitは公開しない。
 
+公開APIでは、同じUI hostの再開後に`runtime_host_begin_event`でhostをAvailableへ戻し、呼出し側が`runtime_request_shutdown`を明示的に再度呼ぶ。この再要求はHostUnavailableだった同一completion recordをretryし、そのrecordを観測する新しいowned request handleを返す。retry専用の追加symbolは設けない。
+
 ```mermaid
 stateDiagram-v2
     [*] --> Prepared: request資源確保

@@ -60,13 +60,21 @@ impl Drop for DestroyGuard {
 
 /// The host bridge schedules a future UI-loop turn and never invokes it inline.
 pub(crate) trait UiLoopBridge: Send + Sync {
-    fn schedule_wake(&self);
+    fn schedule_wake(&self, priority: WakePriority);
+    fn destroy_at_safe_point(&self) {}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WakePriority {
+    Normal,
+    Control,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DispatchError {
     WrongThread,
     AlreadyDispatching,
+    Closed,
     SynchronizationPoisoned,
 }
 
@@ -198,7 +206,7 @@ impl Dispatcher {
         drop(state);
 
         if schedule {
-            self.inner.bridge.schedule_wake();
+            self.inner.bridge.schedule_wake(WakePriority::Normal);
         }
         Ok(())
     }
@@ -240,7 +248,7 @@ impl Dispatcher {
                 schedule_wake: true
             }
         ) {
-            self.inner.bridge.schedule_wake();
+            self.inner.bridge.schedule_wake(WakePriority::Control);
         }
     }
 
@@ -256,11 +264,25 @@ impl Dispatcher {
 
     /// Always schedule a fresh turn for an explicit retry; a prior host wake may have been lost.
     pub(crate) fn schedule_shutdown_retry_wake(&self) {
-        self.inner.bridge.schedule_wake();
+        self.inner.bridge.schedule_wake(WakePriority::Control);
     }
 
     pub(crate) fn belongs_to_thread(&self, ui_thread: UiThreadContext) -> bool {
         self.inner.ui_thread == ui_thread
+    }
+
+    /// Destroy the host callback only after shutdown has closed the dispatcher.
+    pub(crate) fn destroy_bridge_at_safe_point(&self) -> Result<(), DispatchError> {
+        if !self.inner.ui_thread.is_current() {
+            return Err(DispatchError::WrongThread);
+        }
+        let state = self.lock_state()?;
+        if state.lifecycle != DispatcherLifecycle::Closed {
+            return Err(DispatchError::Closed);
+        }
+        drop(state);
+        self.inner.bridge.destroy_at_safe_point();
+        Ok(())
     }
 
     /// Dispatch at most one normal callback, or service the priority shutdown request.
@@ -438,7 +460,7 @@ where
             schedule
         };
         if schedule {
-            self.inner.bridge.schedule_wake();
+            self.inner.bridge.schedule_wake(WakePriority::Normal);
         }
     }
 }
@@ -447,6 +469,7 @@ where
 mod tests {
     use super::{
         DispatchError, Dispatcher, PostErrorKind, PostedCallback, PostedWork, UiLoopBridge,
+        WakePriority,
     };
     use crate::runtime::{HostRegistration, UiThreadContext};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -456,6 +479,7 @@ mod tests {
     #[derive(Default)]
     struct FakeBridge {
         wakes: AtomicUsize,
+        priorities: Mutex<Vec<WakePriority>>,
     }
 
     impl FakeBridge {
@@ -465,8 +489,12 @@ mod tests {
     }
 
     impl UiLoopBridge for FakeBridge {
-        fn schedule_wake(&self) {
+        fn schedule_wake(&self, priority: WakePriority) {
             self.wakes.fetch_add(1, Ordering::SeqCst);
+            self.priorities
+                .lock()
+                .expect("bridge priority list is healthy")
+                .push(priority);
         }
     }
 
@@ -474,6 +502,31 @@ mod tests {
         let bridge = Arc::new(FakeBridge::default());
         let dispatcher = Dispatcher::new(bridge.clone());
         (dispatcher, bridge)
+    }
+
+    #[test]
+    fn normal_and_shutdown_work_use_distinct_host_wake_priorities() {
+        let (normal_dispatcher, normal_bridge) = new_dispatcher();
+        post_callback(&normal_dispatcher, Box::new(|| {})).expect("post is accepted");
+        assert_eq!(
+            *normal_bridge
+                .priorities
+                .lock()
+                .expect("bridge priority list is healthy"),
+            [WakePriority::Normal]
+        );
+
+        let (control_dispatcher, control_bridge) = new_dispatcher();
+        control_dispatcher
+            .request_shutdown()
+            .expect("shutdown request is accepted");
+        assert_eq!(
+            *control_bridge
+                .priorities
+                .lock()
+                .expect("bridge priority list is healthy"),
+            [WakePriority::Control]
+        );
     }
 
     fn post_callback(

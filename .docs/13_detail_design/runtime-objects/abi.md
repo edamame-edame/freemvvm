@@ -72,6 +72,14 @@ ui_status ui_abi_1_has_feature(uint32_t feature_id, ui_bool *out_supported);
 
 ui_status ui_abi_1_runtime_create(ui_handle *out_runtime, ui_handle *out_error);
 ui_status ui_abi_1_runtime_shutdown(ui_handle runtime, ui_handle *out_error);
+ui_status ui_abi_1_runtime_request_shutdown(ui_handle runtime, uint32_t mode,
+                                             ui_handle *out_request, ui_handle *out_error);
+ui_status ui_abi_1_shutdown_request_query(ui_handle request, uint32_t *out_state,
+                                           uint32_t *out_reason, ui_handle *out_error);
+ui_status ui_abi_1_runtime_host_begin_event(ui_handle runtime, uint64_t *out_scope_id);
+ui_status ui_abi_1_runtime_host_end_event(ui_handle runtime, uint64_t scope_id);
+ui_status ui_abi_1_runtime_host_stopped(ui_handle runtime, uint32_t reason,
+                                         ui_handle *out_error);
 ui_status ui_abi_1_runtime_is_ui_thread(ui_handle runtime, ui_bool *out_yes);
 ui_status ui_abi_1_runtime_post(ui_handle runtime, ui_callback callback,
                                  void *userdata, ui_destroy destroy,
@@ -689,10 +697,20 @@ ui_status ui_abi_1_runtime_set_ui_loop_bridge(
     void *userdata,
     ui_destroy destroy,
     ui_handle *out_error);
+
+ui_status ui_abi_1_runtime_request_shutdown(ui_handle runtime, uint32_t mode,
+                                             ui_handle *out_request, ui_handle *out_error);
+ui_status ui_abi_1_shutdown_request_query(ui_handle request, uint32_t *out_state,
+                                           uint32_t *out_reason, ui_handle *out_error);
+ui_status ui_abi_1_runtime_host_begin_event(ui_handle runtime, uint64_t *out_scope_id);
+ui_status ui_abi_1_runtime_host_end_event(ui_handle runtime, uint64_t scope_id);
+ui_status ui_abi_1_runtime_host_stopped(ui_handle runtime, uint32_t reason,
+                                         ui_handle *out_error);
 ```
 
 - 登録はUI thread専用で一度だけとし、Runtimeに既にbridgeが登録済み、またはshutdown開始後なら失敗させる。成功時にwake/userdata/destroy一組の所有権をCoreへ移し、失敗時は呼出し側に残す。
-- `UI_WAKE_NORMAL`は通常post/通知のdispatch機会、`UI_WAKE_CONTROL`はshutdown等の優先control taskをhost loopへscheduleする指示とする。callbackは任意threadから呼べるが、同期dispatchせず直ちに戻る。
+- `UI_WAKE_NORMAL`は通常post/通知のdispatch機会、`UI_WAKE_CONTROL`はshutdown等の優先control taskをhost loopへscheduleする指示とする。callbackは任意threadから呼べるが、同期dispatchせず直ちに戻る。wake/destroy callbackはthread-safeなuserdataを使い、C ABI境界をunwindしてはならない。
+- shutdown request receiptは`handle_release`で解放し、releaseは要求を取り消さない。`runtime_host_begin_event`は停止から復帰した同じUI hostの再開境界として扱い、続く`runtime_request_shutdown`がHostUnavailableの同一completionを明示retryする。
 - CoreはRuntime APIやuser callbackをbridge callbackのstack上で実行しない。bridgeの`destroy`はRuntime close後にUI thread上で一度だけ呼ぶ。
 - bridge未登録でもUI thread上の同期APIは使用可能とする。worker post・worker shutdownなどUI wakeが必要なAPIは、所有権移転前に`UI_UNSUPPORTED`で拒否する。
 具体化は[オブジェクト管理：handle・値・error](objects-values.md)、[ランタイム：実行基盤と終了](runtime.md)、[イベントハンドリング：通知とBinding伝播](../events/notifications-binding.md)、共通C ABI：宣言・検査・互換性を参照する。

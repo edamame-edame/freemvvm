@@ -3,11 +3,15 @@
 //! The public API is under construction and is not distributable yet.
 
 use freemvvm_core::abi_support::{
-    RuntimeCreateError, RuntimeQueryError, RuntimeRetainError, runtime_create_handle,
-    runtime_is_ui_thread as core_runtime_is_ui_thread,
-    runtime_retain_handle as core_runtime_retain_handle,
+    DestroyCallback, RuntimeCreateError, RuntimeQueryError, RuntimeRetainError, ShutdownApiError,
+    ShutdownApiState, WakeCallback, handle_release as core_handle_release, runtime_create_handle,
+    runtime_host_begin_event, runtime_host_end_event, runtime_host_stopped,
+    runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_request_shutdown,
+    runtime_retain_handle as core_runtime_retain_handle, runtime_set_ui_loop_bridge,
+    runtime_shutdown, shutdown_request_query,
 };
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
+use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 const UI_OK: u32 = 0;
@@ -15,11 +19,35 @@ const UI_INVALID_ARGUMENT: u32 = 1;
 const UI_INVALID_HANDLE: u32 = 2;
 const UI_OUT_OF_MEMORY: u32 = 8;
 const UI_INTERNAL_ERROR: u32 = 9;
+const UI_WRONG_THREAD: u32 = 5;
+const UI_CLOSED: u32 = 6;
+const UI_UNSUPPORTED: u32 = 10;
+const UI_PENDING: u32 = 14;
 const NUMERIC_NARROW_EXACT: u32 = 0;
 const NUMERIC_NARROW_NEAREST_EVEN: u32 = 1;
 const RUNTIME_VERSION_MAJOR: u32 = 1;
 const RUNTIME_VERSION_MINOR: u32 = 0;
 const RUNTIME_VERSION_PATCH: u32 = 0;
+
+fn map_shutdown_error(error: ShutdownApiError) -> u32 {
+    match error {
+        ShutdownApiError::InvalidHandle => UI_INVALID_HANDLE,
+        ShutdownApiError::InvalidArgument => UI_INVALID_ARGUMENT,
+        ShutdownApiError::WrongThread => UI_WRONG_THREAD,
+        ShutdownApiError::Closed => UI_CLOSED,
+        ShutdownApiError::HostUnavailable { .. } | ShutdownApiError::Unsupported => UI_UNSUPPORTED,
+        ShutdownApiError::OutOfMemory => UI_OUT_OF_MEMORY,
+        ShutdownApiError::Internal => UI_INTERNAL_ERROR,
+    }
+}
+
+fn map_shutdown_state(state: ShutdownApiState) -> (u32, u32) {
+    match state {
+        ShutdownApiState::Pending => (0, 0),
+        ShutdownApiState::Completed => (1, 0),
+        ShutdownApiState::HostUnavailable { reason } => (2, reason),
+    }
+}
 
 fn catch_runtime_creation(
     operation: impl FnOnce() -> Result<u64, RuntimeCreateError>,
@@ -105,6 +133,212 @@ pub unsafe extern "C" fn ui_abi_1_runtime_is_ui_thread(runtime: u64, out_yes: *m
             UI_OK
         }
         Err(status) => status,
+    }
+}
+
+/// Register the Runtime's one-time UI-loop wake bridge.
+///
+/// # Safety
+/// `wake` must be a valid callback. `userdata` must remain valid until `destroy` runs
+/// (or until the caller handles a failed registration). The callbacks must be thread-safe;
+/// `wake` may be called from any thread and must only schedule a future UI-loop turn.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_runtime_set_ui_loop_bridge(
+    runtime: u64,
+    wake: Option<WakeCallback>,
+    userdata: *mut c_void,
+    destroy: Option<DestroyCallback>,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    let Some(wake) = wake else {
+        return UI_INVALID_ARGUMENT;
+    };
+    match catch_unwind(AssertUnwindSafe(|| {
+        runtime_set_ui_loop_bridge(runtime, wake, userdata as usize, destroy)
+    })) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_shutdown_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Request Runtime shutdown and return an owned receipt for its completion.
+///
+/// `mode` is 0 for ASYNC or 1 for SYNC. `UI_PENDING` means accepted but not complete.
+///
+/// # Safety
+/// `out_request` must point to writable storage for one ABI handle. A non-null
+/// `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_runtime_request_shutdown(
+    runtime: u64,
+    mode: u32,
+    out_request: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if !out_request.is_null() {
+        // SAFETY: the caller guarantees that a non-null request output is writable.
+        unsafe { out_request.write(0) };
+    }
+    if out_request.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| runtime_request_shutdown(runtime, mode))) {
+        Ok(Ok((request, state))) => {
+            // SAFETY: required output was checked above.
+            unsafe { out_request.write(request) };
+            match state {
+                ShutdownApiState::Pending | ShutdownApiState::HostUnavailable { .. } => UI_PENDING,
+                ShutdownApiState::Completed => UI_OK,
+            }
+        }
+        Ok(Err(error)) => map_shutdown_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Query an owned shutdown receipt from any thread.
+///
+/// State is 0 Pending, 1 Completed, or 2 HostUnavailable. `out_reason` is nonzero
+/// only for HostUnavailable.
+///
+/// # Safety
+/// `out_state` and `out_reason` must point to writable storage for one `u32` each.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_shutdown_request_query(
+    request: u64,
+    out_state: *mut u32,
+    out_reason: *mut u32,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if !out_state.is_null() {
+        // SAFETY: the caller guarantees that a non-null state output is writable.
+        unsafe { out_state.write(0) };
+    }
+    if !out_reason.is_null() {
+        // SAFETY: the caller guarantees that a non-null reason output is writable.
+        unsafe { out_reason.write(0) };
+    }
+    if out_state.is_null() || out_reason.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| shutdown_request_query(request))) {
+        Ok(Ok(state)) => {
+            let (state, reason) = map_shutdown_state(state);
+            // SAFETY: required outputs were checked above.
+            unsafe {
+                out_state.write(state);
+                out_reason.write(reason);
+            }
+            UI_OK
+        }
+        Ok(Err(error)) => map_shutdown_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Begin a host event scope. Pair the returned scope ID with `runtime_host_end_event`.
+///
+/// # Safety
+/// `out_scope_id` must point to writable storage for one `u64`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_runtime_host_begin_event(
+    runtime: u64,
+    out_scope_id: *mut u64,
+) -> u32 {
+    if !out_scope_id.is_null() {
+        // SAFETY: the caller guarantees that a non-null scope output is writable.
+        unsafe { out_scope_id.write(0) };
+    }
+    if out_scope_id.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| runtime_host_begin_event(runtime))) {
+        Ok(Ok(scope_id)) => {
+            // SAFETY: required output was checked above.
+            unsafe { out_scope_id.write(scope_id) };
+            UI_OK
+        }
+        Ok(Err(error)) => map_shutdown_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// End a host event scope and service accepted shutdown at its outer boundary.
+///
+/// # Safety
+/// The Runtime handle and scope ID are opaque scalar values.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_runtime_host_end_event(runtime: u64, scope_id: u64) -> u32 {
+    match catch_unwind(AssertUnwindSafe(|| {
+        runtime_host_end_event(runtime, scope_id)
+    })) {
+        Ok(Ok(_)) => UI_OK,
+        Ok(Err(error)) => map_shutdown_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Notify Runtime that its host loop has stopped; this does not mark cleanup complete.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_runtime_host_stopped(
+    runtime: u64,
+    reason: u32,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    match catch_unwind(AssertUnwindSafe(|| runtime_host_stopped(runtime, reason))) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_shutdown_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Complete shutdown synchronously when called from a worker, or return UI_PENDING
+/// when called from the active UI event.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_runtime_shutdown(runtime: u64, out_error: *mut u64) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    match catch_unwind(AssertUnwindSafe(|| runtime_shutdown(runtime))) {
+        Ok(Ok(ShutdownApiState::Pending)) => UI_PENDING,
+        Ok(Ok(ShutdownApiState::Completed)) => UI_OK,
+        Ok(Ok(ShutdownApiState::HostUnavailable { .. })) => UI_UNSUPPORTED,
+        Ok(Err(error)) => map_shutdown_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Release one owned Runtime or shutdown-request handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn ui_abi_1_handle_release(owned: u64) -> u32 {
+    match catch_unwind(AssertUnwindSafe(|| core_handle_release(owned))) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_shutdown_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
     }
 }
 
@@ -266,11 +500,45 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
 mod tests {
     use super::{
         RuntimeRetainError, UI_INTERNAL_ERROR, UI_INVALID_ARGUMENT, UI_INVALID_HANDLE, UI_OK,
-        UI_OUT_OF_MEMORY, catch_runtime_creation, catch_runtime_query, catch_runtime_retain,
-        ui_abi_1_get_version, ui_abi_1_handle_retain, ui_abi_1_has_feature,
-        ui_abi_1_numeric_expand_f32, ui_abi_1_numeric_narrow_f64, ui_abi_1_runtime_create,
-        ui_abi_1_runtime_is_ui_thread,
+        UI_OUT_OF_MEMORY, UI_PENDING, UI_WRONG_THREAD, catch_runtime_creation, catch_runtime_query,
+        catch_runtime_retain, ui_abi_1_get_version, ui_abi_1_handle_release,
+        ui_abi_1_handle_retain, ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32,
+        ui_abi_1_numeric_narrow_f64, ui_abi_1_runtime_create, ui_abi_1_runtime_host_begin_event,
+        ui_abi_1_runtime_host_end_event, ui_abi_1_runtime_host_stopped,
+        ui_abi_1_runtime_is_ui_thread, ui_abi_1_runtime_request_shutdown,
+        ui_abi_1_runtime_set_ui_loop_bridge, ui_abi_1_runtime_shutdown,
+        ui_abi_1_shutdown_request_query,
     };
+    use std::ffi::c_void;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Mutex, mpsc};
+
+    struct BridgeProbe {
+        priorities: Mutex<Vec<u32>>,
+        destroyed: AtomicUsize,
+    }
+
+    unsafe extern "C" fn record_wake(userdata: *mut c_void, priority: u32) {
+        // SAFETY: tests pass a live BridgeProbe pointer and keep it alive through destroy.
+        let probe = unsafe { &*(userdata.cast::<BridgeProbe>()) };
+        probe
+            .priorities
+            .lock()
+            .expect("probe lock is healthy")
+            .push(priority);
+    }
+
+    unsafe extern "C" fn record_destroy(userdata: *mut c_void) {
+        // SAFETY: tests pass a live BridgeProbe pointer and keep it alive through destroy.
+        let probe = unsafe { &*(userdata.cast::<BridgeProbe>()) };
+        probe.destroyed.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn send_wake(userdata: *mut c_void, _priority: u32) {
+        // SAFETY: tests pass a live Sender pointer and keep it alive through the worker request.
+        let sender = unsafe { &*(userdata.cast::<mpsc::Sender<()>>()) };
+        let _ = sender.send(());
+    }
 
     #[test]
     fn numeric_expand_f32_returns_exact_f64_and_clears_optional_error() {
@@ -278,6 +546,7 @@ mod tests {
         let mut error = u64::MAX;
         // SAFETY: both output pointers refer to writable storage.
         let status =
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
             unsafe { ui_abi_1_numeric_expand_f32(-f32::MIN_POSITIVE, &mut output, &mut error) };
 
         assert_eq!(status, UI_OK);
@@ -367,6 +636,378 @@ mod tests {
     }
 
     #[test]
+    fn runtime_shutdown_request_is_completed_at_outer_host_boundary() {
+        let mut runtime = 0;
+        // SAFETY: runtime output is writable.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let probe = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        // SAFETY: probe remains live until after host-end invokes destroy.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&probe as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        // Registration transfers callback ownership only once and only from the UI thread.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&probe as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        let worker_runtime = runtime;
+        let worker_probe = &probe as *const BridgeProbe as usize;
+        assert_eq!(
+            std::thread::spawn(move || {
+                // SAFETY: probe remains live and worker registration is rejected before transfer.
+                unsafe {
+                    ui_abi_1_runtime_set_ui_loop_bridge(
+                        worker_runtime,
+                        Some(record_wake),
+                        worker_probe as *mut c_void,
+                        Some(record_destroy),
+                        std::ptr::null_mut(),
+                    )
+                }
+            })
+            .join()
+            .expect("worker registration returns"),
+            UI_WRONG_THREAD
+        );
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    u64::MAX,
+                    Some(record_wake),
+                    std::ptr::null_mut::<c_void>(),
+                    None,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_HANDLE
+        );
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    None,
+                    std::ptr::null_mut(),
+                    None,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+
+        let mut scope = 0;
+        // SAFETY: scope output is writable.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe { ui_abi_1_runtime_host_begin_event(runtime, &mut scope) },
+            UI_OK
+        );
+        let mut request = u64::MAX;
+        // SAFETY: request output is writable and optional error is null.
+        let status = unsafe {
+            ui_abi_1_runtime_request_shutdown(runtime, 0, &mut request, std::ptr::null_mut())
+        };
+        assert_eq!(status, UI_PENDING);
+        assert_ne!(request, 0);
+        assert_eq!(
+            *probe.priorities.lock().expect("probe lock is healthy"),
+            [2]
+        );
+
+        // SAFETY: the scope ID was returned by the matching begin call.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe { ui_abi_1_runtime_host_end_event(runtime, scope) },
+            UI_OK
+        );
+        assert_eq!(probe.destroyed.load(Ordering::SeqCst), 1);
+
+        let mut state = u32::MAX;
+        let mut reason = u32::MAX;
+        // SAFETY: both outputs are writable.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_shutdown_request_query(
+                    request,
+                    &mut state,
+                    &mut reason,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!((state, reason), (1, 0));
+        assert_eq!(ui_abi_1_handle_release(request), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_shutdown_request_query(
+                    request,
+                    &mut state,
+                    &mut reason,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_HANDLE
+        );
+    }
+
+    #[test]
+    fn runtime_shutdown_receipt_survives_host_stop_and_explicit_retry() {
+        let mut runtime = 0;
+        // SAFETY: runtime output is writable.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let probe = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        // SAFETY: probe remains live through the retried shutdown boundary.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&probe as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut first_request = 0;
+        // SAFETY: output is writable.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_runtime_request_shutdown(
+                    runtime,
+                    0,
+                    &mut first_request,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_PENDING
+        );
+        // SAFETY: Runtime handle is borrowed and the optional error output is null.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe { ui_abi_1_runtime_host_stopped(runtime, 73, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let mut state = 0;
+        let mut reason = 0;
+        // SAFETY: both outputs are writable.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_shutdown_request_query(
+                    first_request,
+                    &mut state,
+                    &mut reason,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!((state, reason), (2, 73));
+
+        let mut scope = 0;
+        // Begin signals that the same UI host has resumed.
+        // SAFETY: scope output is writable.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe { ui_abi_1_runtime_host_begin_event(runtime, &mut scope) },
+            UI_OK
+        );
+        let mut retry_request = 0;
+        // SAFETY: request output is writable.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_runtime_request_shutdown(
+                    runtime,
+                    0,
+                    &mut retry_request,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_PENDING
+        );
+        assert_ne!(retry_request, first_request);
+        // SAFETY: the scope ID was returned by the matching begin call.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe { ui_abi_1_runtime_host_end_event(runtime, scope) },
+            UI_OK
+        );
+        assert_eq!(probe.destroyed.load(Ordering::SeqCst), 1);
+        for request in [first_request, retry_request] {
+            // SAFETY: both state outputs are writable.
+            assert_eq!(
+                // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+                unsafe {
+                    ui_abi_1_shutdown_request_query(
+                        request,
+                        &mut state,
+                        &mut reason,
+                        std::ptr::null_mut(),
+                    )
+                },
+                UI_OK
+            );
+            assert_eq!((state, reason), (1, 0));
+            assert_eq!(ui_abi_1_handle_release(request), UI_OK);
+        }
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
+    #[test]
+    fn runtime_shutdown_worker_waits_for_host_cleanup() {
+        let mut runtime = 0;
+        // SAFETY: runtime output is writable.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let (sender, receiver) = mpsc::channel();
+        // SAFETY: sender remains alive until worker request and host cleanup complete.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(send_wake),
+                    (&sender as *const mpsc::Sender<()>).cast_mut().cast(),
+                    None,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let worker_runtime = runtime;
+        let worker = std::thread::spawn(move || {
+            // SAFETY: shutdown only borrows the Runtime handle; optional error is null.
+            unsafe { ui_abi_1_runtime_shutdown(worker_runtime, std::ptr::null_mut()) }
+        });
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("worker shutdown schedules the host loop");
+        let mut scope = 0;
+        // SAFETY: scope output is writable.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe { ui_abi_1_runtime_host_begin_event(runtime, &mut scope) },
+            UI_OK
+        );
+        // SAFETY: scope ID was returned by the matching begin call.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe { ui_abi_1_runtime_host_end_event(runtime, scope) },
+            UI_OK
+        );
+        assert_eq!(worker.join().expect("worker shutdown returns"), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
+    #[test]
+    fn runtime_shutdown_rejects_invalid_mode_and_initializes_outputs() {
+        let mut runtime = 0;
+        // SAFETY: runtime output is writable.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let mut request = u64::MAX;
+        // SAFETY: request output is writable.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_runtime_request_shutdown(runtime, 99, &mut request, std::ptr::null_mut())
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(request, 0);
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_runtime_request_shutdown(
+                    runtime,
+                    0,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        let mut request = u64::MAX;
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_runtime_request_shutdown(u64::MAX, 0, &mut request, std::ptr::null_mut())
+            },
+            UI_INVALID_HANDLE
+        );
+        assert_eq!(request, 0);
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe {
+                ui_abi_1_runtime_request_shutdown(runtime, 0, &mut request, std::ptr::null_mut())
+            },
+            super::UI_UNSUPPORTED
+        );
+        assert_eq!(request, 0);
+        let mut scope = u64::MAX;
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe { ui_abi_1_runtime_host_begin_event(runtime, &mut scope) },
+            UI_OK
+        );
+        // SAFETY: scope ID was returned by the matching begin call.
+        assert_eq!(
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
+            unsafe { ui_abi_1_runtime_host_end_event(runtime, scope) },
+            UI_OK
+        );
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
+    #[test]
     fn handle_retain_returns_distinct_token_and_keeps_source_valid() {
         let mut runtime = 0;
         // SAFETY: `runtime` is writable output storage and the optional error output is null.
@@ -440,6 +1081,7 @@ mod tests {
         output = f32::NAN;
         // SAFETY: the output pointer refers to writable storage and null optional error is allowed.
         let status =
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
             unsafe { ui_abi_1_numeric_narrow_f64(1.0, 2, &mut output, std::ptr::null_mut()) };
         assert_eq!(status, UI_INVALID_ARGUMENT);
         assert_eq!(output.to_bits(), 0);
@@ -447,6 +1089,7 @@ mod tests {
         output = f32::NAN;
         // SAFETY: the output pointer refers to writable storage; null optional error is allowed.
         let status =
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
             unsafe { ui_abi_1_numeric_narrow_f64(f64::MAX, 1, &mut output, std::ptr::null_mut()) };
         assert_eq!(status, UI_INVALID_ARGUMENT);
         assert_eq!(output.to_bits(), 0);
@@ -463,6 +1106,7 @@ mod tests {
         error = u64::MAX;
         // SAFETY: null required output is handled and error points to writable storage.
         let status =
+            // SAFETY: any non-null output points to live test-owned storage; null optional outputs are permitted.
             unsafe { ui_abi_1_numeric_narrow_f64(1.0, 1, std::ptr::null_mut(), &mut error) };
         assert_eq!(status, UI_INVALID_ARGUMENT);
         assert_eq!(error, 0);

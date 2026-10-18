@@ -11,10 +11,16 @@ mod runtime_handles;
 /// Narrow support surface used by the C ABI crate while the Core remains private to wrappers.
 #[doc(hidden)]
 pub mod abi_support {
+    use crate::dispatcher::{UiLoopBridge, WakePriority};
     use crate::handle_registry::HandleToken;
-    use crate::runtime::RuntimeCore;
+    use crate::runtime::{
+        RuntimeCore, RuntimeCoreError, ShutdownCompletionState, ShutdownRequest,
+        ShutdownRequestMode, ShutdownRequestOutcome,
+    };
     use crate::runtime_handles::{RuntimeHandleError, process_runtime_handles};
-    use std::sync::Arc;
+    use std::collections::HashMap;
+    use std::ffi::c_void;
+    use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
     /// Failure categories needed by the versioned C ABI Runtime creation entrypoint.
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -36,6 +42,133 @@ pub mod abi_support {
         InvalidHandle,
         OutOfMemory,
         Internal,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum ShutdownApiError {
+        InvalidHandle,
+        InvalidArgument,
+        WrongThread,
+        Closed,
+        HostUnavailable { reason: u32 },
+        OutOfMemory,
+        Unsupported,
+        Internal,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum ShutdownApiState {
+        Pending,
+        Completed,
+        HostUnavailable { reason: u32 },
+    }
+
+    pub type WakeCallback = unsafe extern "C" fn(*mut c_void, u32);
+    pub type DestroyCallback = unsafe extern "C" fn(*mut c_void);
+
+    struct BridgeState {
+        armed: bool,
+        destroyed: bool,
+        in_flight: usize,
+    }
+
+    struct CAbiUiLoopBridge {
+        wake: WakeCallback,
+        userdata: usize,
+        destroy: Option<DestroyCallback>,
+        state: Mutex<BridgeState>,
+        drained: Condvar,
+    }
+
+    // SAFETY: the ABI contract requires userdata callbacks to be thread-safe and permits wake
+    // from any thread. The raw userdata pointer is stored as an integer and only passed back to
+    // those callbacks; mutable adapter state is protected by `state`.
+    unsafe impl Send for CAbiUiLoopBridge {}
+    // SAFETY: same contract as `Send`; every shared mutable field is synchronized by `state`.
+    unsafe impl Sync for CAbiUiLoopBridge {}
+
+    impl CAbiUiLoopBridge {
+        fn new(wake: WakeCallback, userdata: usize, destroy: Option<DestroyCallback>) -> Self {
+            Self {
+                wake,
+                userdata,
+                destroy,
+                state: Mutex::new(BridgeState {
+                    armed: false,
+                    destroyed: false,
+                    in_flight: 0,
+                }),
+                drained: Condvar::new(),
+            }
+        }
+
+        fn arm(&self) {
+            if let Ok(mut state) = self.state.lock() {
+                state.armed = true;
+            }
+        }
+    }
+
+    impl UiLoopBridge for CAbiUiLoopBridge {
+        fn schedule_wake(&self, priority: WakePriority) {
+            let Ok(mut state) = self.state.lock() else {
+                return;
+            };
+            if !state.armed || state.destroyed {
+                return;
+            }
+            state.in_flight += 1;
+            drop(state);
+
+            let priority = match priority {
+                WakePriority::Normal => 1,
+                WakePriority::Control => 2,
+            };
+            // SAFETY: registration transfers this callback and userdata under the C ABI contract.
+            unsafe { (self.wake)(self.userdata as *mut c_void, priority) };
+
+            if let Ok(mut state) = self.state.lock() {
+                state.in_flight -= 1;
+                if state.in_flight == 0 {
+                    self.drained.notify_all();
+                }
+            }
+        }
+
+        fn destroy_at_safe_point(&self) {
+            let Ok(mut state) = self.state.lock() else {
+                return;
+            };
+            if state.destroyed {
+                return;
+            }
+            while state.in_flight != 0 {
+                let Ok(next) = self.drained.wait(state) else {
+                    return;
+                };
+                state = next;
+            }
+            state.destroyed = true;
+            let call_destroy = state.armed;
+            drop(state);
+            if call_destroy && let Some(destroy) = self.destroy {
+                // SAFETY: destroy is called exactly once after in-flight wake callbacks drain.
+                unsafe { destroy(self.userdata as *mut c_void) };
+            }
+        }
+    }
+
+    struct RequestHandleEntry {
+        _runtime: Arc<RuntimeCore>,
+        request: ShutdownRequest,
+    }
+
+    static SHUTDOWN_REQUEST_HANDLES: OnceLock<
+        Mutex<HashMap<HandleToken, Option<RequestHandleEntry>>>,
+    > = OnceLock::new();
+
+    fn request_handles() -> &'static Mutex<HashMap<HandleToken, Option<RequestHandleEntry>>> {
+        SHUTDOWN_REQUEST_HANDLES.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
     /// Creates one Runtime and registers its owning opaque handle.
@@ -77,6 +210,187 @@ pub mod abi_support {
                 RuntimeHandleError::OutOfMemory => RuntimeRetainError::OutOfMemory,
                 RuntimeHandleError::TokenUnavailable
                 | RuntimeHandleError::SynchronizationPoisoned => RuntimeRetainError::Internal,
+            })
+    }
+
+    fn map_runtime_error(error: RuntimeCoreError) -> ShutdownApiError {
+        use crate::runtime::{HostRegistrationError, HostShutdownCommitError};
+        match error {
+            RuntimeCoreError::WrongThread
+            | RuntimeCoreError::Host(HostRegistrationError::WrongThread) => {
+                ShutdownApiError::WrongThread
+            }
+            RuntimeCoreError::BridgeNotRegistered
+            | RuntimeCoreError::Host(HostRegistrationError::HostUnavailable { .. }) => {
+                ShutdownApiError::Unsupported
+            }
+            RuntimeCoreError::BridgeAlreadyRegistered => ShutdownApiError::InvalidArgument,
+            RuntimeCoreError::Closed
+            | RuntimeCoreError::Host(HostRegistrationError::InvalidState) => {
+                ShutdownApiError::Closed
+            }
+            RuntimeCoreError::Host(HostRegistrationError::OutOfMemory) => {
+                ShutdownApiError::OutOfMemory
+            }
+            RuntimeCoreError::Host(HostRegistrationError::InvalidContext) => {
+                ShutdownApiError::InvalidArgument
+            }
+            RuntimeCoreError::Shutdown(HostShutdownCommitError::Boundary(_))
+            | RuntimeCoreError::Shutdown(HostShutdownCommitError::Commit(_))
+            | RuntimeCoreError::IdentityUnavailable
+            | RuntimeCoreError::SynchronizationPoisoned
+            | RuntimeCoreError::Host(_) => ShutdownApiError::Internal,
+        }
+    }
+
+    fn resolve_runtime(handle: u64) -> Result<Arc<RuntimeCore>, ShutdownApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(ShutdownApiError::InvalidHandle)?;
+        process_runtime_handles()
+            .resolve(token)
+            .map_err(|error| match error {
+                RuntimeHandleError::InvalidToken => ShutdownApiError::InvalidHandle,
+                RuntimeHandleError::OutOfMemory => ShutdownApiError::OutOfMemory,
+                RuntimeHandleError::TokenUnavailable
+                | RuntimeHandleError::SynchronizationPoisoned => ShutdownApiError::Internal,
+            })
+    }
+
+    pub fn runtime_set_ui_loop_bridge(
+        handle: u64,
+        wake: WakeCallback,
+        userdata: usize,
+        destroy: Option<DestroyCallback>,
+    ) -> Result<(), ShutdownApiError> {
+        let runtime = resolve_runtime(handle)?;
+        let bridge = Arc::new(CAbiUiLoopBridge::new(wake, userdata, destroy));
+        let bridge_trait: Arc<dyn UiLoopBridge> = bridge.clone();
+        runtime
+            .set_ui_loop_bridge(&bridge_trait)
+            .map_err(map_runtime_error)?;
+        bridge.arm();
+        Ok(())
+    }
+
+    pub fn runtime_request_shutdown(
+        handle: u64,
+        mode: u32,
+    ) -> Result<(u64, ShutdownApiState), ShutdownApiError> {
+        let mode = match mode {
+            0 => ShutdownRequestMode::Async,
+            1 => ShutdownRequestMode::Sync,
+            _ => return Err(ShutdownApiError::InvalidArgument),
+        };
+        let runtime = resolve_runtime(handle)?;
+        let mut handles = request_handles()
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?;
+        handles
+            .try_reserve(1)
+            .map_err(|_| ShutdownApiError::OutOfMemory)?;
+        let token =
+            crate::handle_registry::issue_handle_token().ok_or(ShutdownApiError::Internal)?;
+        handles.insert(token, None);
+        drop(handles);
+
+        let result = runtime.request_shutdown(mode);
+        let (request, state) = match result {
+            Ok((request, state)) => (request, state),
+            Err(error) => {
+                if let Ok(mut handles) = request_handles().lock() {
+                    handles.remove(&token);
+                }
+                return Err(map_runtime_error(error));
+            }
+        };
+        let state = match state {
+            ShutdownRequestOutcome::Pending => ShutdownApiState::Pending,
+            ShutdownRequestOutcome::Completed => ShutdownApiState::Completed,
+            ShutdownRequestOutcome::HostUnavailable { reason } => {
+                ShutdownApiState::HostUnavailable { reason }
+            }
+        };
+        let mut handles = request_handles()
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?;
+        let slot = handles.get_mut(&token).ok_or(ShutdownApiError::Internal)?;
+        *slot = Some(RequestHandleEntry {
+            _runtime: runtime,
+            request,
+        });
+        Ok((token.into_abi(), state))
+    }
+
+    pub fn shutdown_request_query(handle: u64) -> Result<ShutdownApiState, ShutdownApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(ShutdownApiError::InvalidHandle)?;
+        let handles = request_handles()
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?;
+        let entry = handles
+            .get(&token)
+            .and_then(Option::as_ref)
+            .ok_or(ShutdownApiError::InvalidHandle)?;
+        entry
+            .request
+            .query()
+            .map(|state| match state {
+                ShutdownCompletionState::Pending => ShutdownApiState::Pending,
+                ShutdownCompletionState::Completed => ShutdownApiState::Completed,
+                ShutdownCompletionState::HostUnavailable { reason } => {
+                    ShutdownApiState::HostUnavailable { reason }
+                }
+            })
+            .map_err(|_| ShutdownApiError::Internal)
+    }
+
+    pub fn runtime_shutdown(handle: u64) -> Result<ShutdownApiState, ShutdownApiError> {
+        let runtime = resolve_runtime(handle)?;
+        let (_, state) = runtime
+            .request_shutdown(ShutdownRequestMode::Sync)
+            .map_err(map_runtime_error)?;
+        Ok(match state {
+            ShutdownRequestOutcome::Pending => ShutdownApiState::Pending,
+            ShutdownRequestOutcome::Completed => ShutdownApiState::Completed,
+            ShutdownRequestOutcome::HostUnavailable { reason } => {
+                ShutdownApiState::HostUnavailable { reason }
+            }
+        })
+    }
+
+    pub fn runtime_host_begin_event(handle: u64) -> Result<u64, ShutdownApiError> {
+        resolve_runtime(handle)?
+            .begin_host_event()
+            .map_err(map_runtime_error)
+    }
+
+    pub fn runtime_host_end_event(handle: u64, scope_id: u64) -> Result<bool, ShutdownApiError> {
+        resolve_runtime(handle)?
+            .end_host_event(scope_id)
+            .map_err(map_runtime_error)
+    }
+
+    pub fn runtime_host_stopped(handle: u64, reason: u32) -> Result<(), ShutdownApiError> {
+        resolve_runtime(handle)?
+            .notify_host_stopped(reason)
+            .map_err(map_runtime_error)
+    }
+
+    pub fn handle_release(handle: u64) -> Result<(), ShutdownApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(ShutdownApiError::InvalidHandle)?;
+        {
+            let mut requests = request_handles()
+                .lock()
+                .map_err(|_| ShutdownApiError::Internal)?;
+            if requests.remove(&token).is_some() {
+                return Ok(());
+            }
+        }
+        process_runtime_handles()
+            .remove(token)
+            .map_err(|error| match error {
+                RuntimeHandleError::InvalidToken => ShutdownApiError::InvalidHandle,
+                RuntimeHandleError::SynchronizationPoisoned
+                | RuntimeHandleError::OutOfMemory
+                | RuntimeHandleError::TokenUnavailable => ShutdownApiError::Internal,
             })
     }
 }
