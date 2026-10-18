@@ -7,6 +7,24 @@ use std::thread::ThreadId;
 
 type Finalizer = Box<dyn FnOnce() + Send>;
 
+/// Thread identity captured by Runtime-affine components at creation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct UiThreadContext {
+    thread_id: ThreadId,
+}
+
+impl UiThreadContext {
+    pub(crate) fn capture() -> Self {
+        Self {
+            thread_id: std::thread::current().id(),
+        }
+    }
+
+    pub(crate) fn is_current(self) -> bool {
+        std::thread::current().id() == self.thread_id
+    }
+}
+
 struct Ticket {
     identity: ObjectIdentity,
     on_complete: Finalizer,
@@ -28,7 +46,7 @@ struct QueueState {
 }
 
 struct QueueInner {
-    ui_thread: ThreadId,
+    ui_thread: UiThreadContext,
     state: Mutex<QueueState>,
     changed: Condvar,
 }
@@ -44,7 +62,7 @@ impl RuntimeCleanupQueue {
     pub(crate) fn new() -> Arc<Self> {
         Arc::new(Self {
             inner: Arc::new(QueueInner {
-                ui_thread: std::thread::current().id(),
+                ui_thread: UiThreadContext::capture(),
                 state: Mutex::new(QueueState {
                     lifecycle: RuntimeState::Running,
                     outstanding: 0,
@@ -127,7 +145,7 @@ impl RuntimeCleanupQueue {
     }
 
     fn ensure_ui_thread(&self) -> Result<(), ShutdownError> {
-        if std::thread::current().id() == self.inner.ui_thread {
+        if self.inner.ui_thread.is_current() {
             Ok(())
         } else {
             Err(ShutdownError::WrongThread)
@@ -306,7 +324,7 @@ pub(crate) enum HostShutdownCommitError {
 /// Records one host's UI event boundaries and the shutdown requests it can run.
 #[allow(dead_code)]
 pub(crate) struct HostRegistration {
-    ui_thread: ThreadId,
+    ui_thread: UiThreadContext,
     scope_owner: Arc<()>,
     state: Mutex<HostRegistrationState>,
 }
@@ -315,7 +333,7 @@ pub(crate) struct HostRegistration {
 impl HostRegistration {
     pub(crate) fn new() -> Self {
         Self {
-            ui_thread: std::thread::current().id(),
+            ui_thread: UiThreadContext::capture(),
             scope_owner: Arc::new(()),
             state: Mutex::new(HostRegistrationState {
                 pump: HostPumpState::Available,
@@ -595,7 +613,7 @@ impl HostRegistration {
         mode: ShutdownRequestMode,
     ) -> Result<ShutdownRequestOutcome, HostRegistrationError> {
         let receipt = self.request_shutdown_receipt(dispatcher, completion)?;
-        if mode == ShutdownRequestMode::Sync && std::thread::current().id() != self.ui_thread {
+        if mode == ShutdownRequestMode::Sync && !self.ui_thread.is_current() {
             return receipt
                 .wait()
                 .map(|result| match result {
@@ -706,7 +724,7 @@ impl HostRegistration {
     }
 
     fn ensure_ui_thread(&self) -> Result<(), HostRegistrationError> {
-        if std::thread::current().id() == self.ui_thread {
+        if self.ui_thread.is_current() {
             Ok(())
         } else {
             Err(HostRegistrationError::WrongThread)
@@ -727,7 +745,7 @@ impl HostRegistration {
 #[derive(Clone)]
 #[allow(dead_code)]
 pub(crate) struct ShutdownCompletion {
-    ui_thread: ThreadId,
+    ui_thread: UiThreadContext,
     inner: Arc<CompletionInner>,
 }
 
@@ -753,7 +771,7 @@ impl ShutdownRequest {
 impl ShutdownCompletion {
     pub(crate) fn new() -> Self {
         Self {
-            ui_thread: std::thread::current().id(),
+            ui_thread: UiThreadContext::capture(),
             inner: Arc::new(CompletionInner {
                 state: Mutex::new(ShutdownCompletionState::Pending),
                 changed: Condvar::new(),
@@ -823,7 +841,7 @@ impl ShutdownCompletion {
     }
 
     fn ensure_ui_thread(&self) -> Result<(), ShutdownCompletionError> {
-        if std::thread::current().id() == self.ui_thread {
+        if self.ui_thread.is_current() {
             Ok(())
         } else {
             Err(ShutdownCompletionError::WrongThread)
@@ -846,6 +864,7 @@ mod tests {
         HostBoundaryError, HostRegistration, HostRegistrationError, HostShutdownCommitError,
         RuntimeCleanupQueue, RuntimeState, ShutdownCompletion, ShutdownCompletionError,
         ShutdownCompletionState, ShutdownRequestMode, ShutdownRequestOutcome, ShutdownWaitResult,
+        UiThreadContext,
     };
     use crate::dispatcher::{Dispatcher, UiLoopBridge};
     use crate::handle_registry::registry::{
@@ -856,6 +875,18 @@ mod tests {
     use std::sync::mpsc;
     use std::sync::{Arc, Barrier};
     use std::thread;
+
+    #[test]
+    fn ui_thread_context_distinguishes_creator_from_worker() {
+        let context = UiThreadContext::capture();
+        assert!(context.is_current());
+
+        let worker_context = thread::spawn(move || context.is_current())
+            .join()
+            .expect("worker query completes");
+        assert!(!worker_context);
+        assert!(context.is_current());
+    }
 
     #[derive(Default)]
     struct TestUiLoopBridge {

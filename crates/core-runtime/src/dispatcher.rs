@@ -1,9 +1,9 @@
 // This slice is intentionally internal until the Runtime/ABI host-bridge unit connects it.
 #![allow(dead_code)]
 
+use crate::runtime::UiThreadContext;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::thread::ThreadId;
 
 pub(crate) type PostedCallback = Box<dyn FnOnce() + Send + 'static>;
 
@@ -117,7 +117,7 @@ enum DispatcherLifecycle {
 }
 
 struct DispatcherInner {
-    ui_thread: ThreadId,
+    ui_thread: UiThreadContext,
     bridge: Arc<dyn UiLoopBridge>,
     state: Mutex<QueueState>,
 }
@@ -140,7 +140,7 @@ impl Dispatcher {
     pub(crate) fn new(bridge: Arc<dyn UiLoopBridge>) -> Self {
         Self {
             inner: Arc::new(DispatcherInner {
-                ui_thread: std::thread::current().id(),
+                ui_thread: UiThreadContext::capture(),
                 bridge,
                 state: Mutex::new(QueueState {
                     lifecycle: DispatcherLifecycle::Running,
@@ -252,8 +252,8 @@ impl Dispatcher {
         self.inner.bridge.schedule_wake();
     }
 
-    pub(crate) fn belongs_to_thread(&self, thread_id: ThreadId) -> bool {
-        self.inner.ui_thread == thread_id
+    pub(crate) fn belongs_to_thread(&self, ui_thread: UiThreadContext) -> bool {
+        self.inner.ui_thread == ui_thread
     }
 
     /// Dispatch at most one normal callback, or service the priority shutdown request.
@@ -273,7 +273,7 @@ impl Dispatcher {
     where
         F: FnOnce(),
     {
-        if std::thread::current().id() != self.inner.ui_thread {
+        if !self.inner.ui_thread.is_current() {
             return Err(DispatchError::WrongThread);
         }
 
@@ -303,7 +303,7 @@ impl Dispatcher {
     }
 
     pub(crate) fn close_and_cancel(&self) -> Result<(), DispatchError> {
-        if std::thread::current().id() != self.inner.ui_thread {
+        if !self.inner.ui_thread.is_current() {
             return Err(DispatchError::WrongThread);
         }
         let work = {
@@ -342,7 +342,7 @@ impl Dispatcher {
         F: FnOnce(),
         S: FnOnce(),
     {
-        if std::thread::current().id() != self.inner.ui_thread {
+        if !self.inner.ui_thread.is_current() {
             return Err(DispatchError::WrongThread);
         }
 

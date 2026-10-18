@@ -77,6 +77,12 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | <a id="ut-runtime-005"></a>UT-RUNTIME-005 | worker同期終了の完了通知とhost停止を別々に発生。停止から同hostを復旧して再試行 | 未完了・完了・host実行不可と理由を区別し、host停止だけをClosed/資源解放完了にしない | [RQ-06-007](../11_requirements/RQ-06_threading-dispatch.md#rq-06-007)、[RQ-06-012](../11_requirements/RQ-06_threading-dispatch.md#rq-06-012)<br/>[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01) |
 | <a id="ut-runtime-006"></a>UT-RUNTIME-006 | Runtime終了後にUI操作、残owner release、immutable error読取りを行う | UI利用は終了。残参照解放と不変エラー読取りは許可されたthread契約で継続できる | [RQ-05-003](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-010](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-010)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-VERT-08](../30_release_test/requirement-test-matrix.md#case-tc-vert-08)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### Runtime UI thread identity context — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-runtime-thread-context-001"></a>UT-RUNTIME-THREAD-CONTEXT-001 | `UiThreadContext`を現在threadで生成し、同threadとworker threadから所属を照会する | 生成threadではtrue、worker threadではfalse。照会はthread identity以外の状態を変更しない | [RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+
 ## 承認履歴
 
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
@@ -89,6 +95,7 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | 2026-10-17 | 0.3全文 | 利用者 | 「ok」によりHandleEntry追補を含む本版全文を承認。テスト設計の承認であり製品test合格を意味しない |
 | 2026-10-17 | 0.4 Runtime HandleRegistry追補 | — | 承認済みDD v1.2のRuntime-owner/pin/finalizer境界を具体化したレビュー案。実装・test合格を意味しない |
 | 2026-10-17 | 0.4全文 | 利用者 | 「ok」によりRuntime HandleRegistry追補を含む本版全文を承認。テスト設計の承認であり製品test合格を意味しない |
+| 2026-10-18 | Runtime UI thread identity追補 | 利用者 | 「ok」により、Runtime作成thread identity contextのfocused unit-test設計を追加。RQ-06-001全体の検証完了や公開Runtime APIの承認を意味しない |
 
 ## 改訂履歴
 
