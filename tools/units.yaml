@@ -708,6 +708,32 @@
         {"id": "UT-ABI-003", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "numeric"]},
         {"id": "UT-ABI-001", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "has_feature"]}
       ]
+    },
+    {
+      "id": "UNIT-ABI-004",
+      "state": "ready",
+      "scope": "c-abi-runtime-create",
+      "sources": ["crates/core-runtime/src/lib.rs", "crates/core-runtime/src/runtime_handles.rs", "crates/c-abi/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-026", "UNIT-ABI-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "API declaration / output and error / ownership table / panic boundary"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Runtime creation without a host-loop bridge"
+        }
+      ],
+      "requirements": ["RQ-04-004", "RQ-04-006", "RQ-04-015", "RQ-04-018"],
+      "cases": ["TC-CORE-OBJ-01", "TC-ABI-REP-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-ABI-004", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "runtime_create"]}
+      ]
     }
   ]
 }

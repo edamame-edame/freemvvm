@@ -2,15 +2,61 @@
 //!
 //! The public API is under construction and is not distributable yet.
 
+use freemvvm_core::abi_support::{RuntimeCreateError, runtime_create_handle};
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 const UI_OK: u32 = 0;
 const UI_INVALID_ARGUMENT: u32 = 1;
+const UI_OUT_OF_MEMORY: u32 = 8;
+const UI_INTERNAL_ERROR: u32 = 9;
 const NUMERIC_NARROW_EXACT: u32 = 0;
 const NUMERIC_NARROW_NEAREST_EVEN: u32 = 1;
 const RUNTIME_VERSION_MAJOR: u32 = 1;
 const RUNTIME_VERSION_MINOR: u32 = 0;
 const RUNTIME_VERSION_PATCH: u32 = 0;
+
+fn catch_runtime_creation(
+    operation: impl FnOnce() -> Result<u64, RuntimeCreateError>,
+) -> Result<u64, u32> {
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(Ok(handle)) => Ok(handle),
+        Ok(Err(RuntimeCreateError::OutOfMemory)) => Err(UI_OUT_OF_MEMORY),
+        Ok(Err(RuntimeCreateError::Internal)) | Err(_) => Err(UI_INTERNAL_ERROR),
+    }
+}
+
+/// Create a Runtime and return its owned opaque handle.
+///
+/// # Safety
+/// `out_runtime` must be null or point to writable storage for one `u64`. A non-null
+/// `out_error` must point to writable storage for one ABI handle (`u64`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_runtime_create(
+    out_runtime: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if !out_runtime.is_null() {
+        // SAFETY: the caller guarantees that a non-null runtime output is writable.
+        unsafe { out_runtime.write(0) };
+    }
+    if out_runtime.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+
+    match catch_runtime_creation(runtime_create_handle) {
+        Ok(handle) => {
+            // SAFETY: the required output pointer was checked non-null above.
+            unsafe { out_runtime.write(handle) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
 
 /// Report the stable native runtime version supported by this ABI.
 ///
@@ -145,8 +191,9 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
 #[cfg(test)]
 mod tests {
     use super::{
-        UI_INVALID_ARGUMENT, UI_OK, ui_abi_1_get_version, ui_abi_1_has_feature,
-        ui_abi_1_numeric_expand_f32, ui_abi_1_numeric_narrow_f64,
+        UI_INTERNAL_ERROR, UI_INVALID_ARGUMENT, UI_OK, catch_runtime_creation,
+        ui_abi_1_get_version, ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32,
+        ui_abi_1_numeric_narrow_f64, ui_abi_1_runtime_create,
     };
 
     #[test]
@@ -160,6 +207,41 @@ mod tests {
         assert_eq!(status, UI_OK);
         assert_eq!(output, -f32::MIN_POSITIVE as f64);
         assert_eq!(error, 0);
+    }
+
+    #[test]
+    fn runtime_create_returns_distinct_owned_handles_and_clears_optional_error() {
+        let mut first = u64::MAX;
+        let mut first_error = u64::MAX;
+        // SAFETY: both outputs refer to writable storage.
+        let first_status = unsafe { ui_abi_1_runtime_create(&mut first, &mut first_error) };
+        let mut second = u64::MAX;
+        // SAFETY: the required output refers to writable storage and null optional error is allowed.
+        let second_status = unsafe { ui_abi_1_runtime_create(&mut second, std::ptr::null_mut()) };
+
+        assert_eq!(first_status, UI_OK);
+        assert_ne!(first, 0);
+        assert_eq!(first_error, 0);
+        assert_eq!(second_status, UI_OK);
+        assert_ne!(second, 0);
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn runtime_create_rejects_null_required_output_and_clears_optional_error() {
+        let mut error = u64::MAX;
+        // SAFETY: null required output is handled and the optional error output is writable.
+        let status = unsafe { ui_abi_1_runtime_create(std::ptr::null_mut(), &mut error) };
+
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        assert_eq!(error, 0);
+    }
+
+    #[test]
+    fn runtime_create_catches_core_panics_as_internal_error() {
+        let result = catch_runtime_creation(|| panic!("injected Runtime creation panic"));
+
+        assert_eq!(result, Err(UI_INTERNAL_ERROR));
     }
 
     #[test]
