@@ -35,3 +35,5 @@ Rust1.90.0/rustfmt/clippyとminimum1.85.0を導入し、既存標準CPython3.13.
 Windowsの `tools/dev.py check` は16gate成功、C/C++のCTest2probe成功、`minimum` はRust1.85.0の全workspace compile check成功。`.local/verification/check.json` / `minimum.json` / `preservation.json`へdirty状態・HEAD・入力hash・実toolchain・commandと結果を保存した。文書76本の5805ローカルリンク検査、lint/format、manifest parse、生成物除外、git diff --check成功。既存の対象外文書とAGENTS計329ファイルのhash一致。
 
 CIはWindows2022/Ubuntu24.04で全bootstrap gateを実行する設定を作成し、Actions4本をfull SHAへpinした。リモート実行は未実施。製品unitのpath mapping/依存逆閉包選択、製品単体試験70項目、release9/version6、Linux正式profile/ARMcross/board実行は後続。既存3接続gapも未解消を維持する。次の実装単位はhandle registryを入口とし、製品unit台帳と対応testを同じ変更で作成する。
+
+2026-10-18、VS Code同梱rust-analyzerと固定Rust 1.90.0の互換警告を受け、対応する`rust-analyzer` componentを`rust-toolchain.toml`と導入手順・bootstrap CIへ追加した。固定toolchain/compiler版とrustup defaultは変更していない。詳細は[Rust Analyzer component対応](rust-analyzer-pinned-component.md)を参照。

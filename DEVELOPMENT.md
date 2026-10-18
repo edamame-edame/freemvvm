@@ -8,7 +8,7 @@
 
 | 対象 | 今回の開発設定 | 管理ファイル |
 | --- | --- | --- |
-| Rust | 開発1.90.0、minimum検証1.85.0、edition2024 | rust-toolchain.toml / Cargo.toml / Cargo.lock |
+| Rust | 開発1.90.0、minimum検証1.85.0、edition2024、matching rust-analyzer component | rust-toolchain.toml / Cargo.toml / Cargo.lock |
 | C/C++ | C11の環境probe、C++17、CMake3.28.4、Ninja package1.11.1.4 | CMakePresets.json / tools/requirements-dev.txt |
 | C# | SDK10.0.401、net10.0、C#14 | global.json / FreeMvvm.csproj / packages.lock.json |
 | Python | 標準CPython3.13、CIは3.13.12、repository内venv | pyproject.toml / tools/requirements-dev.txt |
@@ -21,7 +21,7 @@ Python開発依存はtransitiveもexact版へ固定している。現在のpin�
 MSVC x64 C++ Build ToolsとWindows SDK、rustup、標準CPython3.13、.NET SDK10.0.401を用意する。MSVC環境はvswhere/VsDevCmdから子processへ取り込むため、通常のPowerShellから実行できる。既存のOS PATHやrustup defaultを変更しない。
 
 ```powershell
-rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
+rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy --component rust-analyzer
 rustup toolchain install 1.85.0 --profile minimal
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r tools/requirements-dev.txt
@@ -37,7 +37,7 @@ venvのactivateは不要。既定Python3.15や既存CMake RC版ではなく、ve
 標準CPython3.13、rustup、.NET SDK10.0.401、C/C++ compilerを事前導入する。今回のCI runnerはUbuntu24.04で、Debian12の正式profile検証とは別である。
 
 ```sh
-rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
+rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy --component rust-analyzer
 rustup toolchain install 1.85.0 --profile minimal
 python3.13 -m venv .venv
 .venv/bin/python -m pip install -r tools/requirements-dev.txt

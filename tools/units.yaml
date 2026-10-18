@@ -7,7 +7,7 @@
       "scope": "development-bootstrap-only",
       "sources": ["tools/*.py", "tools/probes/*"],
       "config": [
-        "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
+        "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "DEVELOPMENT.md", "tools/units.yaml",
         "CMakeLists.txt", "CMakePresets.json", "global.json", "pyproject.toml",
         "crates/*/Cargo.toml", "crates/*/src/lib.rs",
         "wrappers/rust/*/Cargo.toml", "wrappers/rust/*/src/lib.rs",
