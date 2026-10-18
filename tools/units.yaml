@@ -814,6 +814,26 @@
         {"id": "UT-RUNTIME-BRIDGE-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::runtime_core_registers_bridge_once_on_owner_thread"]},
         {"id": "UT-RUNTIME-BRIDGE-002", "command": ["cargo", "test", "-p", "freemvvm-core", "dispatcher::tests::normal_and_shutdown_work_use_distinct_host_wake_priorities"]}
       ]
+    },
+    {
+      "id": "UNIT-ABI-008",
+      "state": "ready",
+      "scope": "c-abi-runtime-post-and-dispatch-turn",
+      "sources": ["crates/core-runtime/src/dispatcher.rs", "crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/lib.rs", "crates/c-abi/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-006", "UNIT-CORE-007", "UNIT-CORE-008", "UNIT-ABI-007"],
+      "design": [
+        {"path": ".docs/13_detail_design/runtime-objects/abi.md", "version": "1.2", "section": "runtime_post and UI loop connection"},
+        {"path": ".docs/13_detail_design/runtime-objects/runtime.md", "version": "1.2", "section": "FIFO dispatch turns and host event loop boundary"},
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "Runtime-owned handle release"}
+      ],
+      "requirements": ["RQ-04-006", "RQ-05-003", "RQ-05-008", "RQ-06-001", "RQ-06-002", "RQ-06-005"],
+      "cases": ["TC-ABI-REP-01", "TC-THREAD-01", "TC-LIFE-01", "TC-CALLBACK-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-ABI-008", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "runtime_post"]},
+        {"id": "UT-RUNTIME-DISPATCH-001", "command": ["cargo", "test", "-p", "freemvvm-core", "dispatcher::tests::normal_and_shutdown_work_use_distinct_host_wake_priorities"]}
+      ]
     }
   ]
 }

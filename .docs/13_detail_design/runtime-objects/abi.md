@@ -1,9 +1,9 @@
 # 共通C ABI：宣言・検査・互換性
 
-- 文書版: 1.1
+- 文書版: 1.2
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-10-19
+- 状態: 1.2全文承認済み（利用者、2026-10-19。Runtime dispatch turn追加を選択）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -80,6 +80,10 @@ ui_status ui_abi_1_runtime_host_begin_event(ui_handle runtime, uint64_t *out_sco
 ui_status ui_abi_1_runtime_host_end_event(ui_handle runtime, uint64_t scope_id);
 ui_status ui_abi_1_runtime_host_stopped(ui_handle runtime, uint32_t reason,
                                          ui_handle *out_error);
+ui_status ui_abi_1_runtime_dispatch_turn(ui_handle runtime);
+ui_status ui_abi_1_runtime_post(ui_handle runtime, ui_callback callback,
+                                void *userdata, ui_destroy destroy,
+                                ui_handle *out_error);
 ui_status ui_abi_1_runtime_is_ui_thread(ui_handle runtime, ui_bool *out_yes);
 ui_status ui_abi_1_runtime_post(ui_handle runtime, ui_callback callback,
                                  void *userdata, ui_destroy destroy,
@@ -706,10 +710,14 @@ ui_status ui_abi_1_runtime_host_begin_event(ui_handle runtime, uint64_t *out_sco
 ui_status ui_abi_1_runtime_host_end_event(ui_handle runtime, uint64_t scope_id);
 ui_status ui_abi_1_runtime_host_stopped(ui_handle runtime, uint32_t reason,
                                          ui_handle *out_error);
+ui_status ui_abi_1_runtime_dispatch_turn(ui_handle runtime);
 ```
 
 - 登録はUI thread専用で一度だけとし、Runtimeに既にbridgeが登録済み、またはshutdown開始後なら失敗させる。成功時にwake/userdata/destroy一組の所有権をCoreへ移し、失敗時は呼出し側に残す。
 - `UI_WAKE_NORMAL`は通常post/通知のdispatch機会、`UI_WAKE_CONTROL`はshutdown等の優先control taskをhost loopへscheduleする指示とする。callbackは任意threadから呼べるが、同期dispatchせず直ちに戻る。wake/destroy callbackはthread-safeなuserdataを使い、C ABI境界をunwindしてはならない。
+- `runtime_post`はbridge登録済みRuntimeに対して任意threadから呼べる。enqueue成功後だけcallback/userdata/destroyをCoreへ移し、失敗時には呼出し側へ残す。通常wakeが既にpending中に新規shutdown要求が成立したときも、Control priorityのwakeを追加してhost側へ優先度を伝える。
+- hostはwake callbackから戻った後、UI thread上の次turnで`runtime_dispatch_turn`を呼ぶ。このAPIは最大1件の通常callbackを実行するため、現在のwake callback stackから再入しない。API内でhost event scopeを開閉し、既存の外側scope中に呼ばれた場合はネストする。
+- shutdown controlがpendingなら通常callbackを実行せず、dispatch scope終了で既存のhost boundary処理へ渡す。dispatch turnが空でも`UI_OK`とし、同一Runtimeでdispatch callbackが再入した場合は`UI_INVALID_ARGUMENT`、bridge未登録は`UI_UNSUPPORTED`、wrong threadとClosedは共通statusに従う。
 - shutdown request receiptは`handle_release`で解放し、releaseは要求を取り消さない。`runtime_host_begin_event`は停止から復帰した同じUI hostの再開境界として扱い、続く`runtime_request_shutdown`がHostUnavailableの同一completionを明示retryする。
 - CoreはRuntime APIやuser callbackをbridge callbackのstack上で実行しない。bridgeの`destroy`はRuntime close後にUI thread上で一度だけ呼ぶ。
 - bridge未登録でもUI thread上の同期APIは使用可能とする。worker post・worker shutdownなどUI wakeが必要なAPIは、所有権移転前に`UI_UNSUPPORTED`で拒否する。
@@ -732,7 +740,7 @@ ui_status ui_abi_1_runtime_host_stopped(ui_handle runtime, uint32_t reason,
 | --- | --- |
 | DD内API表を共通schemaで統合し、入力/出力、owned/borrowed、thread/context、commit、failure ownership、feature/versionを必須fieldにする。 | 上記の根拠RQ |
 | 失敗優先順はrequired output妥当性→token→kind→Runtime→thread/context→lifecycle→値/容量→資源準備。API固有例外は表に列挙する。 | 上記の根拠RQ |
-| feature IDは0 invalid、1 core.mvvm.v1、2 values.f64_decimal.v1、3 numeric.f32_bridge.v1、4 host.shutdown_receipt.v1、5 collection.v1、6 textbox.snapshot.v1。 | 上記の根拠RQ |
+| feature IDは0 invalid、1 core.mvvm.v1、2 values.f64_decimal.v1、3 numeric.f32_bridge.v1、4 host.shutdown_receipt.v1、5 collection.v1、6 textbox.snapshot.v1、7 runtime.post_dispatch.v1。 | 上記の根拠RQ |
 | has_featureは機能群の全symbolと外部契約が提供されるときだけtrue。build flagの存在だけで有効としない。 | 上記の根拠RQ |
 | global snapshot getterはowned immutable値、UI object getterはUI専用。bufferの2-call readはlive getterなら同snapshot保証なし、snapshot getterなら固定。 | 上記の根拠RQ |
 | borrowed callback引数の保存にはretain/copyが必要。新owned outを受け取るwrapperはticketを先に準備する。 | 上記の根拠RQ |
@@ -824,3 +832,4 @@ ApiInventoryEntryの所管は文書path/版/項目で示す案とし、既存sch
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-10-19 | 1.2全文 | 利用者がhost turnごとのdispatch入口として`runtime_dispatch_turn(runtime)`を選択。既存1.1承認内容を維持してdispatch call contractを追加。実装・試験状態は別管理 |

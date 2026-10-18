@@ -11,7 +11,7 @@ mod runtime_handles;
 /// Narrow support surface used by the C ABI crate while the Core remains private to wrappers.
 #[doc(hidden)]
 pub mod abi_support {
-    use crate::dispatcher::{UiLoopBridge, WakePriority};
+    use crate::dispatcher::{PostErrorKind, PostedWork, UiLoopBridge, WakePriority};
     use crate::handle_registry::HandleToken;
     use crate::runtime::{
         RuntimeCore, RuntimeCoreError, ShutdownCompletionState, ShutdownRequest,
@@ -65,6 +65,7 @@ pub mod abi_support {
 
     pub type WakeCallback = unsafe extern "C" fn(*mut c_void, u32);
     pub type DestroyCallback = unsafe extern "C" fn(*mut c_void);
+    pub type PostCallback = unsafe extern "C" fn(*mut c_void);
 
     struct BridgeState {
         armed: bool,
@@ -225,6 +226,18 @@ pub mod abi_support {
                 ShutdownApiError::Unsupported
             }
             RuntimeCoreError::BridgeAlreadyRegistered => ShutdownApiError::InvalidArgument,
+            RuntimeCoreError::Dispatch(crate::dispatcher::DispatchError::AlreadyDispatching) => {
+                ShutdownApiError::InvalidArgument
+            }
+            RuntimeCoreError::Dispatch(crate::dispatcher::DispatchError::WrongThread) => {
+                ShutdownApiError::WrongThread
+            }
+            RuntimeCoreError::Dispatch(crate::dispatcher::DispatchError::Closed) => {
+                ShutdownApiError::Closed
+            }
+            RuntimeCoreError::Dispatch(
+                crate::dispatcher::DispatchError::SynchronizationPoisoned,
+            ) => ShutdownApiError::Internal,
             RuntimeCoreError::Closed
             | RuntimeCoreError::Host(HostRegistrationError::InvalidState) => {
                 ShutdownApiError::Closed
@@ -372,6 +385,40 @@ pub mod abi_support {
         resolve_runtime(handle)?
             .notify_host_stopped(reason)
             .map_err(map_runtime_error)
+    }
+
+    pub fn runtime_dispatch_turn(handle: u64) -> Result<(), ShutdownApiError> {
+        resolve_runtime(handle)?
+            .dispatch_turn()
+            .map_err(map_runtime_error)
+    }
+
+    pub fn runtime_post(
+        handle: u64,
+        callback: PostCallback,
+        userdata: usize,
+        destroy: DestroyCallback,
+    ) -> Result<(), ShutdownApiError> {
+        let runtime = resolve_runtime(handle)?;
+        let dispatcher = runtime
+            .dispatcher()
+            .map_err(map_runtime_error)?
+            .ok_or(ShutdownApiError::Unsupported)?;
+        let work = PostedWork::new(
+            Box::new(move || {
+                // SAFETY: successful post transfers the callback and userdata to Core.
+                unsafe { callback(userdata as *mut c_void) };
+            }),
+            Box::new(move || {
+                // SAFETY: destroy is called once after execution or cancellation.
+                unsafe { destroy(userdata as *mut c_void) };
+            }),
+        );
+        dispatcher.post(work).map_err(|error| match error.kind {
+            PostErrorKind::SynchronizationPoisoned => ShutdownApiError::Internal,
+            PostErrorKind::OutOfMemory => ShutdownApiError::OutOfMemory,
+            PostErrorKind::Closed => ShutdownApiError::Closed,
+        })
     }
 
     pub fn handle_release(handle: u64) -> Result<(), ShutdownApiError> {

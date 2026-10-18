@@ -1,7 +1,7 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 0.7
-- 状態: 0.7 Runtime bridge試験追補はレビュー案。既存承認範囲を継承（2026-10-18）。製品test実装中
+- 文書版: 0.8
+- 状態: 0.8 Runtime post/dispatch turn試験追補はレビュー案。既存承認範囲を継承（2026-10-19）。製品test実装中
 - 更新日: 2026-10-18
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
@@ -127,6 +127,15 @@ The C ABI bridge transfers one `(wake, userdata, destroy)` tuple to the Runtime 
 | <a id="ut-abi-shutdown-001"></a>UT-ABI-SHUTDOWN-001 | C ABIでASYNC/SYNC shutdownを要求し、host event scopeを閉じてcleanup。requestを任意threadからquery・releaseし、無効mode/handleとnull required outputも試す | callback境界ではUI_PENDINGとowned receiptを返し、outer scope endでのみCompleted。worker SYNCはcleanup後にUI_OK、release済みreceiptは以後無効だが要求は取消されない。失敗時out handleは0 | [RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-05-003](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-06-005](../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-06-006](../11_requirements/RQ-06_threading-dispatch.md#rq-06-006)、[RQ-06-012](../11_requirements/RQ-06_threading-dispatch.md#rq-06-012)<br/>[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01) |
 | <a id="ut-abi-host-stop-001"></a>UT-ABI-HOST-STOP-001 | 受付前のhost停止、受付後の停止、同一UI host再開後の同request retryを個別に順序制御する | 受付前停止はUI_UNSUPPORTED/out=0。受付後停止はUI_PENDINGのままqueryでHostUnavailableとreasonを返しClosed扱いにしない。resume後の明示retryは同じrequestをPendingへ戻し、再度outer boundaryでCompleted | [RQ-06-007](../11_requirements/RQ-06_threading-dispatch.md#rq-06-007)、[RQ-06-012](../11_requirements/RQ-06_threading-dispatch.md#rq-06-012)<br/>[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01) |
 
+### C ABI Runtime post and host dispatch turn — implementation slice
+
+The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake callback has returned. One call executes at most one queued callback; a nested host event scope is closed before return, so shutdown requested by the callback is committed at the correct outer boundary.
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-runtime-dispatch-001"></a>UT-RUNTIME-DISPATCH-001 | dispatcherへ複数workをpostし、空queue、連続turn、dispatch中の追加post、reentrant turn、pending shutdownを順に操作する | 一turn最大1 callback、FIFO、非再帰を保つ。pending shutdown中は通常workを実行せず、外側scope closeでshutdownを先行する。残workはwakeを取りこぼさず次turnへ進む | [RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)<br/>[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01) |
+| <a id="ut-abi-008"></a>UT-ABI-008 | C ABIからcallback/userdata/destroyをpostし、UI/worker両threadの受付、dispatch turn、queue cancellation、invalid handle/null callback/destroy、bridge未登録、wrong threadを試す | 成功時のみCoreが所有し、callbackはUI threadで高々一回、destroyは実行またはcancel後にUI threadで一回。拒否時はcaller ownershipを維持し、callback/destroyを呼ばない。UI_WAKE_NORMAL受信後のdispatch turnでFIFOに一件進む。失敗時statusを規則どおり返す | [RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-05-003](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-008](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)<br/>[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01) |
+
 ## 承認履歴
 
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
@@ -148,6 +157,7 @@ The C ABI bridge transfers one `(wake, userdata, destroy)` tuple to the Runtime 
 | 2026-10-18 | C ABI Runtime handle retain追補 | 利用者 | 「OK」により、既存Runtime ownerを維持した別token発行とinvalid source拒否をfocused test案として追加。Runtime releaseやshutdown動作の承認を意味しない |
 | 2026-10-18 | C ABI Runtime UI thread query追補 | 利用者 | 「OK」により、creator/worker threadからの照会とinvalid handle statusをfocused testとして追加。承認済みRQ/DDの範囲内であり、Runtime APIの追加設計や製品test合格を意味しない |
 | 2026-10-18 | C ABI Runtime UI-loop bridge追補 | — | DD v1.1のwake priorityとone-time bridge registrationをUT-ABI-007として具体化したレビュー案。公開契約の追加やtest合格を意味しない |
+| 2026-10-19 | C ABI Runtime post/dispatch turn追補 | 利用者 | 「ok」により、選択済み`runtime_dispatch_turn`を含むUNIT-ABI-008の実装・動作確認を開始。DD v1.2の契約に沿うfocused test oracleを確定し、本unitの試験実施を承認。test合格は実行結果で別途記録 |
 
 ## 改訂履歴
 
@@ -160,3 +170,4 @@ The C ABI bridge transfers one `(wake, userdata, destroy)` tuple to the Runtime 
 | 0.5 | 2026-10-18 | C ABI `runtime_is_ui_thread`のthread別結果、invalid handle、output初期化、panic変換を追補 | Codex | 利用者が本版全文を承認 |
 | 0.6 | 2026-10-18 | Runtime handle retainのregistry/C ABI動作、失敗時初期化、panic変換を追補 | Codex | 利用者が本版全文を承認 |
 | 0.7 | 2026-10-18 | DD v1.1のUI-loop bridge登録とwake priorityをUT-ABI-007として具体化 | Codex | Runtime bridge追補はレビュー案。既存承認範囲と分離 |
+| 0.8 | 2026-10-19 | DD v1.2のRuntime post受入、所有、dispatch turn実行・shutdown境界の試験を追補 | Codex | 利用者の「ok」によりfocused test oracleを承認。製品test合格は実行結果で別管理 |

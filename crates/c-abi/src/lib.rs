@@ -3,12 +3,12 @@
 //! The public API is under construction and is not distributable yet.
 
 use freemvvm_core::abi_support::{
-    DestroyCallback, RuntimeCreateError, RuntimeQueryError, RuntimeRetainError, ShutdownApiError,
-    ShutdownApiState, WakeCallback, handle_release as core_handle_release, runtime_create_handle,
-    runtime_host_begin_event, runtime_host_end_event, runtime_host_stopped,
-    runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_request_shutdown,
-    runtime_retain_handle as core_runtime_retain_handle, runtime_set_ui_loop_bridge,
-    runtime_shutdown, shutdown_request_query,
+    DestroyCallback, PostCallback, RuntimeCreateError, RuntimeQueryError, RuntimeRetainError,
+    ShutdownApiError, ShutdownApiState, WakeCallback, handle_release as core_handle_release,
+    runtime_create_handle, runtime_dispatch_turn, runtime_host_begin_event, runtime_host_end_event,
+    runtime_host_stopped, runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post,
+    runtime_request_shutdown, runtime_retain_handle as core_runtime_retain_handle,
+    runtime_set_ui_loop_bridge, runtime_shutdown, shutdown_request_query,
 };
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
 use std::ffi::c_void;
@@ -312,6 +312,49 @@ pub unsafe extern "C" fn ui_abi_1_runtime_host_stopped(
     }
 }
 
+/// Enqueue one callback for a future UI-thread dispatch turn.
+///
+/// # Safety
+/// `callback` and `destroy` must be valid non-unwinding callbacks. On success, `userdata`
+/// remains valid until `destroy` is called. On failure, ownership remains with the caller.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_runtime_post(
+    runtime: u64,
+    callback: Option<PostCallback>,
+    userdata: *mut c_void,
+    destroy: Option<DestroyCallback>,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    let (Some(callback), Some(destroy)) = (callback, destroy) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    match catch_unwind(AssertUnwindSafe(|| {
+        runtime_post(runtime, callback, userdata as usize, destroy)
+    })) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_shutdown_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Run at most one queued callback on the Runtime UI thread.
+///
+/// # Safety
+/// The Runtime handle is an opaque scalar. The host must call this only from a future
+/// UI-loop turn after its wake callback has returned.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_runtime_dispatch_turn(runtime: u64) -> u32 {
+    match catch_unwind(AssertUnwindSafe(|| runtime_dispatch_turn(runtime))) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_shutdown_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
 /// Complete shutdown synchronously when called from a worker, or return UI_PENDING
 /// when called from the active UI event.
 ///
@@ -487,8 +530,8 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
         return UI_INVALID_ARGUMENT;
     }
 
-    if feature_id == 3 {
-        // F32/F64 conversion symbols and their complete contracts are implemented.
+    if feature_id == 3 || feature_id == 7 {
+        // Feature 3 is numeric conversion; feature 7 is Runtime post/dispatch.
         // SAFETY: the caller guarantees that the non-null output points to writable `u8` storage.
         unsafe { out_supported.write(1) };
     }
@@ -500,14 +543,14 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
 mod tests {
     use super::{
         RuntimeRetainError, UI_INTERNAL_ERROR, UI_INVALID_ARGUMENT, UI_INVALID_HANDLE, UI_OK,
-        UI_OUT_OF_MEMORY, UI_PENDING, UI_WRONG_THREAD, catch_runtime_creation, catch_runtime_query,
-        catch_runtime_retain, ui_abi_1_get_version, ui_abi_1_handle_release,
+        UI_OUT_OF_MEMORY, UI_PENDING, UI_UNSUPPORTED, UI_WRONG_THREAD, catch_runtime_creation,
+        catch_runtime_query, catch_runtime_retain, ui_abi_1_get_version, ui_abi_1_handle_release,
         ui_abi_1_handle_retain, ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32,
-        ui_abi_1_numeric_narrow_f64, ui_abi_1_runtime_create, ui_abi_1_runtime_host_begin_event,
-        ui_abi_1_runtime_host_end_event, ui_abi_1_runtime_host_stopped,
-        ui_abi_1_runtime_is_ui_thread, ui_abi_1_runtime_request_shutdown,
-        ui_abi_1_runtime_set_ui_loop_bridge, ui_abi_1_runtime_shutdown,
-        ui_abi_1_shutdown_request_query,
+        ui_abi_1_numeric_narrow_f64, ui_abi_1_runtime_create, ui_abi_1_runtime_dispatch_turn,
+        ui_abi_1_runtime_host_begin_event, ui_abi_1_runtime_host_end_event,
+        ui_abi_1_runtime_host_stopped, ui_abi_1_runtime_is_ui_thread, ui_abi_1_runtime_post,
+        ui_abi_1_runtime_request_shutdown, ui_abi_1_runtime_set_ui_loop_bridge,
+        ui_abi_1_runtime_shutdown, ui_abi_1_shutdown_request_query,
     };
     use std::ffi::c_void;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -516,6 +559,24 @@ mod tests {
     struct BridgeProbe {
         priorities: Mutex<Vec<u32>>,
         destroyed: AtomicUsize,
+    }
+
+    #[derive(Default)]
+    struct PostProbe {
+        callbacks: AtomicUsize,
+        destroys: AtomicUsize,
+    }
+
+    unsafe extern "C" fn record_post_callback(userdata: *mut c_void) {
+        // SAFETY: the test keeps a live PostProbe at the transferred userdata address.
+        let probe = unsafe { &*(userdata.cast::<PostProbe>()) };
+        probe.callbacks.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn record_post_destroy(userdata: *mut c_void) {
+        // SAFETY: the test keeps a live PostProbe at the transferred userdata address.
+        let probe = unsafe { &*(userdata.cast::<PostProbe>()) };
+        probe.destroys.fetch_add(1, Ordering::SeqCst);
     }
 
     unsafe extern "C" fn record_wake(userdata: *mut c_void, priority: u32) {
@@ -570,6 +631,194 @@ mod tests {
         assert_eq!(second_status, UI_OK);
         assert_ne!(second, 0);
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn runtime_post_transfers_ownership_and_dispatches_one_callback_per_turn() {
+        let mut runtime = 0;
+        assert_eq!(
+            // SAFETY: runtime output points to writable storage.
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let bridge = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        assert_eq!(
+            // SAFETY: bridge userdata remains valid and callback functions obey the ABI contract.
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&bridge as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let first = PostProbe::default();
+        let second = PostProbe::default();
+        assert_eq!(
+            // SAFETY: post userdata remains valid until the owned destroy callback runs.
+            unsafe {
+                ui_abi_1_runtime_post(
+                    runtime,
+                    Some(record_post_callback),
+                    (&first as *const PostProbe).cast_mut().cast(),
+                    Some(record_post_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let runtime_token = runtime;
+        let second_userdata = (&second as *const PostProbe) as usize;
+        let worker_status = std::thread::spawn(move || {
+            // SAFETY: second remains live until the joined worker and later UI dispatch finish.
+            unsafe {
+                ui_abi_1_runtime_post(
+                    runtime_token,
+                    Some(record_post_callback),
+                    second_userdata as *mut c_void,
+                    Some(record_post_destroy),
+                    std::ptr::null_mut(),
+                )
+            }
+        })
+        .join()
+        .expect("worker post completes");
+        assert_eq!(worker_status, UI_OK);
+        assert_eq!(first.callbacks.load(Ordering::SeqCst), 0);
+        assert_eq!(first.destroys.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            bridge.priorities.lock().expect("bridge lock").as_slice(),
+            [1]
+        );
+
+        assert_eq!(
+            // SAFETY: dispatch runs on the Runtime creator thread.
+            unsafe { ui_abi_1_runtime_dispatch_turn(runtime) },
+            UI_OK
+        );
+        assert_eq!(first.callbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(first.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(second.callbacks.load(Ordering::SeqCst), 0);
+        assert_eq!(second.destroys.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            // SAFETY: dispatch runs on the Runtime creator thread.
+            unsafe { ui_abi_1_runtime_dispatch_turn(runtime) },
+            UI_OK
+        );
+        assert_eq!(second.callbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(second.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(bridge.destroyed.load(Ordering::SeqCst), 0);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
+    #[test]
+    fn runtime_post_rejection_and_shutdown_cancellation_preserve_ownership_rules() {
+        let mut runtime = 0;
+        assert_eq!(
+            // SAFETY: runtime output points to writable storage.
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let no_bridge = PostProbe::default();
+        let mut error = u64::MAX;
+        assert_eq!(
+            // SAFETY: the live userdata pointer is valid; the call rejects due to missing bridge.
+            unsafe {
+                ui_abi_1_runtime_post(
+                    runtime,
+                    Some(record_post_callback),
+                    (&no_bridge as *const PostProbe).cast_mut().cast(),
+                    Some(record_post_destroy),
+                    &mut error,
+                )
+            },
+            UI_UNSUPPORTED
+        );
+        assert_eq!(error, 0);
+        assert_eq!(no_bridge.callbacks.load(Ordering::SeqCst), 0);
+        assert_eq!(no_bridge.destroys.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            // SAFETY: null callback is validated before userdata is accessed.
+            unsafe {
+                ui_abi_1_runtime_post(
+                    runtime,
+                    None,
+                    std::ptr::null_mut(),
+                    Some(record_post_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+
+        let bridge = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        assert_eq!(
+            // SAFETY: bridge userdata remains valid and callback functions obey the ABI contract.
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&bridge as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let cancelled = PostProbe::default();
+        assert_eq!(
+            // SAFETY: post userdata remains valid through shutdown cancellation and destroy.
+            unsafe {
+                ui_abi_1_runtime_post(
+                    runtime,
+                    Some(record_post_callback),
+                    (&cancelled as *const PostProbe).cast_mut().cast(),
+                    Some(record_post_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut scope = 0;
+        assert_eq!(
+            // SAFETY: scope points to writable storage.
+            unsafe { ui_abi_1_runtime_host_begin_event(runtime, &mut scope) },
+            UI_OK
+        );
+        let mut request = 0;
+        assert_eq!(
+            // SAFETY: request points to writable storage; active host scope yields pending.
+            unsafe {
+                ui_abi_1_runtime_request_shutdown(runtime, 0, &mut request, std::ptr::null_mut())
+            },
+            UI_PENDING
+        );
+        assert_eq!(
+            // SAFETY: dispatch runs on the Runtime creator thread.
+            unsafe { ui_abi_1_runtime_dispatch_turn(runtime) },
+            UI_OK
+        );
+        assert_eq!(cancelled.callbacks.load(Ordering::SeqCst), 0);
+        assert_eq!(cancelled.destroys.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            // SAFETY: scope ID was returned by this Runtime and has not yet been closed.
+            unsafe { ui_abi_1_runtime_host_end_event(runtime, scope) },
+            UI_OK
+        );
+        assert_eq!(cancelled.callbacks.load(Ordering::SeqCst), 0);
+        assert_eq!(cancelled.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(bridge.destroyed.load(Ordering::SeqCst), 1);
+        assert_eq!(ui_abi_1_handle_release(request), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
     }
 
     #[test]
@@ -1165,6 +1414,12 @@ mod tests {
         let status = unsafe { ui_abi_1_has_feature(3, &mut numeric_supported) };
         assert_eq!(status, UI_OK);
         assert_eq!(numeric_supported, 1);
+
+        let mut post_dispatch_supported = 0;
+        // SAFETY: the output points to writable storage.
+        let status = unsafe { ui_abi_1_has_feature(7, &mut post_dispatch_supported) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(post_dispatch_supported, 1);
 
         let mut unknown_supported = 1;
         // SAFETY: `unknown_supported` is valid writable storage for the output value.

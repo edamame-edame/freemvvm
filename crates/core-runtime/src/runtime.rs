@@ -764,6 +764,7 @@ pub(crate) enum RuntimeCoreError {
     SynchronizationPoisoned,
     Host(HostRegistrationError),
     Shutdown(HostShutdownCommitError),
+    Dispatch(DispatchError),
 }
 
 /// Process-unique internal identity for one Runtime owner.
@@ -862,6 +863,25 @@ impl RuntimeCore {
             .lock()
             .map(|dispatcher| dispatcher.clone())
             .map_err(|_| RuntimeCoreError::SynchronizationPoisoned)
+    }
+
+    pub(crate) fn dispatch_turn(&self) -> Result<(), RuntimeCoreError> {
+        if !self.is_ui_thread() {
+            return Err(RuntimeCoreError::WrongThread);
+        }
+        let dispatcher = self
+            .dispatcher()?
+            .ok_or(RuntimeCoreError::BridgeNotRegistered)?;
+        let scope_id = self.begin_host_event()?;
+        let dispatch = dispatcher
+            .dispatch_normal_turn()
+            .map_err(RuntimeCoreError::Dispatch);
+        let close = self.end_host_event(scope_id);
+        match (dispatch, close) {
+            (Err(error), _) => Err(error),
+            (Ok(_), Err(error)) => Err(error),
+            (Ok(_), Ok(_)) => Ok(()),
+        }
     }
 
     pub(crate) fn begin_host_event(&self) -> Result<u64, RuntimeCoreError> {

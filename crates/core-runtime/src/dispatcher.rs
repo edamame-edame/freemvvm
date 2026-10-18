@@ -216,6 +216,39 @@ impl Dispatcher {
         self.dispatch_turn_with_shutdown(|| {})
     }
 
+    /// Invoke at most one ordinary callback. Shutdown remains pending for the host
+    /// event-scope boundary to commit through RuntimeCore.
+    pub(crate) fn dispatch_normal_turn(&self) -> Result<bool, DispatchError> {
+        if !self.inner.ui_thread.is_current() {
+            return Err(DispatchError::WrongThread);
+        }
+
+        let callback = {
+            let mut state = self.lock_state()?;
+            if state.turn_active {
+                return Err(DispatchError::AlreadyDispatching);
+            }
+            if state.lifecycle != DispatcherLifecycle::Running || state.shutdown_pending {
+                return Ok(false);
+            }
+            state.wake_pending = false;
+            let callback = state.callbacks.pop_front();
+            state.turn_active = callback.is_some();
+            callback
+        };
+        let Some(callback) = callback else {
+            return Ok(false);
+        };
+
+        let guard = TurnGuard {
+            inner: Arc::clone(&self.inner),
+            before_recheck: Some(Box::new(|| {})),
+        };
+        callback.invoke();
+        drop(guard);
+        Ok(true)
+    }
+
     /// Request shutdown without interrupting the active UI callback. Repeated requests coalesce.
     pub(crate) fn request_shutdown(&self) -> Result<(), DispatchError> {
         let admission = self.prepare_shutdown_request()?;
@@ -235,7 +268,9 @@ impl Dispatcher {
             return Ok(ShutdownRequestAdmission::AlreadyPending);
         }
         state.shutdown_pending = true;
-        let schedule_wake = !state.wake_pending;
+        // Promote an already queued normal wake so shutdown cannot be stranded
+        // behind a host loop that coalesces normal notifications.
+        let schedule_wake = true;
         state.wake_pending = true;
         Ok(ShutdownRequestAdmission::NewlyPending { schedule_wake })
     }
@@ -527,6 +562,34 @@ mod tests {
                 .expect("bridge priority list is healthy"),
             [WakePriority::Control]
         );
+
+        let (promoted_dispatcher, promoted_bridge) = new_dispatcher();
+        post_callback(&promoted_dispatcher, Box::new(|| {})).expect("post is accepted");
+        promoted_dispatcher
+            .request_shutdown()
+            .expect("shutdown request is accepted");
+        assert_eq!(
+            *promoted_bridge
+                .priorities
+                .lock()
+                .expect("bridge priority list is healthy"),
+            [WakePriority::Normal, WakePriority::Control]
+        );
+        let ran = Arc::new(AtomicUsize::new(0));
+        let ran_in_callback = Arc::clone(&ran);
+        let (pending_dispatcher, _) = new_dispatcher();
+        post_callback(
+            &pending_dispatcher,
+            Box::new(move || {
+                ran_in_callback.fetch_add(1, Ordering::SeqCst);
+            }),
+        )
+        .expect("post is accepted");
+        pending_dispatcher
+            .request_shutdown()
+            .expect("shutdown accepted");
+        assert_eq!(pending_dispatcher.dispatch_normal_turn(), Ok(false));
+        assert_eq!(ran.load(Ordering::SeqCst), 0);
     }
 
     fn post_callback(
