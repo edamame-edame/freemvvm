@@ -917,6 +917,48 @@ mod tests {
     }
 
     #[test]
+    fn closed_runtime_shell_releases_on_worker_without_ui_cleanup() {
+        let runtime = RuntimeCleanupQueue::new();
+        let registry = Arc::new(HandleRegistry::<u8, u64>::new());
+        let control = CoreObjectControl::new(
+            1,
+            ObjectIdentity::new(12, NonZeroU64::new(1).expect("nonzero generation")),
+            runtime.clone(),
+        );
+        let control_probe = Arc::downgrade(&control);
+        let token = registry
+            .register(4, 1, control.clone())
+            .expect("register Runtime object");
+        drop(control);
+
+        runtime
+            .drain_shutdown()
+            .expect("clean UI state and close Runtime");
+        assert_eq!(runtime.state(), RuntimeState::Closed);
+        assert_eq!(runtime.queued_count(), 0);
+
+        let registry_for_worker = Arc::clone(&registry);
+        let release = thread::spawn(move || registry_for_worker.release(token))
+            .join()
+            .expect("worker release joins");
+        assert_eq!(
+            release,
+            Ok(crate::handle_registry::registry::ReleaseOutcome {
+                cleanup_accepted: false,
+            })
+        );
+        assert!(
+            control_probe.upgrade().is_none(),
+            "last closed shell owner is released by the worker"
+        );
+        assert_eq!(runtime.queued_count(), 0);
+        assert_eq!(
+            registry.release(token),
+            Err(crate::handle_registry::registry::RegistryError::InvalidToken)
+        );
+    }
+
+    #[test]
     fn completion_record_distinguishes_host_stop_and_allows_ui_retry() {
         let no_op_host = HostRegistration::new();
         let no_op_dispatcher = Dispatcher::new(Arc::new(TestUiLoopBridge::default()));
