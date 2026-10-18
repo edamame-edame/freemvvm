@@ -22,4 +22,4 @@
 ## Progress
 
 - Plan and test traceability: complete; registered as `UNIT-ABI-005` / `UT-ABI-005`.
-- Implementation and validation: complete. Focused Runtime UI-thread query tests and Runtime handle registry tests passed; `tools/dev.py check`, `tools/dev.py minimum`, `tools/check_docs.py`, and `git diff --check` passed. Commit/push follows after final diff review.
+- Implementation, validation, commit, and push: complete. Focused Runtime UI-thread query tests and Runtime handle registry tests passed; `tools/dev.py check`, `tools/dev.py minimum`, `tools/check_docs.py`, and `git diff --check` passed. Commit `95a3893` is pushed to `origin/impl-rust/runtime-objects-handle-token-issuer`.
