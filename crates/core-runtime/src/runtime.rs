@@ -1,4 +1,4 @@
-use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission};
+﻿use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission, UiLoopBridge};
 use crate::handle_registry::registry::{CleanupQueue, CleanupReservation, ObjectIdentity};
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -748,6 +748,81 @@ impl HostRegistration {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(dead_code)]
+pub(crate) enum RuntimeCoreError {
+    WrongThread,
+    Closed,
+    BridgeAlreadyRegistered,
+    SynchronizationPoisoned,
+}
+
+/// Internal Runtime owner. A host loop bridge is optional at creation.
+#[allow(dead_code)]
+pub(crate) struct RuntimeCore {
+    ui_thread: UiThreadContext,
+    cleanup: Arc<RuntimeCleanupQueue>,
+    host: HostRegistration,
+    dispatcher: Mutex<Option<Dispatcher>>,
+}
+
+#[allow(dead_code)]
+impl RuntimeCore {
+    pub(crate) fn new() -> Self {
+        let ui_thread = UiThreadContext::capture();
+        Self {
+            ui_thread,
+            cleanup: RuntimeCleanupQueue::new_for_ui_thread(ui_thread),
+            host: HostRegistration::new_for_ui_thread(ui_thread),
+            dispatcher: Mutex::new(None),
+        }
+    }
+
+    pub(crate) fn is_ui_thread(&self) -> bool {
+        self.ui_thread.is_current()
+    }
+
+    pub(crate) fn host_registration(&self) -> &HostRegistration {
+        &self.host
+    }
+
+    pub(crate) fn cleanup_queue(&self) -> Arc<RuntimeCleanupQueue> {
+        Arc::clone(&self.cleanup)
+    }
+
+    pub(crate) fn set_ui_loop_bridge(
+        &self,
+        bridge: &Arc<dyn UiLoopBridge>,
+    ) -> Result<(), RuntimeCoreError> {
+        if !self.is_ui_thread() {
+            return Err(RuntimeCoreError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeCoreError::Closed);
+        }
+
+        let mut dispatcher = self
+            .dispatcher
+            .lock()
+            .map_err(|_| RuntimeCoreError::SynchronizationPoisoned)?;
+        if dispatcher.is_some() {
+            return Err(RuntimeCoreError::BridgeAlreadyRegistered);
+        }
+        *dispatcher = Some(Dispatcher::new_for_ui_thread(
+            Arc::clone(bridge),
+            self.ui_thread,
+        ));
+        Ok(())
+    }
+
+    pub(crate) fn dispatcher(&self) -> Result<Option<Dispatcher>, RuntimeCoreError> {
+        self.dispatcher
+            .lock()
+            .map(|dispatcher| dispatcher.clone())
+            .map_err(|_| RuntimeCoreError::SynchronizationPoisoned)
+    }
+}
+
 /// Thread-independent observation state for one accepted shutdown request.
 /// The record holds no Runtime UI objects and outlives any individual waiter.
 #[derive(Clone)]
@@ -874,11 +949,11 @@ impl ShutdownCompletion {
 mod tests {
     use super::{
         HostBoundaryError, HostRegistration, HostRegistrationError, HostShutdownCommitError,
-        RuntimeCleanupQueue, RuntimeState, ShutdownCompletion, ShutdownCompletionError,
-        ShutdownCompletionState, ShutdownRequestMode, ShutdownRequestOutcome, ShutdownWaitResult,
-        UiThreadContext,
+        RuntimeCleanupQueue, RuntimeCore, RuntimeCoreError, RuntimeState, ShutdownCompletion,
+        ShutdownCompletionError, ShutdownCompletionState, ShutdownRequestMode,
+        ShutdownRequestOutcome, ShutdownWaitResult, UiThreadContext,
     };
-    use crate::dispatcher::{Dispatcher, UiLoopBridge};
+    use crate::dispatcher::{Dispatcher, PostedWork, UiLoopBridge};
     use crate::handle_registry::registry::{
         CleanupQueue, CoreObjectControl, HandleRegistry, ObjectIdentity,
     };
@@ -887,6 +962,69 @@ mod tests {
     use std::sync::mpsc;
     use std::sync::{Arc, Barrier};
     use std::thread;
+
+    #[test]
+    fn runtime_core_registers_bridge_once_on_owner_thread() {
+        let runtime = Arc::new(RuntimeCore::new());
+        assert!(runtime.is_ui_thread());
+        let host_scope = runtime
+            .host_registration()
+            .begin_event()
+            .expect("owner begins host event");
+        runtime
+            .host_registration()
+            .end_event(host_scope)
+            .expect("owner ends host event");
+        assert!(runtime.dispatcher().expect("dispatcher state").is_none());
+        assert_eq!(runtime.cleanup_queue().state(), RuntimeState::Running);
+
+        let worker_runtime = Arc::clone(&runtime);
+        let wrong_thread = thread::spawn(move || {
+            let bridge: Arc<dyn UiLoopBridge> = Arc::new(TestUiLoopBridge::default());
+            let result = worker_runtime.set_ui_loop_bridge(&bridge);
+            (result, Arc::strong_count(&bridge))
+        })
+        .join()
+        .expect("worker registration attempt completes");
+        assert_eq!(wrong_thread.0, Err(RuntimeCoreError::WrongThread));
+        assert_eq!(wrong_thread.1, 1);
+        assert!(runtime.dispatcher().expect("dispatcher state").is_none());
+
+        let bridge = Arc::new(TestUiLoopBridge::default());
+        let bridge_trait: Arc<dyn UiLoopBridge> = bridge.clone();
+        runtime
+            .set_ui_loop_bridge(&bridge_trait)
+            .expect("owner thread installs bridge");
+        assert_eq!(Arc::strong_count(&bridge), 3);
+        assert!(runtime.dispatcher().expect("dispatcher state").is_some());
+        let duplicate_bridge: Arc<dyn UiLoopBridge> = Arc::new(TestUiLoopBridge::default());
+        assert_eq!(
+            runtime.set_ui_loop_bridge(&duplicate_bridge),
+            Err(RuntimeCoreError::BridgeAlreadyRegistered)
+        );
+        assert_eq!(Arc::strong_count(&duplicate_bridge), 1);
+        runtime
+            .dispatcher()
+            .expect("installed dispatcher")
+            .expect("bridge registered")
+            .post(PostedWork::callback(Box::new(|| {})))
+            .expect("dispatcher keeps the first bridge");
+        assert_eq!(bridge.wakes.load(Ordering::SeqCst), 1);
+
+        runtime.cleanup.begin_shutdown().expect("begin shutdown");
+        let late_bridge: Arc<dyn UiLoopBridge> = Arc::new(TestUiLoopBridge::default());
+        assert_eq!(
+            runtime.set_ui_loop_bridge(&late_bridge),
+            Err(RuntimeCoreError::Closed)
+        );
+        assert_eq!(Arc::strong_count(&late_bridge), 1);
+        assert!(
+            runtime
+                .dispatcher()
+                .expect("installed dispatcher remains")
+                .is_some()
+        );
+    }
 
     #[test]
     fn ui_thread_context_distinguishes_creator_from_worker() {
