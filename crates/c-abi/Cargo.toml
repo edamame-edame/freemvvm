@@ -1,6 +1,6 @@
 [package]
 name = "freemvvm-c-abi"
-description = "Versioned C ABI boundary; no public exports implemented yet"
+description = "Versioned C ABI boundary under construction; not yet distributable"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -482,6 +482,27 @@
       "tests": [
         {"id": "UT-HANDLE-SHUTDOWN-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::closed_runtime_shell_releases_on_worker_without_ui_cleanup"]}
       ]
+    },
+    {
+      "id": "UNIT-ABI-001",
+      "state": "ready",
+      "scope": "c-abi-feature-query",
+      "sources": ["crates/c-abi/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/c-abi/Cargo.toml"],
+      "depends_on": [],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "API表・feature・検査順・互換性 / feature ID assignments and has_feature"
+        }
+      ],
+      "requirements": ["RQ-04-006", "RQ-04-010"],
+      "cases": ["TC-ABI-COMP-02", "TC-ABI-REP-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-ABI-001", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "has_feature"]}
+      ]
     }
   ]
 }
