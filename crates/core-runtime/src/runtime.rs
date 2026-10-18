@@ -389,13 +389,11 @@ impl HostRegistration {
         scope_id: u64,
         dispatcher: &Dispatcher,
         cleanup: &RuntimeCleanupQueue,
-        completion: &ShutdownCompletion,
     ) -> Result<bool, HostShutdownCommitError> {
         let mut commit_result = None;
         let dispatched = self
             .end_event_and_dispatch_shutdown(scope_id, dispatcher, || {
-                commit_result =
-                    Some(self.drain_shutdown_and_complete_requests(cleanup, completion));
+                commit_result = Some(self.drain_shutdown_and_complete_requests(cleanup));
             })
             .map_err(HostShutdownCommitError::Boundary)?;
         if !dispatched {
@@ -408,7 +406,6 @@ impl HostRegistration {
     fn drain_shutdown_and_complete_requests(
         &self,
         cleanup: &RuntimeCleanupQueue,
-        fallback_completion: &ShutdownCompletion,
     ) -> Result<(), HostShutdownCommitError> {
         cleanup
             .drain_shutdown()
@@ -420,9 +417,6 @@ impl HostRegistration {
             })?;
             std::mem::take(&mut state.completion_records)
         };
-        let fallback_registered = records
-            .iter()
-            .any(|record| Arc::ptr_eq(record, &fallback_completion.inner));
         for record in records {
             ShutdownCompletion {
                 ui_thread: self.ui_thread,
@@ -432,12 +426,6 @@ impl HostRegistration {
             .map_err(ShutdownCommitError::Completion)
             .map_err(HostShutdownCommitError::Commit)?;
         }
-        if !fallback_registered {
-            fallback_completion
-                .mark_completed()
-                .map_err(ShutdownCommitError::Completion)
-                .map_err(HostShutdownCommitError::Commit)?;
-        }
         Ok(())
     }
 
@@ -446,7 +434,6 @@ impl HostRegistration {
         &self,
         dispatcher: &Dispatcher,
         cleanup: &RuntimeCleanupQueue,
-        completion: &ShutdownCompletion,
     ) -> Result<bool, HostShutdownCommitError> {
         self.ensure_ui_thread()
             .map_err(|error| HostShutdownCommitError::Boundary(HostBoundaryError::Host(error)))?;
@@ -477,7 +464,7 @@ impl HostRegistration {
 
         let mut commit_result = None;
         let dispatched = match dispatcher.run_pending_shutdown(|| {
-            commit_result = Some(self.drain_shutdown_and_complete_requests(cleanup, completion));
+            commit_result = Some(self.drain_shutdown_and_complete_requests(cleanup));
         }) {
             Ok(dispatched) => dispatched,
             Err(DispatchError::AlreadyDispatching) => {
@@ -558,6 +545,18 @@ impl HostRegistration {
         Ok(())
     }
 
+    /// Admit a shutdown request and return its independently owned observation receipt.
+    pub(crate) fn request_shutdown_receipt(
+        &self,
+        dispatcher: &Dispatcher,
+        completion: &ShutdownCompletion,
+    ) -> Result<ShutdownRequest, HostRegistrationError> {
+        self.request_shutdown(dispatcher, completion)?;
+        Ok(ShutdownRequest {
+            completion: completion.clone(),
+        })
+    }
+
     fn reserve_completion_record(
         state: &mut HostRegistrationState,
         completion: &Arc<CompletionInner>,
@@ -595,9 +594,9 @@ impl HostRegistration {
         completion: &ShutdownCompletion,
         mode: ShutdownRequestMode,
     ) -> Result<ShutdownRequestOutcome, HostRegistrationError> {
-        self.request_shutdown(dispatcher, completion)?;
+        let receipt = self.request_shutdown_receipt(dispatcher, completion)?;
         if mode == ShutdownRequestMode::Sync && std::thread::current().id() != self.ui_thread {
-            return completion
+            return receipt
                 .wait()
                 .map(|result| match result {
                     ShutdownWaitResult::Completed => ShutdownRequestOutcome::Completed,
@@ -607,7 +606,7 @@ impl HostRegistration {
                 })
                 .map_err(HostRegistrationError::Completion);
         }
-        completion
+        receipt
             .query()
             .map(|state| match state {
                 ShutdownCompletionState::Pending => ShutdownRequestOutcome::Pending,
@@ -730,6 +729,24 @@ impl HostRegistration {
 pub(crate) struct ShutdownCompletion {
     ui_thread: ThreadId,
     inner: Arc<CompletionInner>,
+}
+
+/// Owned observation handle for one accepted request. Dropping it releases only this observer.
+#[derive(Clone)]
+#[allow(dead_code)]
+pub(crate) struct ShutdownRequest {
+    completion: ShutdownCompletion,
+}
+
+#[allow(dead_code)]
+impl ShutdownRequest {
+    pub(crate) fn query(&self) -> Result<ShutdownCompletionState, ShutdownCompletionError> {
+        self.completion.query()
+    }
+
+    pub(crate) fn wait(&self) -> Result<ShutdownWaitResult, ShutdownCompletionError> {
+        self.completion.wait()
+    }
 }
 
 #[allow(dead_code)]
@@ -908,12 +925,7 @@ mod tests {
         let no_op_scope = no_op_host.begin_event().expect("begin no-op boundary");
         assert!(
             !no_op_host
-                .end_event_and_commit_shutdown(
-                    no_op_scope,
-                    &no_op_dispatcher,
-                    &no_op_cleanup,
-                    &no_op_completion,
-                )
+                .end_event_and_commit_shutdown(no_op_scope, &no_op_dispatcher, &no_op_cleanup,)
                 .expect("no pending shutdown remains a no-op")
         );
         assert_eq!(no_op_cleanup.state(), RuntimeState::Running);
@@ -922,7 +934,7 @@ mod tests {
             ShutdownCompletionState::Pending
         );
         assert_eq!(
-            no_op_host.before_stop(&no_op_dispatcher, &no_op_cleanup, &no_op_completion),
+            no_op_host.before_stop(&no_op_dispatcher, &no_op_cleanup),
             Ok(false)
         );
 
@@ -943,11 +955,7 @@ mod tests {
             .expect("admit graceful-stop request");
         assert!(
             graceful_host
-                .before_stop(
-                    &graceful_dispatcher,
-                    &graceful_cleanup,
-                    &graceful_completion,
-                )
+                .before_stop(&graceful_dispatcher, &graceful_cleanup,)
                 .expect("before_stop drains accepted shutdown")
         );
         assert_eq!(graceful_cleanup.state(), RuntimeState::Closed);
@@ -964,6 +972,54 @@ mod tests {
                 .query()
                 .expect("stop does not overwrite completion"),
             ShutdownCompletionState::Completed
+        );
+
+        let receipt_host = HostRegistration::new();
+        let receipt_dispatcher = Dispatcher::new(Arc::new(TestUiLoopBridge::default()));
+        let receipt_cleanup = RuntimeCleanupQueue::new();
+        let receipt_cleanup_count = Arc::new(AtomicUsize::new(0));
+        let receipt_cleanup_count_for_callback = Arc::clone(&receipt_cleanup_count);
+        receipt_cleanup
+            .track_ui_state(Box::new(move || {
+                receipt_cleanup_count_for_callback.fetch_add(1, Ordering::SeqCst);
+            }))
+            .expect("track receipt cleanup");
+        let receipt_completion = ShutdownCompletion::new();
+        let receipt_record = Arc::downgrade(&receipt_completion.inner);
+        let receipt = receipt_host
+            .request_shutdown_receipt(&receipt_dispatcher, &receipt_completion)
+            .expect("admit request and create owned receipt");
+        let receipt_for_query = receipt.clone();
+        assert_eq!(
+            thread::spawn(move || receipt_for_query.query())
+                .join()
+                .expect("cross-thread receipt query joins")
+                .expect("cross-thread receipt query succeeds"),
+            ShutdownCompletionState::Pending
+        );
+        drop(receipt);
+        drop(receipt_completion);
+        assert!(
+            receipt_record.upgrade().is_some(),
+            "accepted shutdown remains owned after receipt and observer are dropped"
+        );
+        let receipt_scope = receipt_host
+            .begin_event()
+            .expect("begin receipt shutdown boundary");
+        assert!(
+            receipt_host
+                .end_event_and_commit_shutdown(
+                    receipt_scope,
+                    &receipt_dispatcher,
+                    &receipt_cleanup,
+                )
+                .expect("commit request after receipt release")
+        );
+        assert_eq!(receipt_cleanup.state(), RuntimeState::Closed);
+        assert_eq!(receipt_cleanup_count.load(Ordering::SeqCst), 1);
+        assert!(
+            receipt_record.upgrade().is_none(),
+            "host releases the completion record after cleanup commit"
         );
 
         let (wake_sender, wake_receiver) = mpsc::channel();
@@ -989,12 +1045,7 @@ mod tests {
             .expect("begin sync shutdown boundary");
         assert!(
             sync_host
-                .end_event_and_commit_shutdown(
-                    sync_scope,
-                    &sync_dispatcher,
-                    &sync_cleanup,
-                    &sync_completion,
-                )
+                .end_event_and_commit_shutdown(sync_scope, &sync_dispatcher, &sync_cleanup,)
                 .expect("commit worker synchronous request")
         );
         assert_eq!(
@@ -1050,7 +1101,7 @@ mod tests {
             Err(HostRegistrationError::InvalidContext)
         );
         assert_eq!(
-            host.before_stop(&dispatcher, &no_op_cleanup, &completion),
+            host.before_stop(&dispatcher, &no_op_cleanup),
             Err(HostShutdownCommitError::Boundary(HostBoundaryError::Host(
                 HostRegistrationError::InvalidContext
             )))
@@ -1202,7 +1253,7 @@ mod tests {
         assert_eq!(dispatcher_bridge.wakes.load(Ordering::SeqCst), 3);
         let shutdown_scope = host.begin_event().expect("begin shutdown boundary");
         assert!(
-            host.end_event_and_commit_shutdown(shutdown_scope, &dispatcher, &runtime, &completion,)
+            host.end_event_and_commit_shutdown(shutdown_scope, &dispatcher, &runtime)
                 .expect("outer boundary drains and commits shutdown")
         );
         assert_eq!(
@@ -1218,10 +1269,7 @@ mod tests {
             ShutdownCompletionState::Completed
         );
 
-        assert_eq!(
-            host.before_stop(&dispatcher, &runtime, &completion),
-            Ok(false)
-        );
+        assert_eq!(host.before_stop(&dispatcher, &runtime), Ok(false));
         host.notify_stopped(9)
             .expect("late host-stop does not overwrite completion");
         assert_eq!(
