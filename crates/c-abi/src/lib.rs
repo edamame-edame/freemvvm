@@ -2,8 +2,12 @@
 //!
 //! The public API is under construction and is not distributable yet.
 
+use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
+
 const UI_OK: u32 = 0;
 const UI_INVALID_ARGUMENT: u32 = 1;
+const NUMERIC_NARROW_EXACT: u32 = 0;
+const NUMERIC_NARROW_NEAREST_EVEN: u32 = 1;
 const RUNTIME_VERSION_MAJOR: u32 = 1;
 const RUNTIME_VERSION_MINOR: u32 = 0;
 const RUNTIME_VERSION_PATCH: u32 = 0;
@@ -45,6 +49,71 @@ pub unsafe extern "C" fn ui_abi_1_get_version(
     UI_OK
 }
 
+/// Expand an F32 value to F64 without losing finite precision.
+///
+/// # Safety
+/// `out_value` must be null or point to writable storage for one `f64`. A non-null
+/// `out_error` must point to writable storage for one ABI handle (`u64`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_numeric_expand_f32(
+    value: f32,
+    out_value: *mut f64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if out_value.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+
+    // SAFETY: the caller guarantees that a non-null required output is writable.
+    unsafe { out_value.write(0.0) };
+    let converted = expand_f32_to_f64(value);
+    // SAFETY: the required output pointer was checked non-null above.
+    unsafe { out_value.write(converted) };
+    UI_OK
+}
+
+/// Narrow an F64 value to F32 using exact or nearest-even precision.
+///
+/// `mode` is 0 for exact conversion or 1 for nearest-even rounding.
+///
+/// # Safety
+/// `out_value` must be null or point to writable storage for one `f32`. A non-null
+/// `out_error` must point to writable storage for one ABI handle (`u64`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_numeric_narrow_f64(
+    value: f64,
+    mode: u32,
+    out_value: *mut f32,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if out_value.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+
+    // SAFETY: the caller guarantees that the required output pointer is writable.
+    unsafe { out_value.write(0.0) };
+    let mode = match mode {
+        NUMERIC_NARROW_EXACT => NarrowMode::Exact,
+        NUMERIC_NARROW_NEAREST_EVEN => NarrowMode::NearestEven,
+        _ => return UI_INVALID_ARGUMENT,
+    };
+
+    let Ok(converted) = narrow_f64_to_f32(value, mode) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    // SAFETY: the required output pointer was checked non-null above.
+    unsafe { out_value.write(converted) };
+    UI_OK
+}
+
 /// Report whether an ABI feature is available in this library build.
 ///
 /// No feature is advertised until its complete public contract is implemented.
@@ -64,12 +133,84 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
         return UI_INVALID_ARGUMENT;
     }
 
+    if feature_id == 3 {
+        // F32/F64 conversion symbols and their complete contracts are implemented.
+        // SAFETY: the caller guarantees that the non-null output points to writable `u8` storage.
+        unsafe { out_supported.write(1) };
+    }
+
     UI_OK
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{UI_INVALID_ARGUMENT, UI_OK, ui_abi_1_get_version, ui_abi_1_has_feature};
+    use super::{
+        UI_INVALID_ARGUMENT, UI_OK, ui_abi_1_get_version, ui_abi_1_has_feature,
+        ui_abi_1_numeric_expand_f32, ui_abi_1_numeric_narrow_f64,
+    };
+
+    #[test]
+    fn numeric_expand_f32_returns_exact_f64_and_clears_optional_error() {
+        let mut output = f64::NAN;
+        let mut error = u64::MAX;
+        // SAFETY: both output pointers refer to writable storage.
+        let status =
+            unsafe { ui_abi_1_numeric_expand_f32(-f32::MIN_POSITIVE, &mut output, &mut error) };
+
+        assert_eq!(status, UI_OK);
+        assert_eq!(output, -f32::MIN_POSITIVE as f64);
+        assert_eq!(error, 0);
+    }
+
+    #[test]
+    fn numeric_narrow_applies_mode_and_rejects_invalid_or_unrepresentable_inputs() {
+        let mut output = f32::NAN;
+        let mut error = u64::MAX;
+        let midpoint = 1.0_f64 + 2_f64.powi(-24);
+        // SAFETY: both output pointers refer to writable storage.
+        let status = unsafe { ui_abi_1_numeric_narrow_f64(midpoint, 1, &mut output, &mut error) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(output.to_bits(), 0x3f80_0000);
+        assert_eq!(error, 0);
+
+        output = f32::NAN;
+        error = u64::MAX;
+        // SAFETY: both output pointers refer to writable storage.
+        let status = unsafe { ui_abi_1_numeric_narrow_f64(0.1, 0, &mut output, &mut error) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        assert_eq!(output.to_bits(), 0);
+        assert_eq!(error, 0);
+
+        output = f32::NAN;
+        // SAFETY: the output pointer refers to writable storage and null optional error is allowed.
+        let status =
+            unsafe { ui_abi_1_numeric_narrow_f64(1.0, 2, &mut output, std::ptr::null_mut()) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        assert_eq!(output.to_bits(), 0);
+
+        output = f32::NAN;
+        // SAFETY: the output pointer refers to writable storage; null optional error is allowed.
+        let status =
+            unsafe { ui_abi_1_numeric_narrow_f64(f64::MAX, 1, &mut output, std::ptr::null_mut()) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        assert_eq!(output.to_bits(), 0);
+    }
+
+    #[test]
+    fn numeric_conversion_rejects_null_required_outputs() {
+        let mut error = u64::MAX;
+        // SAFETY: null required output is handled and error points to writable storage.
+        let status = unsafe { ui_abi_1_numeric_expand_f32(1.0, std::ptr::null_mut(), &mut error) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        assert_eq!(error, 0);
+
+        error = u64::MAX;
+        // SAFETY: null required output is handled and error points to writable storage.
+        let status =
+            unsafe { ui_abi_1_numeric_narrow_f64(1.0, 1, std::ptr::null_mut(), &mut error) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        assert_eq!(error, 0);
+    }
 
     #[test]
     fn get_version_reports_initial_stable_runtime_version() {
@@ -111,13 +252,19 @@ mod tests {
 
     #[test]
     fn has_feature_reports_only_complete_public_contracts() {
-        for feature_id in 1..=6 {
+        for feature_id in [1, 2, 4, 5, 6] {
             let mut supported = 1;
             // SAFETY: `supported` is valid writable storage for the output value.
             let status = unsafe { ui_abi_1_has_feature(feature_id, &mut supported) };
             assert_eq!(status, UI_OK);
             assert_eq!(supported, 0, "feature {feature_id} is not implemented");
         }
+
+        let mut numeric_supported = 0;
+        // SAFETY: `numeric_supported` is valid writable storage for the output value.
+        let status = unsafe { ui_abi_1_has_feature(3, &mut numeric_supported) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(numeric_supported, 1);
 
         let mut unknown_supported = 1;
         // SAFETY: `unknown_supported` is valid writable storage for the output value.

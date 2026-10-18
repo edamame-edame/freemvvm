@@ -4,4 +4,5 @@
 
 mod dispatcher;
 mod handle_registry;
+pub mod numeric;
 mod runtime;
