@@ -107,6 +107,12 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | --- | --- | --- | --- |
 | <a id="ut-runtime-object-control-001"></a>UT-RUNTIME-OBJECT-CONTROL-001 | RuntimeCoreからobject identityを指定してcontrolを作り、共有HandleRegistryへ登録。自身と別Runtimeを指定して検証し、最後の参照をworkerからreleaseした後にRuntime queueをdrainする | 登録controlのRuntime identityとcleanup queueは生成元Runtimeに結び付く。自身のRuntime検証だけ成功し、他Runtime検証はWrongRuntimeで拒否される。worker release後の最終cleanupは生成元RuntimeのUI thread queueで完了する | [RQ-04-019](../11_requirements/RQ-04_abi-boundary.md#rq-04-019)、[RQ-05-010](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-010)、[RQ-06-003](../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### Runtime handle registration and borrowed resolution — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-runtime-handle-reg-001"></a>UT-RUNTIME-HANDLE-REG-001 | 異なるRuntimeCoreをtableへ登録し、得られたtokenを同threadとworkerから解決。未登録tokenとzero tokenも解決し、table lockをpoisonさせたinsertも試す | tokenは非zeroかつ別Runtime間で異なる。解決結果は該当RuntimeCoreと同一ownerを指す。未登録/zero tokenはInvalidTokenで拒否され、tableを変更しない。worker解決も安全だがUI操作権を与えない。poison時は失敗し、callerのRuntime ownerを維持する | [RQ-04-004](../11_requirements/RQ-04_abi-boundary.md#rq-04-004)、[RQ-04-018](../11_requirements/RQ-04_abi-boundary.md#rq-04-018)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+
 ## 承認履歴
 
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
@@ -124,6 +130,7 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | 2026-10-18 | RuntimeCore bridge registration追補 | 利用者 | 「OK」により、bridgeなし生成とRuntimeCore内の一度限りのbridge登録に対するfocused unit-test設計を追加。公開C ABIやRuntime handle実装の承認を意味しない |
 | 2026-10-18 | RuntimeCore identity issuance追補 | Codex | RQ-04-018/019と承認済みRuntime identity設計から、共有token issuerを使う一意性のfocused test案を追加。Runtime identityの公開やC ABIの承認を意味しない |
 | 2026-10-18 | Runtime-bound CoreObjectControl追補 | 利用者 | 「OK」により、Runtime identityとcleanup queueの組合せを生成元Runtimeへ固定するfocused test案を追加。object storeや公開handleの承認を意味しない |
+| 2026-10-18 | Runtime handle registration追補 | 利用者 | 「OK」により、process tokenを使うRuntime handleの登録・borrowed lookupをfocused test案として追加。public C ABI entry pointやlast-token releaseの承認を意味しない |
 
 ## 改訂履歴
 

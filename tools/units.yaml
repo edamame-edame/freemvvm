@@ -604,6 +604,32 @@
       ]
     },
     {
+      "id": "UNIT-CORE-026",
+      "state": "ready",
+      "scope": "runtime-handle-registration-and-borrowed-resolution",
+      "sources": ["crates/core-runtime/src/runtime_handles.rs", "crates/core-runtime/src/handle_registry.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-024", "UNIT-CORE-025"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "opaque ui_handle / runtime_create"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Runtime identity / runtime_is_ui_thread"
+        }
+      ],
+      "requirements": ["RQ-04-004", "RQ-04-018", "RQ-06-001"],
+      "cases": ["TC-CORE-OBJ-01", "TC-THREAD-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-RUNTIME-HANDLE-REG-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_handles::tests"]}
+      ]
+    },
+    {
       "id": "UNIT-ABI-001",
       "state": "ready",
       "scope": "c-abi-feature-query",
