@@ -505,6 +505,27 @@
       ]
     },
     {
+      "id": "UNIT-CORE-022",
+      "state": "ready",
+      "scope": "runtime-ui-thread-context-propagation",
+      "sources": ["crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/dispatcher.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-021"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Runtime作成時のUI thread identity / RuntimeState responsibilities"
+        }
+      ],
+      "requirements": ["RQ-06-001"],
+      "cases": ["TC-THREAD-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-RUNTIME-THREAD-CONTEXT-002", "command": ["cargo", "test", "-p", "freemvvm-core", "dispatcher::tests::injected_ui_thread_context_overrides_component_creation_thread"]}
+      ]
+    },
+    {
       "id": "UNIT-ABI-001",
       "state": "ready",
       "scope": "c-abi-feature-query",

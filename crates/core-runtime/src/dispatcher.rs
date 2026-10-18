@@ -138,9 +138,16 @@ pub(crate) struct Dispatcher {
 
 impl Dispatcher {
     pub(crate) fn new(bridge: Arc<dyn UiLoopBridge>) -> Self {
+        Self::new_for_ui_thread(bridge, UiThreadContext::capture())
+    }
+
+    pub(crate) fn new_for_ui_thread(
+        bridge: Arc<dyn UiLoopBridge>,
+        ui_thread: UiThreadContext,
+    ) -> Self {
         Self {
             inner: Arc::new(DispatcherInner {
-                ui_thread: UiThreadContext::capture(),
+                ui_thread,
                 bridge,
                 state: Mutex::new(QueueState {
                     lifecycle: DispatcherLifecycle::Running,
@@ -441,7 +448,7 @@ mod tests {
     use super::{
         DispatchError, Dispatcher, PostErrorKind, PostedCallback, PostedWork, UiLoopBridge,
     };
-    use crate::runtime::HostRegistration;
+    use crate::runtime::{HostRegistration, UiThreadContext};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Barrier, Mutex, mpsc};
     use std::thread;
@@ -474,6 +481,24 @@ mod tests {
         callback: PostedCallback,
     ) -> Result<(), super::PostError> {
         dispatcher.post(PostedWork::callback(callback))
+    }
+
+    #[test]
+    fn injected_ui_thread_context_overrides_component_creation_thread() {
+        let ui_thread = UiThreadContext::capture();
+        let dispatcher = thread::spawn(move || {
+            Dispatcher::new_for_ui_thread(Arc::new(FakeBridge::default()), ui_thread)
+        })
+        .join()
+        .expect("dispatcher construction completes");
+
+        assert_eq!(dispatcher.dispatch_turn(), Ok(false));
+
+        let worker_dispatcher = dispatcher.clone();
+        let worker_result = thread::spawn(move || worker_dispatcher.dispatch_turn())
+            .join()
+            .expect("worker dispatch attempt completes");
+        assert_eq!(worker_result, Err(DispatchError::WrongThread));
     }
 
     #[test]

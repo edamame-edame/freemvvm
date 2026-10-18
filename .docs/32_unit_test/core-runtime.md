@@ -83,6 +83,12 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | --- | --- | --- | --- |
 | <a id="ut-runtime-thread-context-001"></a>UT-RUNTIME-THREAD-CONTEXT-001 | `UiThreadContext`を現在threadで生成し、同threadとworker threadから所属を照会する | 生成threadではtrue、worker threadではfalse。照会はthread identity以外の状態を変更しない | [RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### Runtime UI thread context propagation — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-runtime-thread-context-002"></a>UT-RUNTIME-THREAD-CONTEXT-002 | callerで`UiThreadContext`を取得し、workerでそのcontextを受け取ったDispatcherを構築。callerとworker双方からdispatchを試す | callerのdispatchは成功し、workerのdispatchは`WrongThread`。作成threadではなく注入contextの所属が使われる | [RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+
 ## 承認履歴
 
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
@@ -96,6 +102,7 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | 2026-10-17 | 0.4 Runtime HandleRegistry追補 | — | 承認済みDD v1.2のRuntime-owner/pin/finalizer境界を具体化したレビュー案。実装・test合格を意味しない |
 | 2026-10-17 | 0.4全文 | 利用者 | 「ok」によりRuntime HandleRegistry追補を含む本版全文を承認。テスト設計の承認であり製品test合格を意味しない |
 | 2026-10-18 | Runtime UI thread identity追補 | 利用者 | 「ok」により、Runtime作成thread identity contextのfocused unit-test設計を追加。RQ-06-001全体の検証完了や公開Runtime APIの承認を意味しない |
+| 2026-10-18 | Runtime UI thread context propagation追補 | 利用者 | 「ok」により、共有context注入に対するfocused unit-test設計を追加。Runtime facadeや公開ABIの承認を意味しない |
 
 ## 改訂履歴
 

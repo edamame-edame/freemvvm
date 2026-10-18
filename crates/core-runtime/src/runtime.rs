@@ -60,9 +60,13 @@ pub(crate) struct RuntimeCleanupQueue {
 #[allow(dead_code)]
 impl RuntimeCleanupQueue {
     pub(crate) fn new() -> Arc<Self> {
+        Self::new_for_ui_thread(UiThreadContext::capture())
+    }
+
+    pub(crate) fn new_for_ui_thread(ui_thread: UiThreadContext) -> Arc<Self> {
         Arc::new(Self {
             inner: Arc::new(QueueInner {
-                ui_thread: UiThreadContext::capture(),
+                ui_thread,
                 state: Mutex::new(QueueState {
                     lifecycle: RuntimeState::Running,
                     outstanding: 0,
@@ -332,8 +336,12 @@ pub(crate) struct HostRegistration {
 #[allow(dead_code)]
 impl HostRegistration {
     pub(crate) fn new() -> Self {
+        Self::new_for_ui_thread(UiThreadContext::capture())
+    }
+
+    pub(crate) fn new_for_ui_thread(ui_thread: UiThreadContext) -> Self {
         Self {
-            ui_thread: UiThreadContext::capture(),
+            ui_thread,
             scope_owner: Arc::new(()),
             state: Mutex::new(HostRegistrationState {
                 pump: HostPumpState::Available,
@@ -770,8 +778,12 @@ impl ShutdownRequest {
 #[allow(dead_code)]
 impl ShutdownCompletion {
     pub(crate) fn new() -> Self {
+        Self::new_for_ui_thread(UiThreadContext::capture())
+    }
+
+    pub(crate) fn new_for_ui_thread(ui_thread: UiThreadContext) -> Self {
         Self {
-            ui_thread: UiThreadContext::capture(),
+            ui_thread,
             inner: Arc::new(CompletionInner {
                 state: Mutex::new(ShutdownCompletionState::Pending),
                 changed: Condvar::new(),
