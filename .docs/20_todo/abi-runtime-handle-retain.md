@@ -22,4 +22,4 @@
 ## Progress
 
 - Plan and test traceability: complete; registered as `UNIT-ABI-006`, `UT-RUNTIME-HANDLE-RET-001`, and `UT-ABI-006`.
-- Implementation and validation: complete. Focused registry and C ABI tests passed; `tools/dev.py check`, `tools/dev.py minimum`, inventory traceability validation, and `git diff --check` passed. Commit/push follows after final diff review.
+- Implementation, validation, commit, and push: complete. Focused registry and C ABI tests passed; `tools/dev.py check`, `tools/dev.py minimum`, inventory traceability validation, and `git diff --check` passed. Commit `37ddb9b` is pushed to `origin/impl-rust/runtime-objects-handle-token-issuer`.
