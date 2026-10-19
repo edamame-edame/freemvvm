@@ -16,3 +16,10 @@ Scope: `UNIT-CORE-040`, Runtime-owned accumulation of changed Property identitie
 
 - `Subscription` owns the callback/userdata/destroy tuple and composes it with the lifecycle primitive. It invokes user code outside its internal locks; self-cancel leaves userdata alive until callback return, when destroy runs once. Focused tests cover ordinary cancel, post-cancel rejection, and self-cancel.
 - Delivery/cancel thread affinity is a caller precondition until Runtime integration enforces it. Runtime registry ownership, ABI token behavior, notification scheduling, and shutdown remain later work.
+
+## Runtime Subscription owner registry (`UNIT-CORE-043`)
+
+- `RuntimeCore` holds active Subscription `Arc`s in an identity-keyed map. Registration reserves capacity before insertion and rejects duplicates without consuming the caller's owner.
+- Pinning clones the `Arc` and releases the owner-map lock before callback invocation. Cancel removes the Runtime owner first and invokes `Subscription::cancel` outside the map lock. These operations require the Runtime UI thread.
+- This registry is not yet wired to public token release, Property teardown, notification scheduling, or Runtime shutdown draining.
+- Focused tests confirm Runtime ownership survives dropping the registering caller's `Arc`; the callback is pinned and invoked outside the map lock, and explicit cancel removes the owner before destroying the closure.

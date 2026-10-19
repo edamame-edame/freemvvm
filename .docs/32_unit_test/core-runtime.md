@@ -143,6 +143,12 @@ Candidates are already validated values in this slice. Validator execution, dirt
 | --- | --- | --- | --- |
 | <a id="ut-core-property-notify-001"></a>UT-CORE-PROPERTY-NOTIFY-001 | 一つのRuntimeへProperty A/Bを登録し、Aを変更、Bを変更、Aを別値へ変更してからpending generationを取得する。次にAを変更して次generationを取得する。別fixtureで同値・異kind・invalid handleの各更新後にpending queueを取得する | 最初のgenerationは[A, B]のidentity順で一件ずつ含み、Aの最終値を読む。同じidentityの複数変更は一件にcoalesceする。generation取得後のA変更は次generationへ分離される。同値・失敗更新はqueueへ追加しない | [RQ-02-017](../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-04-025](../11_requirements/RQ-04_abi-boundary.md#rq-04-025)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01), [TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### Runtime Subscription owner registry — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-property-subscription-003"></a>UT-CORE-PROPERTY-SUBSCRIPTION-003 | Runtime UI threadでidentityにSubscriptionを登録し、caller側Arcをdropしてweak参照を確認。Runtime経由でinvokeし、explicit cancelしてweak参照・callback・destroyを観測する。duplicate identity登録とworker登録も試す | Runtime ownerによりcaller Arc drop後もSubscriptionが生存し、Runtime pinでdeliveryできる。cancelはownerを外してclosureをcancelしdestroy一回、以後pin不可。duplicate・worker拒否は既存登録を変更せず、callerのSubscriptionを保持する | [RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+
 ### Core Property Subscription callback closure — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
@@ -224,6 +230,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-19 | Core Property Subscription callback closure追補 | Codex | 承認済みRQ/DDからUNIT-CORE-042のfocused closure oracleを登録。Runtime integration・試験合格とは別管理 |
 | 2026-10-19 | UT-CORE-PROPERTY-SUBSCRIPTION-002全文 | 利用者 | 「ok」により、callback closure oracleとUNIT-CORE-042の実装・動作確認を開始。Runtime登録・公開ABIは別単位 |
 | 2026-10-19 | UT-CORE-PROPERTY-SUBSCRIPTION-002実行結果 | Codex | focused test 2件、workspace test 102件、開発ゲート成功。Runtime登録・公開ABIの未実装範囲は継続 |
+| 2026-10-19 | Runtime Subscription owner registry追補 | Codex | 承認済みRQ/DDからUNIT-CORE-043のfocused owner oracleを登録。ABI token・Property index・shutdown drain・試験合格は別管理 |
+| 2026-10-19 | UT-CORE-PROPERTY-SUBSCRIPTION-003全文 | 利用者 | 「ok」により、Runtime owner registry oracleとUNIT-CORE-043の実装・動作確認を開始。公開handle integrationは別単位 |
+| 2026-10-19 | UT-CORE-PROPERTY-SUBSCRIPTION-003実行結果 | Codex | focused test 2件、workspace test 104件、開発ゲート成功。public handle・Property index・shutdown drainは未実装 |
 
 ## 改訂履歴
 
@@ -246,3 +255,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 1.5 | 2026-10-19 | UT-CORE-PROPERTY-SUBSCRIPTION-001のoracle承認と実装開始を記録 | Codex | 利用者の「ok」に基づく。試験合格は実行結果で別管理 |
 | 1.6 | 2026-10-19 | Callback/userdata/destroy closureと自己cancel後の後始末をUT-CORE-PROPERTY-SUBSCRIPTION-002として追補 | Codex | 利用者の「ok」に基づくfocused実装範囲。Runtime integrationと公開ABIを含まない |
 | 1.7 | 2026-10-19 | UT-CORE-PROPERTY-SUBSCRIPTION-002の実行結果を追記 | Codex | focused/workspace testと開発ゲートの結果。要件全体の完了を意味しない |
+| 1.8 | 2026-10-19 | Runtime active Subscription owner retention/pin/cancelをUT-CORE-PROPERTY-SUBSCRIPTION-003として追補 | Codex | 利用者の「ok」に基づくfocused Runtime内部registry。public handleとshutdown drainは含まない |
+| 1.9 | 2026-10-19 | UT-CORE-PROPERTY-SUBSCRIPTION-003の実行結果を追記 | Codex | focused/workspace testと開発ゲートの結果。購読API全体の完了を意味しない |

@@ -421,6 +421,7 @@ pub mod abi_support {
                     | RuntimePropertyError::Store(_)
                     | RuntimePropertyError::WrongObjectState
                     | RuntimePropertyError::NotificationQueueOutOfMemory
+                    | RuntimePropertyError::SubscriptionRegistryOutOfMemory
                     | RuntimePropertyError::ValueKindMismatch(_) => ShutdownApiError::Internal,
                 })?;
         Ok(match kind {
@@ -444,7 +445,10 @@ pub mod abi_support {
             RuntimePropertyError::Registry(RegistryError::OutOfMemory) => {
                 PropertyApiError::Internal
             }
-            RuntimePropertyError::NotificationQueueOutOfMemory => PropertyApiError::OutOfMemory,
+            RuntimePropertyError::NotificationQueueOutOfMemory
+            | RuntimePropertyError::SubscriptionRegistryOutOfMemory => {
+                PropertyApiError::OutOfMemory
+            }
             RuntimePropertyError::Registry(
                 RegistryError::TokenExhausted
                 | RegistryError::CleanupUnavailable
