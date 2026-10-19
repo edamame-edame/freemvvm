@@ -167,6 +167,12 @@ Candidates are already validated values in this slice. Validator execution, dirt
 | --- | --- | --- | --- |
 | <a id="ut-core-property-notify-002"></a>UT-CORE-PROPERTY-NOTIFY-002 | 複数Propertyの値を変更順を入れ替えて更新し、Property Aにはsubscriberを2件登録する。delivery generationをprepareしてProperty identity順と各subscriber順を観測する。prepare後にAを再更新して次generationもprepareする。別fixtureではpending列へ有効identityの後にstale identityを入れprepareを失敗させる | itemは変更Propertyの初回変更順、subscriberは登録順を保ち、prepare中はcallbackを呼ばない。成功generationから返るArc pinはitem保持中にSubscriptionを生存させる。prepare後の更新は次generationに分離される。Property解決失敗時はgeneration全体が元の順序でqueueに戻り、部分snapshotを返さない | [RQ-05-006](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### Property delivery item callback invocation — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-property-notify-003"></a>UT-CORE-PROPERTY-NOTIFY-003 | Property Aにsubscriber A1を登録してdelivery itemをprepareする。A1 callbackからPropertyを再更新しsubscriber A2を追加する。次generationをprepareし、A1 callbackから同item内で後続のA2をcancelしてからitem処理を続ける | callbackはitem snapshot順に一度ずつ、Runtime/Property/queue lockなしで実行される。A1のsetter変更は現在itemへ再入せず次generationにqueueされる。A2は最初のsnapshotに入らず、次generationのsnapshotに入る。次generationでA1がA2をcancelした後はA2 callbackを開始しない。cancel後のdestroyは一度だけ | [RQ-05-006](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+
 ### Core Property Subscription callback closure — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
@@ -260,6 +266,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-20 | Property delivery generation snapshot追補 | Codex | 承認済みRQ/DDからUNIT-CORE-046のordered delivery-item準備とfailure-atomic generation oracleを登録。callback実行・safe-point schedulingは別管理 |
 | 2026-10-20 | UT-CORE-PROPERTY-NOTIFY-002全文 | 利用者 | 「ok」により、delivery snapshot生成、世代順序、失敗時generation復元を含むUNIT-CORE-046の実装・動作確認を開始。callback実行は別単位 |
 | 2026-10-20 | UT-CORE-PROPERTY-NOTIFY-002実行結果 | Codex | focused test 2件、workspace test 108件、開発ゲート成功。callback dispatch・safe-point scheduling・Binding propagationは未実装 |
+| 2026-10-20 | Property delivery item invocation追補 | Codex | 承認済みRQ/DDからUNIT-CORE-047の逐次callback・cancel再確認・次世代enqueue oracleを登録。safe-point schedulingは別管理 |
+| 2026-10-20 | UT-CORE-PROPERTY-NOTIFY-003全文 | 利用者 | 「ok」により、callback内Property更新・追加登録・後続cancelを含むUNIT-CORE-047の実装・動作確認を開始。safe-point schedulingは別単位 |
+| 2026-10-20 | UT-CORE-PROPERTY-NOTIFY-003実行結果 | Codex | focused test 1件、workspace test 109件、開発ゲート成功。outer safe-point scheduling・Binding propagation・shutdown interruptionは未実装 |
 
 ## 改訂履歴
 
@@ -290,3 +299,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2.3 | 2026-10-19 | UNIT-CORE-045のfocused/workspace testと開発ゲート実行結果を追記 | Codex | 実行結果のみ。通知購読全体の完了を意味しない |
 | 2.4 | 2026-10-20 | Property delivery generationの順序・snapshot pin・失敗時復元をUT-CORE-PROPERTY-NOTIFY-002として追補 | Codex | 利用者の継続指示によるfocused実装単位。callback実行やdispatch schedulingを含まない |
 | 2.5 | 2026-10-20 | UNIT-CORE-046のfocused/workspace testと開発ゲート実行結果を追記 | Codex | 実行結果のみ。notification delivery全体の完了を意味しない |
+| 2.6 | 2026-10-20 | Property delivery itemの逐次callbackとcallback内変更/cancelをUT-CORE-PROPERTY-NOTIFY-003として追補 | Codex | 利用者の継続指示によるfocused実装単位。safe-point schedulingを含まない |
+| 2.7 | 2026-10-20 | UNIT-CORE-047のfocused/workspace testと開発ゲート実行結果を追記 | Codex | 実行結果のみ。notification delivery全体の完了を意味しない |

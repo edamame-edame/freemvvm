@@ -867,10 +867,21 @@ pub(crate) struct RuntimeCore {
 }
 
 /// One changed Property and its ordered, temporary subscriber pins.
-#[allow(dead_code)] // Consumed by the later notification dispatcher.
+#[allow(dead_code)] // Connected to the Runtime delivery loop in a later unit.
 pub(crate) struct PropertyDeliveryItem {
     pub(crate) identity: ObjectIdentity,
     pub(crate) subscribers: Vec<Arc<Subscription>>,
+}
+
+impl PropertyDeliveryItem {
+    /// Invokes active subscribers in snapshot order, without holding Runtime locks.
+    #[allow(dead_code)] // Connected to the Runtime delivery loop in a later unit.
+    pub(crate) fn deliver(&self) -> usize {
+        self.subscribers
+            .iter()
+            .filter(|subscription| subscription.invoke())
+            .count()
+    }
 }
 
 #[allow(dead_code)]
@@ -1588,6 +1599,23 @@ mod tests {
         destroys: AtomicUsize,
     }
 
+    #[derive(Default)]
+    struct DeliveryProbe {
+        callbacks: AtomicUsize,
+        destroys: AtomicUsize,
+    }
+
+    struct DeliveryCallbackContext {
+        runtime: Arc<RuntimeCore>,
+        registry: Arc<HandleRegistry<PropertyHandleKind, RuntimeIdentity>>,
+        token: crate::handle_registry::HandleToken,
+        identity: ObjectIdentity,
+        later_subscription: Arc<Subscription>,
+        calls: Arc<AtomicUsize>,
+        outcomes: Arc<AtomicUsize>,
+        destroys: Arc<AtomicUsize>,
+    }
+
     unsafe extern "C" fn subscription_owner_callback(userdata: *mut c_void) {
         // SAFETY: each test keeps its boxed probe alive until after explicit cancellation.
         let probe = unsafe { &*userdata.cast::<SubscriptionOwnerProbe>() };
@@ -1598,6 +1626,60 @@ mod tests {
         // SAFETY: each test keeps its boxed probe alive until after explicit cancellation.
         let probe = unsafe { &*userdata.cast::<SubscriptionOwnerProbe>() };
         probe.destroys.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn delivery_probe_callback(userdata: *mut c_void) {
+        // SAFETY: the Subscription owns this boxed Arc until its destroy callback runs.
+        let probe = unsafe { &*userdata.cast::<Arc<DeliveryProbe>>() };
+        probe.callbacks.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn delivery_probe_destroy(userdata: *mut c_void) {
+        // SAFETY: userdata was produced by Box::into_raw in the test below.
+        let probe = unsafe { &*userdata.cast::<Arc<DeliveryProbe>>() };
+        probe.destroys.fetch_add(1, Ordering::SeqCst);
+        // SAFETY: this callback consumes the unique Box allocated for this userdata.
+        drop(unsafe { Box::from_raw(userdata.cast::<Arc<DeliveryProbe>>()) });
+    }
+
+    unsafe extern "C" fn delivery_callback(userdata: *mut c_void) {
+        // SAFETY: the Subscription owns this boxed context until its destroy callback runs.
+        let context = unsafe { &*userdata.cast::<DeliveryCallbackContext>() };
+        match context.calls.fetch_add(1, Ordering::SeqCst) {
+            0 => {
+                if context.runtime.apply_property_candidate(
+                    &context.registry,
+                    context.token,
+                    TypedValue::I64(2),
+                ) == Ok(ValueCommit::Changed)
+                {
+                    context.outcomes.fetch_or(1, Ordering::SeqCst);
+                }
+                if context
+                    .runtime
+                    .register_subscription_owner(context.identity, &context.later_subscription)
+                    .is_ok()
+                {
+                    context.outcomes.fetch_or(2, Ordering::SeqCst);
+                }
+            }
+            1 => {
+                if context
+                    .runtime
+                    .cancel_subscription_owner(context.identity, &context.later_subscription)
+                    == Ok(true)
+                {
+                    context.outcomes.fetch_or(4, Ordering::SeqCst);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    unsafe extern "C" fn delivery_callback_destroy(userdata: *mut c_void) {
+        // SAFETY: userdata was produced by Box::into_raw in the test below.
+        let context = unsafe { Box::from_raw(userdata.cast::<DeliveryCallbackContext>()) };
+        context.destroys.fetch_add(1, Ordering::SeqCst);
     }
 
     #[test]
@@ -1772,6 +1854,93 @@ mod tests {
                 .expect("empty generation after unchanged and failed updates")
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn property_delivery_item_invocation_defers_updates_and_rechecks_activity() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let registry = Arc::new(HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new());
+        let token = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register Property");
+        let identity = registry
+            .validate(token, &PropertyHandleKind::Property, &runtime.identity)
+            .expect("Property remains live")
+            .identity();
+
+        let later_probe = Arc::new(DeliveryProbe::default());
+        let later_userdata = Box::into_raw(Box::new(Arc::clone(&later_probe))).cast::<c_void>();
+        // SAFETY: the Subscription owns its Box until delivery_probe_destroy runs.
+        let later_subscription = Arc::new(unsafe {
+            Subscription::new(
+                delivery_probe_callback,
+                later_userdata,
+                delivery_probe_destroy,
+            )
+        });
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let outcomes = Arc::new(AtomicUsize::new(0));
+        let destroys = Arc::new(AtomicUsize::new(0));
+        let callback_context = Box::new(DeliveryCallbackContext {
+            runtime: Arc::clone(&runtime),
+            registry: Arc::clone(&registry),
+            token,
+            identity,
+            later_subscription: Arc::clone(&later_subscription),
+            calls: Arc::clone(&calls),
+            outcomes: Arc::clone(&outcomes),
+            destroys: Arc::clone(&destroys),
+        });
+        let callback_userdata = Box::into_raw(callback_context).cast::<c_void>();
+        // SAFETY: the Subscription owns its Box until delivery_callback_destroy runs.
+        let first_subscription = Arc::new(unsafe {
+            Subscription::new(
+                delivery_callback,
+                callback_userdata,
+                delivery_callback_destroy,
+            )
+        });
+        runtime
+            .register_subscription_owner(identity, &first_subscription)
+            .expect("register first subscriber");
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, token, TypedValue::I64(1)),
+            Ok(ValueCommit::Changed)
+        );
+        let first_generation = runtime
+            .prepare_property_delivery_generation()
+            .expect("prepare first delivery generation");
+        assert_eq!(first_generation.len(), 1);
+        assert_eq!(first_generation[0].subscribers.len(), 1);
+        assert_eq!(first_generation[0].deliver(), 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(outcomes.load(Ordering::SeqCst), 3);
+        assert_eq!(later_probe.callbacks.load(Ordering::SeqCst), 0);
+
+        let second_generation = runtime
+            .prepare_property_delivery_generation()
+            .expect("prepare callback-triggered generation");
+        assert_eq!(second_generation.len(), 1);
+        assert_eq!(second_generation[0].identity, identity);
+        assert_eq!(second_generation[0].subscribers.len(), 2);
+        assert_eq!(second_generation[0].deliver(), 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(outcomes.load(Ordering::SeqCst), 7);
+        assert_eq!(later_probe.callbacks.load(Ordering::SeqCst), 0);
+        assert_eq!(later_probe.destroys.load(Ordering::SeqCst), 1);
+
+        assert!(matches!(
+            runtime.cancel_subscription_owner(identity, &first_subscription),
+            Ok(true)
+        ));
+        drop(first_generation);
+        drop(second_generation);
+        drop(first_subscription);
+        drop(later_subscription);
+        assert_eq!(destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(later_probe.destroys.load(Ordering::SeqCst), 1);
     }
 
     #[test]

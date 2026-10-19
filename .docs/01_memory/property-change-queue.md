@@ -39,3 +39,10 @@ Scope: `UNIT-CORE-040`, Runtime-owned accumulation of changed Property identitie
 - A successful prepare consumes only the current generation. Later setter changes form a separate next generation. Returned items retain subscriber `Arc`s until the consumer drops them.
 - Focused oracle `UT-CORE-PROPERTY-NOTIFY-002`: 2 passed, including stale-identity restoration. Workspace: 108 tests passed; `tools/dev.py check` passed.
 - Callback invocation, nested setter handling, outer UI safe-point scheduling, the 128-item slice budget, Binding propagation, and shutdown cancellation remain later work.
+
+## Property delivery item invocation (`UNIT-CORE-047`)
+
+- `PropertyDeliveryItem::deliver` walks its prepared strong subscriber pins in order and calls `Subscription::invoke`; each invocation rechecks activity at start. User callbacks run without Runtime store/queue locks held by this method.
+- A callback can update the Property and register another subscriber. The update becomes a later queue generation, and the new subscriber is absent from the already-prepared item. If an earlier callback cancels a later pinned subscriber, the later `invoke` observes cancellation and skips its callback.
+- Focused oracle `UT-CORE-PROPERTY-NOTIFY-003`: 1 passed. Workspace: 109 tests passed; `tools/dev.py check` passed.
+- This unit processes only one prepared item. Outer safe-point scheduling, notification priority and the 128-item slice budget, Binding propagation, callback exception/diagnostic integration, and shutdown interruption remain later work.
