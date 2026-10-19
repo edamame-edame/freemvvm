@@ -23,3 +23,10 @@ Scope: `UNIT-CORE-040`, Runtime-owned accumulation of changed Property identitie
 - Pinning clones the `Arc` and releases the owner-map lock before callback invocation. Cancel removes the Runtime owner first and invokes `Subscription::cancel` outside the map lock. These operations require the Runtime UI thread.
 - This registry is not yet wired to public token release, Property teardown, notification scheduling, or Runtime shutdown draining.
 - Focused tests confirm Runtime ownership survives dropping the registering caller's `Arc`; the callback is pinned and invoked outside the map lock, and explicit cancel removes the owner before destroying the closure.
+
+## Property Subscription weak index (`UNIT-CORE-044`)
+
+- `PropertyState` keeps only `Weak<Subscription>` entries, so it is an index rather than an owner. Adding the same Subscription pointer is idempotent; capacity is reserved before appending.
+- `snapshot_subscriptions` reserves temporary snapshot capacity first, upgrades live entries, retains only active Subscriptions, and returns strong pins for later delivery after the caller releases the Property store lock. Expired and canceled entries are pruned.
+- Focused oracle `UT-CORE-PROPERTY-SUBSCRIPTION-004`: 1 passed. Workspace: 105 tests passed; `tools/dev.py check` passed.
+- This is not yet connected to Runtime registration or notification delivery. Scheduling, callback dispatch, public subscribe/cancel ABI, and shutdown drain remain follow-on work.

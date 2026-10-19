@@ -1196,6 +1196,23 @@
       "tests": [
         {"id": "UT-CORE-PROPERTY-SUBSCRIPTION-003", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_subscription_owner"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-044",
+      "state": "complete",
+      "scope": "property-subscription-weak-index",
+      "sources": ["crates/core-runtime/src/property.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-043"],
+      "design": [
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "Property weak subscriber index and delivery snapshot"}
+      ],
+      "requirements": ["RQ-02-017", "RQ-05-002", "RQ-05-006", "RQ-06-001"],
+      "cases": ["TC-PROP-01", "TC-LIFE-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-CORE-PROPERTY-SUBSCRIPTION-004", "command": ["cargo", "test", "-p", "freemvvm-core", "property_subscription_weak_index"]}
+      ]
     }
   ]
 }

@@ -1,7 +1,7 @@
 use crate::handle_registry::registry::ObjectIdentity;
 use crate::value::{TypedValue, ValueCommit, ValueKind, ValueKindMismatch, ValueStorage};
 use std::ffi::c_void;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, Weak};
 
 /// Kind stored in the internal Runtime handle registry for an initial Property.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -14,6 +14,7 @@ pub(crate) enum PropertyHandleKind {
 /// Runtime-owned state for one Property with a fixed initial value kind.
 pub(crate) struct PropertyState {
     value: ValueStorage,
+    subscribers: Vec<Weak<Subscription>>,
 }
 
 /// Runtime-local first-change-ordered set for the next pending Property generation.
@@ -96,6 +97,13 @@ impl SubscriptionLifecycle {
         }
         false
     }
+
+    pub(crate) fn is_active(&self) -> bool {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .active
+    }
 }
 
 pub(crate) type SubscriptionCallback = unsafe extern "C" fn(*mut c_void);
@@ -171,6 +179,10 @@ impl Subscription {
         }
     }
 
+    pub(crate) fn is_active(&self) -> bool {
+        self.lifecycle.is_active()
+    }
+
     fn destroy_closure(&self) {
         let closure = self
             .closure
@@ -215,7 +227,47 @@ impl PropertyState {
     pub(crate) fn new(initial: TypedValue) -> Self {
         Self {
             value: ValueStorage::new(initial),
+            subscribers: Vec::new(),
         }
+    }
+
+    /// Adds a non-owning Property index entry for an active Subscription.
+    #[allow(dead_code)] // Used by Runtime subscription registration integration.
+    pub(crate) fn add_subscription(
+        &mut self,
+        subscription: &Arc<Subscription>,
+    ) -> Result<(), std::collections::TryReserveError> {
+        if self
+            .subscribers
+            .iter()
+            .filter_map(Weak::upgrade)
+            .any(|current| Arc::ptr_eq(&current, subscription))
+        {
+            return Ok(());
+        }
+        self.subscribers.try_reserve(1)?;
+        self.subscribers.push(Arc::downgrade(subscription));
+        Ok(())
+    }
+
+    /// Pins live active subscriptions for one delivery snapshot and prunes stale entries.
+    #[allow(dead_code)] // Used by notification delivery after releasing the object-store lock.
+    pub(crate) fn snapshot_subscriptions(
+        &mut self,
+    ) -> Result<Vec<Arc<Subscription>>, std::collections::TryReserveError> {
+        let mut snapshot = Vec::new();
+        snapshot.try_reserve(self.subscribers.len())?;
+        self.subscribers.retain(|subscriber| {
+            let Some(subscription) = subscriber.upgrade() else {
+                return false;
+            };
+            if !subscription.is_active() {
+                return false;
+            }
+            snapshot.push(subscription);
+            true
+        });
+        Ok(snapshot)
     }
 
     pub(crate) fn read(&self) -> &TypedValue {
@@ -358,5 +410,43 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
+    }
+
+    #[test]
+    fn property_subscription_weak_index_pins_only_live_active_entries() {
+        let mut property = super::PropertyState::new(crate::value::TypedValue::I64(0));
+        let probe = Box::new(CallbackProbe::default());
+        let expired = make_subscription(&probe);
+        let expired_weak = Arc::downgrade(&expired);
+        property
+            .add_subscription(&expired)
+            .expect("reserve weak subscriber entry");
+        expired.cancel();
+        drop(expired);
+        assert!(expired_weak.upgrade().is_none());
+
+        let active = make_subscription(&probe);
+        let active_weak = Arc::downgrade(&active);
+        property
+            .add_subscription(&active)
+            .expect("add live weak subscriber entry");
+        let snapshot = property
+            .snapshot_subscriptions()
+            .expect("pin active subscriber snapshot");
+        assert_eq!(snapshot.len(), 1);
+        assert!(Arc::ptr_eq(&snapshot[0], &active));
+        drop(active);
+        assert!(active_weak.upgrade().is_some());
+
+        snapshot[0].cancel();
+        assert!(
+            property
+                .snapshot_subscriptions()
+                .expect("prune canceled subscriber")
+                .is_empty()
+        );
+        drop(snapshot);
+        assert!(active_weak.upgrade().is_none());
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 2);
     }
 }
