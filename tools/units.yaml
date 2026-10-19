@@ -851,6 +851,24 @@
       "tests": [
         {"id": "UT-VALUE-001", "command": ["cargo", "test", "-p", "freemvvm-core", "value::tests::owned_utf8"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-028",
+      "state": "ready",
+      "scope": "core-utf8-caller-buffer-copy",
+      "sources": ["crates/core-runtime/src/value.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-027"],
+      "design": [
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "UTF-8 and buffer usage rules"},
+        {"path": ".docs/13_detail_design/runtime-objects/abi.md", "version": "1.2", "section": "UTF-8 and caller buffer"}
+      ],
+      "requirements": ["RQ-04-021"],
+      "cases": ["TC-OWN-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-VALUE-002", "command": ["cargo", "test", "-p", "freemvvm-core", "value::tests::owned_utf8_buffer"]}
+      ]
     }
   ]
 }
