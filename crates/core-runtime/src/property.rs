@@ -1,4 +1,4 @@
-use crate::value::{TypedValue, ValueCommit, ValueKindMismatch, ValueStorage};
+use crate::value::{TypedValue, ValueCommit, ValueKind, ValueKindMismatch, ValueStorage};
 
 /// Kind stored in the internal Runtime handle registry for an initial Property.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -22,6 +22,10 @@ impl PropertyState {
 
     pub(crate) fn read(&self) -> &TypedValue {
         self.value.read()
+    }
+
+    pub(crate) fn kind(&self) -> ValueKind {
+        self.value.read().kind()
     }
 
     pub(crate) fn apply_validated(

@@ -1049,6 +1049,24 @@
       "tests": [
         {"id": "UT-CORE-PROPERTY-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::property_state_registration_read_and_update"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-039",
+      "state": "ready",
+      "scope": "core-property-kind-query",
+      "sources": ["crates/core-runtime/src/value.rs", "crates/core-runtime/src/property.rs", "crates/core-runtime/src/runtime.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-038"],
+      "design": [
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "初期公開Property kindとABI表"},
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "token検証pinとUI thread store解決"}
+      ],
+      "requirements": ["RQ-02-017", "RQ-06-001"],
+      "cases": ["TC-PROP-01", "TC-THREAD-01", "TC-CORE-OBJ-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-CORE-PROPERTY-KIND-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::property_kind_query_returns_initial_kind_on_ui_thread"]}
+      ]
     }
   ]
 }

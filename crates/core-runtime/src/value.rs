@@ -84,7 +84,7 @@ pub(crate) fn f64_equivalent(left: f64, right: f64) -> bool {
 }
 
 impl TypedValue {
-    fn kind(&self) -> ValueKind {
+    pub(crate) fn kind(&self) -> ValueKind {
         match self {
             Self::Bool(_) => ValueKind::Bool,
             Self::I64(_) => ValueKind::I64,

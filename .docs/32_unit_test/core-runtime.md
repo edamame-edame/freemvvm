@@ -137,6 +137,12 @@ Candidates are already validated values in this slice. Validator execution, dirt
 | --- | --- | --- | --- |
 | <a id="ut-core-property-001"></a>UT-CORE-PROPERTY-001 | RuntimeとHandleRegistryへ初期値付きPropertyを登録し、tokenからUI thread上で読み出す。異なる同kind候補、同値候補、異kind候補を順に適用する。invalid token・wrong kind・別Runtime・worker thread・Closed Runtimeでも操作する | 初期値を型付きで読める。差分のみChangedとしてcommitし、同値は既存表現を維持してUnchanged、kind mismatchは値を変えず失敗。handle/Runtime不一致、worker read/update、Closedで状態へアクセスせず失敗。token validation pinをstate access中維持し、登録済みRuntime cleanupでstateを破棄する | [RQ-02-002](../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-02-018](../11_requirements/RQ-02_core-features.md#rq-02-018)、[RQ-02-019](../11_requirements/RQ-02_core-features.md#rq-02-019)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01) |
 
+### Core Property kind query — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-property-kind-001"></a>UT-CORE-PROPERTY-KIND-001 | 5種の初期値でPropertyを登録し、それぞれのtokenからUI thread上でkindを照会する。invalid token・wrong kind・別Runtime・worker thread・shutdown済みobjectも照会する | BOOL/I64/UTF8/F64/DECIMALを各対応kindとして返す。OBJECTは生成できない。handle/kind/Runtime/thread/lifecycle不整合は失敗し、値stateを変更しない。validation pinを照会中維持する | [RQ-02-017](../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01) |
+
 ### Runtime handle registration and borrowed resolution — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |

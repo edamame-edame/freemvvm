@@ -6,7 +6,7 @@ use crate::handle_registry::registry::{
 };
 use crate::object_store::{UiObjectStore, UiObjectStoreError};
 use crate::property::{PropertyHandleKind, PropertyState};
-use crate::value::{TypedValue, ValueCommit, ValueKindMismatch};
+use crate::value::{TypedValue, ValueCommit, ValueKind, ValueKindMismatch};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -991,6 +991,28 @@ impl RuntimeCore {
         Ok(state.read().clone())
     }
 
+    /// Returns the fixed initial kind of a Property on this Runtime's UI thread.
+    pub(crate) fn property_kind(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        token: HandleToken,
+    ) -> Result<ValueKind, RuntimePropertyError> {
+        let pin = registry
+            .validate(token, &PropertyHandleKind::Property, &self.identity)
+            .map_err(RuntimePropertyError::Registry)?;
+        self.ensure_property_access_thread()?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve(pin.identity())
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<PropertyState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        Ok(state.kind())
+    }
+
     /// Applies an already-validated typed candidate to a Property on the UI thread.
     pub(crate) fn apply_property_candidate(
         &self,
@@ -1307,7 +1329,9 @@ mod tests {
     };
     use crate::object_store::UiObjectStoreError;
     use crate::property::PropertyHandleKind;
-    use crate::value::{TypedValue, ValueCommit, ValueKind, ValueKindMismatch};
+    use crate::value::{
+        DecimalValue, OwnedUtf8, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
+    };
     use std::num::NonZeroU64;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::mpsc;
@@ -1411,6 +1435,79 @@ mod tests {
         assert!(matches!(
             runtime.register_property(&registry, TypedValue::I64(13)),
             Err(RuntimeObjectRegistrationError::Closed)
+        ));
+    }
+
+    #[test]
+    fn property_kind_query_returns_initial_kind_on_ui_thread() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let registry =
+            Arc::new(HandleRegistry::<PropertyHandleKind, super::RuntimeIdentity>::new());
+        let values = [
+            (TypedValue::Bool(true), ValueKind::Bool),
+            (TypedValue::I64(-7), ValueKind::I64),
+            (
+                TypedValue::Utf8(OwnedUtf8::copy_from_bytes("初期値".as_bytes()).expect("UTF-8")),
+                ValueKind::Utf8,
+            ),
+            (TypedValue::F64(f64::INFINITY), ValueKind::F64),
+            (
+                TypedValue::Decimal(DecimalValue::new(true, 2, 123).expect("valid decimal")),
+                ValueKind::Decimal,
+            ),
+        ];
+
+        let tokens = values
+            .iter()
+            .map(|(initial, _)| {
+                runtime
+                    .register_property(&registry, initial.clone())
+                    .expect("register typed Property")
+            })
+            .collect::<Vec<_>>();
+        for ((_, expected), token) in values.iter().zip(tokens.iter().copied()) {
+            assert_eq!(runtime.property_kind(&registry, token), Ok(*expected));
+        }
+
+        let wrong_kind = runtime
+            .register_ui_object(&registry, PropertyHandleKind::Other, || ())
+            .expect("register other handle kind");
+        assert!(matches!(
+            runtime.property_kind(&registry, wrong_kind),
+            Err(RuntimePropertyError::Registry(RegistryError::WrongKind))
+        ));
+        let other_runtime = RuntimeCore::new().expect("second Runtime identity is available");
+        let other_token = other_runtime
+            .register_property(&registry, TypedValue::Bool(false))
+            .expect("register Property in second Runtime");
+        assert!(matches!(
+            runtime.property_kind(&registry, other_token),
+            Err(RuntimePropertyError::Registry(RegistryError::WrongRuntime))
+        ));
+        let invalid_token =
+            crate::handle_registry::HandleToken::from_abi(u64::MAX).expect("nonzero test token");
+        assert!(matches!(
+            runtime.property_kind(&registry, invalid_token),
+            Err(RuntimePropertyError::Registry(RegistryError::InvalidToken))
+        ));
+
+        let worker_runtime = Arc::clone(&runtime);
+        let worker_registry = Arc::clone(&registry);
+        let token = tokens[0];
+        assert!(matches!(
+            std::thread::spawn(move || worker_runtime.property_kind(&worker_registry, token))
+                .join()
+                .expect("worker query completes"),
+            Err(RuntimePropertyError::WrongThread)
+        ));
+
+        runtime
+            .cleanup
+            .drain_shutdown()
+            .expect("shutdown clears Property state");
+        assert!(matches!(
+            runtime.property_kind(&registry, tokens[0]),
+            Err(RuntimePropertyError::Registry(RegistryError::InvalidToken))
         ));
     }
 
