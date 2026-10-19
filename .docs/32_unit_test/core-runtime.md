@@ -1,8 +1,8 @@
 # 単体試験：handle・値・ABI・Runtime
 
 - 文書版: 0.8
-- 状態: 0.8 Runtime post/dispatch turn試験追補はレビュー案。既存承認範囲を継承（2026-10-19）。製品test実装中
-- 更新日: 2026-10-18
+- 状態: Runtime post/dispatch turn追補は利用者承認済み（2026-10-19）。製品test実装・実行状態は別管理
+- 更新日: 2026-10-19
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
 

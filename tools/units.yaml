@@ -834,6 +834,23 @@
         {"id": "UT-ABI-008", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "runtime_post"]},
         {"id": "UT-RUNTIME-DISPATCH-001", "command": ["cargo", "test", "-p", "freemvvm-core", "dispatcher::tests::normal_and_shutdown_work_use_distinct_host_wake_priorities"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-027",
+      "state": "ready",
+      "scope": "core-owned-utf8-value",
+      "sources": ["crates/core-runtime/src/value.rs", "crates/core-runtime/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": [],
+      "design": [
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "UTF-8 and buffer ownership rules"}
+      ],
+      "requirements": ["RQ-04-003", "RQ-04-020", "RQ-05-004"],
+      "cases": ["TC-ABI-REP-01", "TC-OWN-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-VALUE-001", "command": ["cargo", "test", "-p", "freemvvm-core", "value::tests::owned_utf8"]}
+      ]
     }
   ]
 }

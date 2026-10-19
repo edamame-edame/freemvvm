@@ -7,6 +7,9 @@ mod handle_registry;
 pub mod numeric;
 mod runtime;
 mod runtime_handles;
+// This value primitive is implemented ahead of its later Property/ABI integration unit.
+#[allow(dead_code)]
+mod value;
 
 /// Narrow support surface used by the C ABI crate while the Core remains private to wrappers.
 #[doc(hidden)]
