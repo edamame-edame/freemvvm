@@ -24,6 +24,10 @@ pub(crate) struct Utf8BufferTooSmall {
     pub(crate) required: usize,
 }
 
+pub(crate) fn f64_equivalent(left: f64, right: f64) -> bool {
+    (left.is_nan() && right.is_nan()) || left == right
+}
+
 impl OwnedUtf8 {
     pub(crate) fn copy_from_bytes(bytes: &[u8]) -> Result<Self, OwnedUtf8Error> {
         let text = std::str::from_utf8(bytes).map_err(|_| OwnedUtf8Error::InvalidUtf8)?;
@@ -131,5 +135,24 @@ mod tests {
             Ok(Utf8CopyOutcome::Written { length: 8 })
         );
         assert_eq!(buffer, expected);
+    }
+
+    #[test]
+    fn f64_equivalent_handles_nan_zero_infinity_and_finite_values() {
+        let first_nan = f64::from_bits(0x7ff0_0000_0000_0001);
+        let second_nan = f64::from_bits(0xfff8_1234_5678_9abc);
+
+        assert!(super::f64_equivalent(first_nan, second_nan));
+        assert!(super::f64_equivalent(first_nan, first_nan));
+        assert!(!super::f64_equivalent(first_nan, f64::INFINITY));
+        assert!(super::f64_equivalent(0.0, -0.0));
+        assert!(super::f64_equivalent(f64::INFINITY, f64::INFINITY));
+        assert!(super::f64_equivalent(f64::NEG_INFINITY, f64::NEG_INFINITY));
+        assert!(!super::f64_equivalent(f64::INFINITY, f64::NEG_INFINITY));
+        assert!(super::f64_equivalent(1.25, 1.25));
+        assert!(!super::f64_equivalent(
+            1.25,
+            f64::from_bits(1.25_f64.to_bits() + 1)
+        ));
     }
 }
