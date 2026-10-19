@@ -959,6 +959,24 @@
       "tests": [
         {"id": "UT-VALUE-007", "command": ["cargo", "test", "-p", "freemvvm-core", "value::tests::decimal_canonical"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-034",
+      "state": "ready",
+      "scope": "runtime-ui-thread-object-store",
+      "sources": ["crates/core-runtime/src/object_store.rs", "crates/core-runtime/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-003", "UNIT-CORE-004"],
+      "design": [
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "UiObjectStore and generation-checked ObjectIdentity"},
+        {"path": ".docs/13_detail_design/runtime-objects/runtime.md", "version": "1.2", "section": "Runtime UI thread context"}
+      ],
+      "requirements": ["RQ-02-001", "RQ-04-018", "RQ-06-001"],
+      "cases": ["TC-CORE-OBJ-01", "TC-LIFE-01", "TC-THREAD-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-OBJECT-STORE-001", "command": ["cargo", "test", "-p", "freemvvm-core", "object_store::tests"]}
+      ]
     }
   ]
 }
