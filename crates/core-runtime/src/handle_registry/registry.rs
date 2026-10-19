@@ -348,7 +348,7 @@ where
     }
 
     #[cfg(test)]
-    fn fail_next_token_issue(&self) {
+    pub(crate) fn fail_next_token_issue(&self) {
         self.fail_next_token_issue
             .store(true, std::sync::atomic::Ordering::SeqCst);
     }

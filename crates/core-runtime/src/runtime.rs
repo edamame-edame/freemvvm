@@ -1,12 +1,15 @@
 use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission, UiLoopBridge};
+use crate::handle_registry::HandleToken;
 use crate::handle_registry::registry::{
-    CleanupQueue, CleanupReservation, CoreObjectControl, ObjectIdentity,
+    CleanupQueue, CleanupReservation, CoreObjectControl, HandleRegistry, ObjectIdentity,
+    RegistryError,
 };
-use crate::object_store::UiObjectStore;
+use crate::object_store::{UiObjectStore, UiObjectStoreError};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::num::NonZeroU64;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::ThreadId;
 
@@ -60,6 +63,45 @@ struct QueueInner {
 /// and their callbacks run only while the Runtime UI thread drains the queue.
 pub(crate) struct RuntimeCleanupQueue {
     inner: Arc<QueueInner>,
+}
+
+/// Routes object-specific finalizers through the Runtime queue and its UI state store.
+struct RuntimeObjectCleanupQueue {
+    queue: Arc<RuntimeCleanupQueue>,
+    ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
+    ui_state_cleared: Arc<AtomicBool>,
+}
+
+impl CleanupQueue for RuntimeObjectCleanupQueue {
+    fn track_ui_state(&self, on_shutdown: Box<dyn Fn() + Send + Sync>) -> Result<(), ()> {
+        self.queue.track_ui_state(on_shutdown)
+    }
+
+    fn reserve(
+        &self,
+        identity: ObjectIdentity,
+        on_complete: Finalizer,
+    ) -> Result<Box<dyn CleanupReservation>, ()> {
+        let ui_objects = Arc::clone(&self.ui_objects);
+        let ui_state_cleared = Arc::clone(&self.ui_state_cleared);
+        let finalizer = Box::new(move || {
+            let state = {
+                let mut store = ui_objects
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                store.destroy(identity)
+            };
+            match state {
+                Ok(state) => drop(state),
+                // Shutdown may clear the store before a racing release ticket is drained.
+                Err(UiObjectStoreError::InvalidIdentity)
+                    if ui_state_cleared.load(Ordering::Acquire) => {}
+                Err(error) => debug_assert!(false, "unexpected object cleanup failure: {error:?}"),
+            }
+            on_complete();
+        });
+        self.queue.reserve(identity, finalizer)
+    }
 }
 
 #[allow(dead_code)]
@@ -770,6 +812,15 @@ pub(crate) enum RuntimeCoreError {
     Dispatch(DispatchError),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RuntimeObjectRegistrationError {
+    WrongThread,
+    Closed,
+    SynchronizationPoisoned,
+    Store(UiObjectStoreError),
+    Registry(RegistryError),
+}
+
 /// Process-unique internal identity for one Runtime owner.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct RuntimeIdentity(NonZeroU64);
@@ -792,6 +843,7 @@ pub(crate) struct RuntimeCore {
     ui_thread: UiThreadContext,
     cleanup: Arc<RuntimeCleanupQueue>,
     ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
+    object_cleanup: Arc<RuntimeObjectCleanupQueue>,
     host: HostRegistration,
     dispatcher: Mutex<Option<Dispatcher>>,
     shutdown_completion: Mutex<Option<ShutdownCompletion>>,
@@ -804,13 +856,24 @@ impl RuntimeCore {
         let ui_thread = UiThreadContext::capture();
         let cleanup = RuntimeCleanupQueue::new_for_ui_thread(ui_thread);
         let ui_objects = Arc::new(Mutex::new(UiObjectStore::new(ui_thread)));
+        let ui_state_cleared = Arc::new(AtomicBool::new(false));
+        let object_cleanup = Arc::new(RuntimeObjectCleanupQueue {
+            queue: Arc::clone(&cleanup),
+            ui_objects: Arc::clone(&ui_objects),
+            ui_state_cleared: Arc::clone(&ui_state_cleared),
+        });
         let shutdown_objects = Arc::clone(&ui_objects);
+        let shutdown_cleared = Arc::clone(&ui_state_cleared);
         cleanup
             .track_ui_state(Box::new(move || {
                 let mut store = shutdown_objects
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
-                debug_assert!(store.clear().is_ok());
+                if store.clear().is_ok() {
+                    shutdown_cleared.store(true, Ordering::Release);
+                } else {
+                    debug_assert!(false, "Runtime store cleanup must run on its UI thread");
+                }
             }))
             .map_err(|()| RuntimeCoreError::CleanupRegistrationFailed)?;
 
@@ -819,6 +882,7 @@ impl RuntimeCore {
             ui_thread,
             cleanup,
             ui_objects,
+            object_cleanup,
             host: HostRegistration::new_for_ui_thread(ui_thread),
             dispatcher: Mutex::new(None),
             shutdown_completion: Mutex::new(None),
@@ -834,8 +898,51 @@ impl RuntimeCore {
         &self,
         identity: ObjectIdentity,
     ) -> Arc<CoreObjectControl<RuntimeIdentity>> {
-        let cleanup_queue: Arc<dyn CleanupQueue> = self.cleanup.clone();
+        let cleanup_queue: Arc<dyn CleanupQueue> = self.object_cleanup.clone();
         CoreObjectControl::new(self.identity, identity, cleanup_queue)
+    }
+
+    /// Creates UI state, binds its identity to this Runtime, and registers its owner token.
+    pub(crate) fn register_ui_object<K, T, F>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        kind: K,
+        make_state: F,
+    ) -> Result<HandleToken, RuntimeObjectRegistrationError>
+    where
+        K: Clone + Eq + Send + Sync,
+        T: Any + Send + 'static,
+        F: FnOnce() -> T + Send,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeObjectRegistrationError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeObjectRegistrationError::Closed);
+        }
+
+        let state = Box::new(make_state()) as Box<dyn Any + Send>;
+        let identity = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimeObjectRegistrationError::SynchronizationPoisoned)?
+            .insert(state)
+            .map_err(RuntimeObjectRegistrationError::Store)?;
+        let control = self.new_object_control(identity);
+
+        match registry.register(kind, self.identity, Arc::clone(&control)) {
+            Ok(token) => Ok(token),
+            Err(error) => {
+                let rollback = self
+                    .ui_objects
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .destroy(identity);
+                debug_assert!(rollback.is_ok(), "failed to roll back UI object state");
+                drop(rollback);
+                Err(RuntimeObjectRegistrationError::Registry(error))
+            }
+        }
     }
 
     pub(crate) fn is_ui_thread(&self) -> bool {
@@ -1108,9 +1215,9 @@ impl ShutdownCompletion {
 mod tests {
     use super::{
         HostBoundaryError, HostRegistration, HostRegistrationError, HostShutdownCommitError,
-        RuntimeCleanupQueue, RuntimeCore, RuntimeCoreError, RuntimeState, ShutdownCompletion,
-        ShutdownCompletionError, ShutdownCompletionState, ShutdownRequestMode,
-        ShutdownRequestOutcome, ShutdownWaitResult, UiThreadContext,
+        RuntimeCleanupQueue, RuntimeCore, RuntimeCoreError, RuntimeObjectRegistrationError,
+        RuntimeState, ShutdownCompletion, ShutdownCompletionError, ShutdownCompletionState,
+        ShutdownRequestMode, ShutdownRequestOutcome, ShutdownWaitResult, UiThreadContext,
     };
     use crate::dispatcher::{Dispatcher, PostedWork, UiLoopBridge, WakePriority};
     use crate::handle_registry::registry::{
@@ -1198,6 +1305,121 @@ mod tests {
             .drain_shutdown()
             .expect("repeated shutdown drain is safe");
         assert_eq!(drop_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn runtime_core_registers_ui_object_and_routes_cleanup() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let registry = Arc::new(HandleRegistry::<u8, super::RuntimeIdentity>::new());
+        let ui_thread = thread::current().id();
+        let drop_count = Arc::new(AtomicUsize::new(0));
+        let drop_threads = Arc::new(Mutex::new(Vec::new()));
+        let token = runtime
+            .register_ui_object(&registry, 7, || RuntimeUiStateProbe {
+                drop_count: Arc::clone(&drop_count),
+                drop_threads: Arc::clone(&drop_threads),
+            })
+            .expect("register Runtime UI object");
+
+        let worker_runtime = Arc::clone(&runtime);
+        let worker_registry = Arc::clone(&registry);
+        let worker_factory_calls = Arc::new(AtomicUsize::new(0));
+        let factory_calls = Arc::clone(&worker_factory_calls);
+        let worker_registration = thread::spawn(move || {
+            worker_runtime.register_ui_object(&worker_registry, 7, move || {
+                factory_calls.fetch_add(1, Ordering::SeqCst);
+            })
+        })
+        .join()
+        .expect("worker registration attempt completes");
+        assert_eq!(
+            worker_registration,
+            Err(RuntimeObjectRegistrationError::WrongThread)
+        );
+        assert_eq!(worker_factory_calls.load(Ordering::SeqCst), 0);
+
+        let pin = registry
+            .validate(token, &7, &runtime.identity())
+            .expect("validate registered Runtime object");
+        let identity = pin.identity();
+        assert!(
+            runtime
+                .ui_objects
+                .lock()
+                .expect("UI object store lock")
+                .resolve(identity)
+                .expect("resolve registered state")
+                .is::<RuntimeUiStateProbe>()
+        );
+        drop(pin);
+
+        let release_registry = Arc::clone(&registry);
+        let release = thread::spawn(move || release_registry.release(token))
+            .join()
+            .expect("worker release completes")
+            .expect("release final Runtime object owner");
+        assert!(release.cleanup_accepted);
+        assert_eq!(drop_count.load(Ordering::SeqCst), 0);
+        assert!(
+            runtime
+                .ui_objects
+                .lock()
+                .expect("UI object store lock")
+                .resolve(identity)
+                .is_ok()
+        );
+
+        runtime
+            .cleanup
+            .drain_shutdown()
+            .expect("UI thread drains object finalizer");
+        assert_eq!(drop_count.load(Ordering::SeqCst), 1);
+        assert_eq!(runtime.cleanup.state(), RuntimeState::Closed);
+        assert_eq!(
+            *drop_threads.lock().expect("drop thread record lock"),
+            vec![ui_thread]
+        );
+        assert!(matches!(
+            runtime
+                .ui_objects
+                .lock()
+                .expect("UI object store lock")
+                .resolve(identity),
+            Err(UiObjectStoreError::InvalidIdentity)
+        ));
+        let closed_factory_calls = Arc::new(AtomicUsize::new(0));
+        let factory_calls = Arc::clone(&closed_factory_calls);
+        assert_eq!(
+            runtime.register_ui_object(&registry, 7, move || {
+                factory_calls.fetch_add(1, Ordering::SeqCst);
+            }),
+            Err(RuntimeObjectRegistrationError::Closed)
+        );
+        assert_eq!(closed_factory_calls.load(Ordering::SeqCst), 0);
+
+        let failed_runtime = RuntimeCore::new().expect("second Runtime identity is available");
+        let failed_registry = HandleRegistry::<u8, super::RuntimeIdentity>::new();
+        failed_registry.fail_next_token_issue();
+        let failed_drop_count = Arc::new(AtomicUsize::new(0));
+        let failed_drop_threads = Arc::new(Mutex::new(Vec::new()));
+        let failed =
+            failed_runtime.register_ui_object(&failed_registry, 7, || RuntimeUiStateProbe {
+                drop_count: Arc::clone(&failed_drop_count),
+                drop_threads: Arc::clone(&failed_drop_threads),
+            });
+        assert_eq!(
+            failed.err(),
+            Some(RuntimeObjectRegistrationError::Registry(
+                RegistryError::TokenExhausted
+            ))
+        );
+        assert_eq!(failed_drop_count.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            *failed_drop_threads
+                .lock()
+                .expect("failed drop thread record lock"),
+            vec![ui_thread]
+        );
     }
 
     #[test]
@@ -1299,7 +1521,12 @@ mod tests {
         let runtime = RuntimeCore::new().expect("Runtime identity is available");
         let other_runtime = RuntimeCore::new().expect("Runtime identity is available");
         let registry = Arc::new(HandleRegistry::<u8, super::RuntimeIdentity>::new());
-        let identity = ObjectIdentity::new(17, NonZeroU64::new(3).expect("nonzero generation"));
+        let identity = runtime
+            .ui_objects
+            .lock()
+            .expect("UI object store lock")
+            .insert(Box::new(()))
+            .expect("insert state for CoreObjectControl");
         let control = runtime.new_object_control(identity);
 
         assert_eq!(*control.runtime_id(), runtime.identity());

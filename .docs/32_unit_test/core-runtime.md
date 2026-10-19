@@ -123,6 +123,12 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | --- | --- | --- | --- |
 | <a id="ut-runtime-ui-store-001"></a>UT-RUNTIME-UI-STORE-001 | RuntimeCoreのstoreへdropを観測できるUI stateを複数登録し、各identityをresolve。workerからresolveを拒否されることを確認後、Runtime UI threadからshutdown drainを実行する | workerアクセスはWrongThreadで状態を変えない。shutdown drainは全stateをUI thread上で一度ずつ破棄し、identityを無効化してからqueueをClosedにする。再度drainしても追加破棄しない | [RQ-02-001](../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-05-010](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-010)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### Runtime object registration and cleanup — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-runtime-object-reg-001"></a>UT-RUNTIME-OBJECT-REG-001 | UI thread上でstate factoryとHandleRegistryを使ってobjectを登録し、tokenを検証してcontrol identityからstateをresolve。workerから登録を試しfactoryが呼ばれないことを確認。workerから最終releaseし、UI threadでshutdown drain。別fixtureでtoken発行失敗を注入し、shutdown後の登録も試す | 成功時はtoken・Runtime identity・control identity・store stateが一つのobjectを指す。worker releaseはacceptedとなり、UI drainでstateを一度だけ破棄してからcontrol cleanupを完了する。worker/Closed登録はfactoryを呼ばず拒否する。登録失敗はstateをUI threadでrollbackし、live tokenも残さない | [RQ-02-001](../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-05-010](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-010)、[RQ-05-012](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+
 ### Runtime handle registration and borrowed resolution — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
