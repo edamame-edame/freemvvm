@@ -137,6 +137,20 @@ impl ValueStorage {
 }
 
 impl DecimalValue {
+    /// Decodes the canonical numeric `uint64_t` layout without host byte-order conversion.
+    pub(crate) fn from_canonical_bits(bits: u64) -> Self {
+        Self {
+            negative: bits >> 63 != 0,
+            scale: ((bits >> 58) & 0x1f) as u8,
+            coefficient: bits & DECIMAL_MAX_COEFFICIENT,
+        }
+    }
+
+    /// Encodes sign, scale, and coefficient into the canonical numeric `uint64_t` layout.
+    pub(crate) fn to_canonical_bits(self) -> u64 {
+        (u64::from(self.negative) << 63) | (u64::from(self.scale) << 58) | self.coefficient
+    }
+
     pub(crate) fn new(
         negative: bool,
         scale: u8,
@@ -219,8 +233,9 @@ impl OwnedUtf8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        DecimalValue, DecimalValueError, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8BufferTooSmall,
-        Utf8CopyOutcome, ValueCommit, ValueKind, ValueKindMismatch, ValueStorage,
+        DECIMAL_MAX_COEFFICIENT, DECIMAL_MAX_SCALE, DecimalValue, DecimalValueError, OwnedUtf8,
+        OwnedUtf8Error, TypedValue, Utf8BufferTooSmall, Utf8CopyOutcome, ValueCommit, ValueKind,
+        ValueKindMismatch, ValueStorage,
     };
 
     #[test]
@@ -382,6 +397,36 @@ mod tests {
         let equivalent = DecimalValue::new(false, 2, 100).expect("valid decimal");
         assert!(TypedValue::Decimal(first).equivalent(&TypedValue::Decimal(equivalent)));
         assert!(!TypedValue::Decimal(first).equivalent(&TypedValue::I64(1)));
+    }
+
+    #[test]
+    fn decimal_canonical_encoding_round_trips_sign_scale_and_coefficient_boundaries() {
+        let coefficients = [0, 1, 123, DECIMAL_MAX_COEFFICIENT];
+
+        for negative in [false, true] {
+            for scale in 0..=DECIMAL_MAX_SCALE {
+                for coefficient in coefficients {
+                    let value = DecimalValue::new(negative, scale, coefficient)
+                        .expect("boundary decimal is valid");
+                    let bits = value.to_canonical_bits();
+                    let decoded = DecimalValue::from_canonical_bits(bits);
+
+                    assert_eq!(decoded, value);
+                    assert_eq!(decoded.to_canonical_bits(), bits);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn decimal_canonical_encoding_matches_approved_one_point_two_three_example() {
+        let encoded = (2_u64 << 58) | 123;
+        let value = DecimalValue::from_canonical_bits(encoded);
+
+        assert!(!value.negative);
+        assert_eq!(value.scale, 2);
+        assert_eq!(value.coefficient, 123);
+        assert_eq!(value.to_canonical_bits(), encoded);
     }
 
     #[test]
