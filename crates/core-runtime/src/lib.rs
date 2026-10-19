@@ -20,11 +20,16 @@ mod value;
 pub mod abi_support {
     use crate::dispatcher::{PostErrorKind, PostedWork, UiLoopBridge, WakePriority};
     use crate::handle_registry::HandleToken;
+    use crate::handle_registry::registry::{HandleRegistry, RegistryError};
+    use crate::object_store::UiObjectStoreError;
+    use crate::property::PropertyHandleKind;
     use crate::runtime::{
-        RuntimeCore, RuntimeCoreError, ShutdownCompletionState, ShutdownRequest,
-        ShutdownRequestMode, ShutdownRequestOutcome,
+        RuntimeCore, RuntimeCoreError, RuntimeIdentity, RuntimeObjectRegistrationError,
+        RuntimePropertyError, ShutdownCompletionState, ShutdownRequest, ShutdownRequestMode,
+        ShutdownRequestOutcome,
     };
     use crate::runtime_handles::{RuntimeHandleError, process_runtime_handles};
+    use crate::value::{OwnedUtf8, OwnedUtf8Error, TypedValue, ValueKind};
     use std::collections::HashMap;
     use std::ffi::c_void;
     use std::sync::{Arc, Condvar, Mutex, OnceLock};
@@ -175,6 +180,20 @@ pub mod abi_support {
         Mutex<HashMap<HandleToken, Option<RequestHandleEntry>>>,
     > = OnceLock::new();
 
+    struct PropertyHandles {
+        registry: HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        owners: Mutex<HashMap<HandleToken, Arc<RuntimeCore>>>,
+    }
+
+    static PROPERTY_HANDLES: OnceLock<PropertyHandles> = OnceLock::new();
+
+    fn property_handles() -> &'static PropertyHandles {
+        PROPERTY_HANDLES.get_or_init(|| PropertyHandles {
+            registry: HandleRegistry::new(),
+            owners: Mutex::new(HashMap::new()),
+        })
+    }
+
     fn request_handles() -> &'static Mutex<HashMap<HandleToken, Option<RequestHandleEntry>>> {
         SHUTDOWN_REQUEST_HANDLES.get_or_init(|| Mutex::new(HashMap::new()))
     }
@@ -274,6 +293,154 @@ pub mod abi_support {
                 RuntimeHandleError::TokenUnavailable
                 | RuntimeHandleError::SynchronizationPoisoned => ShutdownApiError::Internal,
             })
+    }
+
+    fn map_registry_error(error: RegistryError) -> ShutdownApiError {
+        match error {
+            RegistryError::InvalidToken
+            | RegistryError::WrongKind
+            | RegistryError::WrongRuntime => ShutdownApiError::InvalidHandle,
+            RegistryError::OutOfMemory => ShutdownApiError::OutOfMemory,
+            RegistryError::TokenExhausted
+            | RegistryError::CleanupUnavailable
+            | RegistryError::SynchronizationPoisoned
+            | RegistryError::ReferenceCountExhausted => ShutdownApiError::Internal,
+        }
+    }
+
+    fn map_property_registration_error(error: RuntimeObjectRegistrationError) -> ShutdownApiError {
+        match error {
+            RuntimeObjectRegistrationError::WrongThread => ShutdownApiError::WrongThread,
+            RuntimeObjectRegistrationError::Closed => ShutdownApiError::Closed,
+            RuntimeObjectRegistrationError::SynchronizationPoisoned
+            | RuntimeObjectRegistrationError::Store(UiObjectStoreError::WrongThread)
+            | RuntimeObjectRegistrationError::Store(UiObjectStoreError::InvalidIdentity)
+            | RuntimeObjectRegistrationError::Store(UiObjectStoreError::IdentityExhausted)
+            | RuntimeObjectRegistrationError::Registry(RegistryError::TokenExhausted)
+            | RuntimeObjectRegistrationError::Registry(RegistryError::CleanupUnavailable)
+            | RuntimeObjectRegistrationError::Registry(RegistryError::SynchronizationPoisoned)
+            | RuntimeObjectRegistrationError::Registry(RegistryError::ReferenceCountExhausted) => {
+                ShutdownApiError::Internal
+            }
+            RuntimeObjectRegistrationError::Store(UiObjectStoreError::OutOfMemory)
+            | RuntimeObjectRegistrationError::Registry(RegistryError::OutOfMemory) => {
+                ShutdownApiError::OutOfMemory
+            }
+            RuntimeObjectRegistrationError::Registry(
+                RegistryError::InvalidToken
+                | RegistryError::WrongKind
+                | RegistryError::WrongRuntime,
+            ) => ShutdownApiError::Internal,
+        }
+    }
+
+    fn register_property(
+        runtime_handle: u64,
+        initial: TypedValue,
+    ) -> Result<u64, ShutdownApiError> {
+        let runtime = resolve_runtime(runtime_handle)?;
+        let handles = property_handles();
+        let mut owners = handles
+            .owners
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?;
+        owners
+            .try_reserve(1)
+            .map_err(|_| ShutdownApiError::OutOfMemory)?;
+        let token = runtime
+            .register_property(&handles.registry, initial)
+            .map_err(map_property_registration_error)?;
+        owners.insert(token, runtime);
+        Ok(token.into_abi())
+    }
+
+    pub fn property_create_bool(runtime: u64, initial: bool) -> Result<u64, ShutdownApiError> {
+        register_property(runtime, TypedValue::Bool(initial))
+    }
+
+    pub fn property_create_i64(runtime: u64, initial: i64) -> Result<u64, ShutdownApiError> {
+        register_property(runtime, TypedValue::I64(initial))
+    }
+
+    pub fn property_create_utf8(runtime: u64, initial: &[u8]) -> Result<u64, ShutdownApiError> {
+        let value = OwnedUtf8::copy_from_bytes(initial).map_err(|error| match error {
+            OwnedUtf8Error::InvalidUtf8 => ShutdownApiError::InvalidArgument,
+            OwnedUtf8Error::OutOfMemory => ShutdownApiError::OutOfMemory,
+        })?;
+        register_property(runtime, TypedValue::Utf8(value))
+    }
+
+    pub fn property_create_f64(runtime: u64, initial: f64) -> Result<u64, ShutdownApiError> {
+        register_property(runtime, TypedValue::F64(initial))
+    }
+
+    pub fn property_create_decimal(
+        runtime: u64,
+        initial_bits: u64,
+    ) -> Result<u64, ShutdownApiError> {
+        register_property(
+            runtime,
+            TypedValue::Decimal(crate::value::DecimalValue::from_canonical_bits(
+                initial_bits,
+            )),
+        )
+    }
+
+    pub fn property_kind(handle: u64) -> Result<u32, ShutdownApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(ShutdownApiError::InvalidHandle)?;
+        let handles = property_handles();
+        let runtime = handles
+            .owners
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?
+            .get(&token)
+            .cloned()
+            .ok_or(ShutdownApiError::InvalidHandle)?;
+        let kind =
+            runtime
+                .property_kind(&handles.registry, token)
+                .map_err(|error| match error {
+                    RuntimePropertyError::WrongThread => ShutdownApiError::WrongThread,
+                    RuntimePropertyError::Closed => ShutdownApiError::Closed,
+                    RuntimePropertyError::Registry(error) => map_registry_error(error),
+                    RuntimePropertyError::SynchronizationPoisoned
+                    | RuntimePropertyError::Store(_)
+                    | RuntimePropertyError::WrongObjectState
+                    | RuntimePropertyError::ValueKindMismatch(_) => ShutdownApiError::Internal,
+                })?;
+        Ok(match kind {
+            ValueKind::Bool => 1,
+            ValueKind::I64 => 2,
+            ValueKind::Utf8 => 3,
+            ValueKind::F64 => 5,
+            ValueKind::Decimal => 6,
+        })
+    }
+
+    fn property_release(token: HandleToken) -> Result<bool, ShutdownApiError> {
+        let handles = property_handles();
+        let runtime = handles
+            .owners
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?
+            .get(&token)
+            .cloned();
+        let Some(runtime) = runtime else {
+            return Ok(false);
+        };
+        handles
+            .registry
+            .release(token)
+            .map_err(map_registry_error)?;
+        // Registry release has committed. Recover a poisoned owner map so a successful release
+        // cannot be reported as failed after the token was already consumed.
+        let mut owners = handles
+            .owners
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        owners.remove(&token);
+        drop(runtime);
+        Ok(true)
     }
 
     pub fn runtime_set_ui_loop_bridge(
@@ -438,6 +605,9 @@ pub mod abi_support {
             if requests.remove(&token).is_some() {
                 return Ok(());
             }
+        }
+        if property_release(token)? {
+            return Ok(());
         }
         process_runtime_handles()
             .remove(token)

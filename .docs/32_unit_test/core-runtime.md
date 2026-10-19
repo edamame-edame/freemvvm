@@ -1,7 +1,7 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 0.8
-- 状態: Runtime post/dispatch turn追補は利用者承認済み（2026-10-19）。製品test実装・実行状態は別管理
+- 文書版: 0.9
+- 状態: Runtime post/dispatch turnおよびProperty create/kind追補は利用者承認済み（2026-10-19）。製品test実装・実行状態は別管理
 - 更新日: 2026-10-19
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
@@ -167,6 +167,7 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | --- | --- | --- | --- |
 | <a id="ut-runtime-dispatch-001"></a>UT-RUNTIME-DISPATCH-001 | dispatcherへ複数workをpostし、空queue、連続turn、dispatch中の追加post、reentrant turn、pending shutdownを順に操作する | 一turn最大1 callback、FIFO、非再帰を保つ。pending shutdown中は通常workを実行せず、外側scope closeでshutdownを先行する。残workはwakeを取りこぼさず次turnへ進む | [RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)<br/>[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01) |
 | <a id="ut-abi-008"></a>UT-ABI-008 | C ABIからcallback/userdata/destroyをpostし、UI/worker両threadの受付、dispatch turn、queue cancellation、invalid handle/null callback/destroy、bridge未登録、wrong threadを試す | 成功時のみCoreが所有し、callbackはUI threadで高々一回、destroyは実行またはcancel後にUI threadで一回。拒否時はcaller ownershipを維持し、callback/destroyを呼ばない。UI_WAKE_NORMAL受信後のdispatch turnでFIFOに一件進む。失敗時statusを規則どおり返す | [RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-05-003](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-008](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)<br/>[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01) |
+| <a id="ut-abi-009"></a>UT-ABI-009 | UI threadでBOOL/I64/UTF8/F64/DECIMALを各createし、`property_kind`のkind値を照会してPropertyとRuntimeを個別にrelease。workerからcreate/kind queryも試す。無効Runtime/property、BOOL値2、UTF8 null+positive length、不正UTF8、null required outも個別に試す | 成功時はkind 1/2/3/5/6と非zero所有Property handle、`out_error=0`。UTF8のembedded NULを含む入力を受理する。invalid入力・handle・wrong threadは仕様statusで拒否し、valid outputは0、Property/registry/Runtime ownerに部分状態を残さない。Property release後だけproperty tokenがinvalidになり、Runtime ownerは独立して有効 | [RQ-02-017](../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-04-003](../11_requirements/RQ-04_abi-boundary.md#rq-04-003)、[RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-018](../11_requirements/RQ-04_abi-boundary.md#rq-04-018)、[RQ-04-020](../11_requirements/RQ-04_abi-boundary.md#rq-04-020)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01)、[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
 ## 承認履歴
 
@@ -190,6 +191,8 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-18 | C ABI Runtime UI thread query追補 | 利用者 | 「OK」により、creator/worker threadからの照会とinvalid handle statusをfocused testとして追加。承認済みRQ/DDの範囲内であり、Runtime APIの追加設計や製品test合格を意味しない |
 | 2026-10-18 | C ABI Runtime UI-loop bridge追補 | — | DD v1.1のwake priorityとone-time bridge registrationをUT-ABI-007として具体化したレビュー案。公開契約の追加やtest合格を意味しない |
 | 2026-10-19 | C ABI Runtime post/dispatch turn追補 | 利用者 | 「ok」により、選択済み`runtime_dispatch_turn`を含むUNIT-ABI-008の実装・動作確認を開始。DD v1.2の契約に沿うfocused test oracleを確定し、本unitの試験実施を承認。test合格は実行結果で別途記録 |
+| 2026-10-19 | C ABI Property create/kind追補 | Codex | 承認済みRQ/DDからUNIT-ABI-009のfocused test oracleを登録 |
+| 2026-10-19 | UT-ABI-009全文 | 利用者 | 「ok」により、Property create/kindのoracleとUNIT-ABI-009の実装・動作確認を承認。製品test合格は実行結果で別管理 |
 
 ## 改訂履歴
 
@@ -203,3 +206,4 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 0.6 | 2026-10-18 | Runtime handle retainのregistry/C ABI動作、失敗時初期化、panic変換を追補 | Codex | 利用者が本版全文を承認 |
 | 0.7 | 2026-10-18 | DD v1.1のUI-loop bridge登録とwake priorityをUT-ABI-007として具体化 | Codex | Runtime bridge追補はレビュー案。既存承認範囲と分離 |
 | 0.8 | 2026-10-19 | DD v1.2のRuntime post受入、所有、dispatch turn実行・shutdown境界の試験を追補 | Codex | 利用者の「ok」によりfocused test oracleを承認。製品test合格は実行結果で別管理 |
+| 0.9 | 2026-10-19 | C ABI Property create/kindの初期5 kind、入力検証、owner lifetime、output初期化をUT-ABI-009として追補 | Codex | 利用者がoracleと実装・動作確認を承認。製品test合格は実行結果で別管理 |

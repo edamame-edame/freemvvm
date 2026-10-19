@@ -1067,6 +1067,25 @@
       "tests": [
         {"id": "UT-CORE-PROPERTY-KIND-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::property_kind_query_returns_initial_kind_on_ui_thread"]}
       ]
+    },
+    {
+      "id": "UNIT-ABI-009",
+      "state": "ready",
+      "scope": "c-abi-property-create-kind-and-release",
+      "sources": ["crates/core-runtime/src/lib.rs", "crates/c-abi/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-038", "UNIT-CORE-039", "UNIT-ABI-004", "UNIT-ABI-006"],
+      "design": [
+        {"path": ".docs/13_detail_design/runtime-objects/abi.md", "version": "1.2", "section": "Property create, kind query, thread, and output rules"},
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "initial Property kind IDs and create ABI"},
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "Runtime-owned object handles and release cleanup"}
+      ],
+      "requirements": ["RQ-02-017", "RQ-04-003", "RQ-04-006", "RQ-04-018", "RQ-04-020", "RQ-05-002", "RQ-06-001"],
+      "cases": ["TC-PROP-01", "TC-ABI-REP-01", "TC-CORE-OBJ-01", "TC-LIFE-01", "TC-THREAD-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-ABI-009", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "property_"]}
+      ]
     }
   ]
 }

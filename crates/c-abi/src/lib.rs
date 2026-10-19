@@ -5,6 +5,11 @@
 use freemvvm_core::abi_support::{
     DestroyCallback, PostCallback, RuntimeCreateError, RuntimeQueryError, RuntimeRetainError,
     ShutdownApiError, ShutdownApiState, WakeCallback, handle_release as core_handle_release,
+    property_create_bool as core_property_create_bool,
+    property_create_decimal as core_property_create_decimal,
+    property_create_f64 as core_property_create_f64,
+    property_create_i64 as core_property_create_i64,
+    property_create_utf8 as core_property_create_utf8, property_kind as core_property_kind,
     runtime_create_handle, runtime_dispatch_turn, runtime_host_begin_event, runtime_host_end_event,
     runtime_host_stopped, runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post,
     runtime_request_shutdown, runtime_retain_handle as core_runtime_retain_handle,
@@ -133,6 +138,217 @@ pub unsafe extern "C" fn ui_abi_1_runtime_is_ui_thread(runtime: u64, out_yes: *m
             UI_OK
         }
         Err(status) => status,
+    }
+}
+
+fn catch_property_creation(
+    operation: impl FnOnce() -> Result<u64, ShutdownApiError>,
+) -> Result<u64, u32> {
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(Ok(handle)) => Ok(handle),
+        Ok(Err(error)) => Err(map_shutdown_error(error)),
+        Err(_) => Err(UI_INTERNAL_ERROR),
+    }
+}
+
+/// Create an owned BOOL Property with initial value 0 or 1.
+///
+/// # Safety
+/// `out_property` must be null or writable; a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_create_bool(
+    runtime: u64,
+    initial: u8,
+    out_property: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if !out_property.is_null() {
+        // SAFETY: the caller guarantees that a non-null property output is writable.
+        unsafe { out_property.write(0) };
+    }
+    if out_property.is_null() || initial > 1 {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_property_creation(|| core_property_create_bool(runtime, initial != 0)) {
+        Ok(property) => {
+            // SAFETY: required output is non-null and writable per the caller contract.
+            unsafe { out_property.write(property) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Create an owned I64 Property.
+///
+/// # Safety
+/// `out_property` must be null or writable; a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_create_i64(
+    runtime: u64,
+    initial: i64,
+    out_property: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if !out_property.is_null() {
+        // SAFETY: the caller guarantees that a non-null property output is writable.
+        unsafe { out_property.write(0) };
+    }
+    if out_property.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_property_creation(|| core_property_create_i64(runtime, initial)) {
+        Ok(property) => {
+            // SAFETY: required output is non-null and writable per the caller contract.
+            unsafe { out_property.write(property) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Create an owned UTF-8 Property by copying its input byte sequence.
+///
+/// `bytes == NULL` is accepted only for `byte_length == 0`; embedded NUL bytes are preserved.
+///
+/// # Safety
+/// For a non-null `bytes` pointer and positive length, it must reference that many readable
+/// bytes. `out_property` must be null or writable; a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_create_utf8(
+    runtime: u64,
+    bytes: *const u8,
+    byte_length: u64,
+    out_property: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if !out_property.is_null() {
+        // SAFETY: the caller guarantees that a non-null property output is writable.
+        unsafe { out_property.write(0) };
+    }
+    if out_property.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let Ok(length) = usize::try_from(byte_length) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    if bytes.is_null() && length != 0 {
+        return UI_INVALID_ARGUMENT;
+    }
+    let initial = if length == 0 {
+        &[]
+    } else {
+        // SAFETY: the caller guarantees that `bytes` references `length` readable bytes.
+        unsafe { std::slice::from_raw_parts(bytes, length) }
+    };
+    match catch_property_creation(|| core_property_create_utf8(runtime, initial)) {
+        Ok(property) => {
+            // SAFETY: required output is non-null and writable per the caller contract.
+            unsafe { out_property.write(property) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Create an owned F64 Property.
+///
+/// # Safety
+/// `out_property` must be null or writable; a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_create_f64(
+    runtime: u64,
+    initial: f64,
+    out_property: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if !out_property.is_null() {
+        // SAFETY: the caller guarantees that a non-null property output is writable.
+        unsafe { out_property.write(0) };
+    }
+    if out_property.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_property_creation(|| core_property_create_f64(runtime, initial)) {
+        Ok(property) => {
+            // SAFETY: required output is non-null and writable per the caller contract.
+            unsafe { out_property.write(property) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Create an owned DECIMAL Property from its canonical 64-bit representation.
+///
+/// # Safety
+/// `out_property` must be null or writable; a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_create_decimal(
+    runtime: u64,
+    initial_bits: u64,
+    out_property: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if !out_property.is_null() {
+        // SAFETY: the caller guarantees that a non-null property output is writable.
+        unsafe { out_property.write(0) };
+    }
+    if out_property.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_property_creation(|| core_property_create_decimal(runtime, initial_bits)) {
+        Ok(property) => {
+            // SAFETY: required output is non-null and writable per the caller contract.
+            unsafe { out_property.write(property) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Query the fixed kind of an owned Property. Kind IDs are BOOL=1, I64=2, UTF8=3, F64=5,
+/// DECIMAL=6; OBJECT=4 remains reserved.
+///
+/// # Safety
+/// `out_kind` must be null or point to writable storage for one `u32`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_kind(property: u64, out_kind: *mut u32) -> u32 {
+    if !out_kind.is_null() {
+        // SAFETY: the caller guarantees that a non-null kind output is writable.
+        unsafe { out_kind.write(0) };
+    }
+    if out_kind.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| core_property_kind(property))) {
+        Ok(Ok(kind)) => {
+            // SAFETY: required output is non-null and writable per the caller contract.
+            unsafe { out_kind.write(kind) };
+            UI_OK
+        }
+        Ok(Err(error)) => map_shutdown_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
     }
 }
 
@@ -546,11 +762,14 @@ mod tests {
         UI_OUT_OF_MEMORY, UI_PENDING, UI_UNSUPPORTED, UI_WRONG_THREAD, catch_runtime_creation,
         catch_runtime_query, catch_runtime_retain, ui_abi_1_get_version, ui_abi_1_handle_release,
         ui_abi_1_handle_retain, ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32,
-        ui_abi_1_numeric_narrow_f64, ui_abi_1_runtime_create, ui_abi_1_runtime_dispatch_turn,
-        ui_abi_1_runtime_host_begin_event, ui_abi_1_runtime_host_end_event,
-        ui_abi_1_runtime_host_stopped, ui_abi_1_runtime_is_ui_thread, ui_abi_1_runtime_post,
-        ui_abi_1_runtime_request_shutdown, ui_abi_1_runtime_set_ui_loop_bridge,
-        ui_abi_1_runtime_shutdown, ui_abi_1_shutdown_request_query,
+        ui_abi_1_numeric_narrow_f64, ui_abi_1_property_create_bool,
+        ui_abi_1_property_create_decimal, ui_abi_1_property_create_f64,
+        ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8, ui_abi_1_property_kind,
+        ui_abi_1_runtime_create, ui_abi_1_runtime_dispatch_turn, ui_abi_1_runtime_host_begin_event,
+        ui_abi_1_runtime_host_end_event, ui_abi_1_runtime_host_stopped,
+        ui_abi_1_runtime_is_ui_thread, ui_abi_1_runtime_post, ui_abi_1_runtime_request_shutdown,
+        ui_abi_1_runtime_set_ui_loop_bridge, ui_abi_1_runtime_shutdown,
+        ui_abi_1_shutdown_request_query,
     };
     use std::ffi::c_void;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1371,6 +1590,181 @@ mod tests {
 
         assert_eq!(status, UI_OK);
         assert_eq!((major, minor, patch), (1, 0, 0));
+    }
+
+    #[test]
+    fn property_create_kind_maps_initial_types_and_runtime_anchor_survives_runtime_release() {
+        let mut runtime = 0;
+        // SAFETY: runtime points to writable storage.
+        let status = unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) };
+        assert_eq!(status, UI_OK);
+
+        let mut properties = [0_u64; 6];
+        let mut error = u64::MAX;
+        // SAFETY: each output points to writable storage; the runtime handle is live.
+        let status =
+            unsafe { ui_abi_1_property_create_bool(runtime, 1, &mut properties[0], &mut error) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(error, 0);
+        // SAFETY: each output points to writable storage; the runtime handle is live.
+        let status = unsafe {
+            ui_abi_1_property_create_i64(runtime, i64::MIN, &mut properties[1], &mut error)
+        };
+        assert_eq!(status, UI_OK);
+        let mut initial_text = *b"a\0b";
+        // SAFETY: the input byte array and output values remain valid for the call.
+        let status = unsafe {
+            ui_abi_1_property_create_utf8(
+                runtime,
+                initial_text.as_ptr(),
+                initial_text.len() as u64,
+                &mut properties[2],
+                &mut error,
+            )
+        };
+        assert_eq!(status, UI_OK);
+        initial_text.fill(b'x');
+        // SAFETY: null with length zero is accepted as an empty byte sequence; outputs are writable.
+        let status = unsafe {
+            ui_abi_1_property_create_utf8(
+                runtime,
+                std::ptr::null(),
+                0,
+                &mut properties[5],
+                &mut error,
+            )
+        };
+        assert_eq!(status, UI_OK);
+        // SAFETY: each output points to writable storage; the runtime handle is live.
+        let status = unsafe {
+            ui_abi_1_property_create_f64(runtime, f64::NAN, &mut properties[3], &mut error)
+        };
+        assert_eq!(status, UI_OK);
+        // SAFETY: each output points to writable storage; the runtime handle is live.
+        let status = unsafe {
+            ui_abi_1_property_create_decimal(runtime, u64::MAX, &mut properties[4], &mut error)
+        };
+        assert_eq!(status, UI_OK);
+        assert_eq!(error, 0);
+        assert!(properties.iter().all(|property| *property != 0));
+
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+        for (property, expected_kind) in properties.into_iter().zip([1, 2, 3, 5, 6, 3]) {
+            let mut kind = u32::MAX;
+            // SAFETY: kind points to writable storage and the owned Property remains live.
+            let status = unsafe { ui_abi_1_property_kind(property, &mut kind) };
+            assert_eq!(status, UI_OK);
+            assert_eq!(kind, expected_kind);
+            assert_eq!(ui_abi_1_handle_release(property), UI_OK);
+            assert_eq!(ui_abi_1_handle_release(property), UI_INVALID_HANDLE);
+        }
+    }
+
+    #[test]
+    fn property_create_and_kind_failures_zero_outputs_and_reject_wrong_thread() {
+        let mut runtime = 0;
+        // SAFETY: runtime points to writable storage.
+        let status = unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) };
+        assert_eq!(status, UI_OK);
+        let mut property = u64::MAX;
+        let mut error = u64::MAX;
+
+        // SAFETY: outputs point to writable storage and bool=2 is rejected before use.
+        let status =
+            unsafe { ui_abi_1_property_create_bool(runtime, 2, &mut property, &mut error) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        assert_eq!((property, error), (0, 0));
+
+        property = u64::MAX;
+        error = u64::MAX;
+        // SAFETY: null positive-length input is rejected; outputs are valid writable storage.
+        let status = unsafe {
+            ui_abi_1_property_create_utf8(runtime, std::ptr::null(), 1, &mut property, &mut error)
+        };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        assert_eq!((property, error), (0, 0));
+
+        property = u64::MAX;
+        let invalid_utf8 = [0xff];
+        // SAFETY: invalid UTF-8 input is readable for one byte and outputs are writable.
+        let status = unsafe {
+            ui_abi_1_property_create_utf8(
+                runtime,
+                invalid_utf8.as_ptr(),
+                1,
+                &mut property,
+                &mut error,
+            )
+        };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        assert_eq!((property, error), (0, 0));
+
+        property = u64::MAX;
+        // SAFETY: zero runtime handle is invalid; outputs point to writable storage.
+        let status = unsafe { ui_abi_1_property_create_i64(0, 9, &mut property, &mut error) };
+        assert_eq!(status, UI_INVALID_HANDLE);
+        assert_eq!((property, error), (0, 0));
+
+        let mut valid_property = 0;
+        // SAFETY: outputs point to writable storage and the runtime handle is live.
+        let status =
+            unsafe { ui_abi_1_property_create_i64(runtime, 9, &mut valid_property, &mut error) };
+        assert_eq!(status, UI_OK);
+
+        let worker = std::thread::spawn(move || {
+            let mut worker_property = u64::MAX;
+            let mut worker_error = u64::MAX;
+            // SAFETY: output storage is valid; Runtime create is rejected on a worker thread.
+            let create_status = unsafe {
+                ui_abi_1_property_create_bool(runtime, 0, &mut worker_property, &mut worker_error)
+            };
+            let mut kind = u32::MAX;
+            // SAFETY: output storage is valid; kind query is rejected on a worker thread.
+            let kind_status = unsafe { ui_abi_1_property_kind(valid_property, &mut kind) };
+            (
+                create_status,
+                worker_property,
+                worker_error,
+                kind_status,
+                kind,
+            )
+        });
+        assert_eq!(
+            worker.join().expect("worker should finish"),
+            (UI_WRONG_THREAD, 0, 0, UI_WRONG_THREAD, 0)
+        );
+
+        let mut kind = u32::MAX;
+        // SAFETY: zero token is invalid and output storage is writable.
+        let status = unsafe { ui_abi_1_property_kind(0, &mut kind) };
+        assert_eq!(status, UI_INVALID_HANDLE);
+        assert_eq!(kind, 0);
+        assert_eq!(ui_abi_1_handle_release(valid_property), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
+    #[test]
+    fn property_entrypoints_reject_null_required_outputs() {
+        let mut runtime = 0;
+        let mut error = u64::MAX;
+        // SAFETY: runtime points to writable storage.
+        let status = unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) };
+        assert_eq!(status, UI_OK);
+
+        // SAFETY: null required output is handled and optional error output is writable.
+        let status =
+            unsafe { ui_abi_1_property_create_i64(runtime, 1, std::ptr::null_mut(), &mut error) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        assert_eq!(error, 0);
+        let mut kind = u32::MAX;
+        // SAFETY: null required output is handled without dereference.
+        let status = unsafe { ui_abi_1_property_kind(0, std::ptr::null_mut()) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        // SAFETY: zero token is invalid and kind output is writable.
+        let status = unsafe { ui_abi_1_property_kind(0, &mut kind) };
+        assert_eq!(status, UI_INVALID_HANDLE);
+        assert_eq!(kind, 0);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
     }
 
     #[test]
