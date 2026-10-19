@@ -5,6 +5,8 @@ use crate::handle_registry::registry::{
     RegistryError,
 };
 use crate::object_store::{UiObjectStore, UiObjectStoreError};
+use crate::property::{PropertyHandleKind, PropertyState};
+use crate::value::{TypedValue, ValueCommit, ValueKindMismatch};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -821,6 +823,17 @@ pub(crate) enum RuntimeObjectRegistrationError {
     Registry(RegistryError),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RuntimePropertyError {
+    WrongThread,
+    Closed,
+    SynchronizationPoisoned,
+    Store(UiObjectStoreError),
+    Registry(RegistryError),
+    WrongObjectState,
+    ValueKindMismatch(ValueKindMismatch),
+}
+
 /// Process-unique internal identity for one Runtime owner.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct RuntimeIdentity(NonZeroU64);
@@ -943,6 +956,74 @@ impl RuntimeCore {
                 Err(RuntimeObjectRegistrationError::Registry(error))
             }
         }
+    }
+
+    /// Registers a Property with its initial typed value in this Runtime.
+    pub(crate) fn register_property(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        initial: TypedValue,
+    ) -> Result<HandleToken, RuntimeObjectRegistrationError> {
+        self.register_ui_object(registry, PropertyHandleKind::Property, move || {
+            PropertyState::new(initial)
+        })
+    }
+
+    /// Reads an owned snapshot of a Property value on this Runtime's UI thread.
+    pub(crate) fn read_property(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        token: HandleToken,
+    ) -> Result<TypedValue, RuntimePropertyError> {
+        let pin = registry
+            .validate(token, &PropertyHandleKind::Property, &self.identity)
+            .map_err(RuntimePropertyError::Registry)?;
+        self.ensure_property_access_thread()?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve(pin.identity())
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<PropertyState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        Ok(state.read().clone())
+    }
+
+    /// Applies an already-validated typed candidate to a Property on the UI thread.
+    pub(crate) fn apply_property_candidate(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        token: HandleToken,
+        candidate: TypedValue,
+    ) -> Result<ValueCommit, RuntimePropertyError> {
+        let pin = registry
+            .validate(token, &PropertyHandleKind::Property, &self.identity)
+            .map_err(RuntimePropertyError::Registry)?;
+        self.ensure_property_access_thread()?;
+        let mut store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve_mut(pin.identity())
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_mut::<PropertyState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        state
+            .apply_validated(candidate)
+            .map_err(RuntimePropertyError::ValueKindMismatch)
+    }
+
+    fn ensure_property_access_thread(&self) -> Result<(), RuntimePropertyError> {
+        if !self.is_ui_thread() {
+            return Err(RuntimePropertyError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimePropertyError::Closed);
+        }
+        Ok(())
     }
 
     pub(crate) fn is_ui_thread(&self) -> bool {
@@ -1216,14 +1297,17 @@ mod tests {
     use super::{
         HostBoundaryError, HostRegistration, HostRegistrationError, HostShutdownCommitError,
         RuntimeCleanupQueue, RuntimeCore, RuntimeCoreError, RuntimeObjectRegistrationError,
-        RuntimeState, ShutdownCompletion, ShutdownCompletionError, ShutdownCompletionState,
-        ShutdownRequestMode, ShutdownRequestOutcome, ShutdownWaitResult, UiThreadContext,
+        RuntimePropertyError, RuntimeState, ShutdownCompletion, ShutdownCompletionError,
+        ShutdownCompletionState, ShutdownRequestMode, ShutdownRequestOutcome, ShutdownWaitResult,
+        UiThreadContext,
     };
     use crate::dispatcher::{Dispatcher, PostedWork, UiLoopBridge, WakePriority};
     use crate::handle_registry::registry::{
         CleanupQueue, CoreObjectControl, HandleRegistry, ObjectIdentity, RegistryError,
     };
     use crate::object_store::UiObjectStoreError;
+    use crate::property::PropertyHandleKind;
+    use crate::value::{TypedValue, ValueCommit, ValueKind, ValueKindMismatch};
     use std::num::NonZeroU64;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::mpsc;
@@ -1233,6 +1317,101 @@ mod tests {
     struct RuntimeUiStateProbe {
         drop_count: Arc<AtomicUsize>,
         drop_threads: Arc<Mutex<Vec<ThreadId>>>,
+    }
+
+    #[test]
+    fn property_state_registration_read_and_update() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let registry =
+            Arc::new(HandleRegistry::<PropertyHandleKind, super::RuntimeIdentity>::new());
+        let token = runtime
+            .register_property(&registry, TypedValue::I64(7))
+            .expect("register Property");
+
+        assert!(matches!(
+            runtime.read_property(&registry, token),
+            Ok(TypedValue::I64(7))
+        ));
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, token, TypedValue::I64(9)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, token, TypedValue::I64(9)),
+            Ok(ValueCommit::Unchanged)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, token, TypedValue::Bool(true)),
+            Err(RuntimePropertyError::ValueKindMismatch(ValueKindMismatch {
+                expected: ValueKind::I64,
+                actual: ValueKind::Bool,
+            }))
+        );
+        assert!(matches!(
+            runtime.read_property(&registry, token),
+            Ok(TypedValue::I64(9))
+        ));
+
+        let wrong_kind = runtime
+            .register_ui_object(&registry, PropertyHandleKind::Other, || ())
+            .expect("register other handle kind");
+        assert!(matches!(
+            runtime.read_property(&registry, wrong_kind),
+            Err(RuntimePropertyError::Registry(RegistryError::WrongKind))
+        ));
+        assert!(matches!(
+            runtime.read_property(
+                &registry,
+                crate::handle_registry::HandleToken::from_abi(u64::MAX)
+                    .expect("nonzero test token")
+            ),
+            Err(RuntimePropertyError::Registry(RegistryError::InvalidToken))
+        ));
+
+        let other_runtime = RuntimeCore::new().expect("second Runtime identity is available");
+        let other_token = other_runtime
+            .register_property(&registry, TypedValue::I64(11))
+            .expect("register Property in second Runtime");
+        assert!(matches!(
+            runtime.read_property(&registry, other_token),
+            Err(RuntimePropertyError::Registry(RegistryError::WrongRuntime))
+        ));
+
+        let worker_runtime = Arc::clone(&runtime);
+        let worker_registry = Arc::clone(&registry);
+        assert!(matches!(
+            std::thread::spawn(move || worker_runtime.read_property(&worker_registry, token))
+                .join()
+                .expect("worker access completes"),
+            Err(RuntimePropertyError::WrongThread)
+        ));
+        let worker_runtime = Arc::clone(&runtime);
+        let worker_registry = Arc::clone(&registry);
+        assert!(matches!(
+            std::thread::spawn(move || {
+                worker_runtime.apply_property_candidate(
+                    &worker_registry,
+                    token,
+                    TypedValue::I64(17),
+                )
+            })
+            .join()
+            .expect("worker update completes"),
+            Err(RuntimePropertyError::WrongThread)
+        ));
+        assert!(matches!(
+            runtime.read_property(&registry, token),
+            Ok(TypedValue::I64(9))
+        ));
+
+        runtime
+            .cleanup
+            .drain_shutdown()
+            .expect("Runtime shutdown clears Property state");
+        assert!(matches!(
+            runtime.register_property(&registry, TypedValue::I64(13)),
+            Err(RuntimeObjectRegistrationError::Closed)
+        ));
     }
 
     impl Drop for RuntimeUiStateProbe {

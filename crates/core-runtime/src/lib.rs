@@ -4,13 +4,14 @@
 
 mod dispatcher;
 mod handle_registry;
-// Runtime-owned UI state is implemented before its Property and control integrations.
+// Runtime-owned UI state and the initial internal Property integration.
 pub mod numeric;
 #[allow(dead_code)]
 mod object_store;
+mod property;
 mod runtime;
 mod runtime_handles;
-// This value primitive is implemented ahead of its later Property/ABI integration unit.
+// Typed value semantics back the internal Property state; ABI validation remains a later unit.
 #[allow(dead_code)]
 mod value;
 

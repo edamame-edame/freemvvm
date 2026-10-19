@@ -1031,6 +1031,24 @@
       "tests": [
         {"id": "UT-RUNTIME-OBJECT-REG-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::runtime_core_registers_ui_object_and_routes_cleanup"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-038",
+      "state": "ready",
+      "scope": "core-property-state",
+      "sources": ["crates/core-runtime/src/property.rs", "crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-037", "UNIT-CORE-004"],
+      "design": [
+        {"path": ".docs/12_design/runtime-objects/model-values.md", "version": "1.0", "section": "型別値領域とProperty commit"},
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "ValueStorage and Runtime-owned UiObjectStore"}
+      ],
+      "requirements": ["RQ-02-002", "RQ-02-017", "RQ-02-018", "RQ-02-019", "RQ-06-001"],
+      "cases": ["TC-PROP-01", "TC-THREAD-01", "TC-CORE-OBJ-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-CORE-PROPERTY-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::property_state_registration_read_and_update"]}
+      ]
     }
   ]
 }

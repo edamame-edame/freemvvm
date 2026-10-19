@@ -129,6 +129,14 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | --- | --- | --- | --- |
 | <a id="ut-runtime-object-reg-001"></a>UT-RUNTIME-OBJECT-REG-001 | UI thread上でstate factoryとHandleRegistryを使ってobjectを登録し、tokenを検証してcontrol identityからstateをresolve。workerから登録を試しfactoryが呼ばれないことを確認。workerから最終releaseし、UI threadでshutdown drain。別fixtureでtoken発行失敗を注入し、shutdown後の登録も試す | 成功時はtoken・Runtime identity・control identity・store stateが一つのobjectを指す。worker releaseはacceptedとなり、UI drainでstateを一度だけ破棄してからcontrol cleanupを完了する。worker/Closed登録はfactoryを呼ばず拒否する。登録失敗はstateをUI threadでrollbackし、live tokenも残さない | [RQ-02-001](../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-05-010](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-010)、[RQ-05-012](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### Core Property state — implementation slice
+
+Candidates are already validated values in this slice. Validator execution, dirty tracking, Binding propagation, and notifications are excluded.
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-property-001"></a>UT-CORE-PROPERTY-001 | RuntimeとHandleRegistryへ初期値付きPropertyを登録し、tokenからUI thread上で読み出す。異なる同kind候補、同値候補、異kind候補を順に適用する。invalid token・wrong kind・別Runtime・worker thread・Closed Runtimeでも操作する | 初期値を型付きで読める。差分のみChangedとしてcommitし、同値は既存表現を維持してUnchanged、kind mismatchは値を変えず失敗。handle/Runtime不一致、worker read/update、Closedで状態へアクセスせず失敗。token validation pinをstate access中維持し、登録済みRuntime cleanupでstateを破棄する | [RQ-02-002](../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-02-018](../11_requirements/RQ-02_core-features.md#rq-02-018)、[RQ-02-019](../11_requirements/RQ-02_core-features.md#rq-02-019)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01) |
+
 ### Runtime handle registration and borrowed resolution — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
