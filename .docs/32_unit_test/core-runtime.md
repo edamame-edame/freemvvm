@@ -143,6 +143,12 @@ Candidates are already validated values in this slice. Validator execution, dirt
 | --- | --- | --- | --- |
 | <a id="ut-core-property-notify-001"></a>UT-CORE-PROPERTY-NOTIFY-001 | 一つのRuntimeへProperty A/Bを登録し、Aを変更、Bを変更、Aを別値へ変更してからpending generationを取得する。次にAを変更して次generationを取得する。別fixtureで同値・異kind・invalid handleの各更新後にpending queueを取得する | 最初のgenerationは[A, B]のidentity順で一件ずつ含み、Aの最終値を読む。同じidentityの複数変更は一件にcoalesceする。generation取得後のA変更は次generationへ分離される。同値・失敗更新はqueueへ追加しない | [RQ-02-017](../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-04-025](../11_requirements/RQ-04_abi-boundary.md#rq-04-025)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01), [TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### Core Property Subscription lifecycle state — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-property-subscription-001"></a>UT-CORE-PROPERTY-SUBSCRIPTION-001 | fresh lifecycleでdelivery開始と終了を行う。次にdelivery開始後にcancelし、cancel後の開始、in-flight終了、再cancelを順に行う。別fresh lifecycleはdeliveryなしでcancelを繰り返す | active中だけdelivery開始を受け付ける。cancel後の開始は拒否する。実行中deliveryがあるcancelはdestroy-readyを返さず、最後のdelivery終了でのみ一度readyになる。in-flightなしのcancelは一度だけreadyになり、再cancel・余分な終了は二重破棄を示さない | [RQ-05-006](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-008](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)<br/>[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01) |
+
 ### Core Property kind query — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
@@ -207,6 +213,8 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-19 | UT-ABI-011全文 | 利用者 | 「ok」により、Property setter oracleとUNIT-ABI-011の実装・動作確認を承認。通知購読・Validatorは別単位 |
 | 2026-10-19 | Core Property change queue追補 | Codex | 承認済みRQ/DDからUNIT-CORE-040のfocused queue oracleを登録 |
 | 2026-10-19 | UT-CORE-PROPERTY-NOTIFY-001全文 | 利用者 | 「ok」により、Property change queue oracleとUNIT-CORE-040の実装・動作確認を承認。subscriber配信は別単位 |
+| 2026-10-19 | Core Property Subscription lifecycle追補 | Codex | 承認済みRQ/DDからUNIT-CORE-041のfocused lifecycle oracleを登録。callback実行・ABI登録・試験合格は別管理 |
+| 2026-10-19 | UT-CORE-PROPERTY-SUBSCRIPTION-001全文 | 利用者 | 「ok」により、lifecycle state oracleとUNIT-CORE-041の実装・動作確認を開始。callback実行・ABI登録・destroy callback実行は別単位 |
 
 ## 改訂履歴
 
@@ -225,3 +233,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 1.1 | 2026-10-19 | UT-ABI-010にnull required outputのoracleを明記 | Codex | 利用者承認済み範囲の明確化。test合格は実行結果で別管理 |
 | 1.2 | 2026-10-19 | C ABI Property settersのtyped commit、equivalence、kind/input/thread failure atomicityをUT-ABI-011として追補 | Codex | 利用者承認済み範囲のoracle。通知とValidatorは別単位 |
 | 1.3 | 2026-10-19 | Core Property change generation coalescingをUT-CORE-PROPERTY-NOTIFY-001として追補 | Codex | 利用者承認済みの内部queue oracle。end-to-end通知を意味しない |
+| 1.4 | 2026-10-19 | Subscription active/in-flight/cancel lifecycle stateをUT-CORE-PROPERTY-SUBSCRIPTION-001として追補 | Codex | approved RQ/DDからのfocused internal oracle。callback executionとpublic ABIを含まない |
+| 1.5 | 2026-10-19 | UT-CORE-PROPERTY-SUBSCRIPTION-001のoracle承認と実装開始を記録 | Codex | 利用者の「ok」に基づく。試験合格は実行結果で別管理 |
