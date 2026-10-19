@@ -29,7 +29,7 @@ pub mod abi_support {
         ShutdownRequestOutcome,
     };
     use crate::runtime_handles::{RuntimeHandleError, process_runtime_handles};
-    use crate::value::{OwnedUtf8, OwnedUtf8Error, TypedValue, ValueKind};
+    use crate::value::{OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind};
     use std::collections::HashMap;
     use std::ffi::c_void;
     use std::sync::{Arc, Condvar, Mutex, OnceLock};
@@ -73,6 +73,17 @@ pub mod abi_support {
         Pending,
         Completed,
         HostUnavailable { reason: u32 },
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum PropertyApiError {
+        InvalidHandle,
+        InvalidArgument,
+        WrongType,
+        WrongThread,
+        Closed,
+        BufferTooSmall { required: usize },
+        Internal,
     }
 
     pub type WakeCallback = unsafe extern "C" fn(*mut c_void, u32);
@@ -414,6 +425,93 @@ pub mod abi_support {
             ValueKind::Utf8 => 3,
             ValueKind::F64 => 5,
             ValueKind::Decimal => 6,
+        })
+    }
+
+    fn map_property_read_error(error: RuntimePropertyError) -> PropertyApiError {
+        match error {
+            RuntimePropertyError::WrongThread => PropertyApiError::WrongThread,
+            RuntimePropertyError::Closed => PropertyApiError::Closed,
+            RuntimePropertyError::Registry(RegistryError::InvalidToken)
+            | RuntimePropertyError::Registry(RegistryError::WrongKind)
+            | RuntimePropertyError::Registry(RegistryError::WrongRuntime) => {
+                PropertyApiError::InvalidHandle
+            }
+            RuntimePropertyError::Registry(RegistryError::OutOfMemory) => {
+                PropertyApiError::Internal
+            }
+            RuntimePropertyError::Registry(
+                RegistryError::TokenExhausted
+                | RegistryError::CleanupUnavailable
+                | RegistryError::SynchronizationPoisoned
+                | RegistryError::ReferenceCountExhausted,
+            )
+            | RuntimePropertyError::SynchronizationPoisoned
+            | RuntimePropertyError::Store(_)
+            | RuntimePropertyError::WrongObjectState
+            | RuntimePropertyError::ValueKindMismatch(_) => PropertyApiError::Internal,
+        }
+    }
+
+    fn inspect_property_value<T>(
+        handle: u64,
+        inspect: impl FnOnce(&TypedValue) -> Result<T, PropertyApiError>,
+    ) -> Result<T, PropertyApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(PropertyApiError::InvalidHandle)?;
+        let handles = property_handles();
+        let runtime = handles
+            .owners
+            .lock()
+            .map_err(|_| PropertyApiError::Internal)?
+            .get(&token)
+            .cloned()
+            .ok_or(PropertyApiError::InvalidHandle)?;
+        runtime
+            .with_property_value(&handles.registry, token, inspect)
+            .map_err(map_property_read_error)?
+    }
+
+    pub fn property_get_bool(handle: u64) -> Result<bool, PropertyApiError> {
+        inspect_property_value(handle, |value| match value {
+            TypedValue::Bool(value) => Ok(*value),
+            _ => Err(PropertyApiError::WrongType),
+        })
+    }
+
+    pub fn property_get_i64(handle: u64) -> Result<i64, PropertyApiError> {
+        inspect_property_value(handle, |value| match value {
+            TypedValue::I64(value) => Ok(*value),
+            _ => Err(PropertyApiError::WrongType),
+        })
+    }
+
+    pub fn property_get_utf8(
+        handle: u64,
+        buffer: Option<&mut [u8]>,
+    ) -> Result<usize, PropertyApiError> {
+        inspect_property_value(handle, move |value| match value {
+            TypedValue::Utf8(value) => match value.copy_to_buffer(buffer) {
+                Ok(Utf8CopyOutcome::LengthOnly { required }) => Ok(required),
+                Ok(Utf8CopyOutcome::Written { length }) => Ok(length),
+                Err(error) => Err(PropertyApiError::BufferTooSmall {
+                    required: error.required,
+                }),
+            },
+            _ => Err(PropertyApiError::WrongType),
+        })
+    }
+
+    pub fn property_get_f64(handle: u64) -> Result<f64, PropertyApiError> {
+        inspect_property_value(handle, |value| match value {
+            TypedValue::F64(value) => Ok(*value),
+            _ => Err(PropertyApiError::WrongType),
+        })
+    }
+
+    pub fn property_get_decimal(handle: u64) -> Result<u64, PropertyApiError> {
+        inspect_property_value(handle, |value| match value {
+            TypedValue::Decimal(value) => Ok(value.to_canonical_bits()),
+            _ => Err(PropertyApiError::WrongType),
         })
     }
 

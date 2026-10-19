@@ -991,6 +991,32 @@ impl RuntimeCore {
         Ok(state.read().clone())
     }
 
+    /// Inspects a borrowed Property value while its registry pin and UI-state guard are held.
+    ///
+    /// The operation is an internal adapter callback, not user code; callers must not retain the
+    /// borrowed value or re-enter Runtime APIs from it.
+    pub(crate) fn with_property_value<T>(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        token: HandleToken,
+        inspect: impl FnOnce(&TypedValue) -> T,
+    ) -> Result<T, RuntimePropertyError> {
+        let pin = registry
+            .validate(token, &PropertyHandleKind::Property, &self.identity)
+            .map_err(RuntimePropertyError::Registry)?;
+        self.ensure_property_access_thread()?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve(pin.identity())
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<PropertyState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        Ok(inspect(state.read()))
+    }
+
     /// Returns the fixed initial kind of a Property on this Runtime's UI thread.
     pub(crate) fn property_kind(
         &self,

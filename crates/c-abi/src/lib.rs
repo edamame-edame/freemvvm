@@ -3,17 +3,20 @@
 //! The public API is under construction and is not distributable yet.
 
 use freemvvm_core::abi_support::{
-    DestroyCallback, PostCallback, RuntimeCreateError, RuntimeQueryError, RuntimeRetainError,
-    ShutdownApiError, ShutdownApiState, WakeCallback, handle_release as core_handle_release,
-    property_create_bool as core_property_create_bool,
+    DestroyCallback, PostCallback, PropertyApiError, RuntimeCreateError, RuntimeQueryError,
+    RuntimeRetainError, ShutdownApiError, ShutdownApiState, WakeCallback,
+    handle_release as core_handle_release, property_create_bool as core_property_create_bool,
     property_create_decimal as core_property_create_decimal,
     property_create_f64 as core_property_create_f64,
     property_create_i64 as core_property_create_i64,
-    property_create_utf8 as core_property_create_utf8, property_kind as core_property_kind,
-    runtime_create_handle, runtime_dispatch_turn, runtime_host_begin_event, runtime_host_end_event,
-    runtime_host_stopped, runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post,
-    runtime_request_shutdown, runtime_retain_handle as core_runtime_retain_handle,
-    runtime_set_ui_loop_bridge, runtime_shutdown, shutdown_request_query,
+    property_create_utf8 as core_property_create_utf8, property_get_bool as core_property_get_bool,
+    property_get_decimal as core_property_get_decimal, property_get_f64 as core_property_get_f64,
+    property_get_i64 as core_property_get_i64, property_get_utf8 as core_property_get_utf8,
+    property_kind as core_property_kind, runtime_create_handle, runtime_dispatch_turn,
+    runtime_host_begin_event, runtime_host_end_event, runtime_host_stopped,
+    runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post, runtime_request_shutdown,
+    runtime_retain_handle as core_runtime_retain_handle, runtime_set_ui_loop_bridge,
+    runtime_shutdown, shutdown_request_query,
 };
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
 use std::ffi::c_void;
@@ -22,11 +25,13 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 const UI_OK: u32 = 0;
 const UI_INVALID_ARGUMENT: u32 = 1;
 const UI_INVALID_HANDLE: u32 = 2;
+const UI_WRONG_TYPE: u32 = 3;
 const UI_OUT_OF_MEMORY: u32 = 8;
 const UI_INTERNAL_ERROR: u32 = 9;
 const UI_WRONG_THREAD: u32 = 5;
 const UI_CLOSED: u32 = 6;
 const UI_UNSUPPORTED: u32 = 10;
+const UI_BUFFER_TOO_SMALL: u32 = 7;
 const UI_PENDING: u32 = 14;
 const NUMERIC_NARROW_EXACT: u32 = 0;
 const NUMERIC_NARROW_NEAREST_EVEN: u32 = 1;
@@ -147,6 +152,28 @@ fn catch_property_creation(
     match catch_unwind(AssertUnwindSafe(operation)) {
         Ok(Ok(handle)) => Ok(handle),
         Ok(Err(error)) => Err(map_shutdown_error(error)),
+        Err(_) => Err(UI_INTERNAL_ERROR),
+    }
+}
+
+fn map_property_error(error: PropertyApiError) -> u32 {
+    match error {
+        PropertyApiError::InvalidHandle => UI_INVALID_HANDLE,
+        PropertyApiError::InvalidArgument => UI_INVALID_ARGUMENT,
+        PropertyApiError::WrongType => UI_WRONG_TYPE,
+        PropertyApiError::WrongThread => UI_WRONG_THREAD,
+        PropertyApiError::Closed => UI_CLOSED,
+        PropertyApiError::BufferTooSmall { .. } => UI_BUFFER_TOO_SMALL,
+        PropertyApiError::Internal => UI_INTERNAL_ERROR,
+    }
+}
+
+fn catch_property_get<T>(
+    operation: impl FnOnce() -> Result<T, PropertyApiError>,
+) -> Result<T, u32> {
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(map_property_error(error)),
         Err(_) => Err(UI_INTERNAL_ERROR),
     }
 }
@@ -349,6 +376,163 @@ pub unsafe extern "C" fn ui_abi_1_property_kind(property: u64, out_kind: *mut u3
         }
         Ok(Err(error)) => map_shutdown_error(error),
         Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Read a BOOL Property's current value.
+///
+/// # Safety
+/// `out_value` must be null or writable storage for one `u8`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_get_bool(property: u64, out_value: *mut u8) -> u32 {
+    if !out_value.is_null() {
+        // SAFETY: the caller guarantees that a non-null scalar output is writable.
+        unsafe { out_value.write(0) };
+    }
+    if out_value.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_property_get(|| core_property_get_bool(property)) {
+        Ok(value) => {
+            // SAFETY: required output was checked above.
+            unsafe { out_value.write(u8::from(value)) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Read an I64 Property's current value.
+///
+/// # Safety
+/// `out_value` must be null or writable storage for one `i64`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_get_i64(property: u64, out_value: *mut i64) -> u32 {
+    if !out_value.is_null() {
+        // SAFETY: the caller guarantees that a non-null scalar output is writable.
+        unsafe { out_value.write(0) };
+    }
+    if out_value.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_property_get(|| core_property_get_i64(property)) {
+        Ok(value) => {
+            // SAFETY: required output was checked above.
+            unsafe { out_value.write(value) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Read UTF-8 bytes from a Property into caller-owned storage.
+///
+/// `(buffer == NULL, capacity == 0)` queries the required byte count. The result is not
+/// NUL-terminated. If the buffer is too small, it remains unchanged and `out_length` receives
+/// the required byte count.
+///
+/// # Safety
+/// `out_length` must be null or writable storage for one `u64`. For a non-null `buffer` and
+/// positive capacity, `buffer` must be writable for `capacity` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_get_utf8(
+    property: u64,
+    buffer: *mut u8,
+    capacity: u64,
+    out_length: *mut u64,
+) -> u32 {
+    if !out_length.is_null() {
+        // SAFETY: the caller guarantees that a non-null length output is writable.
+        unsafe { out_length.write(0) };
+    }
+    if out_length.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let Ok(capacity) = usize::try_from(capacity) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    if buffer.is_null() && capacity != 0 {
+        return UI_INVALID_ARGUMENT;
+    }
+    let mut empty_buffer = [];
+    let buffer: Option<&mut [u8]> = if buffer.is_null() {
+        None
+    } else if capacity == 0 {
+        Some(&mut empty_buffer)
+    } else {
+        // SAFETY: the caller guarantees writable storage for the declared capacity.
+        Some(unsafe { std::slice::from_raw_parts_mut(buffer, capacity) })
+    };
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_property_get_utf8(property, buffer)
+    })) {
+        Ok(Ok(length)) => match u64::try_from(length) {
+            Ok(length) => {
+                // SAFETY: the required output was checked above.
+                unsafe { out_length.write(length) };
+                UI_OK
+            }
+            Err(_) => UI_INTERNAL_ERROR,
+        },
+        Ok(Err(PropertyApiError::BufferTooSmall { required })) => {
+            match u64::try_from(required) {
+                Ok(required) => {
+                    // SAFETY: the required output was checked above; short-buffer contract
+                    // updates only the required length and does not touch caller buffer bytes.
+                    unsafe { out_length.write(required) };
+                    UI_BUFFER_TOO_SMALL
+                }
+                Err(_) => UI_INTERNAL_ERROR,
+            }
+        }
+        Ok(Err(error)) => map_property_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Read an F64 Property's current value.
+///
+/// # Safety
+/// `out_value` must be null or writable storage for one `f64`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_get_f64(property: u64, out_value: *mut f64) -> u32 {
+    if !out_value.is_null() {
+        // SAFETY: the caller guarantees that a non-null scalar output is writable.
+        unsafe { out_value.write(0.0) };
+    }
+    if out_value.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_property_get(|| core_property_get_f64(property)) {
+        Ok(value) => {
+            // SAFETY: required output was checked above.
+            unsafe { out_value.write(value) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Read a DECIMAL Property's canonical `uint64_t` representation.
+///
+/// # Safety
+/// `out_bits` must be null or writable storage for one `u64`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_get_decimal(property: u64, out_bits: *mut u64) -> u32 {
+    if !out_bits.is_null() {
+        // SAFETY: the caller guarantees that a non-null scalar output is writable.
+        unsafe { out_bits.write(0) };
+    }
+    if out_bits.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_property_get(|| core_property_get_decimal(property)) {
+        Ok(bits) => {
+            // SAFETY: required output was checked above.
+            unsafe { out_bits.write(bits) };
+            UI_OK
+        }
+        Err(status) => status,
     }
 }
 
@@ -758,13 +942,15 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
 #[cfg(test)]
 mod tests {
     use super::{
-        RuntimeRetainError, UI_INTERNAL_ERROR, UI_INVALID_ARGUMENT, UI_INVALID_HANDLE, UI_OK,
-        UI_OUT_OF_MEMORY, UI_PENDING, UI_UNSUPPORTED, UI_WRONG_THREAD, catch_runtime_creation,
-        catch_runtime_query, catch_runtime_retain, ui_abi_1_get_version, ui_abi_1_handle_release,
-        ui_abi_1_handle_retain, ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32,
-        ui_abi_1_numeric_narrow_f64, ui_abi_1_property_create_bool,
-        ui_abi_1_property_create_decimal, ui_abi_1_property_create_f64,
-        ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8, ui_abi_1_property_kind,
+        RuntimeRetainError, UI_BUFFER_TOO_SMALL, UI_INTERNAL_ERROR, UI_INVALID_ARGUMENT,
+        UI_INVALID_HANDLE, UI_OK, UI_OUT_OF_MEMORY, UI_PENDING, UI_UNSUPPORTED, UI_WRONG_THREAD,
+        UI_WRONG_TYPE, catch_runtime_creation, catch_runtime_query, catch_runtime_retain,
+        ui_abi_1_get_version, ui_abi_1_handle_release, ui_abi_1_handle_retain,
+        ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32, ui_abi_1_numeric_narrow_f64,
+        ui_abi_1_property_create_bool, ui_abi_1_property_create_decimal,
+        ui_abi_1_property_create_f64, ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8,
+        ui_abi_1_property_get_bool, ui_abi_1_property_get_decimal, ui_abi_1_property_get_f64,
+        ui_abi_1_property_get_i64, ui_abi_1_property_get_utf8, ui_abi_1_property_kind,
         ui_abi_1_runtime_create, ui_abi_1_runtime_dispatch_turn, ui_abi_1_runtime_host_begin_event,
         ui_abi_1_runtime_host_end_event, ui_abi_1_runtime_host_stopped,
         ui_abi_1_runtime_is_ui_thread, ui_abi_1_runtime_post, ui_abi_1_runtime_request_shutdown,
@@ -1764,6 +1950,199 @@ mod tests {
         let status = unsafe { ui_abi_1_property_kind(0, &mut kind) };
         assert_eq!(status, UI_INVALID_HANDLE);
         assert_eq!(kind, 0);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
+    #[test]
+    fn property_getters_return_the_initial_value_for_each_supported_kind() {
+        let mut runtime = 0;
+        // SAFETY: runtime points to writable storage.
+        let status = unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) };
+        assert_eq!(status, UI_OK);
+
+        let mut properties = [0_u64; 5];
+        let mut error = 0;
+        // SAFETY: all output pointers refer to writable storage and Runtime is live.
+        let status =
+            unsafe { ui_abi_1_property_create_bool(runtime, 1, &mut properties[0], &mut error) };
+        assert_eq!(status, UI_OK);
+        // SAFETY: all output pointers refer to writable storage and Runtime is live.
+        let status = unsafe {
+            ui_abi_1_property_create_i64(runtime, i64::MIN, &mut properties[1], &mut error)
+        };
+        assert_eq!(status, UI_OK);
+        let initial_text = *b"A\0\xe6\x97\xa5";
+        // SAFETY: initial_text is readable for its declared length and outputs are writable.
+        let status = unsafe {
+            ui_abi_1_property_create_utf8(
+                runtime,
+                initial_text.as_ptr(),
+                initial_text.len() as u64,
+                &mut properties[2],
+                &mut error,
+            )
+        };
+        assert_eq!(status, UI_OK);
+        // SAFETY: all output pointers refer to writable storage and Runtime is live.
+        let status = unsafe {
+            ui_abi_1_property_create_f64(runtime, -13.25, &mut properties[3], &mut error)
+        };
+        assert_eq!(status, UI_OK);
+        let decimal = 0x8123_4567_89ab_cdef;
+        // SAFETY: all output pointers refer to writable storage and Runtime is live.
+        let status = unsafe {
+            ui_abi_1_property_create_decimal(runtime, decimal, &mut properties[4], &mut error)
+        };
+        assert_eq!(status, UI_OK);
+        assert_eq!(error, 0);
+
+        let mut bool_value = u8::MAX;
+        // SAFETY: scalar output points to writable storage and Property kind is BOOL.
+        let status = unsafe { ui_abi_1_property_get_bool(properties[0], &mut bool_value) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(bool_value, 1);
+
+        let mut i64_value = i64::MAX;
+        // SAFETY: scalar output points to writable storage and Property kind is I64.
+        let status = unsafe { ui_abi_1_property_get_i64(properties[1], &mut i64_value) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(i64_value, i64::MIN);
+
+        let mut required = u64::MAX;
+        // SAFETY: null/zero is the documented UTF8 length-query form; out_length is writable.
+        let status = unsafe {
+            ui_abi_1_property_get_utf8(properties[2], std::ptr::null_mut(), 0, &mut required)
+        };
+        assert_eq!(status, UI_OK);
+        assert_eq!(required, initial_text.len() as u64);
+        let mut text = [0_u8; 5];
+        required = u64::MAX;
+        // SAFETY: text is writable for its full declared capacity and out_length is writable.
+        let status = unsafe {
+            ui_abi_1_property_get_utf8(
+                properties[2],
+                text.as_mut_ptr(),
+                text.len() as u64,
+                &mut required,
+            )
+        };
+        assert_eq!(status, UI_OK);
+        assert_eq!(required, initial_text.len() as u64);
+        assert_eq!(&text, &initial_text);
+
+        let mut f64_value = f64::NAN;
+        // SAFETY: scalar output points to writable storage and Property kind is F64.
+        let status = unsafe { ui_abi_1_property_get_f64(properties[3], &mut f64_value) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(f64_value.to_bits(), (-13.25_f64).to_bits());
+
+        let mut decimal_value = 0;
+        // SAFETY: scalar output points to writable storage and Property kind is DECIMAL.
+        let status = unsafe { ui_abi_1_property_get_decimal(properties[4], &mut decimal_value) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(decimal_value, decimal);
+
+        for property in properties {
+            assert_eq!(ui_abi_1_handle_release(property), UI_OK);
+        }
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
+    #[test]
+    fn property_getters_reject_wrong_kind_invalid_handle_and_worker_thread() {
+        let mut runtime = 0;
+        // SAFETY: runtime points to writable storage.
+        let status = unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) };
+        assert_eq!(status, UI_OK);
+        let mut property = 0;
+        // SAFETY: property output points to writable storage.
+        let status = unsafe {
+            ui_abi_1_property_create_i64(runtime, 42, &mut property, std::ptr::null_mut())
+        };
+        assert_eq!(status, UI_OK);
+
+        let mut wrong_type_output = u8::MAX;
+        // SAFETY: scalar output is writable; the live Property has a different kind.
+        let status = unsafe { ui_abi_1_property_get_bool(property, &mut wrong_type_output) };
+        assert_eq!(status, UI_WRONG_TYPE);
+        assert_eq!(wrong_type_output, 0);
+
+        let mut invalid_output = i64::MAX;
+        // SAFETY: scalar output is writable; token zero is invalid.
+        let status = unsafe { ui_abi_1_property_get_i64(0, &mut invalid_output) };
+        assert_eq!(status, UI_INVALID_HANDLE);
+        assert_eq!(invalid_output, 0);
+
+        // SAFETY: null required output is checked before dereference.
+        let status = unsafe { ui_abi_1_property_get_i64(property, std::ptr::null_mut()) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+
+        let worker = std::thread::spawn(move || {
+            let mut output = i64::MAX;
+            // SAFETY: output is writable; this Runtime's Property belongs to the creator thread.
+            let status = unsafe { ui_abi_1_property_get_i64(property, &mut output) };
+            (status, output)
+        });
+        assert_eq!(
+            worker.join().expect("worker should finish"),
+            (UI_WRONG_THREAD, 0)
+        );
+        assert_eq!(ui_abi_1_handle_release(property), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
+    #[test]
+    fn property_get_utf8_short_or_invalid_buffer_never_partially_writes() {
+        let mut runtime = 0;
+        // SAFETY: runtime points to writable storage.
+        let status = unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) };
+        assert_eq!(status, UI_OK);
+        let mut property = 0;
+        let mut error = 0;
+        let bytes = *b"long";
+        // SAFETY: bytes and output storage are valid for the call.
+        let status = unsafe {
+            ui_abi_1_property_create_utf8(
+                runtime,
+                bytes.as_ptr(),
+                bytes.len() as u64,
+                &mut property,
+                &mut error,
+            )
+        };
+        assert_eq!(status, UI_OK);
+
+        let mut short = [0xa5; 3];
+        let mut length = u64::MAX;
+        // SAFETY: short is writable for its full capacity and length points to writable storage.
+        let status = unsafe {
+            ui_abi_1_property_get_utf8(
+                property,
+                short.as_mut_ptr(),
+                short.len() as u64,
+                &mut length,
+            )
+        };
+        assert_eq!(status, UI_BUFFER_TOO_SMALL);
+        assert_eq!(length, 4);
+        assert_eq!(short, [0xa5; 3]);
+
+        length = u64::MAX;
+        // SAFETY: null positive-capacity buffer is rejected; length points to writable storage.
+        let status =
+            unsafe { ui_abi_1_property_get_utf8(property, std::ptr::null_mut(), 4, &mut length) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        assert_eq!(length, 0);
+
+        length = u64::MAX;
+        // SAFETY: the required length output is null and is checked before dereference.
+        let status = unsafe {
+            ui_abi_1_property_get_utf8(property, std::ptr::null_mut(), 0, std::ptr::null_mut())
+        };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        assert_eq!(length, u64::MAX);
+
+        assert_eq!(ui_abi_1_handle_release(property), UI_OK);
         assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
     }
 
