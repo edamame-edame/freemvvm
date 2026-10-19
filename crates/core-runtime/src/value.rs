@@ -28,6 +28,32 @@ pub(crate) struct DecimalValue {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ValueKind {
+    Bool,
+    I64,
+    Utf8,
+    F64,
+    Decimal,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ValueCommit {
+    Unchanged,
+    Changed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ValueKindMismatch {
+    pub(crate) expected: ValueKind,
+    pub(crate) actual: ValueKind,
+}
+
+/// A value slot whose kind is fixed by its initial value.
+pub(crate) struct ValueStorage {
+    value: TypedValue,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DecimalValueError {
     ScaleOutOfRange,
     CoefficientOutOfRange,
@@ -58,6 +84,16 @@ pub(crate) fn f64_equivalent(left: f64, right: f64) -> bool {
 }
 
 impl TypedValue {
+    fn kind(&self) -> ValueKind {
+        match self {
+            Self::Bool(_) => ValueKind::Bool,
+            Self::I64(_) => ValueKind::I64,
+            Self::Utf8(_) => ValueKind::Utf8,
+            Self::F64(_) => ValueKind::F64,
+            Self::Decimal(_) => ValueKind::Decimal,
+        }
+    }
+
     /// Compares values only when they have the same kind.
     pub(crate) fn equivalent(&self, other: &Self) -> bool {
         match (self, other) {
@@ -68,6 +104,35 @@ impl TypedValue {
             (Self::Decimal(left), Self::Decimal(right)) => left.equivalent(*right),
             _ => false,
         }
+    }
+}
+
+impl ValueStorage {
+    pub(crate) fn new(initial: TypedValue) -> Self {
+        Self { value: initial }
+    }
+
+    pub(crate) fn read(&self) -> &TypedValue {
+        &self.value
+    }
+
+    /// Applies a candidate after the caller has completed all registered value validation.
+    ///
+    /// An equivalent candidate preserves the existing representation and reports no change.
+    pub(crate) fn apply_validated(
+        &mut self,
+        candidate: TypedValue,
+    ) -> Result<ValueCommit, ValueKindMismatch> {
+        let expected = self.value.kind();
+        let actual = candidate.kind();
+        if expected != actual {
+            return Err(ValueKindMismatch { expected, actual });
+        }
+        if self.value.equivalent(&candidate) {
+            return Ok(ValueCommit::Unchanged);
+        }
+        self.value = candidate;
+        Ok(ValueCommit::Changed)
     }
 }
 
@@ -155,7 +220,7 @@ impl OwnedUtf8 {
 mod tests {
     use super::{
         DecimalValue, DecimalValueError, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8BufferTooSmall,
-        Utf8CopyOutcome,
+        Utf8CopyOutcome, ValueCommit, ValueKind, ValueKindMismatch, ValueStorage,
     };
 
     #[test]
@@ -317,5 +382,71 @@ mod tests {
         let equivalent = DecimalValue::new(false, 2, 100).expect("valid decimal");
         assert!(TypedValue::Decimal(first).equivalent(&TypedValue::Decimal(equivalent)));
         assert!(!TypedValue::Decimal(first).equivalent(&TypedValue::I64(1)));
+    }
+
+    #[test]
+    fn value_storage_preserves_equivalent_representations() {
+        let original_nan = f64::from_bits(0x7ff0_0000_0000_0001);
+        let other_nan = f64::from_bits(0xfff8_0000_0000_0001);
+        let original_decimal = DecimalValue::new(false, 1, 10).expect("valid decimal");
+        let equivalent_decimal = DecimalValue::new(false, 2, 100).expect("valid decimal");
+        let mut float_storage = ValueStorage::new(TypedValue::F64(original_nan));
+        let mut decimal_storage = ValueStorage::new(TypedValue::Decimal(original_decimal));
+
+        assert_eq!(
+            float_storage.apply_validated(TypedValue::F64(other_nan)),
+            Ok(ValueCommit::Unchanged)
+        );
+        assert_eq!(
+            decimal_storage.apply_validated(TypedValue::Decimal(equivalent_decimal)),
+            Ok(ValueCommit::Unchanged)
+        );
+        assert!(
+            matches!(float_storage.read(), TypedValue::F64(value) if value.to_bits() == original_nan.to_bits())
+        );
+        assert!(
+            matches!(decimal_storage.read(), TypedValue::Decimal(value) if *value == original_decimal)
+        );
+    }
+
+    #[test]
+    fn value_storage_commits_changed_candidates_of_every_kind() {
+        let cases = [
+            (TypedValue::Bool(false), TypedValue::Bool(true)),
+            (TypedValue::I64(1), TypedValue::I64(2)),
+            (
+                TypedValue::Utf8(OwnedUtf8::copy_from_bytes(b"old").expect("valid UTF-8")),
+                TypedValue::Utf8(OwnedUtf8::copy_from_bytes(b"new").expect("valid UTF-8")),
+            ),
+            (TypedValue::F64(1.0), TypedValue::F64(2.0)),
+            (
+                TypedValue::Decimal(DecimalValue::new(false, 0, 1).expect("valid decimal")),
+                TypedValue::Decimal(DecimalValue::new(false, 0, 2).expect("valid decimal")),
+            ),
+        ];
+
+        for (initial, candidate) in cases {
+            let mut storage = ValueStorage::new(initial.clone());
+            assert_eq!(storage.apply_validated(initial), Ok(ValueCommit::Unchanged));
+            assert_eq!(
+                storage.apply_validated(candidate.clone()),
+                Ok(ValueCommit::Changed)
+            );
+            assert!(storage.read().equivalent(&candidate));
+        }
+    }
+
+    #[test]
+    fn value_storage_rejects_other_kinds_without_mutating_current_value() {
+        let mut storage = ValueStorage::new(TypedValue::I64(7));
+
+        assert_eq!(
+            storage.apply_validated(TypedValue::Bool(true)),
+            Err(ValueKindMismatch {
+                expected: ValueKind::I64,
+                actual: ValueKind::Bool,
+            })
+        );
+        assert!(matches!(storage.read(), TypedValue::I64(value) if *value == 7));
     }
 }
