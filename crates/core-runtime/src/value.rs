@@ -7,6 +7,17 @@
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct OwnedUtf8(String);
 
+/// The currently implemented subset of the Core's tagged Property values.
+///
+/// Decimal and Property commit/notification behavior are added in separate units.
+#[derive(Clone, Debug)]
+pub(crate) enum TypedValue {
+    Bool(bool),
+    I64(i64),
+    Utf8(OwnedUtf8),
+    F64(f64),
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum OwnedUtf8Error {
     InvalidUtf8,
@@ -26,6 +37,19 @@ pub(crate) struct Utf8BufferTooSmall {
 
 pub(crate) fn f64_equivalent(left: f64, right: f64) -> bool {
     (left.is_nan() && right.is_nan()) || left == right
+}
+
+impl TypedValue {
+    /// Compares values only when they have the same kind.
+    pub(crate) fn equivalent(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Bool(left), Self::Bool(right)) => left == right,
+            (Self::I64(left), Self::I64(right)) => left == right,
+            (Self::Utf8(left), Self::Utf8(right)) => left == right,
+            (Self::F64(left), Self::F64(right)) => f64_equivalent(*left, *right),
+            _ => false,
+        }
+    }
 }
 
 impl OwnedUtf8 {
@@ -71,7 +95,7 @@ impl OwnedUtf8 {
 
 #[cfg(test)]
 mod tests {
-    use super::{OwnedUtf8, OwnedUtf8Error, Utf8BufferTooSmall, Utf8CopyOutcome};
+    use super::{OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8BufferTooSmall, Utf8CopyOutcome};
 
     #[test]
     fn owned_utf8_copies_exact_validated_bytes() {
@@ -154,5 +178,36 @@ mod tests {
             1.25,
             f64::from_bits(1.25_f64.to_bits() + 1)
         ));
+    }
+
+    #[test]
+    fn typed_value_compares_bool_i64_and_utf8_within_kind() {
+        assert!(TypedValue::Bool(true).equivalent(&TypedValue::Bool(true)));
+        assert!(!TypedValue::Bool(true).equivalent(&TypedValue::Bool(false)));
+        assert!(TypedValue::I64(-42).equivalent(&TypedValue::I64(-42)));
+        assert!(!TypedValue::I64(-42).equivalent(&TypedValue::I64(42)));
+
+        let text = OwnedUtf8::copy_from_bytes("日本\0語".as_bytes()).expect("valid UTF-8");
+        let same_text = OwnedUtf8::copy_from_bytes("日本\0語".as_bytes()).expect("valid UTF-8");
+        let other_text = OwnedUtf8::copy_from_bytes("日本語".as_bytes()).expect("valid UTF-8");
+        assert!(TypedValue::Utf8(text.clone()).equivalent(&TypedValue::Utf8(same_text)));
+        assert!(!TypedValue::Utf8(text).equivalent(&TypedValue::Utf8(other_text)));
+    }
+
+    #[test]
+    fn typed_value_uses_f64_equivalence_rules() {
+        let first_nan = f64::from_bits(0x7ff0_0000_0000_0001);
+        let second_nan = f64::from_bits(0xfff8_0000_0000_0001);
+
+        assert!(TypedValue::F64(first_nan).equivalent(&TypedValue::F64(second_nan)));
+        assert!(TypedValue::F64(0.0).equivalent(&TypedValue::F64(-0.0)));
+        assert!(!TypedValue::F64(f64::INFINITY).equivalent(&TypedValue::F64(f64::NEG_INFINITY)));
+        assert!(!TypedValue::F64(1.0).equivalent(&TypedValue::F64(1.0 + f64::EPSILON)));
+    }
+
+    #[test]
+    fn typed_value_rejects_cross_kind_equivalence() {
+        assert!(!TypedValue::Bool(true).equivalent(&TypedValue::I64(1)));
+        assert!(!TypedValue::I64(1).equivalent(&TypedValue::F64(1.0)));
     }
 }

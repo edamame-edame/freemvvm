@@ -9,3 +9,4 @@ Scope: freemvvm Core UTF-8 boundary values.
 - UT-VALUE-001 already covers empty, multibyte, embedded-NUL, invalid-byte, and source-buffer mutation behavior.
 - `OwnedUtf8::copy_to_buffer(None)` is the internal capacity query; `Some(slice)` checks full byte capacity before copying and returns required byte length without partially changing a short destination. No trailing NUL is written.
 - F64 Property-value equivalence is `(both NaN) || numeric equality`: NaN payload/sign do not matter, signed zero compares equal, and opposite infinities remain unequal. Keep this separate from stored representation normalization.
+- `TypedValue` currently models BOOL, I64, UTF8, and F64 and compares only matching variants. UTF8 comparison is exact owned-string equality; F64 delegates to `f64_equivalent`. This is a pure comparison primitive, not yet Property storage/commit/notification behavior; DECIMAL is a separate implementation unit.

@@ -887,6 +887,24 @@
       "tests": [
         {"id": "UT-VALUE-003", "command": ["cargo", "test", "-p", "freemvvm-core", "value::tests::f64_equivalent"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-030",
+      "state": "ready",
+      "scope": "typed-value-equivalence-bool-i64-utf8-f64",
+      "sources": ["crates/core-runtime/src/value.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-027", "UNIT-CORE-029"],
+      "design": [
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "ValueStorage typed values and equivalence"},
+        {"path": ".docs/12_design/runtime-objects/model-values.md", "version": "1.0", "section": "typed value kinds and equivalence"}
+      ],
+      "requirements": ["RQ-02-017", "RQ-02-018", "RQ-02-020"],
+      "cases": ["TC-PROP-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-VALUE-004", "command": ["cargo", "test", "-p", "freemvvm-core", "value::tests::typed_value"]}
+      ]
     }
   ]
 }
