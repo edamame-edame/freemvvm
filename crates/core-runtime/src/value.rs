@@ -7,16 +7,34 @@
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct OwnedUtf8(String);
 
-/// The currently implemented subset of the Core's tagged Property values.
+/// The currently implemented Core tagged Property values.
 ///
-/// Decimal and Property commit/notification behavior are added in separate units.
+/// Property commit/notification behavior is added in a separate unit.
 #[derive(Clone, Debug)]
 pub(crate) enum TypedValue {
     Bool(bool),
     I64(i64),
     Utf8(OwnedUtf8),
     F64(f64),
+    Decimal(DecimalValue),
 }
+
+/// An exact base-10 value with its original sign, scale, and coefficient.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DecimalValue {
+    negative: bool,
+    scale: u8,
+    coefficient: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DecimalValueError {
+    ScaleOutOfRange,
+    CoefficientOutOfRange,
+}
+
+const DECIMAL_MAX_SCALE: u8 = 31;
+const DECIMAL_MAX_COEFFICIENT: u64 = (1_u64 << 58) - 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum OwnedUtf8Error {
@@ -47,8 +65,48 @@ impl TypedValue {
             (Self::I64(left), Self::I64(right)) => left == right,
             (Self::Utf8(left), Self::Utf8(right)) => left == right,
             (Self::F64(left), Self::F64(right)) => f64_equivalent(*left, *right),
+            (Self::Decimal(left), Self::Decimal(right)) => left.equivalent(*right),
             _ => false,
         }
+    }
+}
+
+impl DecimalValue {
+    pub(crate) fn new(
+        negative: bool,
+        scale: u8,
+        coefficient: u64,
+    ) -> Result<Self, DecimalValueError> {
+        if scale > DECIMAL_MAX_SCALE {
+            return Err(DecimalValueError::ScaleOutOfRange);
+        }
+        if coefficient > DECIMAL_MAX_COEFFICIENT {
+            return Err(DecimalValueError::CoefficientOutOfRange);
+        }
+        Ok(Self {
+            negative,
+            scale,
+            coefficient,
+        })
+    }
+
+    /// Tests numeric equality without changing the retained representation.
+    pub(crate) fn equivalent(self, other: Self) -> bool {
+        self.comparison_parts() == other.comparison_parts()
+    }
+
+    fn comparison_parts(self) -> (bool, u8, u64) {
+        if self.coefficient == 0 {
+            return (false, 0, 0);
+        }
+
+        let mut scale = self.scale;
+        let mut coefficient = self.coefficient;
+        while scale > 0 && coefficient % 10 == 0 {
+            coefficient /= 10;
+            scale -= 1;
+        }
+        (self.negative, scale, coefficient)
     }
 }
 
@@ -95,7 +153,10 @@ impl OwnedUtf8 {
 
 #[cfg(test)]
 mod tests {
-    use super::{OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8BufferTooSmall, Utf8CopyOutcome};
+    use super::{
+        DecimalValue, DecimalValueError, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8BufferTooSmall,
+        Utf8CopyOutcome,
+    };
 
     #[test]
     fn owned_utf8_copies_exact_validated_bytes() {
@@ -209,5 +270,52 @@ mod tests {
     fn typed_value_rejects_cross_kind_equivalence() {
         assert!(!TypedValue::Bool(true).equivalent(&TypedValue::I64(1)));
         assert!(!TypedValue::I64(1).equivalent(&TypedValue::F64(1.0)));
+    }
+
+    #[test]
+    fn decimal_value_accepts_inclusive_scale_and_coefficient_boundaries() {
+        assert!(DecimalValue::new(false, 0, 0).is_ok());
+        assert!(DecimalValue::new(true, 31, (1_u64 << 58) - 1).is_ok());
+    }
+
+    #[test]
+    fn decimal_value_rejects_scale_and_coefficient_outside_approved_range() {
+        assert_eq!(
+            DecimalValue::new(false, 32, 0),
+            Err(DecimalValueError::ScaleOutOfRange)
+        );
+        assert_eq!(
+            DecimalValue::new(false, 0, 1_u64 << 58),
+            Err(DecimalValueError::CoefficientOutOfRange)
+        );
+    }
+
+    #[test]
+    fn decimal_value_compares_numeric_equivalence_without_rewriting_storage() {
+        let one_point_zero = DecimalValue::new(false, 1, 10).expect("valid decimal");
+        let one_point_zero_zero = DecimalValue::new(false, 2, 100).expect("valid decimal");
+        let one_point_one = DecimalValue::new(false, 1, 11).expect("valid decimal");
+        let negative_one = DecimalValue::new(true, 0, 1).expect("valid decimal");
+        let positive_zero = DecimalValue::new(false, 31, 0).expect("valid decimal");
+        let negative_zero = DecimalValue::new(true, 0, 0).expect("valid decimal");
+
+        assert!(one_point_zero.equivalent(one_point_zero_zero));
+        assert!(!one_point_zero.equivalent(one_point_one));
+        assert!(!one_point_zero.equivalent(negative_one));
+        assert!(positive_zero.equivalent(negative_zero));
+
+        let stored = one_point_zero;
+        assert!(stored.equivalent(one_point_zero_zero));
+        assert_eq!(stored, one_point_zero);
+        assert_eq!(stored.scale, 1);
+        assert_eq!(stored.coefficient, 10);
+    }
+
+    #[test]
+    fn decimal_value_typed_comparison_uses_kind_and_numeric_equivalence() {
+        let first = DecimalValue::new(false, 1, 10).expect("valid decimal");
+        let equivalent = DecimalValue::new(false, 2, 100).expect("valid decimal");
+        assert!(TypedValue::Decimal(first).equivalent(&TypedValue::Decimal(equivalent)));
+        assert!(!TypedValue::Decimal(first).equivalent(&TypedValue::I64(1)));
     }
 }

@@ -905,6 +905,24 @@
       "tests": [
         {"id": "UT-VALUE-004", "command": ["cargo", "test", "-p", "freemvvm-core", "value::tests::typed_value"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-031",
+      "state": "ready",
+      "scope": "decimal-value-range-and-equivalence",
+      "sources": ["crates/core-runtime/src/value.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-027", "UNIT-CORE-029", "UNIT-CORE-030"],
+      "design": [
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "Decimal range and numeric equivalence"},
+        {"path": ".docs/12_design/runtime-objects/model-values.md", "version": "1.0", "section": "typed value areas and representation-preserving comparison"}
+      ],
+      "requirements": ["RQ-02-017", "RQ-02-019"],
+      "cases": ["TC-PROP-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-VALUE-005", "command": ["cargo", "test", "-p", "freemvvm-core", "value::tests::decimal"]}
+      ]
     }
   ]
 }
