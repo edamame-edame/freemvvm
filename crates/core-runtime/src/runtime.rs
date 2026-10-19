@@ -859,7 +859,7 @@ pub(crate) struct RuntimeCore {
     cleanup: Arc<RuntimeCleanupQueue>,
     ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
     property_changes: Mutex<PropertyChangeQueue>,
-    subscription_owners: Mutex<HashMap<ObjectIdentity, Arc<Subscription>>>,
+    subscription_owners: Mutex<HashMap<ObjectIdentity, Vec<Arc<Subscription>>>>,
     object_cleanup: Arc<RuntimeObjectCleanupQueue>,
     host: HostRegistration,
     dispatcher: Mutex<Option<Dispatcher>>,
@@ -1109,66 +1109,116 @@ impl RuntimeCore {
         subscription: &Arc<Subscription>,
     ) -> Result<(), RuntimePropertyError> {
         self.ensure_property_access_thread()?;
-        self.ui_objects
+        if !subscription.is_active() {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+
+        let mut store = self
+            .ui_objects
             .lock()
-            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?
-            .resolve(identity)
-            .map_err(RuntimePropertyError::Store)?;
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let property = store
+            .resolve_mut(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_mut::<PropertyState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
 
         let mut owners = self
             .subscription_owners
             .lock()
             .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
-        if owners.contains_key(&identity) {
+        if owners
+            .values()
+            .flatten()
+            .any(|owner| Arc::ptr_eq(owner, subscription))
+        {
             return Err(RuntimePropertyError::WrongObjectState);
         }
-        owners
-            .try_reserve(1)
+
+        let mut new_bucket = None;
+        if let Some(bucket) = owners.get_mut(&identity) {
+            bucket
+                .try_reserve(1)
+                .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
+        } else {
+            owners
+                .try_reserve(1)
+                .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
+            let mut bucket = Vec::new();
+            bucket
+                .try_reserve(1)
+                .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
+            new_bucket = Some(bucket);
+        }
+        property
+            .add_subscription(subscription)
             .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
-        owners.insert(identity, Arc::clone(subscription));
+        let owner = Arc::clone(subscription);
+        if let Some(bucket) = owners.get_mut(&identity) {
+            bucket.push(owner);
+        } else if let Some(mut bucket) = new_bucket {
+            bucket.push(owner);
+            owners.insert(identity, bucket);
+        }
         Ok(())
     }
 
-    /// Pins an active Subscription after releasing the registry lock.
-    pub(crate) fn pin_subscription_owner(
+    /// Pins the Property's active subscriptions in registration order.
+    pub(crate) fn snapshot_property_subscriptions(
         &self,
         identity: ObjectIdentity,
-    ) -> Result<Option<Arc<Subscription>>, RuntimePropertyError> {
+    ) -> Result<Vec<Arc<Subscription>>, RuntimePropertyError> {
         self.ensure_property_access_thread()?;
-        self.subscription_owners
+        let mut store = self
+            .ui_objects
             .lock()
-            .map(|owners| owners.get(&identity).cloned())
-            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        store
+            .resolve_mut(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_mut::<PropertyState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?
+            .snapshot_subscriptions()
+            .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)
     }
 
-    /// Removes the Runtime owner and cancels the Subscription outside the registry lock.
+    /// Removes one Runtime owner and cancels it outside the registry lock.
     pub(crate) fn cancel_subscription_owner(
         &self,
         identity: ObjectIdentity,
+        subscription: &Arc<Subscription>,
     ) -> Result<bool, RuntimePropertyError> {
         self.ensure_property_access_thread()?;
-        let subscription = self
+        let mut store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let mut owners = self
             .subscription_owners
             .lock()
-            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?
-            .remove(&identity);
-        if let Some(subscription) = subscription {
-            subscription.cancel();
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
-
-    /// Runs one active Subscription callback without holding the Runtime owner registry lock.
-    pub(crate) fn invoke_subscription_owner(
-        &self,
-        identity: ObjectIdentity,
-    ) -> Result<bool, RuntimePropertyError> {
-        let Some(subscription) = self.pin_subscription_owner(identity)? else {
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let Some(bucket) = owners.get_mut(&identity) else {
             return Ok(false);
         };
-        Ok(subscription.invoke())
+        let Some(index) = bucket
+            .iter()
+            .position(|owner| Arc::ptr_eq(owner, subscription))
+        else {
+            return Ok(false);
+        };
+        let removed = bucket.remove(index);
+        if let Ok(state) = store.resolve_mut(identity)
+            && let Some(property) = state.downcast_mut::<PropertyState>()
+        {
+            property.remove_subscription(&removed);
+        }
+        if bucket.is_empty() {
+            owners.remove(&identity);
+        }
+        drop(owners);
+        drop(store);
+        removed.cancel();
+        Ok(true)
     }
 
     fn ensure_property_access_thread(&self) -> Result<(), RuntimePropertyError> {
@@ -1696,33 +1746,120 @@ mod tests {
             .register_subscription_owner(identity, &subscription)
             .expect("register active Runtime owner");
         drop(subscription);
+        let snapshot = runtime
+            .snapshot_property_subscriptions(identity)
+            .expect("snapshot registered subscription");
+        assert_eq!(snapshot.len(), 1);
         assert!(weak.upgrade().is_some());
-
-        assert!(
-            runtime
-                .invoke_subscription_owner(identity)
-                .expect("invoke pinned subscription")
-        );
+        assert!(snapshot[0].invoke());
         assert_eq!(probe.callbacks.load(Ordering::SeqCst), 1);
         assert_eq!(probe.destroys.load(Ordering::SeqCst), 0);
 
         assert!(
             runtime
-                .cancel_subscription_owner(identity)
+                .cancel_subscription_owner(identity, &snapshot[0])
                 .expect("cancel active subscription")
         );
         assert!(
             !runtime
-                .invoke_subscription_owner(identity)
-                .expect("canceled subscription is not pinned")
-        );
-        assert!(weak.upgrade().is_none());
-        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
-        assert!(
-            !runtime
-                .cancel_subscription_owner(identity)
+                .cancel_subscription_owner(identity, &snapshot[0])
                 .expect("repeated cancel is harmless")
         );
+        assert!(
+            runtime
+                .snapshot_property_subscriptions(identity)
+                .expect("canceled subscription is pruned")
+                .is_empty()
+        );
+        drop(snapshot);
+        assert!(weak.upgrade().is_none());
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn runtime_property_subscription_index_preserves_order_and_cancels_individually() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let token = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register a Property");
+        let identity = registry
+            .validate(token, &PropertyHandleKind::Property, &runtime.identity)
+            .expect("Property remains registered")
+            .identity();
+
+        let first_probe = Box::new(SubscriptionOwnerProbe::default());
+        let first_userdata = (std::ptr::from_ref(&*first_probe))
+            .cast_mut()
+            .cast::<c_void>();
+        // SAFETY: the probe outlives Runtime ownership and explicit cancellation.
+        let first = Arc::new(unsafe {
+            Subscription::new(
+                subscription_owner_callback,
+                first_userdata,
+                subscription_owner_destroy,
+            )
+        });
+        let first_weak = Arc::downgrade(&first);
+
+        let second_probe = Box::new(SubscriptionOwnerProbe::default());
+        let second_userdata = (std::ptr::from_ref(&*second_probe))
+            .cast_mut()
+            .cast::<c_void>();
+        // SAFETY: the probe outlives Runtime ownership and explicit cancellation.
+        let second = Arc::new(unsafe {
+            Subscription::new(
+                subscription_owner_callback,
+                second_userdata,
+                subscription_owner_destroy,
+            )
+        });
+        let second_weak = Arc::downgrade(&second);
+
+        runtime
+            .register_subscription_owner(identity, &first)
+            .expect("register first subscriber");
+        runtime
+            .register_subscription_owner(identity, &second)
+            .expect("register second subscriber on the same Property");
+        drop(first);
+        drop(second);
+
+        let snapshot = runtime
+            .snapshot_property_subscriptions(identity)
+            .expect("snapshot subscribers in registration order");
+        assert_eq!(snapshot.len(), 2);
+        assert!(Arc::ptr_eq(&snapshot[0], &first_weak.upgrade().unwrap()));
+        assert!(Arc::ptr_eq(&snapshot[1], &second_weak.upgrade().unwrap()));
+
+        assert!(
+            runtime
+                .cancel_subscription_owner(identity, &snapshot[0])
+                .expect("cancel only the first subscriber")
+        );
+        assert!(!snapshot[0].is_active());
+        assert!(snapshot[1].is_active());
+        let after_first_cancel = runtime
+            .snapshot_property_subscriptions(identity)
+            .expect("prune canceled first subscriber");
+        assert_eq!(after_first_cancel.len(), 1);
+        assert!(Arc::ptr_eq(
+            &after_first_cancel[0],
+            &second_weak.upgrade().unwrap()
+        ));
+        drop(snapshot);
+        assert!(first_weak.upgrade().is_none());
+        assert!(second_weak.upgrade().is_some());
+
+        assert!(
+            runtime
+                .cancel_subscription_owner(identity, &after_first_cancel[0])
+                .expect("cancel the remaining subscriber")
+        );
+        drop(after_first_cancel);
+        assert!(second_weak.upgrade().is_none());
+        assert_eq!(first_probe.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(second_probe.destroys.load(Ordering::SeqCst), 1);
     }
 
     #[test]
@@ -1750,35 +1887,42 @@ mod tests {
             .register_subscription_owner(identity, &first)
             .expect("first owner registration");
 
-        // SAFETY: this second candidate uses the same live test probe and remains caller-owned.
-        let duplicate = Arc::new(unsafe {
+        assert_eq!(
+            runtime.register_subscription_owner(identity, &first),
+            Err(RuntimePropertyError::WrongObjectState)
+        );
+        assert_eq!(Arc::strong_count(&first), 2);
+
+        // SAFETY: the boxed probe outlives the failed worker registration and explicit cancel.
+        let worker_candidate = Arc::new(unsafe {
             Subscription::new(
                 subscription_owner_callback,
                 userdata,
                 subscription_owner_destroy,
             )
         });
-        assert_eq!(
-            runtime.register_subscription_owner(identity, &duplicate),
-            Err(RuntimePropertyError::WrongObjectState)
-        );
-        assert_eq!(Arc::strong_count(&duplicate), 1);
 
         let worker_runtime = Arc::clone(&runtime);
-        let worker_subscription = Arc::clone(&duplicate);
+        let worker_subscription = Arc::clone(&worker_candidate);
         let worker_result = std::thread::spawn(move || {
             worker_runtime.register_subscription_owner(identity, &worker_subscription)
         })
         .join()
         .expect("worker registration thread completes");
         assert_eq!(worker_result, Err(RuntimePropertyError::WrongThread));
+        let snapshot = runtime
+            .snapshot_property_subscriptions(identity)
+            .expect("snapshot after rejected registrations");
+        assert_eq!(snapshot.len(), 1);
+        assert!(Arc::ptr_eq(&snapshot[0], &first));
 
         assert!(
             runtime
-                .cancel_subscription_owner(identity)
+                .cancel_subscription_owner(identity, &first)
                 .expect("cancel first owner")
         );
-        duplicate.cancel();
+        drop(snapshot);
+        worker_candidate.cancel();
         assert_eq!(probe.destroys.load(Ordering::SeqCst), 2);
     }
 

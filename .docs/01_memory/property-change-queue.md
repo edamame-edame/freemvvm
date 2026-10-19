@@ -19,10 +19,11 @@ Scope: `UNIT-CORE-040`, Runtime-owned accumulation of changed Property identitie
 
 ## Runtime Subscription owner registry (`UNIT-CORE-043`)
 
-- `RuntimeCore` holds active Subscription `Arc`s in an identity-keyed map. Registration reserves capacity before insertion and rejects duplicates without consuming the caller's owner.
-- Pinning clones the `Arc` and releases the owner-map lock before callback invocation. Cancel removes the Runtime owner first and invokes `Subscription::cancel` outside the map lock. These operations require the Runtime UI thread.
+- `RuntimeCore` holds active Subscription `Arc`s in registration-ordered vectors keyed by Property identity. Registration reserves capacity in the owner registry and Property weak index before publishing either entry, rejects reuse of one Subscription pointer, and preserves caller ownership on failure.
+- `PropertyState` receives the matching weak entry on successful Runtime registration. Snapshot upgrades active entries in registration order into temporary `Arc` pins. Cancel removes only the selected owner and matching weak index entry while holding state locks in store-then-owner order, then calls `Subscription::cancel` after releasing both locks. These operations require the Runtime UI thread.
 - This registry is not yet wired to public token release, Property teardown, notification scheduling, or Runtime shutdown draining.
 - Focused tests confirm Runtime ownership survives dropping the registering caller's `Arc`; the callback is pinned and invoked outside the map lock, and explicit cancel removes the owner before destroying the closure.
+- `UNIT-CORE-045` / `UT-CORE-PROPERTY-SUBSCRIPTION-005` verifies multiple ordered subscriptions per Property, caller-owner drop, snapshot pinning, individual cancel, duplicate pointer rejection, and wrong-thread rejection. Focused and related tests passed (3 total); workspace passed (106 tests); development gate passed.
 
 ## Property Subscription weak index (`UNIT-CORE-044`)
 

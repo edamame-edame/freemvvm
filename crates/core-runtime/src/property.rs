@@ -250,6 +250,15 @@ impl PropertyState {
         Ok(())
     }
 
+    /// Removes one non-owning registration entry by Subscription pointer identity.
+    pub(crate) fn remove_subscription(&mut self, subscription: &Arc<Subscription>) {
+        self.subscribers.retain(|current| {
+            current
+                .upgrade()
+                .is_some_and(|current| !Arc::ptr_eq(&current, subscription))
+        });
+    }
+
     /// Pins live active subscriptions for one delivery snapshot and prunes stale entries.
     #[allow(dead_code)] // Used by notification delivery after releasing the object-store lock.
     pub(crate) fn snapshot_subscriptions(
