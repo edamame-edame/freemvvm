@@ -256,6 +256,7 @@ pub mod abi_support {
             }
             RuntimeCoreError::Shutdown(HostShutdownCommitError::Boundary(_))
             | RuntimeCoreError::Shutdown(HostShutdownCommitError::Commit(_))
+            | RuntimeCoreError::CleanupRegistrationFailed
             | RuntimeCoreError::IdentityUnavailable
             | RuntimeCoreError::SynchronizationPoisoned
             | RuntimeCoreError::Host(_) => ShutdownApiError::Internal,

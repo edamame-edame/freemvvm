@@ -2,6 +2,8 @@ use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission, UiL
 use crate::handle_registry::registry::{
     CleanupQueue, CleanupReservation, CoreObjectControl, ObjectIdentity,
 };
+use crate::object_store::UiObjectStore;
+use std::any::Any;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::num::NonZeroU64;
@@ -757,6 +759,7 @@ impl HostRegistration {
 #[allow(dead_code)]
 pub(crate) enum RuntimeCoreError {
     IdentityUnavailable,
+    CleanupRegistrationFailed,
     WrongThread,
     Closed,
     BridgeAlreadyRegistered,
@@ -788,6 +791,7 @@ pub(crate) struct RuntimeCore {
     identity: RuntimeIdentity,
     ui_thread: UiThreadContext,
     cleanup: Arc<RuntimeCleanupQueue>,
+    ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
     host: HostRegistration,
     dispatcher: Mutex<Option<Dispatcher>>,
     shutdown_completion: Mutex<Option<ShutdownCompletion>>,
@@ -798,10 +802,23 @@ impl RuntimeCore {
     pub(crate) fn new() -> Result<Self, RuntimeCoreError> {
         let identity = RuntimeIdentity::issue().ok_or(RuntimeCoreError::IdentityUnavailable)?;
         let ui_thread = UiThreadContext::capture();
+        let cleanup = RuntimeCleanupQueue::new_for_ui_thread(ui_thread);
+        let ui_objects = Arc::new(Mutex::new(UiObjectStore::new(ui_thread)));
+        let shutdown_objects = Arc::clone(&ui_objects);
+        cleanup
+            .track_ui_state(Box::new(move || {
+                let mut store = shutdown_objects
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                debug_assert!(store.clear().is_ok());
+            }))
+            .map_err(|()| RuntimeCoreError::CleanupRegistrationFailed)?;
+
         Ok(Self {
             identity,
             ui_thread,
-            cleanup: RuntimeCleanupQueue::new_for_ui_thread(ui_thread),
+            cleanup,
+            ui_objects,
             host: HostRegistration::new_for_ui_thread(ui_thread),
             dispatcher: Mutex::new(None),
             shutdown_completion: Mutex::new(None),
@@ -1099,11 +1116,89 @@ mod tests {
     use crate::handle_registry::registry::{
         CleanupQueue, CoreObjectControl, HandleRegistry, ObjectIdentity, RegistryError,
     };
+    use crate::object_store::UiObjectStoreError;
     use std::num::NonZeroU64;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::mpsc;
-    use std::sync::{Arc, Barrier};
-    use std::thread;
+    use std::sync::{Arc, Barrier, Mutex};
+    use std::thread::{self, ThreadId};
+
+    struct RuntimeUiStateProbe {
+        drop_count: Arc<AtomicUsize>,
+        drop_threads: Arc<Mutex<Vec<ThreadId>>>,
+    }
+
+    impl Drop for RuntimeUiStateProbe {
+        fn drop(&mut self) {
+            self.drop_count.fetch_add(1, Ordering::SeqCst);
+            self.drop_threads
+                .lock()
+                .expect("drop thread record lock")
+                .push(thread::current().id());
+        }
+    }
+
+    #[test]
+    fn runtime_core_clears_ui_object_store_before_closed() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let ui_thread = thread::current().id();
+        let drop_count = Arc::new(AtomicUsize::new(0));
+        let drop_threads = Arc::new(Mutex::new(Vec::new()));
+        let identities = {
+            let mut store = runtime.ui_objects.lock().expect("UI object store lock");
+            (0..2)
+                .map(|_| {
+                    store
+                        .insert(Box::new(RuntimeUiStateProbe {
+                            drop_count: Arc::clone(&drop_count),
+                            drop_threads: Arc::clone(&drop_threads),
+                        }))
+                        .expect("insert Runtime UI state")
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let worker_store = Arc::clone(&runtime.ui_objects);
+        let worker_identity = identities[0];
+        let worker_result = thread::spawn(move || {
+            worker_store
+                .lock()
+                .expect("UI object store lock")
+                .resolve(worker_identity)
+                .map(|state| state.is::<RuntimeUiStateProbe>())
+        })
+        .join()
+        .expect("worker completes");
+        assert_eq!(worker_result, Err(UiObjectStoreError::WrongThread));
+        assert_eq!(drop_count.load(Ordering::SeqCst), 0);
+
+        runtime
+            .cleanup
+            .drain_shutdown()
+            .expect("shutdown drains Runtime UI state");
+
+        assert_eq!(drop_count.load(Ordering::SeqCst), 2);
+        assert_eq!(runtime.cleanup.state(), RuntimeState::Closed);
+        assert!(
+            drop_threads
+                .lock()
+                .expect("drop thread record lock")
+                .iter()
+                .all(|thread_id| *thread_id == ui_thread)
+        );
+        let store = runtime.ui_objects.lock().expect("UI object store lock");
+        for identity in identities {
+            assert!(matches!(
+                store.resolve(identity),
+                Err(UiObjectStoreError::InvalidIdentity)
+            ));
+        }
+        runtime
+            .cleanup
+            .drain_shutdown()
+            .expect("repeated shutdown drain is safe");
+        assert_eq!(drop_count.load(Ordering::SeqCst), 2);
+    }
 
     #[test]
     fn runtime_core_registers_bridge_once_on_owner_thread() {

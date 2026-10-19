@@ -995,6 +995,24 @@
       "tests": [
         {"id": "UT-OBJECT-STORE-002", "command": ["cargo", "test", "-p", "freemvvm-core", "object_store::tests"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-036",
+      "state": "ready",
+      "scope": "runtime-core-ui-state-shutdown-cleanup",
+      "sources": ["crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/object_store.rs", "crates/core-runtime/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-034", "UNIT-CORE-035"],
+      "design": [
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "Runtime-owned UiObjectStore"},
+        {"path": ".docs/13_detail_design/runtime-objects/runtime.md", "version": "1.2", "section": "Runtime shutdown cleanup before Closed"}
+      ],
+      "requirements": ["RQ-02-001", "RQ-05-010", "RQ-06-001"],
+      "cases": ["TC-CORE-OBJ-01", "TC-LIFE-01", "TC-THREAD-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-RUNTIME-UI-STORE-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime::tests::runtime_core_clears_ui_object_store_before_closed"]}
+      ]
     }
   ]
 }

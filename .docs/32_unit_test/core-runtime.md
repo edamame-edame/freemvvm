@@ -117,6 +117,12 @@ fake hostはturn進行・wake受付・host停止を手動制御する。worker�
 | --- | --- | --- | --- |
 | <a id="ut-runtime-object-control-001"></a>UT-RUNTIME-OBJECT-CONTROL-001 | RuntimeCoreからobject identityを指定してcontrolを作り、共有HandleRegistryへ登録。自身と別Runtimeを指定して検証し、最後の参照をworkerからreleaseした後にRuntime queueをdrainする | 登録controlのRuntime identityとcleanup queueは生成元Runtimeに結び付く。自身のRuntime検証だけ成功し、他Runtime検証はWrongRuntimeで拒否される。worker release後の最終cleanupは生成元RuntimeのUI thread queueで完了する | [RQ-04-019](../11_requirements/RQ-04_abi-boundary.md#rq-04-019)、[RQ-05-010](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-010)、[RQ-06-003](../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### RuntimeCore UI object store shutdown cleanup — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-runtime-ui-store-001"></a>UT-RUNTIME-UI-STORE-001 | RuntimeCoreのstoreへdropを観測できるUI stateを複数登録し、各identityをresolve。workerからresolveを拒否されることを確認後、Runtime UI threadからshutdown drainを実行する | workerアクセスはWrongThreadで状態を変えない。shutdown drainは全stateをUI thread上で一度ずつ破棄し、identityを無効化してからqueueをClosedにする。再度drainしても追加破棄しない | [RQ-02-001](../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-05-010](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-010)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+
 ### Runtime handle registration and borrowed resolution — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
