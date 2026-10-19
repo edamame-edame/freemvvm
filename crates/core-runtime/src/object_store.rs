@@ -111,6 +111,17 @@ impl<T> UiObjectStore<T> {
         Ok(value)
     }
 
+    /// Drops all live state on the owning UI thread and invalidates every current identity.
+    pub(crate) fn clear(&mut self) -> Result<(), UiObjectStoreError> {
+        self.ensure_ui_thread()?;
+        for slot in &mut self.slots {
+            slot.value.take();
+            slot.next_free = None;
+        }
+        self.free_head = None;
+        Ok(())
+    }
+
     fn ensure_ui_thread(&self) -> Result<(), UiObjectStoreError> {
         if self.ui_thread.is_current() {
             Ok(())
@@ -153,7 +164,16 @@ mod tests {
     use crate::handle_registry::registry::ObjectIdentity;
     use crate::runtime::UiThreadContext;
     use std::num::NonZeroU64;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
+
+    struct DropProbe(Arc<AtomicUsize>);
+
+    impl Drop for DropProbe {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
 
     #[test]
     fn inserts_resolves_mutates_and_destroys_current_identity() {
@@ -254,6 +274,57 @@ mod tests {
         assert_eq!(
             store.resolve(identity),
             Err(UiObjectStoreError::InvalidIdentity)
+        );
+    }
+
+    #[test]
+    fn clear_drops_all_live_values_once_and_invalidates_identities() {
+        let drop_count = Arc::new(AtomicUsize::new(0));
+        let mut store = UiObjectStore::new(UiThreadContext::capture());
+        let first = store
+            .insert(DropProbe(Arc::clone(&drop_count)))
+            .expect("insert first value");
+        let second = store
+            .insert(DropProbe(Arc::clone(&drop_count)))
+            .expect("insert second value");
+
+        store.clear().expect("clear on UI thread");
+
+        assert_eq!(drop_count.load(Ordering::SeqCst), 2);
+        assert!(matches!(
+            store.resolve(first),
+            Err(UiObjectStoreError::InvalidIdentity)
+        ));
+        assert!(matches!(
+            store.resolve(second),
+            Err(UiObjectStoreError::InvalidIdentity)
+        ));
+        store.clear().expect("clear is idempotent");
+        assert_eq!(drop_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn off_thread_clear_preserves_live_values() {
+        let drop_count = Arc::new(AtomicUsize::new(0));
+        let mut store = UiObjectStore::new(UiThreadContext::capture());
+        let identity = store
+            .insert(DropProbe(Arc::clone(&drop_count)))
+            .expect("insert value");
+        let shared = Arc::new(Mutex::new(store));
+        let worker_store = Arc::clone(&shared);
+
+        let result = std::thread::spawn(move || worker_store.lock().expect("store mutex").clear())
+            .join()
+            .expect("worker completes");
+
+        assert_eq!(result, Err(UiObjectStoreError::WrongThread));
+        assert_eq!(drop_count.load(Ordering::SeqCst), 0);
+        assert!(
+            shared
+                .lock()
+                .expect("store mutex")
+                .resolve(identity)
+                .is_ok()
         );
     }
 }
