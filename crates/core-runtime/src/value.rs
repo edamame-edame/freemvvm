@@ -9,7 +9,7 @@ pub(crate) struct OwnedUtf8(String);
 
 /// The currently implemented Core tagged Property values.
 ///
-/// Property commit/notification behavior is added in a separate unit.
+/// Property value commits and equivalence are synchronous; delivery is a separate unit.
 #[derive(Clone, Debug)]
 pub(crate) enum TypedValue {
     Bool(bool),
@@ -116,6 +116,15 @@ impl ValueStorage {
         &self.value
     }
 
+    pub(crate) fn would_change(&self, candidate: &TypedValue) -> Result<bool, ValueKindMismatch> {
+        let expected = self.value.kind();
+        let actual = candidate.kind();
+        if expected != actual {
+            return Err(ValueKindMismatch { expected, actual });
+        }
+        Ok(!self.value.equivalent(candidate))
+    }
+
     /// Applies a candidate after the caller has completed all registered value validation.
     ///
     /// An equivalent candidate preserves the existing representation and reports no change.
@@ -123,12 +132,7 @@ impl ValueStorage {
         &mut self,
         candidate: TypedValue,
     ) -> Result<ValueCommit, ValueKindMismatch> {
-        let expected = self.value.kind();
-        let actual = candidate.kind();
-        if expected != actual {
-            return Err(ValueKindMismatch { expected, actual });
-        }
-        if self.value.equivalent(&candidate) {
+        if !self.would_change(&candidate)? {
             return Ok(ValueCommit::Unchanged);
         }
         self.value = candidate;

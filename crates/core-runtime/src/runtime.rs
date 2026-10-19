@@ -5,7 +5,7 @@ use crate::handle_registry::registry::{
     RegistryError,
 };
 use crate::object_store::{UiObjectStore, UiObjectStoreError};
-use crate::property::{PropertyHandleKind, PropertyState};
+use crate::property::{PropertyChangeQueue, PropertyHandleKind, PropertyState};
 use crate::value::{TypedValue, ValueCommit, ValueKind, ValueKindMismatch};
 use std::any::Any;
 use std::cell::RefCell;
@@ -832,6 +832,7 @@ pub(crate) enum RuntimePropertyError {
     Registry(RegistryError),
     WrongObjectState,
     ValueKindMismatch(ValueKindMismatch),
+    NotificationQueueOutOfMemory,
 }
 
 /// Process-unique internal identity for one Runtime owner.
@@ -856,6 +857,7 @@ pub(crate) struct RuntimeCore {
     ui_thread: UiThreadContext,
     cleanup: Arc<RuntimeCleanupQueue>,
     ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
+    property_changes: Mutex<PropertyChangeQueue>,
     object_cleanup: Arc<RuntimeObjectCleanupQueue>,
     host: HostRegistration,
     dispatcher: Mutex<Option<Dispatcher>>,
@@ -895,6 +897,7 @@ impl RuntimeCore {
             ui_thread,
             cleanup,
             ui_objects,
+            property_changes: Mutex::new(PropertyChangeQueue::default()),
             object_cleanup,
             host: HostRegistration::new_for_ui_thread(ui_thread),
             dispatcher: Mutex::new(None),
@@ -1059,9 +1062,41 @@ impl RuntimeCore {
             .map_err(RuntimePropertyError::Store)?
             .downcast_mut::<PropertyState>()
             .ok_or(RuntimePropertyError::WrongObjectState)?;
-        state
+        let changed = state
+            .would_change(&candidate)
+            .map_err(RuntimePropertyError::ValueKindMismatch)?;
+        if !changed {
+            return state
+                .apply_validated(candidate)
+                .map_err(RuntimePropertyError::ValueKindMismatch);
+        }
+
+        let identity = pin.identity();
+        let mut changes = self
+            .property_changes
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        changes
+            .reserve_change(identity)
+            .map_err(|_| RuntimePropertyError::NotificationQueueOutOfMemory)?;
+        let outcome = state
             .apply_validated(candidate)
-            .map_err(RuntimePropertyError::ValueKindMismatch)
+            .map_err(RuntimePropertyError::ValueKindMismatch)?;
+        if outcome == ValueCommit::Changed {
+            changes.commit_change(identity);
+        }
+        Ok(outcome)
+    }
+
+    /// Takes the current pending Property generation on the owning UI thread.
+    pub(crate) fn take_property_change_generation(
+        &self,
+    ) -> Result<Vec<ObjectIdentity>, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        self.property_changes
+            .lock()
+            .map(|mut changes| changes.take_generation())
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)
     }
 
     fn ensure_property_access_thread(&self) -> Result<(), RuntimePropertyError> {
@@ -1344,10 +1379,10 @@ impl ShutdownCompletion {
 mod tests {
     use super::{
         HostBoundaryError, HostRegistration, HostRegistrationError, HostShutdownCommitError,
-        RuntimeCleanupQueue, RuntimeCore, RuntimeCoreError, RuntimeObjectRegistrationError,
-        RuntimePropertyError, RuntimeState, ShutdownCompletion, ShutdownCompletionError,
-        ShutdownCompletionState, ShutdownRequestMode, ShutdownRequestOutcome, ShutdownWaitResult,
-        UiThreadContext,
+        RuntimeCleanupQueue, RuntimeCore, RuntimeCoreError, RuntimeIdentity,
+        RuntimeObjectRegistrationError, RuntimePropertyError, RuntimeState, ShutdownCompletion,
+        ShutdownCompletionError, ShutdownCompletionState, ShutdownRequestMode,
+        ShutdownRequestOutcome, ShutdownWaitResult, UiThreadContext,
     };
     use crate::dispatcher::{Dispatcher, PostedWork, UiLoopBridge, WakePriority};
     use crate::handle_registry::registry::{
@@ -1462,6 +1497,85 @@ mod tests {
             runtime.register_property(&registry, TypedValue::I64(13)),
             Err(RuntimeObjectRegistrationError::Closed)
         ));
+    }
+
+    #[test]
+    fn property_change_queue_coalesces_per_pending_generation() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let first = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register first Property");
+        let second = runtime
+            .register_property(&registry, TypedValue::I64(10))
+            .expect("register second Property");
+        let first_identity = registry
+            .validate(first, &PropertyHandleKind::Property, &runtime.identity)
+            .expect("first Property remains live")
+            .identity();
+        let second_identity = registry
+            .validate(second, &PropertyHandleKind::Property, &runtime.identity)
+            .expect("second Property remains live")
+            .identity();
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, first, TypedValue::I64(1)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, second, TypedValue::I64(11)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, first, TypedValue::I64(2)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime
+                .take_property_change_generation()
+                .expect("take first pending generation"),
+            vec![first_identity, second_identity]
+        );
+        assert!(matches!(
+            runtime.read_property(&registry, first),
+            Ok(TypedValue::I64(2))
+        ));
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, second, TypedValue::I64(12)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime
+                .take_property_change_generation()
+                .expect("take next pending generation"),
+            vec![second_identity]
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, second, TypedValue::I64(12)),
+            Ok(ValueCommit::Unchanged)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, first, TypedValue::Bool(false)),
+            Err(RuntimePropertyError::ValueKindMismatch(ValueKindMismatch {
+                expected: ValueKind::I64,
+                actual: ValueKind::Bool,
+            }))
+        );
+        let foreign_registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let foreign_token = runtime
+            .register_property(&foreign_registry, TypedValue::I64(1))
+            .expect("register Property in separate registry");
+        assert!(matches!(
+            runtime.apply_property_candidate(&registry, foreign_token, TypedValue::I64(1),),
+            Err(RuntimePropertyError::Registry(RegistryError::InvalidToken))
+        ));
+        assert!(
+            runtime
+                .take_property_change_generation()
+                .expect("empty generation after unchanged and failed updates")
+                .is_empty()
+        );
     }
 
     #[test]

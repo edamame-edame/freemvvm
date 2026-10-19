@@ -1124,6 +1124,24 @@
       "tests": [
         {"id": "UT-ABI-011", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "property_set"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-040",
+      "state": "ready",
+      "scope": "core-property-change-generation-queue",
+      "sources": ["crates/core-runtime/src/property.rs", "crates/core-runtime/src/runtime.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-038", "UNIT-CORE-039"],
+      "design": [
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "Property commit identity, generation order, and coalescing"},
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "Runtime-owned identity and failure-atomic state update"}
+      ],
+      "requirements": ["RQ-02-017", "RQ-04-025", "RQ-06-001"],
+      "cases": ["TC-PROP-01", "TC-CORE-OBJ-01", "TC-THREAD-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-CORE-PROPERTY-NOTIFY-001", "command": ["cargo", "test", "-p", "freemvvm-core", "property_change_queue_coalesces_per_pending_generation"]}
+      ]
     }
   ]
 }

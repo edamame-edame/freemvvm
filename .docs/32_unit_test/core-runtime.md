@@ -137,6 +137,12 @@ Candidates are already validated values in this slice. Validator execution, dirt
 | --- | --- | --- | --- |
 | <a id="ut-core-property-001"></a>UT-CORE-PROPERTY-001 | RuntimeとHandleRegistryへ初期値付きPropertyを登録し、tokenからUI thread上で読み出す。異なる同kind候補、同値候補、異kind候補を順に適用する。invalid token・wrong kind・別Runtime・worker thread・Closed Runtimeでも操作する | 初期値を型付きで読める。差分のみChangedとしてcommitし、同値は既存表現を維持してUnchanged、kind mismatchは値を変えず失敗。handle/Runtime不一致、worker read/update、Closedで状態へアクセスせず失敗。token validation pinをstate access中維持し、登録済みRuntime cleanupでstateを破棄する | [RQ-02-002](../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-02-018](../11_requirements/RQ-02_core-features.md#rq-02-018)、[RQ-02-019](../11_requirements/RQ-02_core-features.md#rq-02-019)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01) |
 
+### Core Property change queue — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-property-notify-001"></a>UT-CORE-PROPERTY-NOTIFY-001 | 一つのRuntimeへProperty A/Bを登録し、Aを変更、Bを変更、Aを別値へ変更してからpending generationを取得する。次にAを変更して次generationを取得する。別fixtureで同値・異kind・invalid handleの各更新後にpending queueを取得する | 最初のgenerationは[A, B]のidentity順で一件ずつ含み、Aの最終値を読む。同じidentityの複数変更は一件にcoalesceする。generation取得後のA変更は次generationへ分離される。同値・失敗更新はqueueへ追加しない | [RQ-02-017](../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-04-025](../11_requirements/RQ-04_abi-boundary.md#rq-04-025)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01), [TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+
 ### Core Property kind query — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
@@ -199,6 +205,8 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-19 | UT-ABI-010全文 | 利用者 | 「ok」により、Property getter oracleとUNIT-ABI-010の実装・動作確認を承認。製品test合格は実行結果で別管理 |
 | 2026-10-19 | C ABI Property setter追補 | Codex | 承認済みRQ/DDからUNIT-ABI-011のfocused setter oracleを登録 |
 | 2026-10-19 | UT-ABI-011全文 | 利用者 | 「ok」により、Property setter oracleとUNIT-ABI-011の実装・動作確認を承認。通知購読・Validatorは別単位 |
+| 2026-10-19 | Core Property change queue追補 | Codex | 承認済みRQ/DDからUNIT-CORE-040のfocused queue oracleを登録 |
+| 2026-10-19 | UT-CORE-PROPERTY-NOTIFY-001全文 | 利用者 | 「ok」により、Property change queue oracleとUNIT-CORE-040の実装・動作確認を承認。subscriber配信は別単位 |
 
 ## 改訂履歴
 
@@ -216,3 +224,4 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 1.0 | 2026-10-19 | C ABI Property gettersのtyped value、kind違い、UI thread、UTF8 buffer照会とno-partial-writeをUT-ABI-010として追補 | Codex | 利用者がoracleと実装・動作確認を承認。製品test合格は実行結果で別管理 |
 | 1.1 | 2026-10-19 | UT-ABI-010にnull required outputのoracleを明記 | Codex | 利用者承認済み範囲の明確化。test合格は実行結果で別管理 |
 | 1.2 | 2026-10-19 | C ABI Property settersのtyped commit、equivalence、kind/input/thread failure atomicityをUT-ABI-011として追補 | Codex | 利用者承認済み範囲のoracle。通知とValidatorは別単位 |
+| 1.3 | 2026-10-19 | Core Property change generation coalescingをUT-CORE-PROPERTY-NOTIFY-001として追補 | Codex | 利用者承認済みの内部queue oracle。end-to-end通知を意味しない |
