@@ -1160,6 +1160,24 @@
       "tests": [
         {"id": "UT-CORE-PROPERTY-SUBSCRIPTION-001", "command": ["cargo", "test", "-p", "freemvvm-core", "subscription_lifecycle"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-042",
+      "state": "complete",
+      "scope": "core-property-subscription-callback-closure",
+      "sources": ["crates/core-runtime/src/property.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-041"],
+      "design": [
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "Subscription closure ownership, cancel, and in-flight callback lifetime"},
+        {"path": ".docs/12_design/runtime-objects/runtime.md", "version": "1.0", "section": "Registration ownership and callback lifetime"}
+      ],
+      "requirements": ["RQ-05-006", "RQ-05-007", "RQ-05-008", "RQ-05-009"],
+      "cases": ["TC-CALLBACK-01", "TC-LIFE-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-CORE-PROPERTY-SUBSCRIPTION-002", "command": ["cargo", "test", "-p", "freemvvm-core", "subscription_callback"]}
+      ]
     }
   ]
 }

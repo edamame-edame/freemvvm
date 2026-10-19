@@ -1,5 +1,7 @@
 use crate::handle_registry::registry::ObjectIdentity;
 use crate::value::{TypedValue, ValueCommit, ValueKind, ValueKindMismatch, ValueStorage};
+use std::ffi::c_void;
+use std::sync::Mutex;
 
 /// Kind stored in the internal Runtime handle registry for an initial Property.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -26,9 +28,8 @@ pub(crate) struct PropertyChangeQueue {
 /// the owner may destroy that closure: immediately on cancellation with no delivery in flight,
 /// or when the last in-flight delivery ends after cancellation.
 #[derive(Default)]
-#[allow(dead_code)] // Wired into Runtime-owned subscriptions in the follow-up integration slice.
 pub(crate) struct SubscriptionLifecycle {
-    state: std::sync::Mutex<SubscriptionLifecycleState>,
+    state: Mutex<SubscriptionLifecycleState>,
 }
 
 #[derive(Default)]
@@ -38,11 +39,10 @@ struct SubscriptionLifecycleState {
     destroy_ready: bool,
 }
 
-#[allow(dead_code)] // Methods are exercised by the lifecycle oracle before ABI integration.
 impl SubscriptionLifecycle {
     pub(crate) fn new() -> Self {
         Self {
-            state: std::sync::Mutex::new(SubscriptionLifecycleState {
+            state: Mutex::new(SubscriptionLifecycleState {
                 active: true,
                 in_flight: 0,
                 destroy_ready: false,
@@ -95,6 +95,93 @@ impl SubscriptionLifecycle {
             return true;
         }
         false
+    }
+}
+
+pub(crate) type SubscriptionCallback = unsafe extern "C" fn(*mut c_void);
+
+#[derive(Clone, Copy)]
+struct SubscriptionClosure {
+    callback: SubscriptionCallback,
+    userdata: usize,
+    destroy: SubscriptionCallback,
+}
+
+/// One owned callback closure coupled to its cancel/in-flight state.
+///
+/// Delivery and cancellation must be called on the owning Runtime's UI thread. The Runtime
+/// integration layer enforces that precondition; this primitive keeps user code outside locks.
+#[allow(dead_code)] // Connected to Runtime-owned registration storage in the follow-up slice.
+pub(crate) struct Subscription {
+    lifecycle: SubscriptionLifecycle,
+    closure: Mutex<Option<SubscriptionClosure>>,
+}
+
+#[allow(dead_code)] // Exercised now; Runtime integration consumes these methods in a later slice.
+impl Subscription {
+    /// Takes ownership of one callback closure.
+    ///
+    /// # Safety
+    /// `callback`, `destroy`, and `userdata` must remain valid according to the Subscription ABI
+    /// contract until `destroy` is called. The caller must cancel this Subscription on its UI
+    /// thread before dropping it if no delivery is in flight.
+    pub(crate) unsafe fn new(
+        callback: SubscriptionCallback,
+        userdata: *mut c_void,
+        destroy: SubscriptionCallback,
+    ) -> Self {
+        Self {
+            lifecycle: SubscriptionLifecycle::new(),
+            closure: Mutex::new(Some(SubscriptionClosure {
+                callback,
+                userdata: userdata as usize,
+                destroy,
+            })),
+        }
+    }
+
+    /// Runs one callback if the registration is still active.
+    pub(crate) fn invoke(&self) -> bool {
+        if !self.lifecycle.begin_delivery() {
+            return false;
+        }
+
+        let closure = self
+            .closure
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .copied();
+        if let Some(closure) = closure {
+            // SAFETY: `new` establishes validity for the owned callback and userdata tuple.
+            // Delivery is constrained to the owning Runtime's UI thread by its integration layer.
+            unsafe { (closure.callback)(closure.userdata as *mut c_void) };
+        }
+
+        if self.lifecycle.finish_delivery() {
+            self.destroy_closure();
+        }
+        closure.is_some()
+    }
+
+    /// Prevents future delivery starts and destroys the closure when no callback is in flight.
+    pub(crate) fn cancel(&self) {
+        if self.lifecycle.cancel() {
+            self.destroy_closure();
+        }
+    }
+
+    fn destroy_closure(&self) {
+        let closure = self
+            .closure
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(closure) = closure {
+            // SAFETY: the closure is taken once, after cancel and all in-flight callbacks finish.
+            // The owning Runtime invokes cancel/delivery on its UI thread.
+            unsafe { (closure.destroy)(closure.userdata as *mut c_void) };
+        }
     }
 }
 
@@ -153,7 +240,50 @@ impl PropertyState {
 
 #[cfg(test)]
 mod tests {
-    use super::SubscriptionLifecycle;
+    use super::{Subscription, SubscriptionLifecycle};
+    use std::ffi::c_void;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct CallbackProbe {
+        callbacks: AtomicUsize,
+        destroys: AtomicUsize,
+        destroyed_during_callback: AtomicBool,
+        cancel_on_callback: AtomicBool,
+        subscription: Mutex<Option<Arc<Subscription>>>,
+    }
+
+    unsafe extern "C" fn record_callback(userdata: *mut c_void) {
+        // SAFETY: the test keeps CallbackProbe alive until after the Subscription is canceled.
+        let probe = unsafe { &*userdata.cast::<CallbackProbe>() };
+        probe.callbacks.fetch_add(1, Ordering::SeqCst);
+        if probe.cancel_on_callback.load(Ordering::SeqCst) {
+            let subscription = probe
+                .subscription
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_ref()
+                .cloned()
+                .expect("test Subscription is installed before invoke");
+            subscription.cancel();
+            probe
+                .destroyed_during_callback
+                .store(probe.destroys.load(Ordering::SeqCst) != 0, Ordering::SeqCst);
+        }
+    }
+
+    unsafe extern "C" fn record_destroy(userdata: *mut c_void) {
+        // SAFETY: the test keeps CallbackProbe alive until after the Subscription is canceled.
+        let probe = unsafe { &*userdata.cast::<CallbackProbe>() };
+        probe.destroys.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn make_subscription(probe: &CallbackProbe) -> Arc<Subscription> {
+        let userdata = (std::ptr::from_ref(probe)).cast_mut().cast::<c_void>();
+        // SAFETY: the test owns `probe` until after cancellation, and both callbacks use only it.
+        Arc::new(unsafe { Subscription::new(record_callback, userdata, record_destroy) })
+    }
 
     #[test]
     fn subscription_lifecycle_allows_delivery_until_cancel() {
@@ -189,5 +319,44 @@ mod tests {
         assert!(!lifecycle.cancel());
         assert!(!lifecycle.begin_delivery());
         assert!(!lifecycle.finish_delivery());
+    }
+
+    #[test]
+    fn subscription_callback_is_owned_until_explicit_cancel() {
+        let probe = CallbackProbe::default();
+        let subscription = make_subscription(&probe);
+
+        assert!(subscription.invoke());
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 0);
+
+        subscription.cancel();
+        subscription.cancel();
+        assert!(!subscription.invoke());
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn subscription_callback_self_cancel_destroys_after_callback_returns() {
+        let probe = Box::new(CallbackProbe::default());
+        probe.cancel_on_callback.store(true, Ordering::SeqCst);
+        let subscription = make_subscription(&probe);
+        *probe
+            .subscription
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::clone(&subscription));
+
+        assert!(subscription.invoke());
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 1);
+        assert!(!probe.destroyed_during_callback.load(Ordering::SeqCst));
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+        assert!(!subscription.invoke());
+
+        probe
+            .subscription
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
     }
 }
