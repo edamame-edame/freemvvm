@@ -12,11 +12,13 @@ use freemvvm_core::abi_support::{
     property_create_utf8 as core_property_create_utf8, property_get_bool as core_property_get_bool,
     property_get_decimal as core_property_get_decimal, property_get_f64 as core_property_get_f64,
     property_get_i64 as core_property_get_i64, property_get_utf8 as core_property_get_utf8,
-    property_kind as core_property_kind, runtime_create_handle, runtime_dispatch_turn,
-    runtime_host_begin_event, runtime_host_end_event, runtime_host_stopped,
-    runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post, runtime_request_shutdown,
-    runtime_retain_handle as core_runtime_retain_handle, runtime_set_ui_loop_bridge,
-    runtime_shutdown, shutdown_request_query,
+    property_kind as core_property_kind, property_set_bool as core_property_set_bool,
+    property_set_decimal as core_property_set_decimal, property_set_f64 as core_property_set_f64,
+    property_set_i64 as core_property_set_i64, property_set_utf8 as core_property_set_utf8,
+    runtime_create_handle, runtime_dispatch_turn, runtime_host_begin_event, runtime_host_end_event,
+    runtime_host_stopped, runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post,
+    runtime_request_shutdown, runtime_retain_handle as core_runtime_retain_handle,
+    runtime_set_ui_loop_bridge, runtime_shutdown, shutdown_request_query,
 };
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
 use std::ffi::c_void;
@@ -163,6 +165,7 @@ fn map_property_error(error: PropertyApiError) -> u32 {
         PropertyApiError::WrongType => UI_WRONG_TYPE,
         PropertyApiError::WrongThread => UI_WRONG_THREAD,
         PropertyApiError::Closed => UI_CLOSED,
+        PropertyApiError::OutOfMemory => UI_OUT_OF_MEMORY,
         PropertyApiError::BufferTooSmall { .. } => UI_BUFFER_TOO_SMALL,
         PropertyApiError::Internal => UI_INTERNAL_ERROR,
     }
@@ -175,6 +178,14 @@ fn catch_property_get<T>(
         Ok(Ok(value)) => Ok(value),
         Ok(Err(error)) => Err(map_property_error(error)),
         Err(_) => Err(UI_INTERNAL_ERROR),
+    }
+}
+
+fn catch_property_set(operation: impl FnOnce() -> Result<(), PropertyApiError>) -> u32 {
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_property_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
     }
 }
 
@@ -534,6 +545,109 @@ pub unsafe extern "C" fn ui_abi_1_property_get_decimal(property: u64, out_bits: 
         }
         Err(status) => status,
     }
+}
+
+/// Set a BOOL Property to 0 or 1.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_set_bool(
+    property: u64,
+    value: u8,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller promises that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if value > 1 {
+        return UI_INVALID_ARGUMENT;
+    }
+    catch_property_set(|| core_property_set_bool(property, value != 0))
+}
+
+/// Set an I64 Property.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_set_i64(
+    property: u64,
+    value: i64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller promises that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    catch_property_set(|| core_property_set_i64(property, value))
+}
+
+/// Set a UTF-8 Property by copying the specified bytes.
+///
+/// # Safety
+/// For positive `byte_length`, `bytes` must point to readable storage for that many bytes. A
+/// non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_set_utf8(
+    property: u64,
+    bytes: *const u8,
+    byte_length: u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller promises that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    let Ok(length) = usize::try_from(byte_length) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    if length > 0 && bytes.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let input = if length == 0 {
+        &[][..]
+    } else {
+        // SAFETY: the caller promises readable storage for byte_length bytes; conversion above
+        // guarantees the length fits this platform's slice representation.
+        unsafe { std::slice::from_raw_parts(bytes, length) }
+    };
+    catch_property_set(|| core_property_set_utf8(property, input))
+}
+
+/// Set an F64 Property.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_set_f64(
+    property: u64,
+    value: f64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller promises that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    catch_property_set(|| core_property_set_f64(property, value))
+}
+
+/// Set a DECIMAL Property from its canonical `uint64_t` representation.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_set_decimal(
+    property: u64,
+    bits: u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller promises that a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    catch_property_set(|| core_property_set_decimal(property, bits))
 }
 
 /// Register the Runtime's one-time UI-loop wake bridge.
@@ -951,7 +1065,9 @@ mod tests {
         ui_abi_1_property_create_f64, ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8,
         ui_abi_1_property_get_bool, ui_abi_1_property_get_decimal, ui_abi_1_property_get_f64,
         ui_abi_1_property_get_i64, ui_abi_1_property_get_utf8, ui_abi_1_property_kind,
-        ui_abi_1_runtime_create, ui_abi_1_runtime_dispatch_turn, ui_abi_1_runtime_host_begin_event,
+        ui_abi_1_property_set_bool, ui_abi_1_property_set_decimal, ui_abi_1_property_set_f64,
+        ui_abi_1_property_set_i64, ui_abi_1_property_set_utf8, ui_abi_1_runtime_create,
+        ui_abi_1_runtime_dispatch_turn, ui_abi_1_runtime_host_begin_event,
         ui_abi_1_runtime_host_end_event, ui_abi_1_runtime_host_stopped,
         ui_abi_1_runtime_is_ui_thread, ui_abi_1_runtime_post, ui_abi_1_runtime_request_shutdown,
         ui_abi_1_runtime_set_ui_loop_bridge, ui_abi_1_runtime_shutdown,
@@ -2042,6 +2158,293 @@ mod tests {
         assert_eq!(status, UI_OK);
         assert_eq!(decimal_value, decimal);
 
+        for property in properties {
+            assert_eq!(ui_abi_1_handle_release(property), UI_OK);
+        }
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
+    #[test]
+    fn property_setters_commit_each_kind_and_preserve_equivalent_representations() {
+        let mut runtime = 0;
+        // SAFETY: runtime points to writable storage.
+        // SAFETY: this call uses live test handles and valid local buffers/outputs.
+        let status = unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) };
+        assert_eq!(status, UI_OK);
+
+        let mut properties = [0_u64; 8];
+        let mut error = u64::MAX;
+        // SAFETY: each handle output is writable and Runtime is live.
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_create_bool(runtime, 1, &mut properties[0], &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_create_i64(runtime, 7, &mut properties[1], &mut error) },
+            UI_OK
+        );
+        let old_text = *b"old";
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe {
+                ui_abi_1_property_create_utf8(
+                    runtime,
+                    old_text.as_ptr(),
+                    3,
+                    &mut properties[2],
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+        let initial_nan = f64::from_bits(0x7ff8_0000_0000_0011);
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe {
+                ui_abi_1_property_create_f64(runtime, initial_nan, &mut properties[3], &mut error)
+            },
+            UI_OK
+        );
+        let decimal_one_tenth = (1_u64 << 58) | 10;
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe {
+                ui_abi_1_property_create_decimal(
+                    runtime,
+                    decimal_one_tenth,
+                    &mut properties[4],
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_create_f64(runtime, -0.0, &mut properties[5], &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_create_f64(runtime, 1.25, &mut properties[6], &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_create_decimal(runtime, 0, &mut properties[7], &mut error) },
+            UI_OK
+        );
+        assert_eq!(error, 0);
+
+        // SAFETY: optional error output is writable and each handle is a live matching Property.
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_set_bool(properties[0], 0, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_set_i64(properties[1], i64::MIN, &mut error) },
+            UI_OK
+        );
+        let new_text = *b"A\0\xe6\x97\xa5";
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe {
+                ui_abi_1_property_set_utf8(
+                    properties[2],
+                    new_text.as_ptr(),
+                    new_text.len() as u64,
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+        let different_nan = f64::from_bits(0x7ff8_0000_0000_0042);
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_set_f64(properties[3], different_nan, &mut error) },
+            UI_OK
+        );
+        let decimal_one_hundredth = (2_u64 << 58) | 100;
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe {
+                ui_abi_1_property_set_decimal(properties[4], decimal_one_hundredth, &mut error)
+            },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_set_f64(properties[5], 0.0, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_set_f64(properties[6], 2.5, &mut error) },
+            UI_OK
+        );
+        let decimal_one_and_quarter = (2_u64 << 58) | 125;
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe {
+                ui_abi_1_property_set_decimal(properties[7], decimal_one_and_quarter, &mut error)
+            },
+            UI_OK
+        );
+
+        let mut bool_value = u8::MAX;
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_get_bool(properties[0], &mut bool_value) },
+            UI_OK
+        );
+        assert_eq!(bool_value, 0);
+        let mut i64_value = 0;
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_get_i64(properties[1], &mut i64_value) },
+            UI_OK
+        );
+        assert_eq!(i64_value, i64::MIN);
+        let mut text = [0_u8; 5];
+        let mut length = 0;
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe {
+                ui_abi_1_property_get_utf8(
+                    properties[2],
+                    text.as_mut_ptr(),
+                    text.len() as u64,
+                    &mut length,
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(length, new_text.len() as u64);
+        assert_eq!(text, new_text);
+        let mut f64_value = 0.0;
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_get_f64(properties[3], &mut f64_value) },
+            UI_OK
+        );
+        assert_eq!(f64_value.to_bits(), initial_nan.to_bits());
+        let mut decimal_value = 0;
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_get_decimal(properties[4], &mut decimal_value) },
+            UI_OK
+        );
+        assert_eq!(decimal_value, decimal_one_tenth);
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_get_f64(properties[5], &mut f64_value) },
+            UI_OK
+        );
+        assert_eq!(f64_value.to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_get_f64(properties[6], &mut f64_value) },
+            UI_OK
+        );
+        assert_eq!(f64_value, 2.5);
+        assert_eq!(
+            // SAFETY: this call uses live test handles and valid local buffers/outputs.
+            unsafe { ui_abi_1_property_get_decimal(properties[7], &mut decimal_value) },
+            UI_OK
+        );
+        assert_eq!(decimal_value, decimal_one_and_quarter);
+
+        for property in properties {
+            assert_eq!(ui_abi_1_handle_release(property), UI_OK);
+        }
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
+    #[test]
+    fn property_setters_reject_bad_inputs_without_changing_values() {
+        let mut runtime = 0;
+        // SAFETY: runtime points to writable storage.
+        let status = unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) };
+        assert_eq!(status, UI_OK);
+        let mut properties = [0_u64; 2];
+        let mut error = u64::MAX;
+        // SAFETY: outputs are writable and Runtime is live.
+        let status =
+            unsafe { ui_abi_1_property_create_i64(runtime, 42, &mut properties[0], &mut error) };
+        assert_eq!(status, UI_OK);
+        let original_text = *b"safe";
+        // SAFETY: input bytes are readable and output storage is writable.
+        let status = unsafe {
+            ui_abi_1_property_create_utf8(
+                runtime,
+                original_text.as_ptr(),
+                original_text.len() as u64,
+                &mut properties[1],
+                &mut error,
+            )
+        };
+        assert_eq!(status, UI_OK);
+        assert_eq!(error, 0);
+
+        // SAFETY: optional error output is writable; BOOL=2 is rejected before state access.
+        let status = unsafe { ui_abi_1_property_set_bool(properties[0], 2, &mut error) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        // SAFETY: null positive-length input is rejected before dereference.
+        let status =
+            unsafe { ui_abi_1_property_set_utf8(properties[1], std::ptr::null(), 1, &mut error) };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        let invalid_utf8 = [0xff];
+        // SAFETY: invalid_utf8 is readable for its declared byte length.
+        let status = unsafe {
+            ui_abi_1_property_set_utf8(
+                properties[1],
+                invalid_utf8.as_ptr(),
+                invalid_utf8.len() as u64,
+                &mut error,
+            )
+        };
+        assert_eq!(status, UI_INVALID_ARGUMENT);
+        // SAFETY: optional error output is writable; Property is live but has kind I64.
+        let status = unsafe { ui_abi_1_property_set_bool(properties[0], 1, &mut error) };
+        assert_eq!(status, UI_WRONG_TYPE);
+        // SAFETY: optional error output is writable; token zero is rejected.
+        let status = unsafe { ui_abi_1_property_set_i64(0, 99, &mut error) };
+        assert_eq!(status, UI_INVALID_HANDLE);
+        assert_eq!(error, 0);
+
+        let worker = std::thread::spawn(move || {
+            let mut worker_error = u64::MAX;
+            // SAFETY: optional error output is writable and the owned Property handle is live.
+            let status = unsafe { ui_abi_1_property_set_i64(properties[0], 99, &mut worker_error) };
+            (status, worker_error)
+        });
+        assert_eq!(
+            worker.join().expect("worker should finish"),
+            (UI_WRONG_THREAD, 0)
+        );
+
+        let mut actual = 0;
+        // SAFETY: output is writable and the Property remains live.
+        let status = unsafe { ui_abi_1_property_get_i64(properties[0], &mut actual) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(actual, 42);
+        let mut actual_text = [0_u8; 4];
+        let mut actual_length = 0;
+        // SAFETY: output buffer and length are writable and the Property remains live.
+        let status = unsafe {
+            ui_abi_1_property_get_utf8(
+                properties[1],
+                actual_text.as_mut_ptr(),
+                actual_text.len() as u64,
+                &mut actual_length,
+            )
+        };
+        assert_eq!(status, UI_OK);
+        assert_eq!(actual_length, original_text.len() as u64);
+        assert_eq!(actual_text, original_text);
         for property in properties {
             assert_eq!(ui_abi_1_handle_release(property), UI_OK);
         }

@@ -29,7 +29,9 @@ pub mod abi_support {
         ShutdownRequestOutcome,
     };
     use crate::runtime_handles::{RuntimeHandleError, process_runtime_handles};
-    use crate::value::{OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind};
+    use crate::value::{
+        DecimalValue, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind,
+    };
     use std::collections::HashMap;
     use std::ffi::c_void;
     use std::sync::{Arc, Condvar, Mutex, OnceLock};
@@ -82,6 +84,7 @@ pub mod abi_support {
         WrongType,
         WrongThread,
         Closed,
+        OutOfMemory,
         BufferTooSmall { required: usize },
         Internal,
     }
@@ -513,6 +516,50 @@ pub mod abi_support {
             TypedValue::Decimal(value) => Ok(value.to_canonical_bits()),
             _ => Err(PropertyApiError::WrongType),
         })
+    }
+
+    fn apply_property_value(handle: u64, candidate: TypedValue) -> Result<(), PropertyApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(PropertyApiError::InvalidHandle)?;
+        let handles = property_handles();
+        let runtime = handles
+            .owners
+            .lock()
+            .map_err(|_| PropertyApiError::Internal)?
+            .get(&token)
+            .cloned()
+            .ok_or(PropertyApiError::InvalidHandle)?;
+        match runtime.apply_property_candidate(&handles.registry, token, candidate) {
+            Ok(_) => Ok(()),
+            Err(RuntimePropertyError::ValueKindMismatch(_)) => Err(PropertyApiError::WrongType),
+            Err(error) => Err(map_property_read_error(error)),
+        }
+    }
+
+    pub fn property_set_bool(handle: u64, value: bool) -> Result<(), PropertyApiError> {
+        apply_property_value(handle, TypedValue::Bool(value))
+    }
+
+    pub fn property_set_i64(handle: u64, value: i64) -> Result<(), PropertyApiError> {
+        apply_property_value(handle, TypedValue::I64(value))
+    }
+
+    pub fn property_set_utf8(handle: u64, bytes: &[u8]) -> Result<(), PropertyApiError> {
+        let value = OwnedUtf8::copy_from_bytes(bytes).map_err(|error| match error {
+            OwnedUtf8Error::InvalidUtf8 => PropertyApiError::InvalidArgument,
+            OwnedUtf8Error::OutOfMemory => PropertyApiError::OutOfMemory,
+        })?;
+        apply_property_value(handle, TypedValue::Utf8(value))
+    }
+
+    pub fn property_set_f64(handle: u64, value: f64) -> Result<(), PropertyApiError> {
+        apply_property_value(handle, TypedValue::F64(value))
+    }
+
+    pub fn property_set_decimal(handle: u64, bits: u64) -> Result<(), PropertyApiError> {
+        apply_property_value(
+            handle,
+            TypedValue::Decimal(DecimalValue::from_canonical_bits(bits)),
+        )
     }
 
     fn property_release(token: HandleToken) -> Result<bool, ShutdownApiError> {
