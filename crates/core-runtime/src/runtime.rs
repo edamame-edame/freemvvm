@@ -866,6 +866,13 @@ pub(crate) struct RuntimeCore {
     shutdown_completion: Mutex<Option<ShutdownCompletion>>,
 }
 
+/// One changed Property and its ordered, temporary subscriber pins.
+#[allow(dead_code)] // Consumed by the later notification dispatcher.
+pub(crate) struct PropertyDeliveryItem {
+    pub(crate) identity: ObjectIdentity,
+    pub(crate) subscribers: Vec<Arc<Subscription>>,
+}
+
 #[allow(dead_code)]
 impl RuntimeCore {
     pub(crate) fn new() -> Result<Self, RuntimeCoreError> {
@@ -1100,6 +1107,54 @@ impl RuntimeCore {
             .lock()
             .map(|mut changes| changes.take_generation())
             .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)
+    }
+
+    /// Prepares the pending generation as ordered delivery snapshots without invoking callbacks.
+    pub(crate) fn prepare_property_delivery_generation(
+        &self,
+    ) -> Result<Vec<PropertyDeliveryItem>, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let mut store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let mut changes = self
+            .property_changes
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+
+        let mut items = Vec::new();
+        items
+            .try_reserve(changes.pending_len())
+            .map_err(|_| RuntimePropertyError::NotificationQueueOutOfMemory)?;
+        let generation = changes.take_generation();
+        for index in 0..generation.len() {
+            let identity = generation[index];
+            let snapshot = match store
+                .resolve_mut(identity)
+                .map_err(RuntimePropertyError::Store)
+                .and_then(|state| {
+                    state
+                        .downcast_mut::<PropertyState>()
+                        .ok_or(RuntimePropertyError::WrongObjectState)
+                })
+                .and_then(|property| {
+                    property
+                        .snapshot_subscriptions()
+                        .map_err(|_| RuntimePropertyError::NotificationQueueOutOfMemory)
+                }) {
+                Ok(snapshot) => snapshot,
+                Err(error) => {
+                    changes.restore_generation(generation);
+                    return Err(error);
+                }
+            };
+            items.push(PropertyDeliveryItem {
+                identity,
+                subscribers: snapshot,
+            });
+        }
+        Ok(items)
     }
 
     /// Adds an independent Runtime owner for an active Subscription.
@@ -1716,6 +1771,210 @@ mod tests {
                 .take_property_change_generation()
                 .expect("empty generation after unchanged and failed updates")
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn property_delivery_generation_snapshot_preserves_property_and_subscriber_order() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let first_token = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register first Property");
+        let second_token = runtime
+            .register_property(&registry, TypedValue::I64(10))
+            .expect("register second Property");
+        let first_identity = registry
+            .validate(
+                first_token,
+                &PropertyHandleKind::Property,
+                &runtime.identity,
+            )
+            .expect("first Property remains live")
+            .identity();
+        let second_identity = registry
+            .validate(
+                second_token,
+                &PropertyHandleKind::Property,
+                &runtime.identity,
+            )
+            .expect("second Property remains live")
+            .identity();
+
+        let first_probe = Box::new(SubscriptionOwnerProbe::default());
+        let first_userdata = (std::ptr::from_ref(&*first_probe))
+            .cast_mut()
+            .cast::<c_void>();
+        // SAFETY: the probe outlives its registration and explicit cancellation.
+        let first_subscriber = Arc::new(unsafe {
+            Subscription::new(
+                subscription_owner_callback,
+                first_userdata,
+                subscription_owner_destroy,
+            )
+        });
+        let first_subscriber_weak = Arc::downgrade(&first_subscriber);
+
+        let second_probe = Box::new(SubscriptionOwnerProbe::default());
+        let second_userdata = (std::ptr::from_ref(&*second_probe))
+            .cast_mut()
+            .cast::<c_void>();
+        // SAFETY: the probe outlives its registration and explicit cancellation.
+        let second_subscriber = Arc::new(unsafe {
+            Subscription::new(
+                subscription_owner_callback,
+                second_userdata,
+                subscription_owner_destroy,
+            )
+        });
+        let second_subscriber_weak = Arc::downgrade(&second_subscriber);
+
+        let third_probe = Box::new(SubscriptionOwnerProbe::default());
+        let third_userdata = (std::ptr::from_ref(&*third_probe))
+            .cast_mut()
+            .cast::<c_void>();
+        // SAFETY: the probe outlives its registration and explicit cancellation.
+        let third_subscriber = Arc::new(unsafe {
+            Subscription::new(
+                subscription_owner_callback,
+                third_userdata,
+                subscription_owner_destroy,
+            )
+        });
+        let third_subscriber_weak = Arc::downgrade(&third_subscriber);
+
+        runtime
+            .register_subscription_owner(first_identity, &first_subscriber)
+            .expect("register first Property subscriber");
+        runtime
+            .register_subscription_owner(first_identity, &second_subscriber)
+            .expect("register second Property subscriber");
+        runtime
+            .register_subscription_owner(second_identity, &third_subscriber)
+            .expect("register second Property's subscriber");
+        drop(first_subscriber);
+        drop(second_subscriber);
+        drop(third_subscriber);
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, second_token, TypedValue::I64(11)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, first_token, TypedValue::I64(1)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, second_token, TypedValue::I64(12)),
+            Ok(ValueCommit::Changed)
+        );
+
+        let items = runtime
+            .prepare_property_delivery_generation()
+            .expect("prepare delivery generation");
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].identity, second_identity);
+        assert_eq!(items[1].identity, first_identity);
+        assert_eq!(items[0].subscribers.len(), 1);
+        assert_eq!(items[1].subscribers.len(), 2);
+        assert!(Arc::ptr_eq(
+            &items[1].subscribers[0],
+            &first_subscriber_weak.upgrade().unwrap()
+        ));
+        assert!(Arc::ptr_eq(
+            &items[1].subscribers[1],
+            &second_subscriber_weak.upgrade().unwrap()
+        ));
+        assert_eq!(first_probe.callbacks.load(Ordering::SeqCst), 0);
+        assert_eq!(second_probe.callbacks.load(Ordering::SeqCst), 0);
+        assert_eq!(third_probe.callbacks.load(Ordering::SeqCst), 0);
+        assert!(
+            runtime
+                .prepare_property_delivery_generation()
+                .expect("generation was consumed once")
+                .is_empty()
+        );
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, first_token, TypedValue::I64(2)),
+            Ok(ValueCommit::Changed)
+        );
+        let next_items = runtime
+            .prepare_property_delivery_generation()
+            .expect("prepare next generation");
+        assert_eq!(next_items.len(), 1);
+        assert_eq!(next_items[0].identity, first_identity);
+        assert_eq!(next_items[0].subscribers.len(), 2);
+
+        assert!(
+            runtime
+                .cancel_subscription_owner(first_identity, &items[1].subscribers[0])
+                .expect("cancel a subscriber after snapshot creation")
+        );
+        assert!(
+            runtime
+                .cancel_subscription_owner(second_identity, &items[0].subscribers[0])
+                .expect("cancel second Property subscriber")
+        );
+        assert!(first_subscriber_weak.upgrade().is_some());
+        drop(items);
+        assert!(first_subscriber_weak.upgrade().is_some());
+        assert!(second_subscriber_weak.upgrade().is_some());
+        assert!(third_subscriber_weak.upgrade().is_none());
+
+        let current = runtime
+            .snapshot_property_subscriptions(first_identity)
+            .expect("remaining subscriber stays registered");
+        assert_eq!(current.len(), 1);
+        assert!(Arc::ptr_eq(
+            &current[0],
+            &second_subscriber_weak.upgrade().unwrap()
+        ));
+        assert!(
+            runtime
+                .cancel_subscription_owner(first_identity, &current[0])
+                .expect("cancel remaining first Property subscriber")
+        );
+        drop(current);
+        assert!(second_subscriber_weak.upgrade().is_some());
+        drop(next_items);
+        assert!(first_subscriber_weak.upgrade().is_none());
+        assert!(second_subscriber_weak.upgrade().is_none());
+        assert_eq!(first_probe.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(second_probe.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(third_probe.destroys.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn property_delivery_generation_snapshot_restores_on_stale_property() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let token = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register Property");
+        let valid_identity = registry
+            .validate(token, &PropertyHandleKind::Property, &runtime.identity)
+            .expect("Property remains live")
+            .identity();
+        let stale_identity = ObjectIdentity::new(
+            u64::MAX,
+            NonZeroU64::new(u64::MAX).expect("nonzero generation"),
+        );
+        {
+            let mut changes = runtime
+                .property_changes
+                .lock()
+                .expect("lock Property change queue");
+            changes.commit_change(valid_identity);
+            changes.commit_change(stale_identity);
+        }
+
+        assert!(runtime.prepare_property_delivery_generation().is_err());
+        assert_eq!(
+            runtime
+                .take_property_change_generation()
+                .expect("take restored generation"),
+            vec![valid_identity, stale_identity]
         );
     }
 

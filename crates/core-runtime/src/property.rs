@@ -221,6 +221,16 @@ impl PropertyChangeQueue {
     pub(crate) fn take_generation(&mut self) -> Vec<ObjectIdentity> {
         std::mem::take(&mut self.pending)
     }
+
+    /// Restores a generation after preparation failed before any delivery item was published.
+    pub(crate) fn restore_generation(&mut self, generation: Vec<ObjectIdentity>) {
+        debug_assert!(self.pending.is_empty());
+        self.pending = generation;
+    }
+
+    pub(crate) fn pending_len(&self) -> usize {
+        self.pending.len()
+    }
 }
 
 impl PropertyState {

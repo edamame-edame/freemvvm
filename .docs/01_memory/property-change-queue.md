@@ -31,3 +31,11 @@ Scope: `UNIT-CORE-040`, Runtime-owned accumulation of changed Property identitie
 - `snapshot_subscriptions` reserves temporary snapshot capacity first, upgrades live entries, retains only active Subscriptions, and returns strong pins for later delivery after the caller releases the Property store lock. Expired and canceled entries are pruned.
 - Focused oracle `UT-CORE-PROPERTY-SUBSCRIPTION-004`: 1 passed. Workspace: 105 tests passed; `tools/dev.py check` passed.
 - This is not yet connected to Runtime registration or notification delivery. Scheduling, callback dispatch, public subscribe/cancel ABI, and shutdown drain remain follow-on work.
+
+## Property delivery snapshot preparation (`UNIT-CORE-046`)
+
+- `PropertyDeliveryItem` contains the changed Property identity and strong subscriber pins in registration order. Runtime prepares the whole pending generation on the UI thread while following the store-then-change-queue lock order; the method does not invoke callbacks.
+- Item-vector capacity is reserved before taking the generation. If resolving any Property or creating any subscriber snapshot fails, the complete identity generation is restored in order and no partial item vector is returned.
+- A successful prepare consumes only the current generation. Later setter changes form a separate next generation. Returned items retain subscriber `Arc`s until the consumer drops them.
+- Focused oracle `UT-CORE-PROPERTY-NOTIFY-002`: 2 passed, including stale-identity restoration. Workspace: 108 tests passed; `tools/dev.py check` passed.
+- Callback invocation, nested setter handling, outer UI safe-point scheduling, the 128-item slice budget, Binding propagation, and shutdown cancellation remain later work.

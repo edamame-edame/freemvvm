@@ -161,6 +161,12 @@ Candidates are already validated values in this slice. Validator execution, dirt
 | --- | --- | --- | --- |
 | <a id="ut-core-property-subscription-005"></a>UT-CORE-PROPERTY-SUBSCRIPTION-005 | 同一Propertyに異なるSubscription A/Bを順に登録しcaller Arcをdropする。Property indexのsnapshotを得て順序とweak pinを確認する。Aだけcancelし再snapshot、次にBをcancelする。別fixtureでは同一Aの重複登録とworker登録を試す | Runtimeは同一Propertyの複数Subscriptionを登録順に強保持する。Property indexは弱参照だがsnapshot中は両者をpinする。AのcancelはAだけをowner/indexから除き、Bと登録順を保つ。重複・worker拒否はindexと既存ownerを変えず、失敗候補のcaller ownershipを維持する。callback実行は対象外 | [RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### Property delivery generation snapshots — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-property-notify-002"></a>UT-CORE-PROPERTY-NOTIFY-002 | 複数Propertyの値を変更順を入れ替えて更新し、Property Aにはsubscriberを2件登録する。delivery generationをprepareしてProperty identity順と各subscriber順を観測する。prepare後にAを再更新して次generationもprepareする。別fixtureではpending列へ有効identityの後にstale identityを入れprepareを失敗させる | itemは変更Propertyの初回変更順、subscriberは登録順を保ち、prepare中はcallbackを呼ばない。成功generationから返るArc pinはitem保持中にSubscriptionを生存させる。prepare後の更新は次generationに分離される。Property解決失敗時はgeneration全体が元の順序でqueueに戻り、部分snapshotを返さない | [RQ-05-006](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+
 ### Core Property Subscription callback closure — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
@@ -251,6 +257,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-19 | Runtime Property Subscription index integration追補 | Codex | 承認済みRQ/DDからUNIT-CORE-045の複数購読・ordered weak-index oracleを登録。通知実行・公開ABI・shutdown drainは別管理 |
 | 2026-10-19 | UT-CORE-PROPERTY-SUBSCRIPTION-005全文 | 利用者 | 「ok」により、同一Propertyの複数購読、登録順snapshot、個別cancelを含むUNIT-CORE-045の実装・動作確認を開始。callback deliveryは別単位 |
 | 2026-10-19 | UT-CORE-PROPERTY-SUBSCRIPTION-005実行結果 | Codex | focused test 1件、関連owner test 2件、workspace test 106件、開発ゲート成功。通知dispatch・公開ABI・shutdown drainは未実装 |
+| 2026-10-20 | Property delivery generation snapshot追補 | Codex | 承認済みRQ/DDからUNIT-CORE-046のordered delivery-item準備とfailure-atomic generation oracleを登録。callback実行・safe-point schedulingは別管理 |
+| 2026-10-20 | UT-CORE-PROPERTY-NOTIFY-002全文 | 利用者 | 「ok」により、delivery snapshot生成、世代順序、失敗時generation復元を含むUNIT-CORE-046の実装・動作確認を開始。callback実行は別単位 |
+| 2026-10-20 | UT-CORE-PROPERTY-NOTIFY-002実行結果 | Codex | focused test 2件、workspace test 108件、開発ゲート成功。callback dispatch・safe-point scheduling・Binding propagationは未実装 |
 
 ## 改訂履歴
 
@@ -279,3 +288,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2.1 | 2026-10-19 | UNIT-CORE-044のfocused/workspace testと開発ゲート実行結果を追記 | Codex | 実行結果のみ。通知購読全体の完了を意味しない |
 | 2.2 | 2026-10-19 | RuntimeとProperty weak indexの接続、複数購読、登録順snapshot、個別cancelをUT-CORE-PROPERTY-SUBSCRIPTION-005として追補 | Codex | 利用者の継続指示によるfocused実装単位。callback deliveryと公開ABIを含まない |
 | 2.3 | 2026-10-19 | UNIT-CORE-045のfocused/workspace testと開発ゲート実行結果を追記 | Codex | 実行結果のみ。通知購読全体の完了を意味しない |
+| 2.4 | 2026-10-20 | Property delivery generationの順序・snapshot pin・失敗時復元をUT-CORE-PROPERTY-NOTIFY-002として追補 | Codex | 利用者の継続指示によるfocused実装単位。callback実行やdispatch schedulingを含まない |
+| 2.5 | 2026-10-20 | UNIT-CORE-046のfocused/workspace testと開発ゲート実行結果を追記 | Codex | 実行結果のみ。notification delivery全体の完了を意味しない |
