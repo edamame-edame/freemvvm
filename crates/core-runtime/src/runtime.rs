@@ -859,6 +859,8 @@ pub(crate) struct RuntimeCore {
     cleanup: Arc<RuntimeCleanupQueue>,
     ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
     property_changes: Mutex<PropertyChangeQueue>,
+    property_delivery: Mutex<Option<std::vec::IntoIter<PropertyDeliveryItem>>>,
+    property_delivery_active: AtomicBool,
     subscription_owners: Mutex<HashMap<ObjectIdentity, Vec<Arc<Subscription>>>>,
     object_cleanup: Arc<RuntimeObjectCleanupQueue>,
     host: HostRegistration,
@@ -881,6 +883,14 @@ impl PropertyDeliveryItem {
             .iter()
             .filter(|subscription| subscription.invoke())
             .count()
+    }
+}
+
+struct PropertyDeliveryGuard<'a>(&'a AtomicBool);
+
+impl Drop for PropertyDeliveryGuard<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
     }
 }
 
@@ -918,6 +928,8 @@ impl RuntimeCore {
             cleanup,
             ui_objects,
             property_changes: Mutex::new(PropertyChangeQueue::default()),
+            property_delivery: Mutex::new(None),
+            property_delivery_active: AtomicBool::new(false),
             subscription_owners: Mutex::new(HashMap::new()),
             object_cleanup,
             host: HostRegistration::new_for_ui_thread(ui_thread),
@@ -1166,6 +1178,70 @@ impl RuntimeCore {
             });
         }
         Ok(items)
+    }
+
+    /// Delivers at most 128 complete Property items and retains any remaining work.
+    pub(crate) fn process_property_delivery_slice(
+        &self,
+    ) -> Result<(usize, bool), RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        if self
+            .property_delivery_active
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            return Ok((0, true));
+        }
+        let _active = PropertyDeliveryGuard(&self.property_delivery_active);
+        let mut completed = 0;
+
+        loop {
+            if completed == 128 {
+                return Ok((completed, self.has_pending_property_delivery()?));
+            }
+
+            let item = {
+                let mut pending = self
+                    .property_delivery
+                    .lock()
+                    .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+                if pending.as_ref().is_some_and(|items| items.len() == 0) {
+                    *pending = None;
+                }
+                pending.as_mut().and_then(std::vec::IntoIter::next)
+            };
+
+            if let Some(item) = item {
+                item.deliver();
+                completed += 1;
+                continue;
+            }
+
+            let generation = self.prepare_property_delivery_generation()?;
+            if generation.is_empty() {
+                return Ok((completed, false));
+            }
+            let mut pending = self
+                .property_delivery
+                .lock()
+                .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+            *pending = Some(generation.into_iter());
+        }
+    }
+
+    fn has_pending_property_delivery(&self) -> Result<bool, RuntimePropertyError> {
+        let pending = self
+            .property_delivery
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        if pending.as_ref().is_some_and(|items| items.len() > 0) {
+            return Ok(true);
+        }
+        drop(pending);
+        self.property_changes
+            .lock()
+            .map(|changes| changes.pending_len() > 0)
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)
     }
 
     /// Adds an independent Runtime owner for an active Subscription.
@@ -1583,7 +1659,7 @@ mod tests {
     };
     use std::ffi::c_void;
     use std::num::NonZeroU64;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::mpsc;
     use std::sync::{Arc, Barrier, Mutex};
     use std::thread::{self, ThreadId};
@@ -1614,6 +1690,19 @@ mod tests {
         calls: Arc<AtomicUsize>,
         outcomes: Arc<AtomicUsize>,
         destroys: Arc<AtomicUsize>,
+    }
+
+    #[derive(Default)]
+    struct OrderedDeliveryProbe {
+        callbacks: Mutex<Vec<usize>>,
+        destroys: AtomicUsize,
+        reentrant_slice_blocked: AtomicBool,
+    }
+
+    struct OrderedDeliveryContext {
+        probe: Arc<OrderedDeliveryProbe>,
+        item: usize,
+        runtime: Option<Arc<RuntimeCore>>,
     }
 
     unsafe extern "C" fn subscription_owner_callback(userdata: *mut c_void) {
@@ -1680,6 +1769,29 @@ mod tests {
         // SAFETY: userdata was produced by Box::into_raw in the test below.
         let context = unsafe { Box::from_raw(userdata.cast::<DeliveryCallbackContext>()) };
         context.destroys.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn ordered_delivery_callback(userdata: *mut c_void) {
+        // SAFETY: the Subscription owns this boxed context until its destroy callback runs.
+        let context = unsafe { &*userdata.cast::<OrderedDeliveryContext>() };
+        context
+            .probe
+            .callbacks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(context.item);
+        if let Some(runtime) = &context.runtime {
+            context.probe.reentrant_slice_blocked.store(
+                runtime.process_property_delivery_slice() == Ok((0, true)),
+                Ordering::SeqCst,
+            );
+        }
+    }
+
+    unsafe extern "C" fn ordered_delivery_destroy(userdata: *mut c_void) {
+        // SAFETY: userdata was produced by Box::into_raw in the test below.
+        let context = unsafe { Box::from_raw(userdata.cast::<OrderedDeliveryContext>()) };
+        context.probe.destroys.fetch_add(1, Ordering::SeqCst);
     }
 
     #[test]
@@ -1941,6 +2053,94 @@ mod tests {
         drop(later_subscription);
         assert_eq!(destroys.load(Ordering::SeqCst), 1);
         assert_eq!(later_probe.destroys.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn property_delivery_slice_limits_completed_items_and_preserves_remainder_order() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let probe = Arc::new(OrderedDeliveryProbe::default());
+        let mut properties = Vec::new();
+        let mut subscriptions = Vec::new();
+
+        for item in 0..129 {
+            let token = runtime
+                .register_property(&registry, TypedValue::I64(0))
+                .expect("register Property");
+            let identity = registry
+                .validate(token, &PropertyHandleKind::Property, &runtime.identity)
+                .expect("Property remains live")
+                .identity();
+            let context = Box::new(OrderedDeliveryContext {
+                probe: Arc::clone(&probe),
+                item,
+                runtime: (item == 0).then(|| Arc::clone(&runtime)),
+            });
+            let userdata = Box::into_raw(context).cast::<c_void>();
+            // SAFETY: the Subscription owns its Box until ordered_delivery_destroy runs.
+            let subscription = Arc::new(unsafe {
+                Subscription::new(
+                    ordered_delivery_callback,
+                    userdata,
+                    ordered_delivery_destroy,
+                )
+            });
+            runtime
+                .register_subscription_owner(identity, &subscription)
+                .expect("register Property subscriber");
+            properties.push((token, identity));
+            subscriptions.push(subscription);
+        }
+
+        for (token, _) in &properties {
+            assert_eq!(
+                runtime.apply_property_candidate(&registry, *token, TypedValue::I64(1)),
+                Ok(ValueCommit::Changed)
+            );
+        }
+
+        let worker_runtime = Arc::clone(&runtime);
+        assert_eq!(
+            thread::spawn(move || worker_runtime.process_property_delivery_slice())
+                .join()
+                .expect("worker slice attempt completes"),
+            Err(RuntimePropertyError::WrongThread)
+        );
+        assert!(
+            probe
+                .callbacks
+                .lock()
+                .expect("read callback order before UI slice")
+                .is_empty()
+        );
+
+        assert_eq!(runtime.process_property_delivery_slice(), Ok((128, true)));
+        assert_eq!(
+            *probe
+                .callbacks
+                .lock()
+                .expect("read callback order after first slice"),
+            (0..128).collect::<Vec<_>>()
+        );
+        assert_eq!(runtime.process_property_delivery_slice(), Ok((1, false)));
+        assert_eq!(
+            *probe
+                .callbacks
+                .lock()
+                .expect("read callback order after final slice"),
+            (0..129).collect::<Vec<_>>()
+        );
+        assert_eq!(runtime.process_property_delivery_slice(), Ok((0, false)));
+        assert!(probe.reentrant_slice_blocked.load(Ordering::SeqCst));
+
+        for ((_, identity), subscription) in properties.iter().zip(&subscriptions) {
+            assert!(matches!(
+                runtime.cancel_subscription_owner(*identity, subscription),
+                Ok(true)
+            ));
+        }
+        drop(subscriptions);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 129);
     }
 
     #[test]
