@@ -478,6 +478,58 @@ impl HostRegistration {
         Ok(true)
     }
 
+    /// Close one scope, commit pending shutdown first, then run the outer safe point if still active.
+    pub(crate) fn end_event_and_commit_shutdown_or_else<F>(
+        &self,
+        scope_id: u64,
+        dispatcher: &Dispatcher,
+        cleanup: &RuntimeCleanupQueue,
+        on_running_boundary: F,
+    ) -> Result<bool, HostShutdownCommitError>
+    where
+        F: FnOnce(),
+    {
+        let outermost = self
+            .end_event(scope_id)
+            .map_err(HostBoundaryError::Host)
+            .map_err(HostShutdownCommitError::Boundary)?;
+        if !outermost {
+            return Ok(false);
+        }
+
+        if self.commit_pending_shutdown(dispatcher, cleanup)? {
+            return Ok(true);
+        }
+        on_running_boundary();
+        Ok(false)
+    }
+
+    fn commit_pending_shutdown(
+        &self,
+        dispatcher: &Dispatcher,
+        cleanup: &RuntimeCleanupQueue,
+    ) -> Result<bool, HostShutdownCommitError> {
+        let mut commit_result = None;
+        let dispatched = dispatcher
+            .run_pending_shutdown(|| {
+                commit_result = Some(self.drain_shutdown_and_complete_requests(cleanup));
+            })
+            .map_err(HostBoundaryError::Dispatch)
+            .map_err(HostShutdownCommitError::Boundary)?;
+        if dispatched {
+            commit_result.expect("shutdown handler stores its commit result")?;
+        }
+        Ok(dispatched)
+    }
+
+    pub(crate) fn commit_pending_shutdown_at_safe_point(
+        &self,
+        dispatcher: &Dispatcher,
+        cleanup: &RuntimeCleanupQueue,
+    ) -> Result<bool, HostShutdownCommitError> {
+        self.commit_pending_shutdown(dispatcher, cleanup)
+    }
+
     fn drain_shutdown_and_complete_requests(
         &self,
         cleanup: &RuntimeCleanupQueue,
@@ -812,6 +864,7 @@ pub(crate) enum RuntimeCoreError {
     Host(HostRegistrationError),
     Shutdown(HostShutdownCommitError),
     Dispatch(DispatchError),
+    Property(RuntimePropertyError),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -834,6 +887,7 @@ pub(crate) enum RuntimePropertyError {
     ValueKindMismatch(ValueKindMismatch),
     NotificationQueueOutOfMemory,
     SubscriptionRegistryOutOfMemory,
+    Dispatch(DispatchError),
 }
 
 /// Process-unique internal identity for one Runtime owner.
@@ -1214,6 +1268,18 @@ impl RuntimeCore {
             if let Some(item) = item {
                 item.deliver();
                 completed += 1;
+                let shutdown_pending = self
+                    .dispatcher
+                    .lock()
+                    .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?
+                    .as_ref()
+                    .map(Dispatcher::shutdown_is_pending)
+                    .transpose()
+                    .map_err(RuntimePropertyError::Dispatch)?
+                    .unwrap_or(false);
+                if shutdown_pending {
+                    return Ok((completed, self.has_pending_property_delivery()?));
+                }
                 continue;
             }
 
@@ -1421,6 +1487,9 @@ impl RuntimeCore {
         if !self.is_ui_thread() {
             return Err(RuntimeCoreError::WrongThread);
         }
+        if self.property_delivery_active.load(Ordering::Acquire) {
+            return Ok(());
+        }
         let dispatcher = self
             .dispatcher()?
             .ok_or(RuntimeCoreError::BridgeNotRegistered)?;
@@ -1455,16 +1524,38 @@ impl RuntimeCore {
                 .map(|_| false)
                 .map_err(RuntimeCoreError::Host);
         };
+        let mut delivery_result = None;
         let committed = self
             .host
-            .end_event_and_commit_shutdown(scope_id, &dispatcher, &self.cleanup)
+            .end_event_and_commit_shutdown_or_else(scope_id, &dispatcher, &self.cleanup, || {
+                delivery_result = Some(self.process_property_delivery_slice())
+            })
             .map_err(RuntimeCoreError::Shutdown)?;
         if committed {
             dispatcher
                 .destroy_bridge_at_safe_point()
                 .map_err(|_| RuntimeCoreError::Closed)?;
+            return Ok(true);
         }
-        Ok(committed)
+        if let Some(delivery_result) = delivery_result {
+            let committed = self
+                .host
+                .commit_pending_shutdown_at_safe_point(&dispatcher, &self.cleanup)
+                .map_err(RuntimeCoreError::Shutdown)?;
+            if committed {
+                dispatcher
+                    .destroy_bridge_at_safe_point()
+                    .map_err(|_| RuntimeCoreError::Closed)?;
+                return Ok(true);
+            }
+            let (_, has_more) = delivery_result.map_err(RuntimeCoreError::Property)?;
+            if has_more {
+                dispatcher
+                    .schedule_pending_work_wake()
+                    .map_err(RuntimeCoreError::Dispatch)?;
+            }
+        }
+        Ok(false)
     }
 
     pub(crate) fn notify_host_stopped(&self, reason: u32) -> Result<(), RuntimeCoreError> {
@@ -1697,12 +1788,14 @@ mod tests {
         callbacks: Mutex<Vec<usize>>,
         destroys: AtomicUsize,
         reentrant_slice_blocked: AtomicBool,
+        reentrant_turn_blocked: AtomicBool,
     }
 
     struct OrderedDeliveryContext {
         probe: Arc<OrderedDeliveryProbe>,
         item: usize,
         runtime: Option<Arc<RuntimeCore>>,
+        shutdown_dispatcher: Option<Dispatcher>,
     }
 
     unsafe extern "C" fn subscription_owner_callback(userdata: *mut c_void) {
@@ -1785,6 +1878,17 @@ mod tests {
                 runtime.process_property_delivery_slice() == Ok((0, true)),
                 Ordering::SeqCst,
             );
+            context
+                .probe
+                .reentrant_turn_blocked
+                .store(runtime.dispatch_turn() == Ok(()), Ordering::SeqCst);
+        }
+        if context.item == 0 {
+            if let Some(dispatcher) = &context.shutdown_dispatcher {
+                dispatcher
+                    .request_shutdown()
+                    .expect("notification callback accepts priority shutdown");
+            }
         }
     }
 
@@ -2075,6 +2179,7 @@ mod tests {
                 probe: Arc::clone(&probe),
                 item,
                 runtime: (item == 0).then(|| Arc::clone(&runtime)),
+                shutdown_dispatcher: None,
             });
             let userdata = Box::into_raw(context).cast::<c_void>();
             // SAFETY: the Subscription owns its Box until ordered_delivery_destroy runs.
@@ -2141,6 +2246,343 @@ mod tests {
         }
         drop(subscriptions);
         assert_eq!(probe.destroys.load(Ordering::SeqCst), 129);
+    }
+
+    #[test]
+    fn property_notification_host_boundary_orders_delivery_and_yields() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let bridge = Arc::new(TestUiLoopBridge::default());
+        let bridge_trait: Arc<dyn UiLoopBridge> = bridge.clone();
+        runtime
+            .set_ui_loop_bridge(&bridge_trait)
+            .expect("register UI-loop bridge");
+        let dispatcher = runtime
+            .dispatcher()
+            .expect("dispatcher lock")
+            .expect("registered dispatcher");
+        let registry = Arc::new(HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new());
+        let token = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register Property");
+        let identity = registry
+            .validate(token, &PropertyHandleKind::Property, &runtime.identity)
+            .expect("Property remains live")
+            .identity();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let callback_context = Box::new(OrderedDeliveryContext {
+            probe: Arc::new(OrderedDeliveryProbe::default()),
+            item: 1,
+            runtime: Some(Arc::clone(&runtime)),
+            shutdown_dispatcher: None,
+        });
+        let callback_probe = Arc::clone(&callback_context.probe);
+        let userdata = Box::into_raw(callback_context).cast::<c_void>();
+        // SAFETY: the Subscription owns the callback context until its destroy callback runs.
+        let subscription = Arc::new(unsafe {
+            Subscription::new(
+                ordered_delivery_callback,
+                userdata,
+                ordered_delivery_destroy,
+            )
+        });
+        runtime
+            .register_subscription_owner(identity, &subscription)
+            .expect("register subscriber");
+
+        let first_runtime = Arc::clone(&runtime);
+        let first_registry = Arc::clone(&registry);
+        let first_events = Arc::clone(&events);
+        dispatcher
+            .post(PostedWork::callback(Box::new(move || {
+                first_events.lock().expect("event log").push("first-post");
+                assert_eq!(
+                    first_runtime.apply_property_candidate(
+                        &first_registry,
+                        token,
+                        TypedValue::I64(1),
+                    ),
+                    Ok(ValueCommit::Changed)
+                );
+            })))
+            .expect("post Property update");
+        let second_events = Arc::clone(&events);
+        dispatcher
+            .post(PostedWork::callback(Box::new(move || {
+                second_events.lock().expect("event log").push("second-post");
+            })))
+            .expect("post following callback");
+
+        runtime.dispatch_turn().expect("dispatch first post");
+        assert_eq!(
+            *events.lock().expect("read event order"),
+            vec!["first-post"]
+        );
+        assert_eq!(
+            *callback_probe
+                .callbacks
+                .lock()
+                .expect("read notification count"),
+            vec![1]
+        );
+        assert!(callback_probe.reentrant_turn_blocked.load(Ordering::SeqCst));
+        runtime.dispatch_turn().expect("dispatch second post");
+        assert_eq!(
+            *events.lock().expect("read event order"),
+            vec!["first-post", "second-post"]
+        );
+        assert_eq!(bridge.wakes.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            *bridge.wake_priorities.lock().expect("read wake priorities"),
+            vec![WakePriority::Normal, WakePriority::Normal]
+        );
+        assert!(
+            runtime
+                .cancel_subscription_owner(identity, &subscription)
+                .expect("cancel subscriber")
+        );
+    }
+
+    #[test]
+    fn property_notification_host_boundary_yields_and_resumes_in_order() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let bridge = Arc::new(TestUiLoopBridge::default());
+        let bridge_trait: Arc<dyn UiLoopBridge> = bridge.clone();
+        runtime
+            .set_ui_loop_bridge(&bridge_trait)
+            .expect("register UI-loop bridge");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let probe = Arc::new(OrderedDeliveryProbe::default());
+        let mut properties = Vec::new();
+        let mut subscriptions = Vec::new();
+        for item in 0..129 {
+            let token = runtime
+                .register_property(&registry, TypedValue::I64(0))
+                .expect("register Property");
+            let identity = registry
+                .validate(token, &PropertyHandleKind::Property, &runtime.identity)
+                .expect("Property remains live")
+                .identity();
+            let context = Box::new(OrderedDeliveryContext {
+                probe: Arc::clone(&probe),
+                item,
+                runtime: None,
+                shutdown_dispatcher: None,
+            });
+            let userdata = Box::into_raw(context).cast::<c_void>();
+            // SAFETY: the Subscription owns its boxed context until cancellation.
+            let subscription = Arc::new(unsafe {
+                Subscription::new(
+                    ordered_delivery_callback,
+                    userdata,
+                    ordered_delivery_destroy,
+                )
+            });
+            runtime
+                .register_subscription_owner(identity, &subscription)
+                .expect("register subscriber");
+            assert_eq!(
+                runtime.apply_property_candidate(&registry, token, TypedValue::I64(1)),
+                Ok(ValueCommit::Changed)
+            );
+            properties.push(identity);
+            subscriptions.push(subscription);
+        }
+
+        let outer_scope = runtime.begin_host_event().expect("begin outer host event");
+        let nested_scope = runtime.begin_host_event().expect("begin nested host event");
+        assert!(
+            !runtime
+                .end_host_event(nested_scope)
+                .expect("close nested event")
+        );
+        assert!(
+            probe
+                .callbacks
+                .lock()
+                .expect("no nested delivery")
+                .is_empty()
+        );
+        assert!(
+            !runtime
+                .end_host_event(outer_scope)
+                .expect("close outer event")
+        );
+        assert_eq!(
+            *probe.callbacks.lock().expect("first slice order"),
+            (0..128).collect::<Vec<_>>()
+        );
+        assert_eq!(bridge.wakes.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            *bridge
+                .wake_priorities
+                .lock()
+                .expect("first slice wake priority"),
+            vec![WakePriority::Normal]
+        );
+
+        runtime
+            .dispatch_turn()
+            .expect("resume pending notifications");
+        assert_eq!(
+            *probe.callbacks.lock().expect("completed slice order"),
+            (0..129).collect::<Vec<_>>()
+        );
+        for (identity, subscription) in properties.iter().zip(&subscriptions) {
+            assert!(
+                runtime
+                    .cancel_subscription_owner(*identity, subscription)
+                    .expect("cancel subscriber")
+            );
+        }
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 129);
+    }
+
+    #[test]
+    fn property_notification_shutdown_precedes_pending_items_at_host_boundary() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let bridge = Arc::new(TestUiLoopBridge::default());
+        let bridge_trait: Arc<dyn UiLoopBridge> = bridge.clone();
+        runtime
+            .set_ui_loop_bridge(&bridge_trait)
+            .expect("register UI-loop bridge");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let token = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register Property");
+        let identity = registry
+            .validate(token, &PropertyHandleKind::Property, &runtime.identity)
+            .expect("Property remains live")
+            .identity();
+        let probe = Arc::new(OrderedDeliveryProbe::default());
+        let userdata = Box::into_raw(Box::new(OrderedDeliveryContext {
+            probe: Arc::clone(&probe),
+            item: 0,
+            runtime: None,
+            shutdown_dispatcher: None,
+        }))
+        .cast::<c_void>();
+        // SAFETY: the Subscription owns its boxed context until cancellation.
+        let subscription = Arc::new(unsafe {
+            Subscription::new(
+                ordered_delivery_callback,
+                userdata,
+                ordered_delivery_destroy,
+            )
+        });
+        runtime
+            .register_subscription_owner(identity, &subscription)
+            .expect("register subscriber");
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, token, TypedValue::I64(1)),
+            Ok(ValueCommit::Changed)
+        );
+
+        let scope = runtime.begin_host_event().expect("begin host event");
+        runtime
+            .request_shutdown(ShutdownRequestMode::Async)
+            .expect("request shutdown before safe point");
+        assert!(runtime.end_host_event(scope).expect("commit shutdown"));
+        assert!(probe.callbacks.lock().expect("read callbacks").is_empty());
+        assert_eq!(runtime.cleanup_queue().state(), RuntimeState::Closed);
+        assert_eq!(bridge.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            *bridge
+                .wake_priorities
+                .lock()
+                .expect("shutdown wake priority"),
+            vec![WakePriority::Control]
+        );
+    }
+
+    #[test]
+    fn property_notification_shutdown_stops_after_current_item_and_commits_control_work() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let bridge = Arc::new(TestUiLoopBridge::default());
+        let bridge_trait: Arc<dyn UiLoopBridge> = bridge.clone();
+        runtime
+            .set_ui_loop_bridge(&bridge_trait)
+            .expect("register UI-loop bridge");
+        let dispatcher = runtime
+            .dispatcher()
+            .expect("dispatcher lock")
+            .expect("registered dispatcher");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let probe = Arc::new(OrderedDeliveryProbe::default());
+        let first_token = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register first Property");
+        let second_token = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register second Property");
+        let first_identity = registry
+            .validate(
+                first_token,
+                &PropertyHandleKind::Property,
+                &runtime.identity,
+            )
+            .expect("first Property remains live")
+            .identity();
+        let second_identity = registry
+            .validate(
+                second_token,
+                &PropertyHandleKind::Property,
+                &runtime.identity,
+            )
+            .expect("second Property remains live")
+            .identity();
+        for (identity, item, requests_shutdown) in [
+            (first_identity, 0, true),
+            (first_identity, 100, false),
+            (second_identity, 1, false),
+        ] {
+            let context = Box::new(OrderedDeliveryContext {
+                probe: Arc::clone(&probe),
+                item,
+                runtime: None,
+                shutdown_dispatcher: requests_shutdown.then(|| dispatcher.clone()),
+            });
+            let userdata = Box::into_raw(context).cast::<c_void>();
+            // SAFETY: the Subscription owns its boxed context through shutdown.
+            let subscription = Arc::new(unsafe {
+                Subscription::new(
+                    ordered_delivery_callback,
+                    userdata,
+                    ordered_delivery_destroy,
+                )
+            });
+            runtime
+                .register_subscription_owner(identity, &subscription)
+                .expect("register subscriber");
+        }
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, first_token, TypedValue::I64(1)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, second_token, TypedValue::I64(1)),
+            Ok(ValueCommit::Changed)
+        );
+
+        let scope = runtime.begin_host_event().expect("begin host event");
+        assert!(
+            runtime
+                .end_host_event(scope)
+                .expect("commit callback shutdown")
+        );
+        assert_eq!(
+            *probe
+                .callbacks
+                .lock()
+                .expect("read complete delivery items"),
+            vec![0, 100],
+            "all subscribers in the current item finish before shutdown skips later items"
+        );
+        assert_eq!(runtime.cleanup_queue().state(), RuntimeState::Closed);
+        assert_eq!(bridge.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            *bridge.wake_priorities.lock().expect("read wake priorities"),
+            vec![WakePriority::Control]
+        );
     }
 
     #[test]
@@ -2969,11 +3411,21 @@ mod tests {
     #[derive(Default)]
     struct TestUiLoopBridge {
         wakes: AtomicUsize,
+        wake_priorities: Mutex<Vec<WakePriority>>,
+        destroys: AtomicUsize,
     }
 
     impl UiLoopBridge for TestUiLoopBridge {
-        fn schedule_wake(&self, _priority: WakePriority) {
+        fn schedule_wake(&self, priority: WakePriority) {
             self.wakes.fetch_add(1, Ordering::SeqCst);
+            self.wake_priorities
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(priority);
+        }
+
+        fn destroy_at_safe_point(&self) {
+            self.destroys.fetch_add(1, Ordering::SeqCst);
         }
     }
 

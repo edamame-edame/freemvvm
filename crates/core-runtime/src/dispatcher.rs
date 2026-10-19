@@ -249,6 +249,36 @@ impl Dispatcher {
         Ok(true)
     }
 
+    /// Report whether control-priority shutdown must run before more ordinary work.
+    pub(crate) fn shutdown_is_pending(&self) -> Result<bool, DispatchError> {
+        let state = self.lock_state()?;
+        Ok(state.lifecycle == DispatcherLifecycle::Running && state.shutdown_pending)
+    }
+
+    /// Schedule a future normal turn when non-dispatcher work remains after a bounded slice.
+    /// Existing normal or control wakes already cover the next host turn.
+    pub(crate) fn schedule_pending_work_wake(&self) -> Result<(), DispatchError> {
+        if !self.inner.ui_thread.is_current() {
+            return Err(DispatchError::WrongThread);
+        }
+        let schedule = {
+            let mut state = self.lock_state()?;
+            if state.lifecycle != DispatcherLifecycle::Running
+                || state.shutdown_pending
+                || state.wake_pending
+            {
+                false
+            } else {
+                state.wake_pending = true;
+                true
+            }
+        };
+        if schedule {
+            self.inner.bridge.schedule_wake(WakePriority::Normal);
+        }
+        Ok(())
+    }
+
     /// Request shutdown without interrupting the active UI callback. Repeated requests coalesce.
     pub(crate) fn request_shutdown(&self) -> Result<(), DispatchError> {
         let admission = self.prepare_shutdown_request()?;

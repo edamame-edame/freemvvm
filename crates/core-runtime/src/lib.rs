@@ -293,6 +293,7 @@ pub mod abi_support {
             | RuntimeCoreError::CleanupRegistrationFailed
             | RuntimeCoreError::IdentityUnavailable
             | RuntimeCoreError::SynchronizationPoisoned
+            | RuntimeCoreError::Property(_)
             | RuntimeCoreError::Host(_) => ShutdownApiError::Internal,
         }
     }
@@ -422,6 +423,7 @@ pub mod abi_support {
                     | RuntimePropertyError::WrongObjectState
                     | RuntimePropertyError::NotificationQueueOutOfMemory
                     | RuntimePropertyError::SubscriptionRegistryOutOfMemory
+                    | RuntimePropertyError::Dispatch(_)
                     | RuntimePropertyError::ValueKindMismatch(_) => ShutdownApiError::Internal,
                 })?;
         Ok(match kind {
@@ -457,6 +459,7 @@ pub mod abi_support {
             )
             | RuntimePropertyError::SynchronizationPoisoned
             | RuntimePropertyError::Store(_)
+            | RuntimePropertyError::Dispatch(_)
             | RuntimePropertyError::WrongObjectState
             | RuntimePropertyError::ValueKindMismatch(_) => PropertyApiError::Internal,
         }

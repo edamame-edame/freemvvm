@@ -55,3 +55,12 @@ Scope: `UNIT-CORE-040`, Runtime-owned accumulation of changed Property identitie
 - Focused oracle `UT-CORE-PROPERTY-NOTIFY-004`: passed with 129 ordered items across 128+1 slices. Workspace: 110 tests passed; `tools/dev.py check` passed.
 - UI-thread validation happens before slice state is touched; a worker attempt returns `WrongThread` without starting callbacks. The fixture also calls the processor recursively from a subscriber and confirms that the nested slice is declined.
 - Host safe-point placement and yielding, Binding budget composition, shutdown interruption, and callback exception diagnostics remain later work.
+
+## Property notification host boundary (`UNIT-CORE-049`)
+
+- `RuntimeCore::end_host_event` only starts a Property-delivery slice after the outermost host scope closes. A nested scope close returns without delivering notifications.
+- Pending shutdown is committed before notification work. If a notification callback requests shutdown, the active Property item finishes all of its snapshotted subscribers; the slice then returns before taking another item, and the control shutdown is committed at that boundary.
+- `dispatch_turn` declines reentrant dispatch while a notification slice is active, so a notification callback cannot start a queued ordinary callback inline.
+- When a slice reports remaining work, `Dispatcher::schedule_pending_work_wake` schedules one Normal wake only if no normal/control wake is already pending. A later dispatch turn runs at most one ordinary callback and then the next notification slice.
+- `UNIT-CORE-049` focused tests passed (8 related tests); workspace passed (114 tests); `.venv\\Scripts\\python.exe -X utf8 tools/dev.py check` passed. Property public subscribe ABI, Binding propagation, exception diagnostics, and shutdown cleanup of pending subscriptions are still separate work.
+- This unit only connects outer host-event and dispatcher-post boundaries; public C ABI Property setter scopes have not yet been wired to this delivery path.
