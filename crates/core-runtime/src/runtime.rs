@@ -1175,6 +1175,25 @@ impl RuntimeCore {
         Ok(outcome)
     }
 
+    /// Applies one public Property setter operation within a host event boundary.
+    pub(crate) fn apply_property_candidate_in_host_event(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        token: HandleToken,
+        candidate: TypedValue,
+    ) -> Result<ValueCommit, RuntimeCoreError> {
+        let scope_id = self.begin_host_event()?;
+        let update = self
+            .apply_property_candidate(registry, token, candidate)
+            .map_err(RuntimeCoreError::Property);
+        let close = self.end_host_event(scope_id);
+        match (update, close) {
+            (Err(error), _) => Err(error),
+            (Ok(_), Err(error)) => Err(error),
+            (Ok(outcome), Ok(_)) => Ok(outcome),
+        }
+    }
+
     /// Takes the current pending Property generation on the owning UI thread.
     pub(crate) fn take_property_change_generation(
         &self,
@@ -2435,6 +2454,93 @@ mod tests {
             );
         }
         assert_eq!(probe.destroys.load(Ordering::SeqCst), 129);
+    }
+
+    #[test]
+    fn property_setter_host_scope_delivers_at_outer_boundary_and_closes_after_error() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let bridge = Arc::new(TestUiLoopBridge::default());
+        let bridge_trait: Arc<dyn UiLoopBridge> = bridge;
+        runtime
+            .set_ui_loop_bridge(&bridge_trait)
+            .expect("register UI-loop bridge");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let token = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register Property");
+        let identity = registry
+            .validate(token, &PropertyHandleKind::Property, &runtime.identity)
+            .expect("Property remains live")
+            .identity();
+        let probe = Arc::new(OrderedDeliveryProbe::default());
+        let userdata = Box::into_raw(Box::new(OrderedDeliveryContext {
+            probe: Arc::clone(&probe),
+            item: 0,
+            runtime: None,
+            shutdown_dispatcher: None,
+        }))
+        .cast::<c_void>();
+        // SAFETY: the Subscription owns its boxed context until cancellation.
+        let subscription = Arc::new(unsafe {
+            Subscription::new(
+                ordered_delivery_callback,
+                userdata,
+                ordered_delivery_destroy,
+            )
+        });
+        runtime
+            .register_subscription_owner(identity, &subscription)
+            .expect("register Property subscriber");
+
+        assert_eq!(
+            runtime.apply_property_candidate_in_host_event(&registry, token, TypedValue::I64(1),),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            *probe.callbacks.lock().expect("read first delivery"),
+            vec![0]
+        );
+
+        let outer_scope = runtime.begin_host_event().expect("begin outer scope");
+        assert_eq!(
+            runtime.apply_property_candidate_in_host_event(&registry, token, TypedValue::I64(2),),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            *probe.callbacks.lock().expect("nested setter is deferred"),
+            vec![0]
+        );
+        assert_eq!(
+            runtime.apply_property_candidate_in_host_event(
+                &registry,
+                token,
+                TypedValue::Bool(true),
+            ),
+            Err(RuntimeCoreError::Property(
+                RuntimePropertyError::ValueKindMismatch(ValueKindMismatch {
+                    expected: ValueKind::I64,
+                    actual: ValueKind::Bool,
+                })
+            ))
+        );
+        assert_eq!(
+            *probe
+                .callbacks
+                .lock()
+                .expect("failed nested setter also defers"),
+            vec![0]
+        );
+        assert_eq!(runtime.end_host_event(outer_scope), Ok(false));
+        assert_eq!(
+            *probe.callbacks.lock().expect("outer boundary delivery"),
+            vec![0, 0]
+        );
+        assert!(
+            runtime
+                .cancel_subscription_owner(identity, &subscription)
+                .expect("cancel subscriber")
+        );
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
     }
 
     #[test]

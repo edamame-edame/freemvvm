@@ -537,10 +537,24 @@ pub mod abi_support {
             .get(&token)
             .cloned()
             .ok_or(PropertyApiError::InvalidHandle)?;
-        match runtime.apply_property_candidate(&handles.registry, token, candidate) {
+        match runtime.apply_property_candidate_in_host_event(&handles.registry, token, candidate) {
             Ok(_) => Ok(()),
-            Err(RuntimePropertyError::ValueKindMismatch(_)) => Err(PropertyApiError::WrongType),
-            Err(error) => Err(map_property_read_error(error)),
+            Err(RuntimeCoreError::Property(RuntimePropertyError::ValueKindMismatch(_))) => {
+                Err(PropertyApiError::WrongType)
+            }
+            Err(RuntimeCoreError::Property(error)) => Err(map_property_read_error(error)),
+            Err(RuntimeCoreError::WrongThread)
+            | Err(RuntimeCoreError::Host(crate::runtime::HostRegistrationError::WrongThread)) => {
+                Err(PropertyApiError::WrongThread)
+            }
+            Err(RuntimeCoreError::Closed)
+            | Err(RuntimeCoreError::Host(crate::runtime::HostRegistrationError::InvalidState)) => {
+                Err(PropertyApiError::Closed)
+            }
+            Err(RuntimeCoreError::Host(crate::runtime::HostRegistrationError::OutOfMemory)) => {
+                Err(PropertyApiError::OutOfMemory)
+            }
+            Err(_) => Err(PropertyApiError::Internal),
         }
     }
 
