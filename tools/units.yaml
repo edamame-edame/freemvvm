@@ -1339,6 +1339,24 @@
       "tests": [
         {"id": "UT-CORE-PROPERTY-NOTIFY-006", "command": ["cargo", "test", "-p", "freemvvm-core", "property_notification_shutdown_cancels_pending"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-051",
+      "state": "complete",
+      "scope": "runtime-property-subscription-owner-teardown",
+      "sources": ["crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/property.rs", "crates/core-runtime/src/dispatcher.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-050"],
+      "design": [
+        {"path": ".docs/13_detail_design/runtime-objects/runtime.md", "version": "1.2", "section": "登録所有権とRuntime終了"},
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "終了と所有権 / owner Property teardown"}
+      ],
+      "requirements": ["RQ-05-006", "RQ-05-007", "RQ-05-008", "RQ-06-001", "RQ-06-005"],
+      "cases": ["TC-PROP-01", "TC-CALLBACK-01", "TC-LIFE-01", "TC-THREAD-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-CORE-PROPERTY-NOTIFY-007", "command": ["cargo", "test", "-p", "freemvvm-core", "property_owner_teardown"]}
+      ]
     }
   ]
 }

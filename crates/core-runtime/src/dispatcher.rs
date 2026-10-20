@@ -279,6 +279,29 @@ impl Dispatcher {
         Ok(())
     }
 
+    /// Schedule a normal turn for work accepted from a non-UI thread.
+    pub(crate) fn schedule_external_work_wake(&self) {
+        let schedule = {
+            let mut state = self
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if state.lifecycle != DispatcherLifecycle::Running
+                || state.shutdown_pending
+                || state.wake_pending
+            {
+                false
+            } else {
+                state.wake_pending = true;
+                true
+            }
+        };
+        if schedule {
+            self.inner.bridge.schedule_wake(WakePriority::Normal);
+        }
+    }
+
     /// Request shutdown without interrupting the active UI callback. Repeated requests coalesce.
     pub(crate) fn request_shutdown(&self) -> Result<(), DispatchError> {
         let admission = self.prepare_shutdown_request()?;

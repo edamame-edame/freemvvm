@@ -231,6 +231,11 @@ impl PropertyChangeQueue {
     pub(crate) fn pending_len(&self) -> usize {
         self.pending.len()
     }
+
+    /// Removes notification work for an object whose owner is being finalized.
+    pub(crate) fn remove(&mut self, identity: ObjectIdentity) {
+        self.pending.retain(|pending| *pending != identity);
+    }
 }
 
 impl PropertyState {
