@@ -236,6 +236,7 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
 | --- | --- | --- | --- |
 | <a id="ut-core-property-notify-005"></a>UT-CORE-PROPERTY-NOTIFY-005 | RuntimeへUI-loop bridgeを登録し、Propertyを変更する通常postを二件FIFO登録する。最初のpost callbackでPropertyを変更し、一度dispatch turnを実行する。別fixtureでは129個の通知itemをouter host scope closeまで保留し、さらに通知callbackからshutdownを要求するfixtureも実行する | 通常post callbackが戻った後、次のpostより前にnotification sliceが開始する。128 complete item後は残り順序を保持してNormal wakeを一度予約し、次turnで残りを配信する。outer boundaryで既にshutdown pendingなら通知を開始せずshutdown cleanupをcommitする。notification callback中にshutdown要求が出た場合は現在item全subscriberを完了してから残itemより先にshutdownする。nested scope closeでは通知配信を開始しない | [RQ-05-006](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-005](../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+| <a id="ut-core-property-notify-006"></a>UT-CORE-PROPERTY-NOTIFY-006 | bridge付きRuntimeでPropertyとSubscriptionを登録し、outer host scope中にPropertyを変更して通知を保留する。同scope内でAsync shutdownを要求してからscopeを閉じる。callback/destroyの実行threadと完了receiptも確認する | shutdown controlがpendingなら保留notification callbackを開始せず、Runtime shutdown cleanupがpending generation・prepared delivery・active Subscription ownerを破棄する。closure destroyはUI threadで一度だけ実行され、completionはcleanup後にCompletedとなる。shutdown後に通知sliceを再開できない | [RQ-05-006](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-008](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-06-005](../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01) |
 
 ## 承認履歴
 
@@ -295,6 +296,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-20 | UT-CORE-PROPERTY-NOTIFY-005実行結果 | Codex | focused 8件、workspace 114件、開発ゲート成功。外側host boundaryのslice接続とwake制御を確認。公開購読ABI・Binding・診断の完了を意味しない |
 | 2026-10-20 | UT-ABI-012全文 | 利用者 | 「ok」により、C ABI Property setter host scopeのfocused oracleとUNIT-ABI-012の実装・動作確認を開始。試験合格は実行結果で別管理 |
 | 2026-10-20 | UT-ABI-012実行結果 | Codex | focused 1件、workspace 115件、開発ゲート成功。outer/nested setter boundaryと失敗時scope closeを確認。公開購読ABI・Binding propagation全体の完了を意味しない |
+| 2026-10-20 | UT-CORE-PROPERTY-NOTIFY-006追補 | Codex | 承認済みRQ/DDからshutdown優先時の保留通知破棄、active Subscription cancel、UI-thread destroyのoracleを登録。UNIT-CORE-050の実装・試験開始範囲 |
+| 2026-10-20 | UT-CORE-PROPERTY-NOTIFY-006全文 | 利用者 | 「ok」により、shutdown時の保留通知破棄、active Subscription解除、UI-thread destroyのoracleとUNIT-CORE-050の実装・動作確認を開始 |
+| 2026-10-20 | UT-CORE-PROPERTY-NOTIFY-006実行結果 | Codex | focused 1件、workspace 115件、開発ゲート成功。shutdown precedence、pending queue cleanup、UI-thread destroy一回、完了receiptを確認。public subscribe ABIとProperty-first teardownは別単位 |
 
 ## 改訂履歴
 
@@ -333,3 +337,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 3.1 | 2026-10-20 | UNIT-CORE-049のhost-boundary、wake再開、shutdown優先のfocused/workspace実行結果を追記 | Codex | 文書状態の記録のみ。通知機能全体の完了ではない |
 | 3.2 | 2026-10-20 | UT-ABI-012のsetter outer/nested scopeおよび失敗時close oracleを追補 | Codex | 利用者の「ok」に基づきUNIT-ABI-012の実装・動作確認を開始 |
 | 3.3 | 2026-10-20 | UNIT-ABI-012のfocused/workspace testと開発ゲート実行結果を追記 | Codex | 文書状態の記録のみ。通知機能全体の完了ではない |
+| 3.4 | 2026-10-20 | UT-CORE-PROPERTY-NOTIFY-006のshutdown cleanup oracleを追補 | Codex | RQ/DD承認済み範囲のRuntime内部cleanup。public subscribe ABIとProperty-first teardownは含まない |
+| 3.5 | 2026-10-20 | UNIT-CORE-050のfocused/workspace testと開発ゲート実行結果を追記 | Codex | 文書状態の記録のみ。Subscription全機能の完了を意味しない |

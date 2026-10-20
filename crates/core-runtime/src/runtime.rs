@@ -912,10 +912,10 @@ pub(crate) struct RuntimeCore {
     ui_thread: UiThreadContext,
     cleanup: Arc<RuntimeCleanupQueue>,
     ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
-    property_changes: Mutex<PropertyChangeQueue>,
-    property_delivery: Mutex<Option<std::vec::IntoIter<PropertyDeliveryItem>>>,
+    property_changes: Arc<Mutex<PropertyChangeQueue>>,
+    property_delivery: Arc<Mutex<Option<std::vec::IntoIter<PropertyDeliveryItem>>>>,
     property_delivery_active: AtomicBool,
-    subscription_owners: Mutex<HashMap<ObjectIdentity, Vec<Arc<Subscription>>>>,
+    subscription_owners: Arc<Mutex<HashMap<ObjectIdentity, Vec<Arc<Subscription>>>>>,
     object_cleanup: Arc<RuntimeObjectCleanupQueue>,
     host: HostRegistration,
     dispatcher: Mutex<Option<Dispatcher>>,
@@ -956,6 +956,34 @@ impl RuntimeCore {
         let cleanup = RuntimeCleanupQueue::new_for_ui_thread(ui_thread);
         let ui_objects = Arc::new(Mutex::new(UiObjectStore::new(ui_thread)));
         let ui_state_cleared = Arc::new(AtomicBool::new(false));
+        let property_changes = Arc::new(Mutex::new(PropertyChangeQueue::default()));
+        let property_delivery = Arc::new(Mutex::new(None));
+        let subscription_owners: Arc<Mutex<HashMap<ObjectIdentity, Vec<Arc<Subscription>>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let shutdown_property_changes = Arc::clone(&property_changes);
+        let shutdown_property_delivery = Arc::clone(&property_delivery);
+        let shutdown_subscription_owners = Arc::clone(&subscription_owners);
+        cleanup
+            .track_ui_state(Box::new(move || {
+                let delivery = shutdown_property_delivery
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take();
+                *shutdown_property_changes
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    PropertyChangeQueue::default();
+                let owners = std::mem::take(
+                    &mut *shutdown_subscription_owners
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner),
+                );
+                for subscription in owners.into_values().flatten() {
+                    subscription.cancel();
+                }
+                drop(delivery);
+            }))
+            .map_err(|()| RuntimeCoreError::CleanupRegistrationFailed)?;
         let object_cleanup = Arc::new(RuntimeObjectCleanupQueue {
             queue: Arc::clone(&cleanup),
             ui_objects: Arc::clone(&ui_objects),
@@ -981,10 +1009,10 @@ impl RuntimeCore {
             ui_thread,
             cleanup,
             ui_objects,
-            property_changes: Mutex::new(PropertyChangeQueue::default()),
-            property_delivery: Mutex::new(None),
+            property_changes,
+            property_delivery,
             property_delivery_active: AtomicBool::new(false),
-            subscription_owners: Mutex::new(HashMap::new()),
+            subscription_owners,
             object_cleanup,
             host: HostRegistration::new_for_ui_thread(ui_thread),
             dispatcher: Mutex::new(None),
@@ -1806,6 +1834,7 @@ mod tests {
     struct OrderedDeliveryProbe {
         callbacks: Mutex<Vec<usize>>,
         destroys: AtomicUsize,
+        destroy_threads: Mutex<Vec<ThreadId>>,
         reentrant_slice_blocked: AtomicBool,
         reentrant_turn_blocked: AtomicBool,
     }
@@ -1915,6 +1944,12 @@ mod tests {
         // SAFETY: userdata was produced by Box::into_raw in the test below.
         let context = unsafe { Box::from_raw(userdata.cast::<OrderedDeliveryContext>()) };
         context.probe.destroys.fetch_add(1, Ordering::SeqCst);
+        context
+            .probe
+            .destroy_threads
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(thread::current().id());
     }
 
     #[test]
@@ -2544,7 +2579,7 @@ mod tests {
     }
 
     #[test]
-    fn property_notification_shutdown_precedes_pending_items_at_host_boundary() {
+    fn property_notification_shutdown_cancels_pending_and_destroys_on_ui_thread() {
         let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
         let bridge = Arc::new(TestUiLoopBridge::default());
         let bridge_trait: Arc<dyn UiLoopBridge> = bridge.clone();
@@ -2584,11 +2619,31 @@ mod tests {
         );
 
         let scope = runtime.begin_host_event().expect("begin host event");
-        runtime
+        let (request, outcome) = runtime
             .request_shutdown(ShutdownRequestMode::Async)
             .expect("request shutdown before safe point");
+        assert_eq!(outcome, ShutdownRequestOutcome::Pending);
         assert!(runtime.end_host_event(scope).expect("commit shutdown"));
+        assert_eq!(request.query(), Ok(ShutdownCompletionState::Completed));
         assert!(probe.callbacks.lock().expect("read callbacks").is_empty());
+        assert!(!subscription.is_active());
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            *probe.destroy_threads.lock().expect("read destroy thread"),
+            vec![thread::current().id()]
+        );
+        assert!(
+            runtime
+                .subscription_owners
+                .lock()
+                .expect("subscription owners are drained")
+                .is_empty()
+        );
+        assert_eq!(
+            runtime.has_pending_property_delivery(),
+            Ok(false),
+            "shutdown discards pending generations and prepared items"
+        );
         assert_eq!(runtime.cleanup_queue().state(), RuntimeState::Closed);
         assert_eq!(bridge.destroys.load(Ordering::SeqCst), 1);
         assert_eq!(
