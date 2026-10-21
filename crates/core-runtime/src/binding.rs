@@ -204,6 +204,15 @@ impl BindingGraph {
         &mut self,
         prepared: PreparedTwoWayMerge,
     ) -> Result<(), BindingGraphError> {
+        self.commit_two_way_merge_with(prepared, || {})
+    }
+
+    /// Commits related state with a validated group union before publishing the new topology.
+    pub(crate) fn commit_two_way_merge_with(
+        &mut self,
+        prepared: PreparedTwoWayMerge,
+        commit_related_state: impl FnOnce(),
+    ) -> Result<(), BindingGraphError> {
         if prepared.generation != self.generation {
             return Err(BindingGraphError::StaleProposal);
         }
@@ -211,6 +220,7 @@ impl BindingGraph {
             .generation
             .checked_add(1)
             .ok_or(BindingGraphError::GenerationExhausted)?;
+        commit_related_state();
         self.group_parent
             .insert(prepared.target_group, prepared.source_group);
         self.generation = next_generation;
