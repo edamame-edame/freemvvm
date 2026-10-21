@@ -529,7 +529,12 @@ pub mod abi_support {
                     | RuntimePropertyError::NotificationQueueOutOfMemory
                     | RuntimePropertyError::SubscriptionRegistryOutOfMemory
                     | RuntimePropertyError::Dispatch(_)
-                    | RuntimePropertyError::ValueKindMismatch(_) => ShutdownApiError::Internal,
+                    | RuntimePropertyError::ValueKindMismatch(_)
+                    | RuntimePropertyError::BindingGraph(_)
+                    | RuntimePropertyError::BindingValueCopy(_)
+                    | RuntimePropertyError::BindingPropagationOutOfMemory => {
+                        ShutdownApiError::Internal
+                    }
                 })?;
         Ok(match kind {
             ValueKind::Bool => 1,
@@ -566,7 +571,10 @@ pub mod abi_support {
             | RuntimePropertyError::Store(_)
             | RuntimePropertyError::Dispatch(_)
             | RuntimePropertyError::WrongObjectState
-            | RuntimePropertyError::ValueKindMismatch(_) => PropertyApiError::Internal,
+            | RuntimePropertyError::ValueKindMismatch(_)
+            | RuntimePropertyError::BindingGraph(_)
+            | RuntimePropertyError::BindingValueCopy(_)
+            | RuntimePropertyError::BindingPropagationOutOfMemory => PropertyApiError::Internal,
         }
     }
 

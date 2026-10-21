@@ -1,6 +1,6 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 1.4
+- 文書版: 1.5
 - 状態: Runtime post/dispatch turn、Property create/kind、Property getters、およびOneWay propagation candidate/commit追補は利用者承認済み。製品test実装・実行状態は別管理
 - 更新日: 2026-10-21
 
@@ -289,6 +289,14 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 
 このoracleはRuntime内OneWay target値commitと次generation notification enqueueのみを検証する。application validator、遅延subscriber callback、TwoWay/OneTime、public Binding lifecycleは含まない。
 
+### Runtime通知slice内のOneWay伝播順 — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-runtime-binding-delivery-001"></a>UT-CORE-RUNTIME-BINDING-DELIVERY-001 | source→middle→targetとsource→branch OneWayを作り、source/middle subscriberを登録する。sourceとmiddleを同じgenerationで直接変更し、target/branch subscriberも含めRuntime notification sliceを実行する | current-generation source/middle callback開始前に伝播値がcommit済みで、source callbackはmiddleの最終値、middle callbackはtargetの最終値を読める。source/middle通知はcurrent generation、未通知のtarget/branch通知は後続generationで順に一回ずつ届く。middleはcurrent itemで通知済みなので次generationに重複登録しない。callback再帰なし。slice item上限・shutdown確認を維持する | [RQ-07-002](../11_requirements/RQ-07_binding.md#rq-07-002)、[RQ-07-005](../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-008](../11_requirements/RQ-07_binding.md#rq-07-008)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01) |
+
+このoracleはOneWay propagation→subscriber deliveryのRuntime順序と次generationの非再帰配送を検証する。application validator、Binding error、TwoWay/OneTime、public ABIは含まない。
+
 ### Binding初期値・OneWay graph接続の準備 — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
@@ -383,6 +391,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-PROP-001実行結果 | Codex | focused 1件、workspace 137件、開発ゲート成功。chain/branch candidate順序、直接変更targetへの上流優先、値・dirty queue不変を確認 |
 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-COMMIT-001 oracle | Codex | 承認済みRQ/DDからOneWay target commit、notification reservation、次generation coalescingのoracleを追補。application validatorとsubscriber deliveryは含まない |
 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-COMMIT-001全文 | 利用者 | 「ok」により、Runtime OneWay target値・通知queueのatomic commit focused実装・動作確認を開始。validatorとsubscriber deliveryは別単位 |
+| 2026-10-21 | UT-CORE-RUNTIME-BINDING-DELIVERY-001 oracle | Codex | 承認済みRQ/DDからBinding propagation前置、subscriberからの更新値read、次generation通知順序のoracleを追補 |
+| 2026-10-21 | UT-CORE-RUNTIME-BINDING-DELIVERY-001全文 | 利用者 | 「ok」により、OneWay propagationとRuntime subscriber deliveryの接続をfocused実装・動作確認する |
+| 2026-10-21 | UT-CORE-RUNTIME-BINDING-DELIVERY-001実行結果 | Codex | focused delivery 1件とgeneration snapshot 2件、workspace 139件、開発ゲート成功。current-generation targetの重複通知抑止と次generation target/branch順を確認 |
 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-COMMIT-001実行結果 | Codex | focused 1件、workspace 138件、開発ゲート成功。chain/branch値commit、次generation通知の順序・重複抑止、同値no-opを確認 |
 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-PROP-001 oracle | Codex | 承認済みRQ/DDからOneWay chain/branchのRuntime candidate準備と非変更性oracleを追補。validator・commit・通知は含まない |
 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-PROP-001全文 | 利用者 | 「ok」によりRuntime OneWay伝播候補準備のfocused実装・動作確認を開始。値commitとRuntime delivery接続は別単位 |
@@ -445,3 +456,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 5.2 | 2026-10-21 | UNIT-CORE-058のfocused/workspace testと開発ゲート結果を記録 | Codex | OneWay Runtime candidate preparationの実装・検証状態。validator・commit・delivery統合は別単位 |
 | 5.3 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-COMMIT-001のtarget commit・次generation通知oracleを追補 | Codex | 利用者の継続指示によるfocused実装範囲。subscriber deliveryとpublic Binding lifecycleは含まない |
 | 5.4 | 2026-10-21 | UNIT-CORE-059のfocused/workspace testと開発ゲート結果を記録 | Codex | OneWay Runtime value/notification commitの実装・検証状態。validatorとsubscriber delivery統合は別単位 |
+| 5.5 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-DELIVERY-001の通知slice順序oracleを追補 | Codex | 利用者の継続指示によるRuntime integration範囲。validatorとpublic Binding lifecycleは含まない |
+| 5.6 | 2026-10-21 | UNIT-CORE-060のfocused/workspace testと開発ゲート結果を記録 | Codex | OneWay propagation-before-subscriber Runtime integrationの検証状態。validatorとTwoWay/OneTimeは別単位 |

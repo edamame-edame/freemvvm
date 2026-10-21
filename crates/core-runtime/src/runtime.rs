@@ -962,6 +962,9 @@ pub(crate) enum RuntimePropertyError {
     Registry(RegistryError),
     WrongObjectState,
     ValueKindMismatch(ValueKindMismatch),
+    BindingGraph(BindingGraphError),
+    BindingValueCopy(BindingCopyError),
+    BindingPropagationOutOfMemory,
     NotificationQueueOutOfMemory,
     SubscriptionRegistryOutOfMemory,
     Dispatch(DispatchError),
@@ -979,6 +982,29 @@ pub(crate) enum RuntimeBindingError {
     SynchronizationPoisoned,
     NotificationQueueOutOfMemory,
     PropagationPreparationOutOfMemory,
+}
+
+impl RuntimeBindingError {
+    fn into_property_delivery_error(self) -> RuntimePropertyError {
+        match self {
+            Self::Property(error) => error,
+            Self::Registry(error) => RuntimePropertyError::Registry(error),
+            Self::Store(error) => RuntimePropertyError::Store(error),
+            Self::WrongObjectState => RuntimePropertyError::WrongObjectState,
+            Self::Graph(error) => RuntimePropertyError::BindingGraph(error),
+            Self::InitialCopy(error) => RuntimePropertyError::BindingValueCopy(error),
+            Self::SourceSnapshotCopy(error) => {
+                RuntimePropertyError::BindingValueCopy(BindingCopyError::Copy(error))
+            }
+            Self::SynchronizationPoisoned => RuntimePropertyError::SynchronizationPoisoned,
+            Self::NotificationQueueOutOfMemory => {
+                RuntimePropertyError::NotificationQueueOutOfMemory
+            }
+            Self::PropagationPreparationOutOfMemory => {
+                RuntimePropertyError::BindingPropagationOutOfMemory
+            }
+        }
+    }
 }
 
 /// Process-unique internal identity for one Runtime owner.
@@ -1334,17 +1360,34 @@ impl RuntimeCore {
             .property_changes
             .lock()
             .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        Self::propagate_one_way_changes_locked(
+            &mut store,
+            &graph,
+            &mut changes,
+            dirty_properties,
+            &[],
+        )
+    }
 
+    fn propagate_one_way_changes_locked(
+        store: &mut UiObjectStore<Box<dyn Any + Send>>,
+        graph: &BindingGraph,
+        changes: &mut PropertyChangeQueue,
+        dirty_properties: &[ObjectIdentity],
+        current_generation: &[ObjectIdentity],
+    ) -> Result<Vec<ObjectIdentity>, RuntimeBindingError> {
         let prepared =
-            Self::prepare_one_way_propagation_candidates_locked(&store, &graph, dirty_properties)?;
+            Self::prepare_one_way_propagation_candidates_locked(store, graph, dirty_properties)?;
         let mut changed_targets = Vec::new();
         changed_targets
             .try_reserve(prepared.len())
             .map_err(|_| RuntimeBindingError::PropagationPreparationOutOfMemory)?;
         for candidate in &prepared {
-            changes
-                .reserve_change(candidate.target)
-                .map_err(|_| RuntimeBindingError::NotificationQueueOutOfMemory)?;
+            if !current_generation.contains(&candidate.target) {
+                changes
+                    .reserve_change(candidate.target)
+                    .map_err(|_| RuntimeBindingError::NotificationQueueOutOfMemory)?;
+            }
             changed_targets.push(candidate.target);
         }
 
@@ -1358,7 +1401,9 @@ impl RuntimeCore {
                 .apply_validated(candidate.value)
                 .expect("prepared propagation candidate has the target's fixed kind");
             debug_assert_eq!(outcome, ValueCommit::Changed);
-            changes.commit_change(candidate.target);
+            if !current_generation.contains(&candidate.target) {
+                changes.commit_change(candidate.target);
+            }
         }
         Ok(changed_targets)
     }
@@ -1565,6 +1610,10 @@ impl RuntimeCore {
             .ui_objects
             .lock()
             .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let graph = self
+            .binding_graph
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
         let mut changes = self
             .property_changes
             .lock()
@@ -1575,10 +1624,9 @@ impl RuntimeCore {
             .try_reserve(changes.pending_len())
             .map_err(|_| RuntimePropertyError::NotificationQueueOutOfMemory)?;
         let generation = changes.take_generation();
-        for index in 0..generation.len() {
-            let identity = generation[index];
+        for identity in &generation {
             let snapshot = match store
-                .resolve_mut(identity)
+                .resolve_mut(*identity)
                 .map_err(RuntimePropertyError::Store)
                 .and_then(|state| {
                     state
@@ -1597,9 +1645,19 @@ impl RuntimeCore {
                 }
             };
             items.push(PropertyDeliveryItem {
-                identity,
+                identity: *identity,
                 subscribers: snapshot,
             });
+        }
+        if let Err(error) = Self::propagate_one_way_changes_locked(
+            &mut store,
+            &graph,
+            &mut changes,
+            &generation,
+            &generation,
+        ) {
+            changes.restore_generation(generation);
+            return Err(error.into_property_delivery_error());
         }
         Ok(items)
     }
@@ -2216,6 +2274,14 @@ mod tests {
         shutdown_dispatcher: Option<Dispatcher>,
     }
 
+    struct BindingDeliveryContext {
+        runtime: Arc<RuntimeCore>,
+        registry: Arc<HandleRegistry<PropertyHandleKind, RuntimeIdentity>>,
+        observed_property: crate::handle_registry::HandleToken,
+        item: usize,
+        observations: Arc<Mutex<Vec<(usize, i64)>>>,
+    }
+
     unsafe extern "C" fn subscription_owner_callback(userdata: *mut c_void) {
         // SAFETY: each test keeps its boxed probe alive until after explicit cancellation.
         let probe = unsafe { &*userdata.cast::<SubscriptionOwnerProbe>() };
@@ -2336,6 +2402,53 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(thread::current().id());
+    }
+
+    unsafe extern "C" fn binding_delivery_callback(userdata: *mut c_void) {
+        // SAFETY: the Subscription owns this context until binding_delivery_destroy runs.
+        let context = unsafe { &*userdata.cast::<BindingDeliveryContext>() };
+        let value = context
+            .runtime
+            .read_property(&context.registry, context.observed_property)
+            .expect("subscriber can read the propagated Property value");
+        let TypedValue::I64(value) = value else {
+            panic!("test Property retains its I64 kind");
+        };
+        context
+            .observations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push((context.item, value));
+    }
+
+    unsafe extern "C" fn binding_delivery_destroy(userdata: *mut c_void) {
+        // SAFETY: userdata was produced by Box::into_raw in the test below.
+        drop(unsafe { Box::from_raw(userdata.cast::<BindingDeliveryContext>()) });
+    }
+
+    fn new_binding_delivery_subscription(
+        runtime: &Arc<RuntimeCore>,
+        registry: &Arc<HandleRegistry<PropertyHandleKind, RuntimeIdentity>>,
+        observed_property: crate::handle_registry::HandleToken,
+        item: usize,
+        observations: &Arc<Mutex<Vec<(usize, i64)>>>,
+    ) -> Arc<Subscription> {
+        let context = Box::new(BindingDeliveryContext {
+            runtime: Arc::clone(runtime),
+            registry: Arc::clone(registry),
+            observed_property,
+            item,
+            observations: Arc::clone(observations),
+        });
+        let userdata = Box::into_raw(context).cast::<c_void>();
+        // SAFETY: the Subscription owns its boxed context until explicit cancellation.
+        Arc::new(unsafe {
+            Subscription::new(
+                binding_delivery_callback,
+                userdata,
+                binding_delivery_destroy,
+            )
+        })
     }
 
     #[test]
@@ -2672,6 +2785,110 @@ mod tests {
                 crate::binding::BindingGraphError::DuplicateEdge
             ))
         ));
+    }
+
+    #[test]
+    fn runtime_one_way_delivery_propagates_before_subscribers_and_uses_next_generation() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let registry = Arc::new(HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new());
+        let source = runtime
+            .register_property(&registry, TypedValue::I64(10))
+            .expect("register source");
+        let middle = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register middle");
+        let target = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register target");
+        let branch = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register branch");
+        assert_eq!(
+            runtime.create_one_way_binding_initial(&registry, source, middle),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.create_one_way_binding_initial(&registry, middle, target),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.create_one_way_binding_initial(&registry, source, branch),
+            Ok(ValueCommit::Changed)
+        );
+        runtime
+            .take_property_change_generation()
+            .expect("drain initial-sync notifications");
+
+        let identity = |token| {
+            registry
+                .validate(token, &PropertyHandleKind::Property, &runtime.identity())
+                .expect("Property token resolves")
+                .identity()
+        };
+        let source_identity = identity(source);
+        let middle_identity = identity(middle);
+        let target_identity = identity(target);
+        let branch_identity = identity(branch);
+        let observations = Arc::new(Mutex::new(Vec::new()));
+        let source_subscription =
+            new_binding_delivery_subscription(&runtime, &registry, middle, 0, &observations);
+        runtime
+            .register_subscription_owner(source_identity, &source_subscription)
+            .expect("register source subscriber");
+        let middle_subscription =
+            new_binding_delivery_subscription(&runtime, &registry, target, 1, &observations);
+        runtime
+            .register_subscription_owner(middle_identity, &middle_subscription)
+            .expect("register directly changed middle subscriber");
+        let target_subscription =
+            new_binding_delivery_subscription(&runtime, &registry, target, 2, &observations);
+        runtime
+            .register_subscription_owner(target_identity, &target_subscription)
+            .expect("register target subscriber");
+        let branch_subscription =
+            new_binding_delivery_subscription(&runtime, &registry, branch, 3, &observations);
+        runtime
+            .register_subscription_owner(branch_identity, &branch_subscription)
+            .expect("register branch subscriber");
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, source, TypedValue::I64(5)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, middle, TypedValue::I64(7)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(runtime.process_property_delivery_slice(), Ok((4, false)));
+        assert_eq!(
+            *observations
+                .lock()
+                .expect("read ordered subscriber observations"),
+            vec![(0, 5), (1, 5), (2, 5), (3, 5)]
+        );
+        for token in [middle, target, branch] {
+            assert!(matches!(
+                runtime.read_property(&registry, token),
+                Ok(TypedValue::I64(5))
+            ));
+        }
+
+        assert_eq!(
+            runtime.cancel_subscription_owner(source_identity, &source_subscription),
+            Ok(true)
+        );
+        assert_eq!(
+            runtime.cancel_subscription_owner(middle_identity, &middle_subscription),
+            Ok(true)
+        );
+        assert_eq!(
+            runtime.cancel_subscription_owner(target_identity, &target_subscription),
+            Ok(true)
+        );
+        assert_eq!(
+            runtime.cancel_subscription_owner(branch_identity, &branch_subscription),
+            Ok(true)
+        );
     }
 
     #[test]
