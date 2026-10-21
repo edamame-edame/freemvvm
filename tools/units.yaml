@@ -1376,6 +1376,24 @@
       "tests": [
         {"id": "UT-ABI-013", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "property_subscription"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-052",
+      "state": "complete",
+      "scope": "core-binding-oneway-graph-invariants",
+      "sources": ["crates/core-runtime/src/binding.rs", "crates/core-runtime/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-040"],
+      "design": [
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "Binding graphと因果連鎖 / approved OneWay topology"},
+        {"path": ".docs/13_detail_design/runtime-objects/abi.md", "version": "1.2", "section": "BindingのC ABI / graph failure categories"}
+      ],
+      "requirements": ["RQ-07-007", "RQ-07-015"],
+      "cases": ["TC-BIND-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-CORE-BINDING-GRAPH-001", "command": ["cargo", "test", "-p", "freemvvm-core", "binding_graph"]}
+      ]
     }
   ]
 }

@@ -143,6 +143,14 @@ Candidates are already validated values in this slice. Validator execution, dirt
 | --- | --- | --- | --- |
 | <a id="ut-core-property-notify-001"></a>UT-CORE-PROPERTY-NOTIFY-001 | 一つのRuntimeへProperty A/Bを登録し、Aを変更、Bを変更、Aを別値へ変更してからpending generationを取得する。次にAを変更して次generationを取得する。別fixtureで同値・異kind・invalid handleの各更新後にpending queueを取得する | 最初のgenerationは[A, B]のidentity順で一件ずつ含み、Aの最終値を読む。同じidentityの複数変更は一件にcoalesceする。generation取得後のA変更は次generationへ分離される。同値・失敗更新はqueueへ追加しない | [RQ-02-017](../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-04-025](../11_requirements/RQ-04_abi-boundary.md#rq-04-025)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01), [TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### Core Binding OneWay graph — implementation slice
+
+This slice covers topology only. Each Property starts as a singleton synchronization group; TwoWay group merging and Property values are separate units.
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-binding-graph-001"></a>UT-CORE-BINDING-GRAPH-001 | 空のgraphへA→B、B→Cをprepare/commitする。自己接続A→A、既存A→B重複、別入力元C→B、循環C→Aを個別に試し、各拒否後に合法な別edgeを追加して既存topologyの保持を確認する | 片方向chainを受け入れる。self/cycle/duplicate/second-inputはそれぞれ識別可能なCore errorとして拒否される。拒否された候補はedge数・受理済み辺・後続の合法接続へ影響しない。OneTime、TwoWay merge、Property値や通知は対象外 | [RQ-07-007](../11_requirements/RQ-07_binding.md#rq-07-007)、[RQ-07-015](../11_requirements/RQ-07_binding.md#rq-07-015)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01) |
+
 ### Runtime Subscription owner registry — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
@@ -305,6 +313,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-21 | UT-CORE-PROPERTY-NOTIFY-007実行結果 | Codex | focused 2件、workspace 117件、開発ゲート成功。worker release wake、prepared work除去、callback内release後の後続subscriber抑止、UI-thread destroy一回、Runtime継続を確認 |
 | 2026-10-21 | UT-ABI-013全文 | Codex | 承認済みRQ/DDから公開Property subscribe/cancel、handle retain/releaseとclosure所有移転のoracleを追補。UNIT-ABI-013の実装・動作確認開始範囲 |
 | 2026-10-21 | UT-ABI-013実行結果 | Codex | focused 2件、workspace 119件、開発ゲート成功。token retain/releaseとRuntime ownerの独立、明示・反復cancel、self-cancel、失敗時のcaller所有維持、wrong-thread拒否を確認 |
+| 2026-10-21 | UT-CORE-BINDING-GRAPH-001 oracle | Codex | 承認済みRQ/DDからOneWay graphのself/cycle/duplicate/second-input拒否とfailure atomicityを追補 |
+| 2026-10-21 | UT-CORE-BINDING-GRAPH-001全文 | 利用者 | 「ok」により、Core OneWay graph topologyのfocused oracleとUNIT-CORE-052の実装・動作確認を開始。TwoWay mergeとProperty伝播は別単位 |
+| 2026-10-21 | UT-CORE-BINDING-GRAPH-001実行結果 | Codex | focused 2件、workspace 121件、開発ゲート成功。合法chain、self/cycle/duplicate/second-input拒否、旧generation proposal拒否を確認 |
 
 ## 改訂履歴
 
@@ -349,3 +360,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 3.7 | 2026-10-21 | UNIT-CORE-051のProperty-first teardown focused/workspace testと開発ゲート結果を記録 | Codex | test oracleと当該実装revisionの検証状態。公開購読ABIとBinding teardownは別単位 |
 | 3.8 | 2026-10-21 | UT-ABI-013の公開Property subscribe/cancel ABI oracleを追補 | Codex | 利用者の継続指示によるfocused実装単位。wrapperとBinding subscriptionは含まない |
 | 3.9 | 2026-10-21 | UNIT-ABI-013のfocused/workspace testと開発ゲート結果を記録 | Codex | oracleと当該実装revisionの検証状態。wrapperとBinding subscriptionは別単位 |
+| 4.0 | 2026-10-21 | UT-CORE-BINDING-GRAPH-001のOneWay topology oracleを追補 | Codex | 利用者の「ok」によるfocused実装単位。Binding propagation/ABIを含まない |
+| 4.1 | 2026-10-21 | UNIT-CORE-052のfocused/workspace testと開発ゲート結果を記録 | Codex | oracleと当該実装revisionの検証状態。TwoWay mergeとProperty伝播は別単位 |

@@ -2,6 +2,8 @@
 //!
 //! Language wrappers must use the versioned C ABI rather than depend on this crate.
 
+#[allow(dead_code)]
+mod binding;
 mod dispatcher;
 mod handle_registry;
 // Runtime-owned UI state and the initial internal Property integration.
