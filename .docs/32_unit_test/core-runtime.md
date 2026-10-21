@@ -1,7 +1,7 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 1.2
-- 状態: Runtime post/dispatch turn、Property create/kind、およびProperty getters追補は利用者承認済み（2026-10-19）。製品test実装・実行状態は別管理
+- 文書版: 1.3
+- 状態: Runtime post/dispatch turn、Property create/kind、Property getters、およびOneWay propagation candidate追補は利用者承認済み。製品test実装・実行状態は別管理
 - 更新日: 2026-10-21
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
@@ -273,6 +273,14 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 
 このoracleは入力dirty identityから到達するOneWay edge snapshotの対象範囲と決定的な上流順序のみを検証する。Property値伝播、subscriber通知順、TwoWay値同期、Binding lifecycleは含まない。
 
+### Runtime OneWay伝播候補の準備 — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-runtime-binding-prop-001"></a>UT-CORE-RUNTIME-BINDING-PROP-001 | Runtime内に同kindのOneWay chain/branchを初期同期で作り、sourceを直接変更する。dirty identityからcandidate準備を行う。中間targetもdirtyな場合と、関連しないedgeを含む場合を別fixtureで確認する | 候補は上流順に作られ、chainでは上流target候補を次edgeのsourceとして使う。dirtyなtargetもsourceから到達するedgeの候補を受ける。無関係targetは含まれない。準備前後で全Property値、graph、notification queueは不変。kind/copy/graph preparation error時も部分candidateを公開しない | [RQ-07-002](../11_requirements/RQ-07_binding.md#rq-07-002)、[RQ-07-005](../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-009](../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../11_requirements/RQ-07_binding.md#rq-07-010)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01) |
+
+このoracleはRuntime内OneWay伝播値candidateのowned preparationと部分公開防止のみを検証する。target validator、値commit、notification登録、subscriber実行、TwoWay/OneTimeは含まない。
+
 ### Binding初期値・OneWay graph接続の準備 — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
@@ -364,6 +372,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-21 | UT-CORE-BINDING-PROPAGATION-ORDER-001 oracle | Codex | 承認済みRQ/DDからdirty Property起点の到達可能OneWay edgeと上流順序を追補。値commit・Runtime統合は含まない |
 | 2026-10-21 | UT-CORE-BINDING-PROPAGATION-ORDER-001全文 | 利用者 | 「ok」により、OneWay伝播順序snapshotのfocused実装・動作確認を開始。Property値伝播は別単位 |
 | 2026-10-21 | UT-CORE-BINDING-PROPAGATION-ORDER-001実行結果 | Codex | focused 2件、workspace 136件、開発ゲート成功。branch/chain順序、到達範囲、TwoWay group解決、空入力を確認 |
+| 2026-10-21 | UT-CORE-RUNTIME-BINDING-PROP-001実行結果 | Codex | focused 1件、workspace 137件、開発ゲート成功。chain/branch candidate順序、直接変更targetへの上流優先、値・dirty queue不変を確認 |
+| 2026-10-21 | UT-CORE-RUNTIME-BINDING-PROP-001 oracle | Codex | 承認済みRQ/DDからOneWay chain/branchのRuntime candidate準備と非変更性oracleを追補。validator・commit・通知は含まない |
+| 2026-10-21 | UT-CORE-RUNTIME-BINDING-PROP-001全文 | 利用者 | 「ok」によりRuntime OneWay伝播候補準備のfocused実装・動作確認を開始。値commitとRuntime delivery接続は別単位 |
 
 ## 改訂履歴
 
@@ -419,3 +430,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 4.8 | 2026-10-21 | UNIT-CORE-056のfocused/workspace testと開発ゲート結果を記録 | Codex | 内部OneWay initial syncの実装・検証状態。後続propagationとpublic Binding lifecycleは別単位 |
 | 4.9 | 2026-10-21 | UT-CORE-BINDING-PROPAGATION-ORDER-001の到達可能edge・上流順序oracleを追補 | Codex | 利用者の継続指示によるfocused実装単位。値伝播・Runtime integrationを含まない |
 | 5.0 | 2026-10-21 | UNIT-CORE-057のfocused/workspace testと開発ゲート結果を記録 | Codex | graph propagation snapshotの実装・検証状態。Property値伝播・Runtime integrationは別単位 |
+| 5.1 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-PROP-001のordered candidate・非変更oracleを追補 | Codex | 利用者の継続指示によるfocused実装範囲。validator・commit・notificationを含まない |
+| 5.2 | 2026-10-21 | UNIT-CORE-058のfocused/workspace testと開発ゲート結果を記録 | Codex | OneWay Runtime candidate preparationの実装・検証状態。validator・commit・delivery統合は別単位 |

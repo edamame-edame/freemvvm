@@ -978,6 +978,7 @@ pub(crate) enum RuntimeBindingError {
     SourceSnapshotCopy(OwnedUtf8Error),
     SynchronizationPoisoned,
     NotificationQueueOutOfMemory,
+    PropagationPreparationOutOfMemory,
 }
 
 /// Process-unique internal identity for one Runtime owner.
@@ -1018,6 +1019,13 @@ pub(crate) struct RuntimeCore {
 pub(crate) struct PropertyDeliveryItem {
     pub(crate) identity: ObjectIdentity,
     pub(crate) subscribers: Vec<Arc<Subscription>>,
+}
+
+/// An owned target value prepared by the Runtime's OneWay propagation pass.
+#[derive(Debug)]
+pub(crate) struct PreparedBindingValue {
+    pub(crate) target: ObjectIdentity,
+    pub(crate) value: TypedValue,
 }
 
 impl PropertyDeliveryItem {
@@ -1277,6 +1285,69 @@ impl RuntimeCore {
             })
             .map_err(RuntimeBindingError::Graph)?;
         Ok(outcome)
+    }
+
+    /// Prepares owned target candidates for reachable OneWay edges without committing them.
+    ///
+    /// Earlier target candidates feed later edges in the same topological pass, so a chain uses
+    /// the propagated value all the way downstream. This Runtime slice has no TwoWay value-group
+    /// update path; it is used with the current Runtime OneWay registrations only.
+    pub(crate) fn prepare_one_way_propagation_candidates(
+        &self,
+        dirty_properties: &[ObjectIdentity],
+    ) -> Result<Vec<PreparedBindingValue>, RuntimeBindingError> {
+        self.ensure_property_access_thread()
+            .map_err(RuntimeBindingError::Property)?;
+
+        // Keep the established object-store -> graph lock order used by Binding creation.
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        let graph = self
+            .binding_graph
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        let edges = graph
+            .prepare_one_way_propagation(dirty_properties)
+            .map_err(RuntimeBindingError::Graph)?;
+        let mut prepared = Vec::new();
+        prepared
+            .try_reserve(edges.len())
+            .map_err(|_| RuntimeBindingError::PropagationPreparationOutOfMemory)?;
+
+        for edge in edges {
+            let source_candidate = prepared
+                .iter()
+                .rev()
+                .find(|candidate: &&PreparedBindingValue| candidate.target == edge.source)
+                .map(|candidate| &candidate.value);
+            let source_value = match source_candidate {
+                Some(value) => value,
+                None => store
+                    .resolve(edge.source)
+                    .map_err(RuntimeBindingError::Store)?
+                    .downcast_ref::<PropertyState>()
+                    .ok_or(RuntimeBindingError::WrongObjectState)?
+                    .read(),
+            };
+            let target = store
+                .resolve(edge.target)
+                .map_err(RuntimeBindingError::Store)?
+                .downcast_ref::<PropertyState>()
+                .ok_or(RuntimeBindingError::WrongObjectState)?;
+            if let Some(value) = target
+                .value_for_binding_prepare()
+                .prepare_binding_initial_copy(source_value)
+                .map_err(RuntimeBindingError::InitialCopy)?
+            {
+                prepared.push(PreparedBindingValue {
+                    target: edge.target,
+                    value,
+                });
+            }
+        }
+        Ok(prepared)
     }
 
     /// Reads an owned snapshot of a Property value on this Runtime's UI thread.
@@ -2352,6 +2423,111 @@ mod tests {
             Ok(TypedValue::Bool(true))
         ));
         assert_eq!(runtime.take_property_change_generation(), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn runtime_one_way_propagation_prepares_chain_candidates_without_mutating_state() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let source = runtime
+            .register_property(&registry, TypedValue::I64(10))
+            .expect("register source");
+        let middle = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register middle");
+        let target = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register target");
+        let branch = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register branch");
+        let unrelated_source = runtime
+            .register_property(&registry, TypedValue::I64(99))
+            .expect("register unrelated source");
+        let unrelated_target = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register unrelated target");
+
+        assert_eq!(
+            runtime.create_one_way_binding_initial(&registry, source, middle),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.create_one_way_binding_initial(&registry, middle, target),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.create_one_way_binding_initial(&registry, source, branch),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.create_one_way_binding_initial(&registry, unrelated_source, unrelated_target),
+            Ok(ValueCommit::Changed)
+        );
+        runtime
+            .take_property_change_generation()
+            .expect("drain initial-sync notifications");
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, source, TypedValue::I64(5)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, middle, TypedValue::I64(7)),
+            Ok(ValueCommit::Changed)
+        );
+        let identity = |token| {
+            registry
+                .validate(token, &PropertyHandleKind::Property, &runtime.identity())
+                .expect("Property token resolves")
+                .identity()
+        };
+        let source_identity = identity(source);
+        let middle_identity = identity(middle);
+        let target_identity = identity(target);
+        let branch_identity = identity(branch);
+
+        let prepared = runtime
+            .prepare_one_way_propagation_candidates(&[source_identity, middle_identity])
+            .expect("OneWay targets should prepare in propagation order");
+        assert_eq!(prepared.len(), 3);
+        assert_eq!(prepared[0].target, middle_identity);
+        assert!(matches!(prepared[0].value, TypedValue::I64(5)));
+        assert_eq!(prepared[1].target, target_identity);
+        assert!(matches!(prepared[1].value, TypedValue::I64(5)));
+        assert_eq!(prepared[2].target, branch_identity);
+        assert!(matches!(prepared[2].value, TypedValue::I64(5)));
+
+        assert!(matches!(
+            runtime.read_property(&registry, source),
+            Ok(TypedValue::I64(5))
+        ));
+        assert!(matches!(
+            runtime.read_property(&registry, middle),
+            Ok(TypedValue::I64(7))
+        ));
+        assert!(matches!(
+            runtime.read_property(&registry, target),
+            Ok(TypedValue::I64(10))
+        ));
+        assert!(matches!(
+            runtime.read_property(&registry, branch),
+            Ok(TypedValue::I64(10))
+        ));
+        assert!(matches!(
+            runtime.read_property(&registry, unrelated_target),
+            Ok(TypedValue::I64(99))
+        ));
+        assert_eq!(
+            runtime.take_property_change_generation(),
+            Ok(vec![source_identity, middle_identity])
+        );
+        assert!(matches!(
+            runtime.create_one_way_binding_initial(&registry, source, middle),
+            Err(RuntimeBindingError::Graph(
+                crate::binding::BindingGraphError::DuplicateEdge
+            ))
+        ));
     }
 
     #[test]
