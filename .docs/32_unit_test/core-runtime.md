@@ -1,7 +1,7 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 1.5
-- 状態: Runtime post/dispatch turn、Property create/kind、Property getters、OneWay propagation candidate/commit、およびTwoWay initial-sync oracle追補は利用者承認済み範囲。製品test実装・実行状態は別管理
+- 文書版: 1.7
+- 状態: Runtime post/dispatch turn、Property create/kind、Property getters、OneWay propagation candidate/commit、TwoWay initial-sync、およびTwoWay group propagation oracle追補は利用者承認済み範囲。製品test実装・実行状態は別管理
 - 更新日: 2026-10-21
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
@@ -270,6 +270,7 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
 | --- | --- | --- | --- |
 | <a id="ut-core-runtime-twoway-init-001"></a>UT-CORE-RUNTIME-TWOWAY-INIT-001 | 同一Runtime内の同kind source/targetでTwoWay初期同期を行い、差分値・同値・kind mismatch・TwoWay group重複・既存OneWay topologyと循環するmergeを試す。通知queueに既存targetがあるケースも確認する | 差分時はsource値・target値・target通知一件・group mergeがまとめてcommitされる。同値はgroup mergeのみcommitし通知しない。kind/topology拒否では値・既存group/edge・通知queueを変更しない。既存queueにtarget通知がある場合は重複しない | [RQ-07-003](../11_requirements/RQ-07_binding.md#rq-07-003)、[RQ-07-007](../11_requirements/RQ-07_binding.md#rq-07-007)、[RQ-07-009](../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../11_requirements/RQ-07_binding.md#rq-07-010)、[RQ-07-015](../11_requirements/RQ-07_binding.md#rq-07-015)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01)、[TC-BIND-INIT-REJECT-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-init-reject-01)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01) |
+| <a id="ut-core-runtime-twoway-init-group-001"></a>UT-CORE-RUNTIME-TWOWAY-INIT-GROUP-001 | 既存TwoWay target groupに対してsourceから別のTwoWay接続を初期同期する | 初期source値がtarget groupの全memberへ反映され、各変更memberの通知が一件ずつ予約される。group mergeと値反映の前に検証し、拒否時は既存状態を維持 | [RQ-07-003](../11_requirements/RQ-07_binding.md#rq-07-003)、[RQ-07-007](../11_requirements/RQ-07_binding.md#rq-07-007)、[RQ-07-009](../11_requirements/RQ-07_binding.md#rq-07-009)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01) |
 
 このoracleはCore内部TwoWay初期値・同期group・notification reservationのatomic commitを検証する。group値伝播、direct setter順序、validator/Binding error、public owner/handle/cancel、C ABIは別単位。
 
@@ -304,6 +305,15 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | <a id="ut-core-runtime-binding-delivery-001"></a>UT-CORE-RUNTIME-BINDING-DELIVERY-001 | source→middle→targetとsource→branch OneWayを作り、source/middle subscriberを登録する。sourceとmiddleを同じgenerationで直接変更し、target/branch subscriberも含めRuntime notification sliceを実行する | current-generation source/middle callback開始前に伝播値がcommit済みで、source callbackはmiddleの最終値、middle callbackはtargetの最終値を読める。source/middle通知はcurrent generation、未通知のtarget/branch通知は後続generationで順に一回ずつ届く。middleはcurrent itemで通知済みなので次generationに重複登録しない。callback再帰なし。slice item上限・shutdown確認を維持する | [RQ-07-002](../11_requirements/RQ-07_binding.md#rq-07-002)、[RQ-07-005](../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-008](../11_requirements/RQ-07_binding.md#rq-07-008)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01) |
 
 このoracleはOneWay propagation→subscriber deliveryのRuntime順序と次generationの非再帰配送を検証する。application validator、Binding error、TwoWay/OneTime、public ABIは含まない。
+
+### Runtime TwoWay同期groupの通知前伝播 — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-runtime-twoway-propagation-001"></a>UT-CORE-RUNTIME-TWOWAY-PROPAGATION-001 | 3 PropertyのTwoWay groupを作り、同一generationで複数memberへ成功setterを異なる順序で適用する。別fixtureで失敗setterを挟む。さらにOneWay source→TwoWay target groupとTwoWay source group→OneWay targetを通知slice経由で処理する | 最後に成功した直接setterの値がgroup全memberへsubscriber開始前にcommitされる。失敗setterは勝者順を変えない。OneWay sourceは直接変更されたtarget group値より優先され、OneWay source groupは最新group値を下流へ渡す。current generationに含まれるmemberは一回だけ通知され、未通知memberは後続generationへ一回だけ追加。callbackは同期後の値を読み、再帰invokeしない | [RQ-07-003](../11_requirements/RQ-07_binding.md#rq-07-003)、[RQ-07-005](../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-008](../11_requirements/RQ-07_binding.md#rq-07-008)、[RQ-07-009](../11_requirements/RQ-07_binding.md#rq-07-009)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01) |
+| <a id="ut-core-runtime-oneway-twoway-group-001"></a>UT-CORE-RUNTIME-ONEWAY-TWOWAY-GROUP-001 | OneWay sourceからTwoWay target groupへの初期同期と後続伝播を行い、TwoWay target groupの直接変更も同一generationに加える。さらにTwoWay source groupからOneWay targetへ伝播する | OneWay source値がtarget groupの全memberへ適用され、同区間のtarget直接値より優先。group sourceの最後の直接値がOneWay targetへ届く。current/next generationの通知は重複せず、subscriberは同期済み値を読む | [RQ-07-003](../11_requirements/RQ-07_binding.md#rq-07-003)、[RQ-07-005](../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-008](../11_requirements/RQ-07_binding.md#rq-07-008)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01) |
+
+このoracleはdirect setter順序、TwoWay group value propagation、OneWayとgroupの入力/出力統合、current/next generationの非再帰通知を検証する。validator/Binding error、public Binding lifecycle、C ABIは含まない。
 
 ### Binding初期値・OneWay graph接続の準備 — implementation slice
 
@@ -408,6 +418,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-21 | UT-CORE-RUNTIME-TWOWAY-INIT-001 oracle | Codex | 承認済みRQ/DDからTwoWay初期同期、group merge、notification予約のatomicity oracleを追補。group伝播とpublic Binding lifecycleは含まない |
 | 2026-10-21 | UT-CORE-RUNTIME-TWOWAY-INIT-001開始 | 利用者 | 継続指示「ok」によりfocused Runtime実装・動作確認を開始 |
 | 2026-10-21 | UT-CORE-RUNTIME-TWOWAY-INIT-001実行結果 | Codex | focused 2件、workspace 141件、開発ゲート成功。変更/同値の初期同期、group登録、kind/group topology rejection時の値・通知保持を確認 |
+| 2026-10-21 | UT-CORE-RUNTIME-TWOWAY-PROPAGATION-001 oracle | Codex | 承認済みRQ/DDからdirect setter recency、TwoWay group同期、OneWay/group接続のgeneration propagation oracleを追補 |
+| 2026-10-21 | UT-CORE-RUNTIME-TWOWAY-PROPAGATION-001開始 | 利用者 | 継続指示「ok」により、Runtime TwoWay group propagationのfocused実装・動作確認を開始 |
+| 2026-10-21 | UT-CORE-RUNTIME-TWOWAY-PROPAGATION-001実行結果 | Codex | focused 3件、workspace 144件、tools/dev.py check成功。最新成功setter、OneWay/group優先規則、subscriber前同期、generation分割を確認 |
 
 ## 改訂履歴
 
@@ -471,3 +484,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 5.6 | 2026-10-21 | UNIT-CORE-060のfocused/workspace testと開発ゲート結果を記録 | Codex | OneWay propagation-before-subscriber Runtime integrationの検証状態。validatorとTwoWay/OneTimeは別単位 |
 | 5.7 | 2026-10-21 | UT-CORE-RUNTIME-TWOWAY-INIT-001の初期同期・group merge atomicity oracleを追補 | Codex | 承認済みRQ/DDからのRuntime TwoWay initial-sync範囲。group伝播とpublic Binding lifecycleを含まない |
 | 5.8 | 2026-10-21 | UNIT-CORE-061のfocused/workspace testと開発ゲート結果を記録 | Codex | TwoWay Runtime initial-sync/group commitの実装・検証状態。group伝播とpublic Binding lifecycleは別単位 |
+| 6.0 | 2026-10-21 | UT-CORE-RUNTIME-TWOWAY-PROPAGATION-001 oracleと実装開始を追記 | Codex | 承認済みRQ/DDからのRuntime propagation範囲。validatorとpublic Binding lifecycleを含まない |
+| 6.1 | 2026-10-21 | UNIT-CORE-062のTwoWay group propagation、OneWay連携、既存target groupへの初期同期のfocused/workspace testと開発ゲート結果を追記 | Codex | 最新成功setterの勝者規則・通知世代分割を含む実装検証結果。validatorとpublic Binding lifecycleは別単位 |

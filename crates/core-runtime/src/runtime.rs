@@ -1263,31 +1263,21 @@ impl RuntimeCore {
             .binding_graph
             .lock()
             .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
-        let target = store
-            .resolve_mut(target_identity)
-            .map_err(RuntimeBindingError::Store)?
-            .downcast_mut::<PropertyState>()
-            .ok_or(RuntimeBindingError::WrongObjectState)?;
         let proposal = graph
-            .prepare_one_way_with_initial_copy(
-                source_identity,
-                target_identity,
-                &source_value,
-                target.value_for_binding_prepare(),
-            )
-            .map_err(|error| match error {
-                crate::binding::BindingInitialPrepareError::Graph(error) => {
-                    RuntimeBindingError::Graph(error)
-                }
-                crate::binding::BindingInitialPrepareError::InitialCopy(error) => {
-                    RuntimeBindingError::InitialCopy(error)
-                }
-            })?;
-        let (prepared_edge, initial_candidate) = proposal.into_parts();
+            .prepare_one_way(source_identity, target_identity)
+            .map_err(RuntimeBindingError::Graph)?;
+        let mut candidates = Vec::new();
+        Self::prepare_group_value_candidates_locked(
+            &store,
+            &graph,
+            target_identity,
+            &source_value,
+            &mut candidates,
+        )?;
 
-        let Some(initial_candidate) = initial_candidate else {
+        if candidates.is_empty() {
             graph
-                .commit_one_way(prepared_edge)
+                .commit_one_way(proposal)
                 .map_err(RuntimeBindingError::Graph)?;
             return Ok(ValueCommit::Unchanged);
         };
@@ -1296,21 +1286,32 @@ impl RuntimeCore {
             .property_changes
             .lock()
             .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
-        changes
-            .reserve_change(target_identity)
-            .map_err(|_| RuntimeBindingError::NotificationQueueOutOfMemory)?;
-        let mut outcome = ValueCommit::Unchanged;
+        for candidate in &candidates {
+            changes
+                .reserve_change(candidate.target)
+                .map_err(|_| RuntimeBindingError::NotificationQueueOutOfMemory)?;
+        }
         graph
-            .commit_one_way_with(prepared_edge, || {
-                outcome = target
-                    .apply_validated(initial_candidate)
-                    .expect("prepared initial candidate has the target's fixed kind");
-                if outcome == ValueCommit::Changed {
-                    changes.commit_change(target_identity);
+            .commit_one_way_with(proposal, || {
+                for PreparedBindingValue {
+                    target: identity,
+                    value,
+                } in candidates
+                {
+                    let target = store
+                        .resolve_mut(identity)
+                        .expect("prepared OneWay target remains in the locked object store")
+                        .downcast_mut::<PropertyState>()
+                        .expect("prepared OneWay target remains a Property state");
+                    let outcome = target
+                        .apply_validated(value)
+                        .expect("prepared OneWay candidate has the target's fixed kind");
+                    debug_assert_eq!(outcome, ValueCommit::Changed);
+                    changes.commit_change(identity);
                 }
             })
             .map_err(RuntimeBindingError::Graph)?;
-        Ok(outcome)
+        Ok(ValueCommit::Changed)
     }
 
     /// Applies the initial TwoWay source value and publishes its synchronization group atomically.
@@ -1351,45 +1352,55 @@ impl RuntimeCore {
             .binding_graph
             .lock()
             .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
-        let target = store
-            .resolve_mut(target_identity)
-            .map_err(RuntimeBindingError::Store)?
-            .downcast_mut::<PropertyState>()
-            .ok_or(RuntimeBindingError::WrongObjectState)?;
         let proposal = graph
             .prepare_two_way_merge(source_identity, target_identity)
             .map_err(RuntimeBindingError::Graph)?;
-        let initial_candidate = target
-            .value_for_binding_prepare()
-            .prepare_binding_initial_copy(&source_value)
-            .map_err(RuntimeBindingError::InitialCopy)?;
+        let mut candidates = Vec::new();
+        Self::prepare_group_value_candidates_locked(
+            &store,
+            &graph,
+            target_identity,
+            &source_value,
+            &mut candidates,
+        )?;
 
-        let Some(initial_candidate) = initial_candidate else {
+        if candidates.is_empty() {
             graph
                 .commit_two_way_merge(proposal)
                 .map_err(RuntimeBindingError::Graph)?;
             return Ok(ValueCommit::Unchanged);
-        };
+        }
 
         let mut changes = self
             .property_changes
             .lock()
             .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
-        changes
-            .reserve_change(target_identity)
-            .map_err(|_| RuntimeBindingError::NotificationQueueOutOfMemory)?;
-        let mut outcome = ValueCommit::Unchanged;
+        for candidate in &candidates {
+            changes
+                .reserve_change(candidate.target)
+                .map_err(|_| RuntimeBindingError::NotificationQueueOutOfMemory)?;
+        }
         graph
             .commit_two_way_merge_with(proposal, || {
-                outcome = target
-                    .apply_validated(initial_candidate)
-                    .expect("prepared TwoWay initial candidate has the target's fixed kind");
-                if outcome == ValueCommit::Changed {
-                    changes.commit_change(target_identity);
+                for PreparedBindingValue {
+                    target: identity,
+                    value,
+                } in candidates
+                {
+                    let target = store
+                        .resolve_mut(identity)
+                        .expect("prepared TwoWay target remains in the locked object store")
+                        .downcast_mut::<PropertyState>()
+                        .expect("prepared TwoWay target remains a Property state");
+                    let outcome = target
+                        .apply_validated(value)
+                        .expect("prepared TwoWay candidate has the target's fixed kind");
+                    debug_assert_eq!(outcome, ValueCommit::Changed);
+                    changes.commit_change(identity);
                 }
             })
             .map_err(RuntimeBindingError::Graph)?;
-        Ok(outcome)
+        Ok(ValueCommit::Changed)
     }
 
     /// Prepares owned target candidates for reachable OneWay edges without committing them.
@@ -1444,6 +1455,7 @@ impl RuntimeCore {
             &graph,
             &mut changes,
             dirty_properties,
+            dirty_properties,
             &[],
         )
     }
@@ -1453,10 +1465,15 @@ impl RuntimeCore {
         graph: &BindingGraph,
         changes: &mut PropertyChangeQueue,
         dirty_properties: &[ObjectIdentity],
+        direct_changes: &[ObjectIdentity],
         current_generation: &[ObjectIdentity],
     ) -> Result<Vec<ObjectIdentity>, RuntimeBindingError> {
-        let prepared =
-            Self::prepare_one_way_propagation_candidates_locked(store, graph, dirty_properties)?;
+        let prepared = Self::prepare_binding_propagation_candidates_locked(
+            store,
+            graph,
+            dirty_properties,
+            direct_changes,
+        )?;
         let mut changed_targets = Vec::new();
         changed_targets
             .try_reserve(prepared.len())
@@ -1492,46 +1509,131 @@ impl RuntimeCore {
         graph: &BindingGraph,
         dirty_properties: &[ObjectIdentity],
     ) -> Result<Vec<PreparedBindingValue>, RuntimeBindingError> {
+        Self::prepare_binding_propagation_candidates_locked(
+            store,
+            graph,
+            dirty_properties,
+            dirty_properties,
+        )
+    }
+
+    fn prepare_binding_propagation_candidates_locked(
+        store: &UiObjectStore<Box<dyn Any + Send>>,
+        graph: &BindingGraph,
+        dirty_properties: &[ObjectIdentity],
+        direct_changes: &[ObjectIdentity],
+    ) -> Result<Vec<PreparedBindingValue>, RuntimeBindingError> {
         let edges = graph
             .prepare_one_way_propagation(dirty_properties)
             .map_err(RuntimeBindingError::Graph)?;
         let mut prepared = Vec::new();
         prepared
-            .try_reserve(edges.len())
+            .try_reserve(edges.len().saturating_add(direct_changes.len()))
             .map_err(|_| RuntimeBindingError::PropagationPreparationOutOfMemory)?;
 
+        let mut direct_group_winners: Vec<(ObjectIdentity, ObjectIdentity)> = Vec::new();
+        direct_group_winners
+            .try_reserve(direct_changes.len())
+            .map_err(|_| RuntimeBindingError::PropagationPreparationOutOfMemory)?;
+        for direct in direct_changes {
+            let representative = graph.representative(*direct);
+            if let Some((_, winner)) = direct_group_winners
+                .iter_mut()
+                .find(|(group, _)| *group == representative)
+            {
+                *winner = *direct;
+            } else {
+                direct_group_winners.push((representative, *direct));
+            }
+        }
+
+        for &(representative, winner) in &direct_group_winners {
+            let winner_value = store
+                .resolve(winner)
+                .map_err(RuntimeBindingError::Store)?
+                .downcast_ref::<PropertyState>()
+                .ok_or(RuntimeBindingError::WrongObjectState)?
+                .read()
+                .try_owned_copy()
+                .map_err(RuntimeBindingError::SourceSnapshotCopy)?;
+            Self::prepare_group_value_candidates_locked(
+                store,
+                graph,
+                representative,
+                &winner_value,
+                &mut prepared,
+            )?;
+        }
+
         for edge in edges {
-            let source_candidate = prepared
+            let source_value = prepared
                 .iter()
                 .rev()
                 .find(|candidate: &&PreparedBindingValue| candidate.target == edge.source)
                 .map(|candidate| &candidate.value);
-            let source_value = match source_candidate {
-                Some(value) => value,
+            let source_value = match source_value {
+                Some(value) => value
+                    .try_owned_copy()
+                    .map_err(RuntimeBindingError::SourceSnapshotCopy)?,
                 None => store
                     .resolve(edge.source)
                     .map_err(RuntimeBindingError::Store)?
                     .downcast_ref::<PropertyState>()
                     .ok_or(RuntimeBindingError::WrongObjectState)?
-                    .read(),
+                    .read()
+                    .try_owned_copy()
+                    .map_err(RuntimeBindingError::SourceSnapshotCopy)?,
             };
+            Self::prepare_group_value_candidates_locked(
+                store,
+                graph,
+                edge.target,
+                &source_value,
+                &mut prepared,
+            )?;
+        }
+        Ok(prepared)
+    }
+
+    fn prepare_group_value_candidates_locked(
+        store: &UiObjectStore<Box<dyn Any + Send>>,
+        graph: &BindingGraph,
+        representative: ObjectIdentity,
+        source_value: &TypedValue,
+        prepared: &mut Vec<PreparedBindingValue>,
+    ) -> Result<(), RuntimeBindingError> {
+        let members = graph
+            .group_members(representative)
+            .map_err(RuntimeBindingError::Graph)?;
+        for member in members {
             let target = store
-                .resolve(edge.target)
+                .resolve(member)
                 .map_err(RuntimeBindingError::Store)?
                 .downcast_ref::<PropertyState>()
                 .ok_or(RuntimeBindingError::WrongObjectState)?;
-            if let Some(value) = target
+            let candidate = target
                 .value_for_binding_prepare()
                 .prepare_binding_initial_copy(source_value)
-                .map_err(RuntimeBindingError::InitialCopy)?
-            {
-                prepared.push(PreparedBindingValue {
-                    target: edge.target,
-                    value,
-                });
+                .map_err(RuntimeBindingError::InitialCopy)?;
+            let position = prepared.iter().position(|item| item.target == member);
+            match (candidate, position) {
+                (Some(value), Some(position)) => prepared[position].value = value,
+                (Some(value), None) => {
+                    prepared
+                        .try_reserve(1)
+                        .map_err(|_| RuntimeBindingError::PropagationPreparationOutOfMemory)?;
+                    prepared.push(PreparedBindingValue {
+                        target: member,
+                        value,
+                    });
+                }
+                (None, Some(position)) => {
+                    prepared.remove(position);
+                }
+                (None, None) => {}
             }
         }
-        Ok(prepared)
+        Ok(())
     }
 
     /// Reads an owned snapshot of a Property value on this Runtime's UI thread.
@@ -1639,13 +1741,13 @@ impl RuntimeCore {
             .lock()
             .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
         changes
-            .reserve_change(identity)
+            .reserve_direct_change(identity)
             .map_err(|_| RuntimePropertyError::NotificationQueueOutOfMemory)?;
         let outcome = state
             .apply_validated(candidate)
             .map_err(RuntimePropertyError::ValueKindMismatch)?;
         if outcome == ValueCommit::Changed {
-            changes.commit_change(identity);
+            changes.commit_direct_change(identity);
         }
         Ok(outcome)
     }
@@ -1676,7 +1778,11 @@ impl RuntimeCore {
         self.ensure_property_access_thread()?;
         self.property_changes
             .lock()
-            .map(|mut changes| changes.take_generation())
+            .map(|mut changes| {
+                let generation = changes.take_generation();
+                let _ = changes.take_direct_changes();
+                generation
+            })
             .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)
     }
 
@@ -1703,6 +1809,7 @@ impl RuntimeCore {
             .try_reserve(changes.pending_len())
             .map_err(|_| RuntimePropertyError::NotificationQueueOutOfMemory)?;
         let generation = changes.take_generation();
+        let direct_changes = changes.take_direct_changes();
         for identity in &generation {
             let snapshot = match store
                 .resolve_mut(*identity)
@@ -1720,6 +1827,7 @@ impl RuntimeCore {
                 Ok(snapshot) => snapshot,
                 Err(error) => {
                     changes.restore_generation(generation);
+                    changes.restore_direct_changes(direct_changes);
                     return Err(error);
                 }
             };
@@ -1733,9 +1841,11 @@ impl RuntimeCore {
             &graph,
             &mut changes,
             &generation,
+            &direct_changes,
             &generation,
         ) {
             changes.restore_generation(generation);
+            changes.restore_direct_changes(direct_changes);
             return Err(error.into_property_delivery_error());
         }
         Ok(items)
@@ -2841,6 +2951,45 @@ mod tests {
     }
 
     #[test]
+    fn runtime_two_way_binding_initial_updates_the_entire_existing_target_group() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let source = runtime
+            .register_property(&registry, TypedValue::I64(5))
+            .expect("register source");
+        let first = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register first target-group member");
+        let second = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register second target-group member");
+
+        assert_eq!(
+            runtime.create_two_way_binding_initial(&registry, first, second),
+            Ok(ValueCommit::Unchanged)
+        );
+        runtime
+            .take_property_change_generation()
+            .expect("drain first group setup");
+        assert_eq!(
+            runtime.create_two_way_binding_initial(&registry, source, second),
+            Ok(ValueCommit::Changed)
+        );
+        for token in [first, second] {
+            assert!(matches!(
+                runtime.read_property(&registry, token),
+                Ok(TypedValue::I64(5))
+            ));
+        }
+        assert_eq!(
+            runtime
+                .take_property_change_generation()
+                .map(|items| items.len()),
+            Ok(2)
+        );
+    }
+
+    #[test]
     fn runtime_one_way_propagation_prepares_chain_candidates_without_mutating_state() {
         let runtime = RuntimeCore::new().expect("Runtime identity is available");
         let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
@@ -3131,6 +3280,256 @@ mod tests {
             runtime.cancel_subscription_owner(branch_identity, &branch_subscription),
             Ok(true)
         );
+    }
+
+    #[test]
+    fn runtime_two_way_group_propagation_uses_latest_successful_direct_setter() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let registry = Arc::new(HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new());
+        let first = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register first group member");
+        let second = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register second group member");
+        let third = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register third group member");
+        assert_eq!(
+            runtime.create_two_way_binding_initial(&registry, first, second),
+            Ok(ValueCommit::Unchanged)
+        );
+        assert_eq!(
+            runtime.create_two_way_binding_initial(&registry, second, third),
+            Ok(ValueCommit::Unchanged)
+        );
+        runtime
+            .take_property_change_generation()
+            .expect("drain initial group notifications");
+
+        let identity = |token| {
+            registry
+                .validate(token, &PropertyHandleKind::Property, &runtime.identity())
+                .expect("Property token resolves")
+                .identity()
+        };
+        let observations = Arc::new(Mutex::new(Vec::new()));
+        let subscriptions = [first, second, third]
+            .into_iter()
+            .enumerate()
+            .map(|(item, token)| {
+                let subscription = new_binding_delivery_subscription(
+                    &runtime,
+                    &registry,
+                    token,
+                    item,
+                    &observations,
+                );
+                runtime
+                    .register_subscription_owner(identity(token), &subscription)
+                    .expect("register group subscriber");
+                subscription
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, first, TypedValue::I64(10)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, second, TypedValue::I64(20)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, first, TypedValue::I64(30)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, second, TypedValue::Bool(false)),
+            Err(RuntimePropertyError::ValueKindMismatch(ValueKindMismatch {
+                expected: ValueKind::I64,
+                actual: ValueKind::Bool,
+            }))
+        );
+        assert_eq!(runtime.process_property_delivery_slice(), Ok((3, false)));
+        assert_eq!(
+            *observations
+                .lock()
+                .expect("read group subscriber observations"),
+            vec![(0, 30), (1, 30), (2, 30)]
+        );
+        for token in [first, second, third] {
+            assert!(matches!(
+                runtime.read_property(&registry, token),
+                Ok(TypedValue::I64(30))
+            ));
+        }
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, second, TypedValue::I64(40)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, third, TypedValue::I64(50)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, second, TypedValue::I64(60)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(runtime.process_property_delivery_slice(), Ok((3, false)));
+        assert_eq!(
+            *observations
+                .lock()
+                .expect("read second group delivery observations"),
+            vec![(0, 30), (1, 30), (2, 30), (1, 60), (2, 60), (0, 60)]
+        );
+        for token in [first, second, third] {
+            assert!(matches!(
+                runtime.read_property(&registry, token),
+                Ok(TypedValue::I64(60))
+            ));
+        }
+
+        for (token, subscription) in [first, second, third].into_iter().zip(&subscriptions) {
+            assert_eq!(
+                runtime.cancel_subscription_owner(identity(token), subscription),
+                Ok(true)
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_one_way_edges_propagate_into_and_out_of_two_way_groups() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let registry = Arc::new(HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new());
+        let source = runtime
+            .register_property(&registry, TypedValue::I64(5))
+            .expect("register OneWay source");
+        let first = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register first group member");
+        let second = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register second group member");
+        let target = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register OneWay target");
+        assert_eq!(
+            runtime.create_two_way_binding_initial(&registry, first, second),
+            Ok(ValueCommit::Unchanged)
+        );
+        assert_eq!(
+            runtime.create_one_way_binding_initial(&registry, source, first),
+            Ok(ValueCommit::Changed)
+        );
+        assert!(matches!(
+            runtime.read_property(&registry, first),
+            Ok(TypedValue::I64(5))
+        ));
+        assert!(matches!(
+            runtime.read_property(&registry, second),
+            Ok(TypedValue::I64(5))
+        ));
+        assert_eq!(
+            runtime.create_one_way_binding_initial(&registry, second, target),
+            Ok(ValueCommit::Changed)
+        );
+        runtime
+            .take_property_change_generation()
+            .expect("drain initial Binding notifications");
+
+        let identity = |token| {
+            registry
+                .validate(token, &PropertyHandleKind::Property, &runtime.identity())
+                .expect("Property token resolves")
+                .identity()
+        };
+        let observations = Arc::new(Mutex::new(Vec::new()));
+        let subscriptions = [source, first, second, target]
+            .into_iter()
+            .enumerate()
+            .map(|(item, token)| {
+                let subscription = new_binding_delivery_subscription(
+                    &runtime,
+                    &registry,
+                    token,
+                    item,
+                    &observations,
+                );
+                runtime
+                    .register_subscription_owner(identity(token), &subscription)
+                    .expect("register group-chain subscriber");
+                subscription
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, source, TypedValue::I64(15)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, first, TypedValue::I64(20)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, second, TypedValue::I64(21)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(runtime.process_property_delivery_slice(), Ok((4, false)));
+        assert_eq!(
+            *observations
+                .lock()
+                .expect("read group-chain subscriber observations"),
+            vec![(0, 15), (1, 15), (2, 15), (3, 15)]
+        );
+        for token in [first, second, target] {
+            assert!(matches!(
+                runtime.read_property(&registry, token),
+                Ok(TypedValue::I64(15))
+            ));
+        }
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, second, TypedValue::I64(30)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, first, TypedValue::I64(35)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(runtime.process_property_delivery_slice(), Ok((3, false)));
+        assert_eq!(
+            *observations
+                .lock()
+                .expect("read downstream group observations"),
+            vec![
+                (0, 15),
+                (1, 15),
+                (2, 15),
+                (3, 15),
+                (2, 35),
+                (1, 35),
+                (3, 35),
+            ]
+        );
+        for token in [source, first, second, target] {
+            let expected = if token == source { 15 } else { 35 };
+            assert!(matches!(
+                runtime.read_property(&registry, token),
+                Ok(TypedValue::I64(value)) if value == expected
+            ));
+        }
+
+        for (token, subscription) in [source, first, second, target]
+            .into_iter()
+            .zip(&subscriptions)
+        {
+            assert_eq!(
+                runtime.cancel_subscription_owner(identity(token), subscription),
+                Ok(true)
+            );
+        }
     }
 
     #[test]

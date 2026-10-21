@@ -21,6 +21,7 @@ pub(crate) struct PropertyState {
 #[derive(Default)]
 pub(crate) struct PropertyChangeQueue {
     pending: Vec<ObjectIdentity>,
+    direct_changes: Vec<ObjectIdentity>,
 }
 
 /// Active/in-flight state for one Property subscription.
@@ -217,15 +218,51 @@ impl PropertyChangeQueue {
         }
     }
 
+    /// Reserves notification and direct-order storage before a direct Property commit.
+    pub(crate) fn reserve_direct_change(
+        &mut self,
+        identity: ObjectIdentity,
+    ) -> Result<(), std::collections::TryReserveError> {
+        self.reserve_change(identity)?;
+        if !self.direct_changes.contains(&identity) {
+            self.direct_changes.try_reserve(1)?;
+        }
+        Ok(())
+    }
+
+    /// Records the most recent successful direct setter at the end of the recency order.
+    pub(crate) fn commit_direct_change(&mut self, identity: ObjectIdentity) {
+        if let Some(position) = self
+            .direct_changes
+            .iter()
+            .position(|previous| *previous == identity)
+        {
+            self.direct_changes.remove(position);
+        }
+        self.direct_changes.push(identity);
+        self.commit_change(identity);
+    }
+
     /// Starts the next generation; subsequent changes are collected independently.
     pub(crate) fn take_generation(&mut self) -> Vec<ObjectIdentity> {
         std::mem::take(&mut self.pending)
+    }
+
+    /// Takes direct-setter recency associated with the generation being prepared.
+    pub(crate) fn take_direct_changes(&mut self) -> Vec<ObjectIdentity> {
+        std::mem::take(&mut self.direct_changes)
     }
 
     /// Restores a generation after preparation failed before any delivery item was published.
     pub(crate) fn restore_generation(&mut self, generation: Vec<ObjectIdentity>) {
         debug_assert!(self.pending.is_empty());
         self.pending = generation;
+    }
+
+    /// Restores direct-setter recency when generation preparation fails before delivery.
+    pub(crate) fn restore_direct_changes(&mut self, direct_changes: Vec<ObjectIdentity>) {
+        debug_assert!(self.direct_changes.is_empty());
+        self.direct_changes = direct_changes;
     }
 
     pub(crate) fn pending_len(&self) -> usize {
@@ -235,6 +272,8 @@ impl PropertyChangeQueue {
     /// Removes notification work for an object whose owner is being finalized.
     pub(crate) fn remove(&mut self, identity: ObjectIdentity) {
         self.pending.retain(|pending| *pending != identity);
+        self.direct_changes
+            .retain(|direct_change| *direct_change != identity);
     }
 }
 

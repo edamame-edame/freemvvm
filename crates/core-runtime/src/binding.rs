@@ -231,6 +231,27 @@ impl BindingGraph {
         self.resolve_group(first) == self.resolve_group(second)
     }
 
+    pub(crate) fn representative(&self, property: ObjectIdentity) -> ObjectIdentity {
+        self.resolve_group(property)
+    }
+
+    pub(crate) fn group_members(
+        &self,
+        property: ObjectIdentity,
+    ) -> Result<Vec<ObjectIdentity>, BindingGraphError> {
+        let representative = self.resolve_group(property);
+        let mut members = Vec::new();
+        members
+            .try_reserve(self.group_parent.len().saturating_add(1))
+            .map_err(|_| BindingGraphError::OutOfMemory)?;
+        members.push(representative);
+        members.extend(self.group_parent.keys().copied().filter(|member| {
+            *member != representative && self.resolve_group(*member) == representative
+        }));
+        members[1..].sort_by_key(|member| (member.slot(), member.generation().get()));
+        Ok(members)
+    }
+
     /// Snapshots reachable OneWay edges in stable upstream-to-downstream order.
     ///
     /// This only prepares topology for a later propagation stage; it does not read or write
