@@ -15,10 +15,11 @@ use freemvvm_core::abi_support::{
     property_kind as core_property_kind, property_set_bool as core_property_set_bool,
     property_set_decimal as core_property_set_decimal, property_set_f64 as core_property_set_f64,
     property_set_i64 as core_property_set_i64, property_set_utf8 as core_property_set_utf8,
-    runtime_create_handle, runtime_dispatch_turn, runtime_host_begin_event, runtime_host_end_event,
-    runtime_host_stopped, runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post,
-    runtime_request_shutdown, runtime_retain_handle as core_runtime_retain_handle,
-    runtime_set_ui_loop_bridge, runtime_shutdown, shutdown_request_query,
+    property_subscribe as core_property_subscribe, runtime_create_handle, runtime_dispatch_turn,
+    runtime_host_begin_event, runtime_host_end_event, runtime_host_stopped,
+    runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post, runtime_request_shutdown,
+    runtime_retain_handle as core_runtime_retain_handle, runtime_set_ui_loop_bridge,
+    runtime_shutdown, shutdown_request_query, subscription_cancel as core_subscription_cancel,
 };
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
 use std::ffi::c_void;
@@ -650,6 +651,74 @@ pub unsafe extern "C" fn ui_abi_1_property_set_decimal(
     catch_property_set(|| core_property_set_decimal(property, bits))
 }
 
+/// Subscribe to changes of one Property.
+///
+/// Ownership of `userdata` and `destroy` transfers only when this function succeeds.
+///
+/// # Safety
+/// `out_subscription` must be null or writable storage for one `u64`. A non-null
+/// `out_error` must be writable storage for one ABI handle. Callback and destroy must obey the
+/// C ABI and remain valid until destroy runs; userdata must remain valid for that duration.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_subscribe(
+    property: u64,
+    callback: Option<PostCallback>,
+    userdata: *mut c_void,
+    destroy: Option<DestroyCallback>,
+    out_subscription: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if !out_subscription.is_null() {
+        // SAFETY: the caller guarantees a non-null subscription output is writable.
+        unsafe { out_subscription.write(0) };
+    }
+    if out_subscription.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let Some(callback) = callback else {
+        return UI_INVALID_ARGUMENT;
+    };
+    let Some(destroy) = destroy else {
+        return UI_INVALID_ARGUMENT;
+    };
+
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_property_subscribe(property, callback, userdata as usize, destroy)
+    })) {
+        Ok(Ok(subscription)) => {
+            // SAFETY: the required output pointer was checked non-null above.
+            unsafe { out_subscription.write(subscription) };
+            UI_OK
+        }
+        Ok(Err(error)) => map_property_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Explicitly cancel a Property Subscription without releasing its owned handle.
+///
+/// # Safety
+/// A non-null `out_error` must be writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_subscription_cancel(
+    subscription: u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    match catch_unwind(AssertUnwindSafe(|| core_subscription_cancel(subscription))) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_property_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
 /// Register the Runtime's one-time UI-loop wake bridge.
 ///
 /// # Safety
@@ -1066,15 +1135,15 @@ mod tests {
         ui_abi_1_property_get_bool, ui_abi_1_property_get_decimal, ui_abi_1_property_get_f64,
         ui_abi_1_property_get_i64, ui_abi_1_property_get_utf8, ui_abi_1_property_kind,
         ui_abi_1_property_set_bool, ui_abi_1_property_set_decimal, ui_abi_1_property_set_f64,
-        ui_abi_1_property_set_i64, ui_abi_1_property_set_utf8, ui_abi_1_runtime_create,
-        ui_abi_1_runtime_dispatch_turn, ui_abi_1_runtime_host_begin_event,
+        ui_abi_1_property_set_i64, ui_abi_1_property_set_utf8, ui_abi_1_property_subscribe,
+        ui_abi_1_runtime_create, ui_abi_1_runtime_dispatch_turn, ui_abi_1_runtime_host_begin_event,
         ui_abi_1_runtime_host_end_event, ui_abi_1_runtime_host_stopped,
         ui_abi_1_runtime_is_ui_thread, ui_abi_1_runtime_post, ui_abi_1_runtime_request_shutdown,
         ui_abi_1_runtime_set_ui_loop_bridge, ui_abi_1_runtime_shutdown,
-        ui_abi_1_shutdown_request_query,
+        ui_abi_1_shutdown_request_query, ui_abi_1_subscription_cancel,
     };
     use std::ffi::c_void;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
     use std::sync::{Mutex, mpsc};
 
     struct BridgeProbe {
@@ -1088,6 +1157,15 @@ mod tests {
         destroys: AtomicUsize,
     }
 
+    #[derive(Default)]
+    struct SelfCancelProbe {
+        callbacks: AtomicUsize,
+        destroys: AtomicUsize,
+        subscription: AtomicU64,
+        cancel_status: AtomicUsize,
+        destroy_threads: Mutex<Vec<std::thread::ThreadId>>,
+    }
+
     unsafe extern "C" fn record_post_callback(userdata: *mut c_void) {
         // SAFETY: the test keeps a live PostProbe at the transferred userdata address.
         let probe = unsafe { &*(userdata.cast::<PostProbe>()) };
@@ -1098,6 +1176,29 @@ mod tests {
         // SAFETY: the test keeps a live PostProbe at the transferred userdata address.
         let probe = unsafe { &*(userdata.cast::<PostProbe>()) };
         probe.destroys.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn cancel_self_callback(userdata: *mut c_void) {
+        // SAFETY: the test keeps SelfCancelProbe alive through the destroy callback.
+        let probe = unsafe { &*(userdata.cast::<SelfCancelProbe>()) };
+        probe.callbacks.fetch_add(1, Ordering::SeqCst);
+        let mut error = u64::MAX;
+        // SAFETY: callback cancellation is part of the approved reentrant subscription contract.
+        let status = unsafe {
+            ui_abi_1_subscription_cancel(probe.subscription.load(Ordering::SeqCst), &mut error)
+        };
+        probe.cancel_status.store(status as usize, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn cancel_self_destroy(userdata: *mut c_void) {
+        // SAFETY: the test keeps SelfCancelProbe alive through the Runtime shutdown.
+        let probe = unsafe { &*(userdata.cast::<SelfCancelProbe>()) };
+        probe.destroys.fetch_add(1, Ordering::SeqCst);
+        probe
+            .destroy_threads
+            .lock()
+            .expect("destroy thread log lock")
+            .push(std::thread::current().id());
     }
 
     unsafe extern "C" fn record_wake(userdata: *mut c_void, priority: u32) {
@@ -1114,6 +1215,32 @@ mod tests {
         // SAFETY: tests pass a live BridgeProbe pointer and keep it alive through destroy.
         let probe = unsafe { &*(userdata.cast::<BridgeProbe>()) };
         probe.destroyed.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn complete_runtime_shutdown_at_host_boundary(runtime: u64) {
+        let mut scope = 0;
+        // SAFETY: scope is writable and Runtime is driven on its creator thread.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe { ui_abi_1_runtime_host_begin_event(runtime, &mut scope) },
+            UI_OK
+        );
+        let mut request = 0;
+        // SAFETY: request output is writable; the accepted async request is completed below.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe {
+                ui_abi_1_runtime_request_shutdown(runtime, 0, &mut request, std::ptr::null_mut())
+            },
+            UI_PENDING
+        );
+        // SAFETY: scope was returned by the matching begin call.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe { ui_abi_1_runtime_host_end_event(runtime, scope) },
+            UI_OK
+        );
+        assert_eq!(ui_abi_1_handle_release(request), UI_OK);
     }
 
     unsafe extern "C" fn send_wake(userdata: *mut c_void, _priority: u32) {
@@ -1905,6 +2032,7 @@ mod tests {
         let mut error = u64::MAX;
         // SAFETY: each output points to writable storage; the runtime handle is live.
         let status =
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
             unsafe { ui_abi_1_property_create_bool(runtime, 1, &mut properties[0], &mut error) };
         assert_eq!(status, UI_OK);
         assert_eq!(error, 0);
@@ -1973,6 +2101,7 @@ mod tests {
 
         // SAFETY: outputs point to writable storage and bool=2 is rejected before use.
         let status =
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
             unsafe { ui_abi_1_property_create_bool(runtime, 2, &mut property, &mut error) };
         assert_eq!(status, UI_INVALID_ARGUMENT);
         assert_eq!((property, error), (0, 0));
@@ -2010,6 +2139,7 @@ mod tests {
         let mut valid_property = 0;
         // SAFETY: outputs point to writable storage and the runtime handle is live.
         let status =
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
             unsafe { ui_abi_1_property_create_i64(runtime, 9, &mut valid_property, &mut error) };
         assert_eq!(status, UI_OK);
 
@@ -2055,6 +2185,7 @@ mod tests {
 
         // SAFETY: null required output is handled and optional error output is writable.
         let status =
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
             unsafe { ui_abi_1_property_create_i64(runtime, 1, std::ptr::null_mut(), &mut error) };
         assert_eq!(status, UI_INVALID_ARGUMENT);
         assert_eq!(error, 0);
@@ -2080,6 +2211,7 @@ mod tests {
         let mut error = 0;
         // SAFETY: all output pointers refer to writable storage and Runtime is live.
         let status =
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
             unsafe { ui_abi_1_property_create_bool(runtime, 1, &mut properties[0], &mut error) };
         assert_eq!(status, UI_OK);
         // SAFETY: all output pointers refer to writable storage and Runtime is live.
@@ -2373,6 +2505,7 @@ mod tests {
         let mut error = u64::MAX;
         // SAFETY: outputs are writable and Runtime is live.
         let status =
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
             unsafe { ui_abi_1_property_create_i64(runtime, 42, &mut properties[0], &mut error) };
         assert_eq!(status, UI_OK);
         let original_text = *b"safe";
@@ -2394,6 +2527,7 @@ mod tests {
         assert_eq!(status, UI_INVALID_ARGUMENT);
         // SAFETY: null positive-length input is rejected before dereference.
         let status =
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
             unsafe { ui_abi_1_property_set_utf8(properties[1], std::ptr::null(), 1, &mut error) };
         assert_eq!(status, UI_INVALID_ARGUMENT);
         let invalid_utf8 = [0xff];
@@ -2533,6 +2667,7 @@ mod tests {
         length = u64::MAX;
         // SAFETY: null positive-capacity buffer is rejected; length points to writable storage.
         let status =
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
             unsafe { ui_abi_1_property_get_utf8(property, std::ptr::null_mut(), 4, &mut length) };
         assert_eq!(status, UI_INVALID_ARGUMENT);
         assert_eq!(length, 0);
@@ -2549,6 +2684,318 @@ mod tests {
         assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
     }
 
+    #[test]
+    fn property_subscription_release_is_not_cancel_and_explicit_cancel_is_idempotent() {
+        let mut runtime = 0;
+        // SAFETY: the output is writable.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let bridge = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        // SAFETY: bridge userdata remains live through Runtime shutdown.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&bridge as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut property = 0;
+        // SAFETY: the output is writable and Runtime is live on its UI thread.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe {
+                ui_abi_1_property_create_i64(runtime, 0, &mut property, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        let probe = PostProbe::default();
+        let mut subscription = u64::MAX;
+        let mut error = u64::MAX;
+        // SAFETY: probe outlives cancellation; callbacks use the declared C ABI.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe {
+                ui_abi_1_property_subscribe(
+                    property,
+                    Some(record_post_callback),
+                    (&probe as *const PostProbe).cast_mut().cast(),
+                    Some(record_post_destroy),
+                    &mut subscription,
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+        assert_ne!(subscription, 0);
+        assert_eq!(error, 0);
+        assert_eq!(
+            probe.callbacks.load(Ordering::SeqCst),
+            0,
+            "no initial notification"
+        );
+
+        let mut retained = 0;
+        // SAFETY: retained is writable and subscription is a borrowed valid token.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe { ui_abi_1_handle_retain(subscription, &mut retained) },
+            UI_OK
+        );
+        assert_ne!(retained, subscription);
+        assert_eq!(ui_abi_1_handle_release(subscription), UI_OK);
+        // Releasing one owned Subscription token must leave the active registration intact.
+        // SAFETY: The Property is live on the Runtime UI thread and error output is writable.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe { ui_abi_1_property_set_i64(property, 0, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            probe.callbacks.load(Ordering::SeqCst),
+            0,
+            "equivalent Property values do not notify"
+        );
+        // SAFETY: property remains live and error output is writable.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe { ui_abi_1_property_set_i64(property, 1, &mut error) },
+            UI_OK
+        );
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 0);
+        // SAFETY: The Property is live on the Runtime UI thread; its value is unchanged.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe { ui_abi_1_property_set_i64(property, 1, &mut error) },
+            UI_OK
+        );
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 1);
+
+        // SAFETY: cancellation is on the Runtime UI thread and error output is writable.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe { ui_abi_1_subscription_cancel(retained, &mut error) },
+            UI_OK
+        );
+        assert_eq!(error, 0);
+        // SAFETY: repeated cancellation of a valid inactive token succeeds.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe { ui_abi_1_subscription_cancel(retained, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+        // SAFETY: Property setter stays on the Runtime UI thread.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe { ui_abi_1_property_set_i64(property, 2, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(ui_abi_1_handle_release(retained), UI_OK);
+        complete_runtime_shutdown_at_host_boundary(runtime);
+        assert_eq!(ui_abi_1_handle_release(property), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
+    #[test]
+    fn property_subscription_self_cancel_and_registration_failures_preserve_ownership() {
+        let mut runtime = 0;
+        // SAFETY: the output is writable.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let bridge = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        // SAFETY: bridge userdata remains live through Runtime shutdown.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&bridge as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut property = 0;
+        // SAFETY: the output is writable and Runtime is live on its UI thread.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe {
+                ui_abi_1_property_create_i64(runtime, 0, &mut property, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        let probe = SelfCancelProbe::default();
+        let mut subscription = u64::MAX;
+        let mut error = u64::MAX;
+        // SAFETY: probe outlives its callback and destroy operations.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe {
+                ui_abi_1_property_subscribe(
+                    property,
+                    Some(cancel_self_callback),
+                    (&probe as *const SelfCancelProbe).cast_mut().cast(),
+                    Some(cancel_self_destroy),
+                    &mut subscription,
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+        probe.subscription.store(subscription, Ordering::SeqCst);
+        // SAFETY: the setter dispatches the callback at the UI-thread host boundary.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe { ui_abi_1_property_set_i64(property, 1, &mut error) },
+            UI_OK
+        );
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.cancel_status.load(Ordering::SeqCst), UI_OK as usize);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            *probe
+                .destroy_threads
+                .lock()
+                .expect("destroy thread log lock"),
+            vec![std::thread::current().id()]
+        );
+        // SAFETY: a canceled but still-owned handle remains valid; the worker is rejected by the
+        // UI-thread precondition before any subscription state is touched.
+        let worker_cancel = std::thread::spawn(move || {
+            let mut worker_error = u64::MAX;
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            let status = unsafe { ui_abi_1_subscription_cancel(subscription, &mut worker_error) };
+            (status, worker_error)
+        })
+        .join()
+        .expect("worker cancel attempt completes");
+        assert_eq!(worker_cancel, (UI_WRONG_THREAD, 0));
+        // SAFETY: zero is an invalid Subscription token and is rejected before lookup.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe { ui_abi_1_subscription_cancel(0, std::ptr::null_mut()) },
+            UI_INVALID_HANDLE
+        );
+
+        let rejected = PostProbe::default();
+        let mut rejected_token = u64::MAX;
+        // SAFETY: null callback is rejected before userdata ownership can transfer.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe {
+                ui_abi_1_property_subscribe(
+                    property,
+                    None,
+                    (&rejected as *const PostProbe).cast_mut().cast(),
+                    Some(record_post_destroy),
+                    &mut rejected_token,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(rejected_token, 0);
+        assert_eq!(rejected.destroys.load(Ordering::SeqCst), 0);
+        // SAFETY: a null required output is rejected before any ownership transfer.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe {
+                ui_abi_1_property_subscribe(
+                    property,
+                    Some(record_post_callback),
+                    (&rejected as *const PostProbe).cast_mut().cast(),
+                    Some(record_post_destroy),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(rejected.destroys.load(Ordering::SeqCst), 0);
+        rejected_token = u64::MAX;
+        // SAFETY: null destroy is rejected and does not take callback/userdata ownership.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe {
+                ui_abi_1_property_subscribe(
+                    property,
+                    Some(record_post_callback),
+                    (&rejected as *const PostProbe).cast_mut().cast(),
+                    None,
+                    &mut rejected_token,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(rejected_token, 0);
+        // SAFETY: null property is an invalid borrowed token; no closure ownership transfers.
+        assert_eq!(
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            unsafe {
+                ui_abi_1_property_subscribe(
+                    0,
+                    Some(record_post_callback),
+                    (&rejected as *const PostProbe).cast_mut().cast(),
+                    Some(record_post_destroy),
+                    &mut rejected_token,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_HANDLE
+        );
+        assert_eq!(rejected_token, 0);
+        let property_token = property;
+        let userdata = (&rejected as *const PostProbe) as usize;
+        let worker_status = std::thread::spawn(move || {
+            let mut output = u64::MAX;
+            // SAFETY: all pointed-to userdata remains live through the joined worker; ABI rejects
+            // the operation on the non-UI thread before taking ownership.
+            // SAFETY: The test supplies live handles and writable outputs for this ABI call.
+            let status = unsafe {
+                ui_abi_1_property_subscribe(
+                    property_token,
+                    Some(record_post_callback),
+                    userdata as *mut c_void,
+                    Some(record_post_destroy),
+                    &mut output,
+                    std::ptr::null_mut(),
+                )
+            };
+            (status, output)
+        })
+        .join()
+        .expect("worker subscription attempt completes");
+        assert_eq!(worker_status, (UI_WRONG_THREAD, 0));
+        assert_eq!(rejected.destroys.load(Ordering::SeqCst), 0);
+
+        complete_runtime_shutdown_at_host_boundary(runtime);
+        assert_eq!(ui_abi_1_handle_release(subscription), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(property), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
     #[test]
     fn get_version_rejects_each_missing_output_and_zeros_remaining_outputs() {
         for null_index in 0..3 {

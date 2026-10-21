@@ -22,7 +22,7 @@ pub mod abi_support {
     use crate::handle_registry::HandleToken;
     use crate::handle_registry::registry::{HandleRegistry, RegistryError};
     use crate::object_store::UiObjectStoreError;
-    use crate::property::PropertyHandleKind;
+    use crate::property::{PropertyHandleKind, Subscription};
     use crate::runtime::{
         RuntimeCore, RuntimeCoreError, RuntimeIdentity, RuntimeObjectRegistrationError,
         RuntimePropertyError, ShutdownCompletionState, ShutdownRequest, ShutdownRequestMode,
@@ -199,13 +199,27 @@ pub mod abi_support {
         owners: Mutex<HashMap<HandleToken, Arc<RuntimeCore>>>,
     }
 
+    struct SubscriptionHandleEntry {
+        runtime: Arc<RuntimeCore>,
+        identity: crate::handle_registry::registry::ObjectIdentity,
+        subscription: Arc<Subscription>,
+    }
+
     static PROPERTY_HANDLES: OnceLock<PropertyHandles> = OnceLock::new();
+    static SUBSCRIPTION_HANDLES: OnceLock<
+        Mutex<HashMap<HandleToken, Arc<SubscriptionHandleEntry>>>,
+    > = OnceLock::new();
 
     fn property_handles() -> &'static PropertyHandles {
         PROPERTY_HANDLES.get_or_init(|| PropertyHandles {
             registry: HandleRegistry::new(),
             owners: Mutex::new(HashMap::new()),
         })
+    }
+
+    fn subscription_handles() -> &'static Mutex<HashMap<HandleToken, Arc<SubscriptionHandleEntry>>>
+    {
+        SUBSCRIPTION_HANDLES.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
     fn request_handles() -> &'static Mutex<HashMap<HandleToken, Option<RequestHandleEntry>>> {
@@ -243,6 +257,20 @@ pub mod abi_support {
     /// Creates an independent owner token for an existing Runtime handle.
     pub fn runtime_retain_handle(handle: u64) -> Result<u64, RuntimeRetainError> {
         let token = HandleToken::from_abi(handle).ok_or(RuntimeRetainError::InvalidHandle)?;
+        {
+            let mut subscriptions = subscription_handles()
+                .lock()
+                .map_err(|_| RuntimeRetainError::Internal)?;
+            if let Some(entry) = subscriptions.get(&token).cloned() {
+                subscriptions
+                    .try_reserve(1)
+                    .map_err(|_| RuntimeRetainError::OutOfMemory)?;
+                let retained = crate::handle_registry::issue_handle_token()
+                    .ok_or(RuntimeRetainError::Internal)?;
+                subscriptions.insert(retained, entry);
+                return Ok(retained.into_abi());
+            }
+        }
         process_runtime_handles()
             .retain(token)
             .map(HandleToken::into_abi)
@@ -399,6 +427,81 @@ pub mod abi_support {
                 initial_bits,
             )),
         )
+    }
+
+    /// Registers one Property callback and returns its independently owned public token.
+    pub fn property_subscribe(
+        property: u64,
+        callback: PostCallback,
+        userdata: usize,
+        destroy: DestroyCallback,
+    ) -> Result<u64, PropertyApiError> {
+        let token = HandleToken::from_abi(property).ok_or(PropertyApiError::InvalidHandle)?;
+        let handles = property_handles();
+        let runtime = handles
+            .owners
+            .lock()
+            .map_err(|_| PropertyApiError::Internal)?
+            .get(&token)
+            .cloned()
+            .ok_or(PropertyApiError::InvalidHandle)?;
+        if !runtime.is_ui_thread() {
+            return Err(PropertyApiError::WrongThread);
+        }
+        let pin = handles
+            .registry
+            .validate(token, &PropertyHandleKind::Property, &runtime.identity())
+            .map_err(|error| match error {
+                RegistryError::InvalidToken
+                | RegistryError::WrongKind
+                | RegistryError::WrongRuntime => PropertyApiError::InvalidHandle,
+                RegistryError::OutOfMemory => PropertyApiError::OutOfMemory,
+                _ => PropertyApiError::Internal,
+            })?;
+        let mut subscriptions = subscription_handles()
+            .lock()
+            .map_err(|_| PropertyApiError::Internal)?;
+        subscriptions
+            .try_reserve(1)
+            .map_err(|_| PropertyApiError::OutOfMemory)?;
+        let subscription_token =
+            crate::handle_registry::issue_handle_token().ok_or(PropertyApiError::Internal)?;
+        // SAFETY: callback, userdata, and destroy are the ownership tuple supplied by the ABI.
+        let subscription =
+            Arc::new(unsafe { Subscription::new(callback, userdata as *mut c_void, destroy) });
+        runtime
+            .register_subscription_owner(pin.identity(), &subscription)
+            .map_err(map_property_read_error)?;
+        subscriptions.insert(
+            subscription_token,
+            Arc::new(SubscriptionHandleEntry {
+                runtime,
+                identity: pin.identity(),
+                subscription,
+            }),
+        );
+        Ok(subscription_token.into_abi())
+    }
+
+    /// Explicitly cancels one valid Subscription token on its Runtime UI thread.
+    pub fn subscription_cancel(handle: u64) -> Result<(), PropertyApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(PropertyApiError::InvalidHandle)?;
+        let entry = subscription_handles()
+            .lock()
+            .map_err(|_| PropertyApiError::Internal)?
+            .get(&token)
+            .cloned()
+            .ok_or(PropertyApiError::InvalidHandle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(PropertyApiError::WrongThread);
+        }
+        if entry.subscription.is_active() {
+            entry
+                .runtime
+                .cancel_subscription_owner(entry.identity, &entry.subscription)
+                .map_err(map_property_read_error)?;
+        }
+        Ok(())
     }
 
     pub fn property_kind(handle: u64) -> Result<u32, ShutdownApiError> {
@@ -773,6 +876,14 @@ pub mod abi_support {
             if requests.remove(&token).is_some() {
                 return Ok(());
             }
+        }
+        if subscription_handles()
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?
+            .remove(&token)
+            .is_some()
+        {
+            return Ok(());
         }
         if property_release(token)? {
             return Ok(());

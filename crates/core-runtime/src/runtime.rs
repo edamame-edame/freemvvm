@@ -1537,6 +1537,9 @@ impl RuntimeCore {
         identity: ObjectIdentity,
         subscription: &Arc<Subscription>,
     ) -> Result<bool, RuntimePropertyError> {
+        if !subscription.is_active() {
+            return Ok(false);
+        }
         self.ensure_property_access_thread()?;
         let mut store = self
             .ui_objects
