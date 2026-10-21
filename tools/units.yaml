@@ -1575,6 +1575,27 @@
         {"id": "UT-CORE-RUNTIME-TWOWAY-PROPAGATION-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_two_way_group_propagation"]},
         {"id": "UT-CORE-RUNTIME-ONEWAY-TWOWAY-GROUP-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_one_way_edges_propagate_into_and_out_of_two_way_groups"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-063",
+      "state": "complete",
+      "scope": "runtime-binding-active-owner-cancel-shutdown",
+      "sources": ["crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/binding.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-056", "UNIT-CORE-062"],
+      "design": [
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "Binding registration lifecycle / 通知slice内の伝播"},
+        {"path": ".docs/13_detail_design/runtime-objects/runtime.md", "version": "1.2", "section": "Runtime ownership / shutdown cleanup"}
+      ],
+      "requirements": ["RQ-05-002", "RQ-07-011"],
+      "cases": ["TC-BIND-01", "TC-LIFE-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-CORE-BINDING-GRAPH-CANCEL-001", "command": ["cargo", "test", "-p", "freemvvm-core", "binding_graph_cancel_removes_one_way_edges_and_splits_two_way_groups"]},
+        {"id": "UT-CORE-RUNTIME-BINDING-LIFECYCLE-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_binding_lifecycle"]},
+        {"id": "UT-CORE-RUNTIME-BINDING-CANCEL-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_binding_cancel"]},
+        {"id": "UT-CORE-RUNTIME-TWOWAY-CANCEL-SHUTDOWN-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_two_way_cancel_splits_group_and_shutdown_clears_active_owners"]}
+      ]
     }
   ]
 }

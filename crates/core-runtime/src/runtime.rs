@@ -1,9 +1,9 @@
-use crate::binding::{BindingGraph, BindingGraphError};
+use crate::binding::{BindingConnectionId, BindingGraph, BindingGraphError};
 use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission, UiLoopBridge};
 use crate::handle_registry::HandleToken;
 use crate::handle_registry::registry::{
     CleanupQueue, CleanupReservation, CoreObjectControl, HandleRegistry, ObjectIdentity,
-    RegistryError,
+    RegistryError, ValidationPin,
 };
 use crate::object_store::{UiObjectStore, UiObjectStoreError};
 use crate::property::{PropertyChangeQueue, PropertyHandleKind, PropertyState, Subscription};
@@ -982,6 +982,7 @@ pub(crate) enum RuntimeBindingError {
     SynchronizationPoisoned,
     NotificationQueueOutOfMemory,
     PropagationPreparationOutOfMemory,
+    BindingOwnerOutOfMemory,
 }
 
 impl RuntimeBindingError {
@@ -1003,6 +1004,7 @@ impl RuntimeBindingError {
             Self::PropagationPreparationOutOfMemory => {
                 RuntimePropertyError::BindingPropagationOutOfMemory
             }
+            Self::BindingOwnerOutOfMemory => RuntimePropertyError::BindingPropagationOutOfMemory,
         }
     }
 }
@@ -1029,7 +1031,8 @@ pub(crate) struct RuntimeCore {
     ui_thread: UiThreadContext,
     cleanup: Arc<RuntimeCleanupQueue>,
     ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
-    binding_graph: Mutex<BindingGraph>,
+    binding_graph: Arc<Mutex<BindingGraph>>,
+    active_bindings: Arc<Mutex<HashMap<BindingConnectionId, RuntimeBindingOwner>>>,
     property_changes: Arc<Mutex<PropertyChangeQueue>>,
     property_delivery: Arc<Mutex<Option<VecDeque<PropertyDeliveryItem>>>>,
     property_delivery_active: AtomicBool,
@@ -1038,6 +1041,11 @@ pub(crate) struct RuntimeCore {
     host: HostRegistration,
     dispatcher: Mutex<Option<Dispatcher>>,
     shutdown_completion: Mutex<Option<ShutdownCompletion>>,
+}
+
+struct RuntimeBindingOwner {
+    _source: ValidationPin<RuntimeIdentity>,
+    _target: ValidationPin<RuntimeIdentity>,
 }
 
 /// One changed Property and its ordered, temporary subscriber pins.
@@ -1093,11 +1101,16 @@ impl RuntimeCore {
         let ui_state_cleared = Arc::new(AtomicBool::new(false));
         let property_changes = Arc::new(Mutex::new(PropertyChangeQueue::default()));
         let property_delivery = Arc::new(Mutex::new(None));
+        let binding_graph = Arc::new(Mutex::new(BindingGraph::default()));
+        let active_bindings: Arc<Mutex<HashMap<BindingConnectionId, RuntimeBindingOwner>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let subscription_owners: Arc<Mutex<HashMap<ObjectIdentity, Vec<Arc<Subscription>>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let shutdown_property_changes = Arc::clone(&property_changes);
         let shutdown_property_delivery = Arc::clone(&property_delivery);
         let shutdown_subscription_owners = Arc::clone(&subscription_owners);
+        let shutdown_active_bindings = Arc::clone(&active_bindings);
+        let shutdown_binding_graph = Arc::clone(&binding_graph);
         cleanup
             .track_ui_state(Box::new(move || {
                 let delivery = shutdown_property_delivery
@@ -1117,6 +1130,16 @@ impl RuntimeCore {
                     subscription.cancel();
                 }
                 drop(delivery);
+                let bindings = std::mem::take(
+                    &mut *shutdown_active_bindings
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner),
+                );
+                shutdown_binding_graph
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clear();
+                drop(bindings);
             }))
             .map_err(|()| RuntimeCoreError::CleanupRegistrationFailed)?;
         let object_cleanup = Arc::new(RuntimeObjectCleanupQueue {
@@ -1147,7 +1170,8 @@ impl RuntimeCore {
             ui_thread,
             cleanup,
             ui_objects,
-            binding_graph: Mutex::new(BindingGraph::default()),
+            binding_graph,
+            active_bindings,
             property_changes,
             property_delivery,
             property_delivery_active: AtomicBool::new(false),
@@ -1226,9 +1250,9 @@ impl RuntimeCore {
         })
     }
 
-    /// Applies the initial OneWay source value and publishes its graph edge as one UI-thread commit.
+    /// Applies the initial OneWay source value and publishes an active Runtime connection.
     ///
-    /// This internal foundation does not create public Binding ownership or enable later propagation.
+    /// A public Binding owner handle is supplied by a later ABI integration unit.
     pub(crate) fn create_one_way_binding_initial(
         &self,
         registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
@@ -1266,6 +1290,7 @@ impl RuntimeCore {
         let proposal = graph
             .prepare_one_way(source_identity, target_identity)
             .map_err(RuntimeBindingError::Graph)?;
+        let connection_id = proposal.connection_id();
         let mut candidates = Vec::new();
         Self::prepare_group_value_candidates_locked(
             &store,
@@ -1276,8 +1301,23 @@ impl RuntimeCore {
         )?;
 
         if candidates.is_empty() {
+            let mut owners = self
+                .active_bindings
+                .lock()
+                .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+            owners
+                .try_reserve(1)
+                .map_err(|_| RuntimeBindingError::BindingOwnerOutOfMemory)?;
             graph
-                .commit_one_way(proposal)
+                .commit_one_way_with(proposal, || {
+                    owners.insert(
+                        connection_id,
+                        RuntimeBindingOwner {
+                            _source: source_pin,
+                            _target: target_pin,
+                        },
+                    );
+                })
                 .map_err(RuntimeBindingError::Graph)?;
             return Ok(ValueCommit::Unchanged);
         };
@@ -1291,6 +1331,13 @@ impl RuntimeCore {
                 .reserve_change(candidate.target)
                 .map_err(|_| RuntimeBindingError::NotificationQueueOutOfMemory)?;
         }
+        let mut owners = self
+            .active_bindings
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        owners
+            .try_reserve(1)
+            .map_err(|_| RuntimeBindingError::BindingOwnerOutOfMemory)?;
         graph
             .commit_one_way_with(proposal, || {
                 for PreparedBindingValue {
@@ -1309,15 +1356,21 @@ impl RuntimeCore {
                     debug_assert_eq!(outcome, ValueCommit::Changed);
                     changes.commit_change(identity);
                 }
+                owners.insert(
+                    connection_id,
+                    RuntimeBindingOwner {
+                        _source: source_pin,
+                        _target: target_pin,
+                    },
+                );
             })
             .map_err(RuntimeBindingError::Graph)?;
         Ok(ValueCommit::Changed)
     }
 
-    /// Applies the initial TwoWay source value and publishes its synchronization group atomically.
+    /// Applies the initial TwoWay source value and publishes an active Runtime connection.
     ///
-    /// This internal foundation does not create public Binding ownership or enable later group
-    /// propagation.
+    /// A public Binding owner handle is supplied by a later ABI integration unit.
     pub(crate) fn create_two_way_binding_initial(
         &self,
         registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
@@ -1355,6 +1408,7 @@ impl RuntimeCore {
         let proposal = graph
             .prepare_two_way_merge(source_identity, target_identity)
             .map_err(RuntimeBindingError::Graph)?;
+        let connection_id = proposal.connection_id();
         let mut candidates = Vec::new();
         Self::prepare_group_value_candidates_locked(
             &store,
@@ -1365,8 +1419,23 @@ impl RuntimeCore {
         )?;
 
         if candidates.is_empty() {
+            let mut owners = self
+                .active_bindings
+                .lock()
+                .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+            owners
+                .try_reserve(1)
+                .map_err(|_| RuntimeBindingError::BindingOwnerOutOfMemory)?;
             graph
-                .commit_two_way_merge(proposal)
+                .commit_two_way_merge_with(proposal, || {
+                    owners.insert(
+                        connection_id,
+                        RuntimeBindingOwner {
+                            _source: source_pin,
+                            _target: target_pin,
+                        },
+                    );
+                })
                 .map_err(RuntimeBindingError::Graph)?;
             return Ok(ValueCommit::Unchanged);
         }
@@ -1380,6 +1449,13 @@ impl RuntimeCore {
                 .reserve_change(candidate.target)
                 .map_err(|_| RuntimeBindingError::NotificationQueueOutOfMemory)?;
         }
+        let mut owners = self
+            .active_bindings
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        owners
+            .try_reserve(1)
+            .map_err(|_| RuntimeBindingError::BindingOwnerOutOfMemory)?;
         graph
             .commit_two_way_merge_with(proposal, || {
                 for PreparedBindingValue {
@@ -1398,9 +1474,48 @@ impl RuntimeCore {
                     debug_assert_eq!(outcome, ValueCommit::Changed);
                     changes.commit_change(identity);
                 }
+                owners.insert(
+                    connection_id,
+                    RuntimeBindingOwner {
+                        _source: source_pin,
+                        _target: target_pin,
+                    },
+                );
             })
             .map_err(RuntimeBindingError::Graph)?;
         Ok(ValueCommit::Changed)
+    }
+
+    /// Cancels one active Runtime connection, preserving its already committed Property values.
+    ///
+    /// The caller validates an explicit Binding owner before passing the internal connection ID.
+    pub(crate) fn cancel_binding_connection(
+        &self,
+        connection_id: BindingConnectionId,
+    ) -> Result<bool, RuntimeBindingError> {
+        self.ensure_property_access_thread()
+            .map_err(RuntimeBindingError::Property)?;
+        let mut graph = self
+            .binding_graph
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        let mut owners = self
+            .active_bindings
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        if !graph
+            .remove_connection(connection_id)
+            .map_err(RuntimeBindingError::Graph)?
+        {
+            return Ok(false);
+        }
+        let owner = owners.remove(&connection_id);
+        debug_assert!(
+            owner.is_some(),
+            "active graph connection has a Runtime owner"
+        );
+        drop(owner);
+        Ok(true)
     }
 
     /// Prepares owned target candidates for reachable OneWay edges without committing them.
@@ -2948,6 +3063,212 @@ mod tests {
             Ok(TypedValue::Bool(true))
         ));
         assert_eq!(runtime.take_property_change_generation(), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn runtime_binding_lifecycle_retains_endpoints_until_explicit_cancel() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let source = runtime
+            .register_property(&registry, TypedValue::I64(10))
+            .expect("register source Property");
+        let target = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register target Property");
+        let source_identity = registry
+            .validate(source, &PropertyHandleKind::Property, &runtime.identity())
+            .expect("source remains valid")
+            .identity();
+        let target_identity = registry
+            .validate(target, &PropertyHandleKind::Property, &runtime.identity())
+            .expect("target remains valid")
+            .identity();
+
+        runtime
+            .create_one_way_binding_initial(&registry, source, target)
+            .expect("active OneWay Binding is created");
+        let connection_id = runtime
+            .binding_graph
+            .lock()
+            .expect("graph lock")
+            .connection_id(source_identity, target_identity, false)
+            .expect("active edge has an identity");
+        registry
+            .release(source)
+            .expect("release source owner token");
+        registry
+            .release(target)
+            .expect("release target owner token");
+
+        assert_eq!(runtime.active_bindings.lock().expect("owner lock").len(), 1);
+        assert!(
+            runtime
+                .ui_objects
+                .lock()
+                .expect("store lock")
+                .resolve(source_identity)
+                .is_ok()
+        );
+        assert!(
+            runtime
+                .ui_objects
+                .lock()
+                .expect("store lock")
+                .resolve(target_identity)
+                .is_ok()
+        );
+
+        assert_eq!(runtime.cancel_binding_connection(connection_id), Ok(true));
+        assert_eq!(runtime.cancel_binding_connection(connection_id), Ok(false));
+        assert!(
+            runtime
+                .active_bindings
+                .lock()
+                .expect("owner lock")
+                .is_empty()
+        );
+        runtime
+            .cleanup
+            .drain_pending()
+            .expect("drain released endpoints");
+        assert!(
+            runtime
+                .ui_objects
+                .lock()
+                .expect("store lock")
+                .resolve(source_identity)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn runtime_binding_cancel_suppresses_pending_and_future_one_way_propagation() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let source = runtime
+            .register_property(&registry, TypedValue::I64(10))
+            .expect("register source Property");
+        let target = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register target Property");
+        runtime
+            .create_one_way_binding_initial(&registry, source, target)
+            .expect("active OneWay Binding is created");
+        let source_identity = registry
+            .validate(source, &PropertyHandleKind::Property, &runtime.identity())
+            .expect("source remains valid")
+            .identity();
+        let target_identity = registry
+            .validate(target, &PropertyHandleKind::Property, &runtime.identity())
+            .expect("target remains valid")
+            .identity();
+        let connection_id = runtime
+            .binding_graph
+            .lock()
+            .expect("graph lock")
+            .connection_id(source_identity, target_identity, false)
+            .expect("active edge has an identity");
+        runtime
+            .take_property_change_generation()
+            .expect("discard initial target notice");
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, source, TypedValue::I64(20)),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(runtime.cancel_binding_connection(connection_id), Ok(true));
+        runtime
+            .prepare_property_delivery_generation()
+            .expect("pending source notice prepares without the canceled edge");
+        assert!(matches!(
+            runtime.read_property(&registry, target),
+            Ok(TypedValue::I64(10))
+        ));
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, source, TypedValue::I64(30)),
+            Ok(ValueCommit::Changed)
+        );
+        runtime
+            .prepare_property_delivery_generation()
+            .expect("future source notice prepares without the canceled edge");
+        assert!(matches!(
+            runtime.read_property(&registry, target),
+            Ok(TypedValue::I64(10))
+        ));
+    }
+
+    #[test]
+    fn runtime_two_way_cancel_splits_group_and_shutdown_clears_active_owners() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let source = runtime
+            .register_property(&registry, TypedValue::I64(10))
+            .expect("register source Property");
+        let target = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register target Property");
+        let source_identity = registry
+            .validate(source, &PropertyHandleKind::Property, &runtime.identity())
+            .expect("source remains valid")
+            .identity();
+        let target_identity = registry
+            .validate(target, &PropertyHandleKind::Property, &runtime.identity())
+            .expect("target remains valid")
+            .identity();
+        runtime
+            .create_two_way_binding_initial(&registry, source, target)
+            .expect("active TwoWay Binding is created");
+        let connection_id = runtime
+            .binding_graph
+            .lock()
+            .expect("graph lock")
+            .connection_id(source_identity, target_identity, true)
+            .expect("active merge has an identity");
+
+        assert_eq!(runtime.cancel_binding_connection(connection_id), Ok(true));
+        assert!(
+            !runtime
+                .binding_graph
+                .lock()
+                .expect("graph lock")
+                .same_group(source_identity, target_identity)
+        );
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, source, TypedValue::I64(20)),
+            Ok(ValueCommit::Changed)
+        );
+        runtime
+            .prepare_property_delivery_generation()
+            .expect("source notification is prepared");
+        assert!(matches!(
+            runtime.read_property(&registry, target),
+            Ok(TypedValue::I64(10))
+        ));
+
+        runtime
+            .create_one_way_binding_initial(&registry, source, target)
+            .expect("a new connection can use the released topology");
+        assert_eq!(runtime.active_bindings.lock().expect("owner lock").len(), 1);
+        runtime
+            .cleanup
+            .drain_shutdown()
+            .expect("Runtime shutdown cleanup");
+        assert!(
+            runtime
+                .active_bindings
+                .lock()
+                .expect("owner lock")
+                .is_empty()
+        );
+        assert!(
+            runtime
+                .binding_graph
+                .lock()
+                .expect("graph lock")
+                .connection_id(source_identity, target_identity, false)
+                .is_none()
+        );
     }
 
     #[test]

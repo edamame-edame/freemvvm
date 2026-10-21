@@ -9,14 +9,30 @@ use std::collections::{HashMap, HashSet};
 #[derive(Default)]
 pub(crate) struct BindingGraph {
     one_way_edges: Vec<OneWayEdge>,
+    two_way_edges: Vec<TwoWayEdge>,
     group_parent: HashMap<ObjectIdentity, ObjectIdentity>,
     generation: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct OneWayEdge {
+    id: BindingConnectionId,
     source: ObjectIdentity,
     target: ObjectIdentity,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TwoWayEdge {
+    id: BindingConnectionId,
+    source: ObjectIdentity,
+    target: ObjectIdentity,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct BindingConnectionId {
+    first: ObjectIdentity,
+    second: ObjectIdentity,
+    two_way: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -28,6 +44,7 @@ pub(crate) struct OneWayPropagationEdge {
 /// A topology change that was validated against one graph generation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct PreparedOneWayEdge {
+    id: BindingConnectionId,
     source: ObjectIdentity,
     target: ObjectIdentity,
     generation: u64,
@@ -46,12 +63,25 @@ impl PreparedOneWayBinding {
     }
 }
 
+impl PreparedOneWayEdge {
+    pub(crate) fn connection_id(self) -> BindingConnectionId {
+        self.id
+    }
+}
+
 /// A proposed union of two distinct synchronization groups.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct PreparedTwoWayMerge {
+    id: BindingConnectionId,
     source_group: ObjectIdentity,
     target_group: ObjectIdentity,
     generation: u64,
+}
+
+impl PreparedTwoWayMerge {
+    pub(crate) fn connection_id(self) -> BindingConnectionId {
+        self.id
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -105,6 +135,11 @@ impl BindingGraph {
         if source == target {
             return Err(BindingGraphError::SelfConnection);
         }
+        let id = BindingConnectionId {
+            first: source,
+            second: target,
+            two_way: false,
+        };
         let source = self.resolve_group(source);
         let target = self.resolve_group(target);
         if source == target {
@@ -132,6 +167,7 @@ impl BindingGraph {
             .try_reserve(1)
             .map_err(|_| BindingGraphError::OutOfMemory)?;
         Ok(PreparedOneWayEdge {
+            id,
             source,
             target,
             generation: self.generation,
@@ -161,8 +197,9 @@ impl BindingGraph {
             .ok_or(BindingGraphError::GenerationExhausted)?;
         commit_related_state();
         self.one_way_edges.push(OneWayEdge {
-            source: prepared.source,
-            target: prepared.target,
+            id: prepared.id,
+            source: prepared.id.first,
+            target: prepared.id.second,
         });
         self.generation = next_generation;
         Ok(())
@@ -192,7 +229,15 @@ impl BindingGraph {
         self.group_parent
             .try_reserve(1)
             .map_err(|_| BindingGraphError::OutOfMemory)?;
+        self.two_way_edges
+            .try_reserve(1)
+            .map_err(|_| BindingGraphError::OutOfMemory)?;
         Ok(PreparedTwoWayMerge {
+            id: BindingConnectionId {
+                first,
+                second,
+                two_way: true,
+            },
             source_group,
             target_group,
             generation: self.generation,
@@ -221,10 +266,79 @@ impl BindingGraph {
             .checked_add(1)
             .ok_or(BindingGraphError::GenerationExhausted)?;
         commit_related_state();
+        self.two_way_edges.push(TwoWayEdge {
+            id: prepared.id,
+            source: prepared.id.first,
+            target: prepared.id.second,
+        });
         self.group_parent
             .insert(prepared.target_group, prepared.source_group);
         self.generation = next_generation;
         Ok(())
+    }
+
+    pub(crate) fn remove_connection(
+        &mut self,
+        id: BindingConnectionId,
+    ) -> Result<bool, BindingGraphError> {
+        let one_way_index = self.one_way_edges.iter().position(|edge| edge.id == id);
+        let two_way_index = self.two_way_edges.iter().position(|edge| edge.id == id);
+        if one_way_index.is_none() && two_way_index.is_none() {
+            return Ok(false);
+        }
+        let next_generation = self
+            .generation
+            .checked_add(1)
+            .ok_or(BindingGraphError::GenerationExhausted)?;
+        if two_way_index.is_some() {
+            let remaining_edges = self.two_way_edges.len().saturating_sub(1);
+            if self.group_parent.capacity() < remaining_edges {
+                self.group_parent
+                    .try_reserve(remaining_edges.saturating_sub(self.group_parent.len()))
+                    .map_err(|_| BindingGraphError::OutOfMemory)?;
+            }
+        }
+        if let Some(index) = one_way_index {
+            self.one_way_edges.remove(index);
+        }
+        if let Some(index) = two_way_index {
+            self.two_way_edges.remove(index);
+            self.group_parent.clear();
+            for edge in &self.two_way_edges {
+                let source = self.resolve_group(edge.source);
+                let target = self.resolve_group(edge.target);
+                if source != target {
+                    self.group_parent.insert(target, source);
+                }
+            }
+        }
+        self.generation = next_generation;
+        Ok(true)
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.one_way_edges.clear();
+        self.two_way_edges.clear();
+        self.group_parent.clear();
+    }
+
+    pub(crate) fn connection_id(
+        &self,
+        first: ObjectIdentity,
+        second: ObjectIdentity,
+        two_way: bool,
+    ) -> Option<BindingConnectionId> {
+        if two_way {
+            self.two_way_edges
+                .iter()
+                .find(|edge| edge.id.first == first && edge.id.second == second)
+                .map(|edge| edge.id)
+        } else {
+            self.one_way_edges
+                .iter()
+                .find(|edge| edge.id.first == first && edge.id.second == second)
+                .map(|edge| edge.id)
+        }
     }
 
     pub(crate) fn same_group(&self, first: ObjectIdentity, second: ObjectIdentity) -> bool {
@@ -385,7 +499,11 @@ impl BindingGraph {
             if normalized.iter().any(|previous| previous.target == target) {
                 return Err(BindingGraphError::TargetAlreadyHasInput);
             }
-            normalized.push(OneWayEdge { source, target });
+            normalized.push(OneWayEdge {
+                id: edge.id,
+                source,
+                target,
+            });
         }
         Ok(normalized)
     }
@@ -555,6 +673,69 @@ mod tests {
         assert!(graph.same_group(identity(3), identity(4)));
         assert!(!graph.same_group(identity(1), identity(3)));
         assert_eq!(graph.one_way_edges.len(), 1);
+    }
+
+    #[test]
+    fn binding_graph_cancel_removes_one_way_edges_and_splits_two_way_groups() {
+        let mut graph = BindingGraph::default();
+        let one_way = graph
+            .prepare_one_way(identity(1), identity(2))
+            .expect("OneWay edge prepares");
+        let one_way_id = one_way.connection_id();
+        graph.commit_one_way(one_way).expect("OneWay edge commits");
+        assert_eq!(graph.one_way_edges.len(), 1);
+        assert!(graph.remove_connection(one_way_id).expect("cancel edge"));
+        assert!(graph.one_way_edges.is_empty());
+        assert!(!graph.remove_connection(one_way_id).expect("repeat cancel"));
+
+        let mut groups = BindingGraph::default();
+        let first = groups
+            .prepare_two_way_merge(identity(1), identity(2))
+            .expect("first TwoWay edge prepares");
+        let first_id = first.connection_id();
+        groups
+            .commit_two_way_merge(first)
+            .expect("first edge commits");
+        let second = groups
+            .prepare_two_way_merge(identity(2), identity(3))
+            .expect("second TwoWay edge prepares");
+        groups
+            .commit_two_way_merge(second)
+            .expect("second edge commits");
+        assert!(groups.same_group(identity(1), identity(3)));
+
+        assert!(
+            groups
+                .remove_connection(first_id)
+                .expect("cancel first edge")
+        );
+        assert!(!groups.same_group(identity(1), identity(2)));
+        assert!(groups.same_group(identity(2), identity(3)));
+        assert!(!groups.remove_connection(first_id).expect("repeat cancel"));
+
+        let mut alias_edge = BindingGraph::default();
+        let merge = alias_edge
+            .prepare_two_way_merge(identity(1), identity(2))
+            .expect("alias merge prepares");
+        let merge_id = merge.connection_id();
+        alias_edge
+            .commit_two_way_merge(merge)
+            .expect("alias merge commits");
+        connect(&mut alias_edge, 2, 3);
+        assert!(
+            alias_edge
+                .remove_connection(merge_id)
+                .expect("alias merge cancels")
+        );
+        assert_eq!(
+            alias_edge
+                .prepare_one_way_propagation(&[identity(2)])
+                .expect("original OneWay endpoint remains reachable"),
+            vec![super::OneWayPropagationEdge {
+                source: identity(2),
+                target: identity(3),
+            }]
+        );
     }
 
     #[test]

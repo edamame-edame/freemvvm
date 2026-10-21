@@ -1,7 +1,7 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 1.7
-- 状態: Runtime post/dispatch turn、Property create/kind、Property getters、OneWay propagation candidate/commit、TwoWay initial-sync、およびTwoWay group propagation oracle追補は利用者承認済み範囲。製品test実装・実行状態は別管理
+- 文書版: 1.8
+- 状態: Runtime post/dispatch turn、Property create/kind、Property getters、OneWay propagation candidate/commit、TwoWay initial-sync/group propagation、Binding graph取消・Runtime active lifecycle oracle追補は利用者承認済み範囲。製品test実装・実行状態は別管理
 - 更新日: 2026-10-21
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
@@ -315,6 +315,16 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 
 このoracleはdirect setter順序、TwoWay group value propagation、OneWayとgroupの入力/出力統合、current/next generationの非再帰通知を検証する。validator/Binding error、public Binding lifecycle、C ABIは含まない。
 
+### Runtime Bindingのactive ownerとcancel — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-runtime-binding-lifecycle-001"></a>UT-CORE-RUNTIME-BINDING-LIFECYCLE-001 | RuntimeにOneWay Bindingを作成し、両endpointのProperty owner tokenをrelease、active owner状態を確認後にinternal cancelする | Property token releaseだけではactive接続とendpoint保持が途切れない。cancel後はRuntime ownerを外し、最後のendpoint pin releaseで保留cleanupを実行できる | [RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-07-011](../11_requirements/RQ-07_binding.md#rq-07-011)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01) |
+
+| <a id="ut-core-binding-graph-cancel-001"></a>UT-CORE-BINDING-GRAPH-CANCEL-001 | OneWay connectionをremoveし、TwoWay connection chainの一辺をremoveする | OneWay edgeは以後のtopology snapshotから消える。TwoWay辺の削除では残る辺からgroup membershipを再構築し、接続解除済みPropertyを再同期させない。存在しないconnectionの反復removeは不変状態でno-op | [RQ-07-011](../11_requirements/RQ-07_binding.md#rq-07-011)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01) |
+
+このoracle群はCore RuntimeのOneWay/TwoWay active registration、Property token release後のendpoint保持、内部cancelとgraph removalの接続、保留item無効化、shutdown cleanupを検証する。公開Binding owner token、Property Validator、Binding error snapshot/通知、C ABI/wrapperは含まない。
+
 ### Binding初期値・OneWay graph接続の準備 — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
@@ -421,6 +431,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-21 | UT-CORE-RUNTIME-TWOWAY-PROPAGATION-001 oracle | Codex | 承認済みRQ/DDからdirect setter recency、TwoWay group同期、OneWay/group接続のgeneration propagation oracleを追補 |
 | 2026-10-21 | UT-CORE-RUNTIME-TWOWAY-PROPAGATION-001開始 | 利用者 | 継続指示「ok」により、Runtime TwoWay group propagationのfocused実装・動作確認を開始 |
 | 2026-10-21 | UT-CORE-RUNTIME-TWOWAY-PROPAGATION-001実行結果 | Codex | focused 3件、workspace 144件、tools/dev.py check成功。最新成功setter、OneWay/group優先規則、subscriber前同期、generation分割を確認 |
+| 2026-10-21 | UT-CORE-RUNTIME-BINDING-LIFECYCLE-001 / UT-CORE-BINDING-GRAPH-CANCEL-001 oracle | Codex | RQ-05-002/RQ-07-011および承認済みDD v1.1からactive owner・connection removal・shutdown lifecycle oracleを追補 |
+| 2026-10-21 | UT-CORE-RUNTIME-BINDING-LIFECYCLE-001開始 | 利用者 | 継続指示「ok」によりCore RuntimeのOneWay/TwoWay Binding lifecycle基盤の実装・動作確認を開始 |
+| 2026-10-21 | UT-CORE-RUNTIME-BINDING-LIFECYCLE-001実行結果 | Codex | focused 4件、workspace 148件、tools/dev.py check成功。endpoint token release後保持、cancel後pending/future抑止、TwoWay unlink、shutdown cleanupを確認 |
 
 ## 改訂履歴
 
@@ -486,3 +499,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 5.8 | 2026-10-21 | UNIT-CORE-061のfocused/workspace testと開発ゲート結果を記録 | Codex | TwoWay Runtime initial-sync/group commitの実装・検証状態。group伝播とpublic Binding lifecycleは別単位 |
 | 6.0 | 2026-10-21 | UT-CORE-RUNTIME-TWOWAY-PROPAGATION-001 oracleと実装開始を追記 | Codex | 承認済みRQ/DDからのRuntime propagation範囲。validatorとpublic Binding lifecycleを含まない |
 | 6.1 | 2026-10-21 | UNIT-CORE-062のTwoWay group propagation、OneWay連携、既存target groupへの初期同期のfocused/workspace testと開発ゲート結果を追記 | Codex | 最新成功setterの勝者規則・通知世代分割を含む実装検証結果。validatorとpublic Binding lifecycleは別単位 |
+| 6.2 | 2026-10-21 | Binding graph cancellation / Runtime active lifecycle oraclesと実装開始を追記 | Codex | Core Runtime lifecycle基盤。公開Binding owner token/C ABI/wrapperとvalidator/error reportingは別単位 |
+| 6.3 | 2026-10-21 | UNIT-CORE-063のfocused/workspace testと開発ゲート結果を追記 | Codex | Core Runtime lifecycle基盤の検証状態。公開Binding owner token/C ABI/wrapperとvalidator/error reportingは別単位 |
