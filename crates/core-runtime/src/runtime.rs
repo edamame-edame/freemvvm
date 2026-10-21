@@ -1,3 +1,4 @@
+use crate::binding::{BindingGraph, BindingGraphError};
 use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission, UiLoopBridge};
 use crate::handle_registry::HandleToken;
 use crate::handle_registry::registry::{
@@ -6,7 +7,9 @@ use crate::handle_registry::registry::{
 };
 use crate::object_store::{UiObjectStore, UiObjectStoreError};
 use crate::property::{PropertyChangeQueue, PropertyHandleKind, PropertyState, Subscription};
-use crate::value::{TypedValue, ValueCommit, ValueKind, ValueKindMismatch};
+use crate::value::{
+    BindingCopyError, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
+};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
@@ -964,6 +967,19 @@ pub(crate) enum RuntimePropertyError {
     Dispatch(DispatchError),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RuntimeBindingError {
+    Property(RuntimePropertyError),
+    Registry(RegistryError),
+    Store(UiObjectStoreError),
+    WrongObjectState,
+    Graph(BindingGraphError),
+    InitialCopy(BindingCopyError),
+    SourceSnapshotCopy(OwnedUtf8Error),
+    SynchronizationPoisoned,
+    NotificationQueueOutOfMemory,
+}
+
 /// Process-unique internal identity for one Runtime owner.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct RuntimeIdentity(NonZeroU64);
@@ -986,6 +1002,7 @@ pub(crate) struct RuntimeCore {
     ui_thread: UiThreadContext,
     cleanup: Arc<RuntimeCleanupQueue>,
     ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
+    binding_graph: Mutex<BindingGraph>,
     property_changes: Arc<Mutex<PropertyChangeQueue>>,
     property_delivery: Arc<Mutex<Option<VecDeque<PropertyDeliveryItem>>>>,
     property_delivery_active: AtomicBool,
@@ -1096,6 +1113,7 @@ impl RuntimeCore {
             ui_thread,
             cleanup,
             ui_objects,
+            binding_graph: Mutex::new(BindingGraph::default()),
             property_changes,
             property_delivery,
             property_delivery_active: AtomicBool::new(false),
@@ -1172,6 +1190,93 @@ impl RuntimeCore {
         self.register_ui_object(registry, PropertyHandleKind::Property, move || {
             PropertyState::new(initial)
         })
+    }
+
+    /// Applies the initial OneWay source value and publishes its graph edge as one UI-thread commit.
+    ///
+    /// This internal foundation does not create public Binding ownership or enable later propagation.
+    pub(crate) fn create_one_way_binding_initial(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        source_token: HandleToken,
+        target_token: HandleToken,
+    ) -> Result<ValueCommit, RuntimeBindingError> {
+        let source_pin = registry
+            .validate(source_token, &PropertyHandleKind::Property, &self.identity)
+            .map_err(RuntimeBindingError::Registry)?;
+        let target_pin = registry
+            .validate(target_token, &PropertyHandleKind::Property, &self.identity)
+            .map_err(RuntimeBindingError::Registry)?;
+        self.ensure_property_access_thread()
+            .map_err(RuntimeBindingError::Property)?;
+
+        let source_identity = source_pin.identity();
+        let target_identity = target_pin.identity();
+        let mut store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        let source_value = store
+            .resolve(source_identity)
+            .map_err(RuntimeBindingError::Store)?
+            .downcast_ref::<PropertyState>()
+            .ok_or(RuntimeBindingError::WrongObjectState)?
+            .read()
+            .try_owned_copy()
+            .map_err(RuntimeBindingError::SourceSnapshotCopy)?;
+
+        let mut graph = self
+            .binding_graph
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        let target = store
+            .resolve_mut(target_identity)
+            .map_err(RuntimeBindingError::Store)?
+            .downcast_mut::<PropertyState>()
+            .ok_or(RuntimeBindingError::WrongObjectState)?;
+        let proposal = graph
+            .prepare_one_way_with_initial_copy(
+                source_identity,
+                target_identity,
+                &source_value,
+                target.value_for_binding_prepare(),
+            )
+            .map_err(|error| match error {
+                crate::binding::BindingInitialPrepareError::Graph(error) => {
+                    RuntimeBindingError::Graph(error)
+                }
+                crate::binding::BindingInitialPrepareError::InitialCopy(error) => {
+                    RuntimeBindingError::InitialCopy(error)
+                }
+            })?;
+        let (prepared_edge, initial_candidate) = proposal.into_parts();
+
+        let Some(initial_candidate) = initial_candidate else {
+            graph
+                .commit_one_way(prepared_edge)
+                .map_err(RuntimeBindingError::Graph)?;
+            return Ok(ValueCommit::Unchanged);
+        };
+
+        let mut changes = self
+            .property_changes
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        changes
+            .reserve_change(target_identity)
+            .map_err(|_| RuntimeBindingError::NotificationQueueOutOfMemory)?;
+        let mut outcome = ValueCommit::Unchanged;
+        graph
+            .commit_one_way_with(prepared_edge, || {
+                outcome = target
+                    .apply_validated(initial_candidate)
+                    .expect("prepared initial candidate has the target's fixed kind");
+                if outcome == ValueCommit::Changed {
+                    changes.commit_change(target_identity);
+                }
+            })
+            .map_err(RuntimeBindingError::Graph)?;
+        Ok(outcome)
     }
 
     /// Reads an owned snapshot of a Property value on this Runtime's UI thread.
@@ -1907,7 +2012,7 @@ impl ShutdownCompletion {
 mod tests {
     use super::{
         HostBoundaryError, HostRegistration, HostRegistrationError, HostShutdownCommitError,
-        RuntimeCleanupQueue, RuntimeCore, RuntimeCoreError, RuntimeIdentity,
+        RuntimeBindingError, RuntimeCleanupQueue, RuntimeCore, RuntimeCoreError, RuntimeIdentity,
         RuntimeObjectRegistrationError, RuntimePropertyError, RuntimeState, ShutdownCompletion,
         ShutdownCompletionError, ShutdownCompletionState, ShutdownRequestMode,
         ShutdownRequestOutcome, ShutdownWaitResult, UiThreadContext,
@@ -1919,7 +2024,8 @@ mod tests {
     use crate::object_store::UiObjectStoreError;
     use crate::property::{PropertyHandleKind, Subscription};
     use crate::value::{
-        DecimalValue, OwnedUtf8, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
+        BindingCopyError, DecimalValue, OwnedUtf8, TypedValue, ValueCommit, ValueKind,
+        ValueKindMismatch,
     };
     use std::ffi::c_void;
     use std::num::NonZeroU64;
@@ -2099,6 +2205,153 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(thread::current().id());
+    }
+
+    #[test]
+    fn runtime_one_way_binding_initial_sync_commits_target_edge_and_notification() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let registry = Arc::new(HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new());
+        let source = runtime
+            .register_property(&registry, TypedValue::I64(42))
+            .expect("register source Property");
+        let target = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register target Property");
+
+        assert_eq!(
+            runtime.create_one_way_binding_initial(&registry, source, target),
+            Ok(ValueCommit::Changed)
+        );
+        assert!(matches!(
+            runtime.read_property(&registry, target),
+            Ok(TypedValue::I64(42))
+        ));
+        let target_identity = registry
+            .validate(target, &PropertyHandleKind::Property, &runtime.identity())
+            .expect("target remains valid")
+            .identity();
+        assert_eq!(
+            runtime.take_property_change_generation(),
+            Ok(vec![target_identity])
+        );
+        assert!(matches!(
+            runtime.create_one_way_binding_initial(&registry, source, target),
+            Err(RuntimeBindingError::Graph(
+                crate::binding::BindingGraphError::DuplicateEdge
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_one_way_binding_initial_sync_same_value_commits_edge_without_notification() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let source = runtime
+            .register_property(&registry, TypedValue::I64(42))
+            .expect("register source Property");
+        let target = runtime
+            .register_property(&registry, TypedValue::I64(42))
+            .expect("register target Property");
+
+        assert_eq!(
+            runtime.create_one_way_binding_initial(&registry, source, target),
+            Ok(ValueCommit::Unchanged)
+        );
+        assert_eq!(runtime.take_property_change_generation(), Ok(Vec::new()));
+        assert!(matches!(
+            runtime.create_one_way_binding_initial(&registry, source, target),
+            Err(RuntimeBindingError::Graph(
+                crate::binding::BindingGraphError::DuplicateEdge
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_one_way_binding_initial_sync_rejections_preserve_values_graph_and_queue() {
+        let runtime = Arc::new(RuntimeCore::new().expect("Runtime identity is available"));
+        let foreign = RuntimeCore::new().expect("second Runtime identity is available");
+        let registry = Arc::new(HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new());
+        let source = runtime
+            .register_property(&registry, TypedValue::I64(20))
+            .expect("register source Property");
+        let target = runtime
+            .register_property(&registry, TypedValue::I64(10))
+            .expect("register target Property");
+        let bool_target = runtime
+            .register_property(&registry, TypedValue::Bool(false))
+            .expect("register mismatched target Property");
+        let bool_source = runtime
+            .register_property(&registry, TypedValue::Bool(true))
+            .expect("register matching bool source Property");
+        let other_source = runtime
+            .register_property(&registry, TypedValue::I64(30))
+            .expect("register second source Property");
+        let foreign_source = foreign
+            .register_property(&registry, TypedValue::I64(40))
+            .expect("register foreign source Property");
+
+        assert!(matches!(
+            runtime.create_one_way_binding_initial(&registry, source, bool_target),
+            Err(RuntimeBindingError::InitialCopy(
+                BindingCopyError::KindMismatch(_)
+            ))
+        ));
+        assert!(matches!(
+            runtime.create_one_way_binding_initial(&registry, foreign_source, target),
+            Err(RuntimeBindingError::Registry(RegistryError::WrongRuntime))
+        ));
+        assert_eq!(
+            runtime.create_one_way_binding_initial(&registry, bool_source, bool_target),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(
+            runtime
+                .take_property_change_generation()
+                .map(|items| items.len()),
+            Ok(1)
+        );
+        assert!(matches!(
+            runtime.create_one_way_binding_initial(&registry, source, target),
+            Ok(ValueCommit::Changed)
+        ));
+        assert_eq!(
+            runtime
+                .take_property_change_generation()
+                .map(|items| items.len()),
+            Ok(1)
+        );
+
+        assert!(matches!(
+            runtime.create_one_way_binding_initial(&registry, other_source, target),
+            Err(RuntimeBindingError::Graph(
+                crate::binding::BindingGraphError::TargetAlreadyHasInput
+            ))
+        ));
+        assert!(matches!(
+            runtime.read_property(&registry, target),
+            Ok(TypedValue::I64(20))
+        ));
+        assert_eq!(runtime.take_property_change_generation(), Ok(Vec::new()));
+
+        let worker_runtime = Arc::clone(&runtime);
+        let worker_registry = Arc::clone(&registry);
+        assert!(matches!(
+            thread::spawn(move || worker_runtime.create_one_way_binding_initial(
+                &worker_registry,
+                other_source,
+                bool_target,
+            ))
+            .join()
+            .expect("worker request completes"),
+            Err(RuntimeBindingError::Property(
+                RuntimePropertyError::WrongThread
+            ))
+        ));
+        assert!(matches!(
+            runtime.read_property(&registry, bool_target),
+            Ok(TypedValue::Bool(true))
+        ));
+        assert_eq!(runtime.take_property_change_generation(), Ok(Vec::new()));
     }
 
     #[test]

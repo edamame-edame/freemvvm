@@ -306,6 +306,10 @@ impl PropertyState {
         self.value.would_change(candidate)
     }
 
+    pub(crate) fn value_for_binding_prepare(&self) -> &ValueStorage {
+        &self.value
+    }
+
     pub(crate) fn apply_validated(
         &mut self,
         candidate: TypedValue,

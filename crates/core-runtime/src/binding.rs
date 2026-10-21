@@ -137,6 +137,15 @@ impl BindingGraph {
         &mut self,
         prepared: PreparedOneWayEdge,
     ) -> Result<(), BindingGraphError> {
+        self.commit_one_way_with(prepared, || {})
+    }
+
+    /// Commits related state while the graph proposal is known to be current, then publishes its edge.
+    pub(crate) fn commit_one_way_with(
+        &mut self,
+        prepared: PreparedOneWayEdge,
+        commit_related_state: impl FnOnce(),
+    ) -> Result<(), BindingGraphError> {
         if prepared.generation != self.generation {
             return Err(BindingGraphError::StaleProposal);
         }
@@ -144,6 +153,7 @@ impl BindingGraph {
             .generation
             .checked_add(1)
             .ok_or(BindingGraphError::GenerationExhausted)?;
+        commit_related_state();
         self.one_way_edges.push(OneWayEdge {
             source: prepared.source,
             target: prepared.target,

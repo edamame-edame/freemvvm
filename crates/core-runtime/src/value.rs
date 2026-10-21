@@ -112,7 +112,7 @@ impl TypedValue {
         }
     }
 
-    fn try_owned_copy(&self) -> Result<Self, OwnedUtf8Error> {
+    pub(crate) fn try_owned_copy(&self) -> Result<Self, OwnedUtf8Error> {
         match self {
             Self::Bool(value) => Ok(Self::Bool(*value)),
             Self::I64(value) => Ok(Self::I64(*value)),
