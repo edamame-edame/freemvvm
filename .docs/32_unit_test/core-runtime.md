@@ -150,6 +150,7 @@ This slice covers topology only. Each Property starts as a singleton synchroniza
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
 | --- | --- | --- | --- |
 | <a id="ut-core-binding-graph-001"></a>UT-CORE-BINDING-GRAPH-001 | 空のgraphへA→B、B→Cをprepare/commitする。自己接続A→A、既存A→B重複、別入力元C→B、循環C→Aを個別に試し、各拒否後に合法な別edgeを追加して既存topologyの保持を確認する | 片方向chainを受け入れる。self/cycle/duplicate/second-inputはそれぞれ識別可能なCore errorとして拒否される。拒否された候補はedge数・受理済み辺・後続の合法接続へ影響しない。OneTime、TwoWay merge、Property値や通知は対象外 | [RQ-07-007](../11_requirements/RQ-07_binding.md#rq-07-007)、[RQ-07-015](../11_requirements/RQ-07_binding.md#rq-07-015)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01) |
+| <a id="ut-core-binding-graph-002"></a>UT-CORE-BINDING-GRAPH-002 | 既存OneWay graphでTwoWay mergeをprepare/commitし、property identityが同じgroupへ解決されることを確認する。別fixtureでmergeにより自己edge・DAG cycle・同一targetへの複数入力が生じる候補を準備し、拒否後に受理済みgroup/edgeと後続の合法mergeを検査する。graph変更後のstale proposalもcommitする | 影響のないmergeは同一同期groupを作る。merge後に自己edge・cycle・複数入力元が生じる場合は識別可能なCore errorで拒否し、merge由来の重複edgeは複数入力元より優先する。拒否/stale proposalは既存group・edgeを変更しない | [RQ-07-003](../11_requirements/RQ-07_binding.md#rq-07-003)、[RQ-07-007](../11_requirements/RQ-07_binding.md#rq-07-007)、[RQ-07-015](../11_requirements/RQ-07_binding.md#rq-07-015)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01) |
 
 ### Runtime Subscription owner registry — implementation slice
 
@@ -316,6 +317,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-21 | UT-CORE-BINDING-GRAPH-001 oracle | Codex | 承認済みRQ/DDからOneWay graphのself/cycle/duplicate/second-input拒否とfailure atomicityを追補 |
 | 2026-10-21 | UT-CORE-BINDING-GRAPH-001全文 | 利用者 | 「ok」により、Core OneWay graph topologyのfocused oracleとUNIT-CORE-052の実装・動作確認を開始。TwoWay mergeとProperty伝播は別単位 |
 | 2026-10-21 | UT-CORE-BINDING-GRAPH-001実行結果 | Codex | focused 2件、workspace 121件、開発ゲート成功。合法chain、self/cycle/duplicate/second-input拒否、旧generation proposal拒否を確認 |
+| 2026-10-21 | UT-CORE-BINDING-GRAPH-002 oracle | Codex | 承認済みRQ/DDからTwoWay group merge後のself/cycle/duplicate/second-input制約とstale proposal拒否を追補 |
+| 2026-10-21 | UT-CORE-BINDING-GRAPH-002全文 | 利用者 | 「ok」により、TwoWay synchronization-group mergeのfocused oracleとUNIT-CORE-053の実装・動作確認を開始。Property値同期とBinding propagationは別単位 |
+| 2026-10-21 | UT-CORE-BINDING-GRAPH-002実行結果 | Codex | focused 5件、workspace 124件、開発ゲート成功。valid merge、self/cycle/duplicate/second-input rejection、stale proposal拒否を確認 |
 
 ## 改訂履歴
 
@@ -362,3 +366,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 3.9 | 2026-10-21 | UNIT-ABI-013のfocused/workspace testと開発ゲート結果を記録 | Codex | oracleと当該実装revisionの検証状態。wrapperとBinding subscriptionは別単位 |
 | 4.0 | 2026-10-21 | UT-CORE-BINDING-GRAPH-001のOneWay topology oracleを追補 | Codex | 利用者の「ok」によるfocused実装単位。Binding propagation/ABIを含まない |
 | 4.1 | 2026-10-21 | UNIT-CORE-052のfocused/workspace testと開発ゲート結果を記録 | Codex | oracleと当該実装revisionの検証状態。TwoWay mergeとProperty伝播は別単位 |
+| 4.2 | 2026-10-21 | UT-CORE-BINDING-GRAPH-002のTwoWay merge topology oracleを追補 | Codex | 利用者の「ok」によるfocused実装単位。値同期と伝播は含まない |
+| 4.3 | 2026-10-21 | UNIT-CORE-053のfocused/workspace testと開発ゲート結果を記録 | Codex | oracleと当該実装revisionの検証状態。Property値同期と伝播は別単位 |
