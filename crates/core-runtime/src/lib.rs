@@ -86,6 +86,7 @@ pub mod abi_support {
         WrongType,
         WrongThread,
         Closed,
+        ValidationFailed,
         OutOfMemory,
         BufferTooSmall { required: usize },
         Internal,
@@ -711,7 +712,10 @@ pub mod abi_support {
                     | RuntimePropertyError::ValueKindMismatch(_)
                     | RuntimePropertyError::BindingGraph(_)
                     | RuntimePropertyError::BindingValueCopy(_)
-                    | RuntimePropertyError::BindingPropagationOutOfMemory => {
+                    | RuntimePropertyError::BindingPropagationOutOfMemory
+                    | RuntimePropertyError::ValidationFailed
+                    | RuntimePropertyError::ValidatorReentrancy
+                    | RuntimePropertyError::ValidatorAlreadyRegistered => {
                         ShutdownApiError::Internal
                     }
                 })?;
@@ -740,6 +744,7 @@ pub mod abi_support {
             | RuntimePropertyError::SubscriptionRegistryOutOfMemory => {
                 PropertyApiError::OutOfMemory
             }
+            RuntimePropertyError::ValidationFailed => PropertyApiError::ValidationFailed,
             RuntimePropertyError::Registry(
                 RegistryError::TokenExhausted
                 | RegistryError::CleanupUnavailable
@@ -753,7 +758,9 @@ pub mod abi_support {
             | RuntimePropertyError::ValueKindMismatch(_)
             | RuntimePropertyError::BindingGraph(_)
             | RuntimePropertyError::BindingValueCopy(_)
-            | RuntimePropertyError::BindingPropagationOutOfMemory => PropertyApiError::Internal,
+            | RuntimePropertyError::BindingPropagationOutOfMemory
+            | RuntimePropertyError::ValidatorReentrancy
+            | RuntimePropertyError::ValidatorAlreadyRegistered => PropertyApiError::Internal,
         }
     }
 

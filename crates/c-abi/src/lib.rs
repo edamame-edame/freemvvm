@@ -36,6 +36,7 @@ const UI_INTERNAL_ERROR: u32 = 9;
 const UI_WRONG_THREAD: u32 = 5;
 const UI_CLOSED: u32 = 6;
 const UI_UNSUPPORTED: u32 = 10;
+const UI_VALIDATION_FAILED: u32 = 11;
 const UI_BUFFER_TOO_SMALL: u32 = 7;
 const UI_PENDING: u32 = 14;
 const NUMERIC_NARROW_EXACT: u32 = 0;
@@ -168,6 +169,7 @@ fn map_property_error(error: PropertyApiError) -> u32 {
         PropertyApiError::WrongType => UI_WRONG_TYPE,
         PropertyApiError::WrongThread => UI_WRONG_THREAD,
         PropertyApiError::Closed => UI_CLOSED,
+        PropertyApiError::ValidationFailed => UI_VALIDATION_FAILED,
         PropertyApiError::OutOfMemory => UI_OUT_OF_MEMORY,
         PropertyApiError::BufferTooSmall { .. } => UI_BUFFER_TOO_SMALL,
         PropertyApiError::Internal => UI_INTERNAL_ERROR,

@@ -15,7 +15,11 @@ pub(crate) enum PropertyHandleKind {
 pub(crate) struct PropertyState {
     value: ValueStorage,
     subscribers: Vec<Weak<Subscription>>,
+    validator: Option<Arc<PropertyValidator>>,
 }
+
+/// Synchronous candidate check. Runtime invokes it without holding Core state locks.
+pub(crate) type PropertyValidator = dyn Fn(&TypedValue) -> Result<(), ()> + Send + Sync;
 
 /// Runtime-local first-change-ordered set for the next pending Property generation.
 #[derive(Default)]
@@ -282,7 +286,23 @@ impl PropertyState {
         Self {
             value: ValueStorage::new(initial),
             subscribers: Vec::new(),
+            validator: None,
         }
+    }
+
+    pub(crate) fn register_validator(
+        &mut self,
+        validator: Arc<PropertyValidator>,
+    ) -> Result<(), Arc<PropertyValidator>> {
+        if self.validator.is_some() {
+            return Err(validator);
+        }
+        self.validator = Some(validator);
+        Ok(())
+    }
+
+    pub(crate) fn validator(&self) -> Option<Arc<PropertyValidator>> {
+        self.validator.clone()
     }
 
     /// Adds a non-owning Property index entry for an active Subscription.
