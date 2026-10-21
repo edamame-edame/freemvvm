@@ -1412,6 +1412,24 @@
       "tests": [
         {"id": "UT-CORE-BINDING-GRAPH-002", "command": ["cargo", "test", "-p", "freemvvm-core", "binding_graph"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-054",
+      "state": "complete",
+      "scope": "core-binding-initial-value-copy-prepare",
+      "sources": ["crates/core-runtime/src/value.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-040", "UNIT-CORE-053"],
+      "design": [
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "Binding作成 / source値snapshotとtarget検証・資源確保"},
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "typed value equivalence / failure atomicity"}
+      ],
+      "requirements": ["RQ-07-009", "RQ-07-010"],
+      "cases": ["TC-BIND-01", "TC-PROP-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-CORE-BINDING-INIT-COPY-001", "command": ["cargo", "test", "-p", "freemvvm-core", "binding_initial_copy"]}
+      ]
     }
   ]
 }

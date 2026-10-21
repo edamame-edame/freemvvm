@@ -249,6 +249,14 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | <a id="ut-core-property-notify-007"></a>UT-CORE-PROPERTY-NOTIFY-007 | Propertyに複数Subscriptionを登録し、pending changeとprepared deliveryを作る。最後のProperty tokenをreleaseし、RuntimeがRunningのままouter host safe pointを通す。さらに通知callback中に同Propertyをreleaseするfixtureを使い、同じitemの後続subscriber開始も確認する | finalizerはowner bucketを取り除き、pending change/prepared itemを除去してからProperty stateを破棄する。active SubscriptionはUI threadでcancelされ、closure destroyは各一回。pendingまたは後続callbackは開始しない。Property破棄後も別Propertyを登録・参照でき、RuntimeはRunningを保つ | [RQ-05-006](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-008](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-005](../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 | <a id="ut-abi-013"></a>UT-ABI-013 | C ABIからProperty subscriptionを登録し、初期値・同値/変更setter後のcallback、Subscription tokenのretain/release、明示cancelと繰返しcancel、callback内self-cancelを試す。null required out/callback/destroy、invalid Property/Subscription、worker threadでのregister/cancelも試す | 登録成功時だけclosure所有権をCoreへ移し、初期通知は行わない。Property変更通知はcallback引数なしでUI threadに届く。handle releaseだけでは通知を解除せず、cancelは次のcallback開始を止め、in-flight callback復帰後にdestroyを一度実行する。有効なcancelの繰返しは成功し、handleは別releaseまで有効。失敗時はout=0・destroyなしでcaller所有を保ち、wrong thread/invalid handleの状態は変化しない | [RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-008](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-005](../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01)、[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### Binding初期値コピー候補の準備 — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-binding-init-copy-001"></a>UT-CORE-BINDING-INIT-COPY-001 | target ValueStorageへ異kind/同値/差分のsource値を候補準備し、成功候補を後から適用する。UTF-8 sourceを候補準備後に破棄する | 異kindではtargetを変更しない。同値は候補なしで既存representationを保持。差分候補の準備中はtargetを変更せず、明示適用でのみ更新。UTF-8候補はsourceから独立した所有bytesを保持 | [RQ-07-009](../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../11_requirements/RQ-07_binding.md#rq-07-010)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01) |
+
+このoracleはtyped candidateの準備・適用前不変性のみを検証する。target validator、Binding graph/handle、notification queueとの原子的commitは含まない。
+
 ## 承認履歴
 
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
@@ -320,6 +328,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-21 | UT-CORE-BINDING-GRAPH-002 oracle | Codex | 承認済みRQ/DDからTwoWay group merge後のself/cycle/duplicate/second-input制約とstale proposal拒否を追補 |
 | 2026-10-21 | UT-CORE-BINDING-GRAPH-002全文 | 利用者 | 「ok」により、TwoWay synchronization-group mergeのfocused oracleとUNIT-CORE-053の実装・動作確認を開始。Property値同期とBinding propagationは別単位 |
 | 2026-10-21 | UT-CORE-BINDING-GRAPH-002実行結果 | Codex | focused 5件、workspace 124件、開発ゲート成功。valid merge、self/cycle/duplicate/second-input rejection、stale proposal拒否を確認 |
+| 2026-10-21 | UT-CORE-BINDING-INIT-COPY-001 oracle | Codex | 承認済みRQ/DDからtyped initial-copy candidateとtarget非変更のoracleを追補。Runtime graph/queueとのcommitは含まない |
+| 2026-10-21 | UT-CORE-BINDING-INIT-COPY-001全文 | 利用者 | 「ok」により、typed candidate準備のfocused実装・動作確認を開始。target validatorとRuntime graph/queue integrationは別単位 |
+| 2026-10-21 | UT-CORE-BINDING-INIT-COPY-001実行結果 | Codex | focused 4件、workspace 128件、開発ゲート成功。kind rejection、equivalent no-op、遅延commit、UTF-8独立所有を確認 |
 
 ## 改訂履歴
 
@@ -368,3 +379,4 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 4.1 | 2026-10-21 | UNIT-CORE-052のfocused/workspace testと開発ゲート結果を記録 | Codex | oracleと当該実装revisionの検証状態。TwoWay mergeとProperty伝播は別単位 |
 | 4.2 | 2026-10-21 | UT-CORE-BINDING-GRAPH-002のTwoWay merge topology oracleを追補 | Codex | 利用者の「ok」によるfocused実装単位。値同期と伝播は含まない |
 | 4.3 | 2026-10-21 | UNIT-CORE-053のfocused/workspace testと開発ゲート結果を記録 | Codex | oracleと当該実装revisionの検証状態。Property値同期と伝播は別単位 |
+| 4.4 | 2026-10-21 | UT-CORE-BINDING-INIT-COPY-001のtyped copy candidate oracleとUNIT-CORE-054実行結果を追補 | Codex | 利用者の「ok」に基づく実装単位。target validationおよびRuntime graph/queueとのatomic commitは別単位 |

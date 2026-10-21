@@ -48,6 +48,12 @@ pub(crate) struct ValueKindMismatch {
     pub(crate) actual: ValueKind,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BindingCopyError {
+    KindMismatch(ValueKindMismatch),
+    Copy(OwnedUtf8Error),
+}
+
 /// A value slot whose kind is fixed by its initial value.
 pub(crate) struct ValueStorage {
     value: TypedValue,
@@ -105,6 +111,16 @@ impl TypedValue {
             _ => false,
         }
     }
+
+    fn try_owned_copy(&self) -> Result<Self, OwnedUtf8Error> {
+        match self {
+            Self::Bool(value) => Ok(Self::Bool(*value)),
+            Self::I64(value) => Ok(Self::I64(*value)),
+            Self::Utf8(value) => Ok(Self::Utf8(OwnedUtf8::copy_from_bytes(value.as_bytes())?)),
+            Self::F64(value) => Ok(Self::F64(*value)),
+            Self::Decimal(value) => Ok(Self::Decimal(*value)),
+        }
+    }
 }
 
 impl ValueStorage {
@@ -123,6 +139,31 @@ impl ValueStorage {
             return Err(ValueKindMismatch { expected, actual });
         }
         Ok(!self.value.equivalent(candidate))
+    }
+
+    /// Prepares an owned source value for initial Binding synchronization.
+    ///
+    /// This does not mutate the target. An equivalent source returns `None` so a later commit
+    /// can preserve the target's stored representation and avoid creating a change notification.
+    pub(crate) fn prepare_binding_initial_copy(
+        &self,
+        source: &TypedValue,
+    ) -> Result<Option<TypedValue>, BindingCopyError> {
+        let expected = self.value.kind();
+        let actual = source.kind();
+        if expected != actual {
+            return Err(BindingCopyError::KindMismatch(ValueKindMismatch {
+                expected,
+                actual,
+            }));
+        }
+        if self.value.equivalent(source) {
+            return Ok(None);
+        }
+        source
+            .try_owned_copy()
+            .map(Some)
+            .map_err(BindingCopyError::Copy)
     }
 
     /// Applies a candidate after the caller has completed all registered value validation.
@@ -497,5 +538,68 @@ mod tests {
             })
         );
         assert!(matches!(storage.read(), TypedValue::I64(value) if *value == 7));
+    }
+
+    #[test]
+    fn binding_initial_copy_prepares_changed_value_without_committing_it() {
+        let mut target = ValueStorage::new(TypedValue::I64(10));
+
+        let candidate = target
+            .prepare_binding_initial_copy(&TypedValue::I64(20))
+            .expect("same-kind source can be copied")
+            .expect("different source value needs a candidate");
+        assert!(matches!(target.read(), TypedValue::I64(10)));
+
+        assert_eq!(target.apply_validated(candidate), Ok(ValueCommit::Changed));
+        assert!(matches!(target.read(), TypedValue::I64(20)));
+    }
+
+    #[test]
+    fn binding_initial_copy_omits_equivalent_value_and_preserves_representation() {
+        let original = DecimalValue::new(false, 1, 10).expect("valid decimal");
+        let equivalent = DecimalValue::new(false, 2, 100).expect("valid decimal");
+        let target = ValueStorage::new(TypedValue::Decimal(original));
+
+        assert!(
+            target
+                .prepare_binding_initial_copy(&TypedValue::Decimal(equivalent))
+                .expect("same-kind equivalent source")
+                .is_none()
+        );
+        assert!(matches!(target.read(), TypedValue::Decimal(value) if *value == original));
+    }
+
+    #[test]
+    fn binding_initial_copy_rejects_kind_mismatch_without_mutation() {
+        let target = ValueStorage::new(TypedValue::I64(10));
+
+        assert!(matches!(
+            target.prepare_binding_initial_copy(&TypedValue::Bool(true)),
+            Err(super::BindingCopyError::KindMismatch(ValueKindMismatch {
+                expected: ValueKind::I64,
+                actual: ValueKind::Bool,
+            }))
+        ));
+        assert!(matches!(target.read(), TypedValue::I64(10)));
+    }
+
+    #[test]
+    fn binding_initial_copy_owns_utf8_bytes_independently() {
+        let source = TypedValue::Utf8(
+            OwnedUtf8::copy_from_bytes("初期\0値".as_bytes()).expect("valid UTF-8"),
+        );
+        let target = ValueStorage::new(TypedValue::Utf8(
+            OwnedUtf8::copy_from_bytes(b"old").expect("valid UTF-8"),
+        ));
+        let candidate = target
+            .prepare_binding_initial_copy(&source)
+            .expect("same-kind source can be copied")
+            .expect("different source value needs a candidate");
+        drop(source);
+
+        assert!(
+            matches!(candidate, TypedValue::Utf8(value) if value.as_bytes() == "初期\0値".as_bytes())
+        );
+        assert!(matches!(target.read(), TypedValue::Utf8(value) if value.as_bytes() == b"old"));
     }
 }
