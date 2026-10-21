@@ -1466,6 +1466,23 @@
       "tests": [
         {"id": "UT-CORE-RUNTIME-BINDING-INIT-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_one_way_binding_initial"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-057",
+      "state": "complete",
+      "scope": "core-oneway-propagation-edge-snapshot-order",
+      "sources": ["crates/core-runtime/src/binding.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-053", "UNIT-CORE-056"],
+      "design": [
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "通知slice内の伝播 / 配信中のgraph変更可視性"}
+      ],
+      "requirements": ["RQ-07-002", "RQ-07-005", "RQ-07-006", "RQ-07-007"],
+      "cases": ["TC-BIND-01", "TC-PROP-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-CORE-BINDING-PROPAGATION-ORDER-001", "command": ["cargo", "test", "-p", "freemvvm-core", "binding_propagation_order"]}
+      ]
     }
   ]
 }

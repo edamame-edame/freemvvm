@@ -19,6 +19,12 @@ struct OneWayEdge {
     target: ObjectIdentity,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct OneWayPropagationEdge {
+    pub(crate) source: ObjectIdentity,
+    pub(crate) target: ObjectIdentity,
+}
+
 /// A topology change that was validated against one graph generation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct PreparedOneWayEdge {
@@ -215,6 +221,72 @@ impl BindingGraph {
         self.resolve_group(first) == self.resolve_group(second)
     }
 
+    /// Snapshots reachable OneWay edges in stable upstream-to-downstream order.
+    ///
+    /// This only prepares topology for a later propagation stage; it does not read or write
+    /// Property values. Group aliases are resolved before reachability is evaluated.
+    pub(crate) fn prepare_one_way_propagation(
+        &self,
+        dirty_properties: &[ObjectIdentity],
+    ) -> Result<Vec<OneWayPropagationEdge>, BindingGraphError> {
+        let edges = self.normalized_edges(None)?;
+        let mut reachable = Vec::new();
+        reachable
+            .try_reserve(dirty_properties.len())
+            .map_err(|_| BindingGraphError::OutOfMemory)?;
+        for property in dirty_properties {
+            let group = self.resolve_group(*property);
+            if !reachable.contains(&group) {
+                reachable.push(group);
+            }
+        }
+
+        let mut cursor = 0;
+        while cursor < reachable.len() {
+            let source = reachable[cursor];
+            cursor += 1;
+            for edge in &edges {
+                if edge.source == source && !reachable.contains(&edge.target) {
+                    reachable
+                        .try_reserve(1)
+                        .map_err(|_| BindingGraphError::OutOfMemory)?;
+                    reachable.push(edge.target);
+                }
+            }
+        }
+
+        let mut pending = Vec::new();
+        pending
+            .try_reserve(edges.len())
+            .map_err(|_| BindingGraphError::OutOfMemory)?;
+        for edge in edges {
+            if reachable.contains(&edge.source) {
+                pending.push(edge);
+            }
+        }
+
+        let mut ordered = Vec::new();
+        ordered
+            .try_reserve(pending.len())
+            .map_err(|_| BindingGraphError::OutOfMemory)?;
+        while !pending.is_empty() {
+            let ready = pending.iter().position(|candidate| {
+                !pending
+                    .iter()
+                    .any(|incoming| incoming.target == candidate.source)
+            });
+            let Some(index) = ready else {
+                return Err(BindingGraphError::Cycle);
+            };
+            let edge = pending.remove(index);
+            ordered.push(OneWayPropagationEdge {
+                source: edge.source,
+                target: edge.target,
+            });
+        }
+        Ok(ordered)
+    }
+
     fn has_path(
         &self,
         start: ObjectIdentity,
@@ -373,6 +445,69 @@ mod tests {
         assert_eq!(graph.one_way_edges.len(), 1);
         assert_eq!(graph.one_way_edges[0].source, identity(1));
         assert_eq!(graph.one_way_edges[0].target, identity(2));
+    }
+
+    #[test]
+    fn binding_propagation_order_snapshots_reachable_edges_upstream_first() {
+        let mut graph = BindingGraph::default();
+        // Commit a downstream edge first to ensure evaluation order comes from topology, not
+        // edge insertion order.
+        connect(&mut graph, 2, 3);
+        connect(&mut graph, 1, 2);
+        connect(&mut graph, 1, 4);
+        connect(&mut graph, 4, 5);
+        connect(&mut graph, 7, 8);
+        let generation = graph.generation;
+        let edge_count = graph.one_way_edges.len();
+
+        let snapshot = graph
+            .prepare_one_way_propagation(&[identity(1)])
+            .expect("reachable propagation edges should be ordered");
+        let pairs: Vec<_> = snapshot
+            .iter()
+            .map(|edge| (edge.source, edge.target))
+            .collect();
+
+        assert_eq!(
+            pairs,
+            vec![
+                (identity(1), identity(2)),
+                (identity(2), identity(3)),
+                (identity(1), identity(4)),
+                (identity(4), identity(5)),
+            ]
+        );
+        assert_eq!(graph.generation, generation);
+        assert_eq!(graph.one_way_edges.len(), edge_count);
+    }
+
+    #[test]
+    fn binding_propagation_order_resolves_two_way_group_sources_and_empty_input() {
+        let mut graph = BindingGraph::default();
+        connect(&mut graph, 1, 3);
+        let merge = graph
+            .prepare_two_way_merge(identity(1), identity(2))
+            .expect("source group merge should preserve the DAG");
+        graph
+            .commit_two_way_merge(merge)
+            .expect("valid source group merge commits");
+
+        let from_group_member = graph
+            .prepare_one_way_propagation(&[identity(2)])
+            .expect("group member should reach the normalized edge");
+        assert_eq!(
+            from_group_member,
+            vec![super::OneWayPropagationEdge {
+                source: identity(1),
+                target: identity(3),
+            }]
+        );
+        assert!(
+            graph
+                .prepare_one_way_propagation(&[])
+                .expect("empty dirty set should produce no work")
+                .is_empty()
+        );
     }
 
     #[test]

@@ -1,8 +1,8 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 1.1
+- 文書版: 1.2
 - 状態: Runtime post/dispatch turn、Property create/kind、およびProperty getters追補は利用者承認済み（2026-10-19）。製品test実装・実行状態は別管理
-- 更新日: 2026-10-19
+- 更新日: 2026-10-21
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
 
@@ -265,6 +265,14 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 
 このoracleはCore内部OneWayの初期値・graph・notification commitのみを対象とする。application validator、Binding owner/handle、後続propagation、TwoWay/OneTimeは別単位。
 
+### OneWay伝播対象edgeと評価順 — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-binding-propagation-order-001"></a>UT-CORE-BINDING-PROPAGATION-ORDER-001 | OneWay DAGにchainとbranch、無関係なedgeを作り、dirty source集合から伝播snapshotを準備する。TwoWay merge済みgroupのmember identityからも準備する。空集合も試す | 到達可能edgeだけを一度ずつ返し、各上流edgeを下流edgeより先に並べる。branch同士は安定した順序を保つ。TwoWay group memberをsourceとして正規groupのedgeへ到達する。空入力は空snapshot。値・graph topologyを変更せず、snapshot生成失敗時もgraphを維持 | [RQ-07-002](../11_requirements/RQ-07_binding.md#rq-07-002)、[RQ-07-005](../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-007](../11_requirements/RQ-07_binding.md#rq-07-007)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01) |
+
+このoracleは入力dirty identityから到達するOneWay edge snapshotの対象範囲と決定的な上流順序のみを検証する。Property値伝播、subscriber通知順、TwoWay値同期、Binding lifecycleは含まない。
+
 ### Binding初期値・OneWay graph接続の準備 — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
@@ -353,6 +361,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-INIT-001 oracle | Codex | 承認済みRQ/DDからRuntimeのOneWay初期同期とvalue/graph/queue atomicity oracleを追補。public Binding contractは別範囲 |
 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-INIT-001全文 | 利用者 | 「ok」によりCore内部OneWay初期同期のfocused実装・動作確認を開始。application validatorとpublic lifecycleは別単位 |
 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-INIT-001実行結果 | Codex | focused 3件、workspace 134件、開発ゲート成功。changed/equivalent初期同期、target通知、kind/topology/Runtime/thread rejection時の不変性を確認 |
+| 2026-10-21 | UT-CORE-BINDING-PROPAGATION-ORDER-001 oracle | Codex | 承認済みRQ/DDからdirty Property起点の到達可能OneWay edgeと上流順序を追補。値commit・Runtime統合は含まない |
+| 2026-10-21 | UT-CORE-BINDING-PROPAGATION-ORDER-001全文 | 利用者 | 「ok」により、OneWay伝播順序snapshotのfocused実装・動作確認を開始。Property値伝播は別単位 |
+| 2026-10-21 | UT-CORE-BINDING-PROPAGATION-ORDER-001実行結果 | Codex | focused 2件、workspace 136件、開発ゲート成功。branch/chain順序、到達範囲、TwoWay group解決、空入力を確認 |
 
 ## 改訂履歴
 
@@ -406,3 +417,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 4.6 | 2026-10-21 | UNIT-CORE-055のfocused/workspace testと開発ゲート結果を記録 | Codex | prepare段階の実装・検証状態。Runtime commit、Binding ownership、通知queueは別単位 |
 | 4.7 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-INIT-001のRuntime value/graph/queue atomicity oracleを追補 | Codex | 利用者の「ok」によるfocused Runtime実装範囲。public Binding lifecycleは含まない |
 | 4.8 | 2026-10-21 | UNIT-CORE-056のfocused/workspace testと開発ゲート結果を記録 | Codex | 内部OneWay initial syncの実装・検証状態。後続propagationとpublic Binding lifecycleは別単位 |
+| 4.9 | 2026-10-21 | UT-CORE-BINDING-PROPAGATION-ORDER-001の到達可能edge・上流順序oracleを追補 | Codex | 利用者の継続指示によるfocused実装単位。値伝播・Runtime integrationを含まない |
+| 5.0 | 2026-10-21 | UNIT-CORE-057のfocused/workspace testと開発ゲート結果を記録 | Codex | graph propagation snapshotの実装・検証状態。Property値伝播・Runtime integrationは別単位 |
