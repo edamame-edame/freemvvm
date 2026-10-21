@@ -1501,6 +1501,24 @@
       "tests": [
         {"id": "UT-CORE-RUNTIME-BINDING-PROP-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_one_way_propagation_prepares_chain_candidates"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-059",
+      "state": "complete",
+      "scope": "runtime-oneway-propagation-value-and-notification-commit",
+      "sources": ["crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/property.rs", "crates/core-runtime/src/value.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-056", "UNIT-CORE-058"],
+      "design": [
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "通知slice内の伝播 / Binding propagationが作る次配信回"},
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "Property commit / next generation"}
+      ],
+      "requirements": ["RQ-07-002", "RQ-07-005", "RQ-07-006", "RQ-07-009", "RQ-07-010"],
+      "cases": ["TC-BIND-01", "TC-PROP-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-CORE-RUNTIME-BINDING-COMMIT-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_one_way_propagation_commits_candidates"]}
+      ]
     }
   ]
 }
