@@ -1430,6 +1430,24 @@
       "tests": [
         {"id": "UT-CORE-BINDING-INIT-COPY-001", "command": ["cargo", "test", "-p", "freemvvm-core", "binding_initial_copy"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-055",
+      "state": "complete",
+      "scope": "core-binding-initial-copy-and-oneway-graph-prepare",
+      "sources": ["crates/core-runtime/src/binding.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-053", "UNIT-CORE-054"],
+      "design": [
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "Binding作成 / graph検査と初期値準備"},
+        {"path": ".docs/13_detail_design/runtime-objects/objects-values.md", "version": "1.2", "section": "typed value equivalence / failure atomicity"}
+      ],
+      "requirements": ["RQ-07-002", "RQ-07-007", "RQ-07-009", "RQ-07-010", "RQ-07-015"],
+      "cases": ["TC-BIND-01", "TC-BIND-INIT-REJECT-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-CORE-BINDING-INIT-PREPARE-001", "command": ["cargo", "test", "-p", "freemvvm-core", "binding_initial_prepare"]}
+      ]
     }
   ]
 }

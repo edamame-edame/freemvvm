@@ -259,6 +259,14 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 
 ## 承認履歴
 
+### Binding初期値・OneWay graph接続の準備 — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-binding-init-prepare-001"></a>UT-CORE-BINDING-INIT-PREPARE-001 | 既存graphへ合法OneWay候補を準備し、source値からtarget用候補を作る。別fixtureでself/cycle/duplicate/second-inputとkind mismatchを発生させる | 成功準備はowned proposalを返すがgraph edge/generationとtarget値をcommit前に変更しない。topologyまたはkind rejectionは既存edge/generationとtarget値を維持し、候補を公開しない | [RQ-07-002](../11_requirements/RQ-07_binding.md#rq-07-002)、[RQ-07-007](../11_requirements/RQ-07_binding.md#rq-07-007)、[RQ-07-009](../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../11_requirements/RQ-07_binding.md#rq-07-010)、[RQ-07-015](../11_requirements/RQ-07_binding.md#rq-07-015)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01)、[TC-BIND-INIT-REJECT-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-init-reject-01) |
+
+このoracleはOneWay proposalの準備・論理状態不変性のみを検証する。application validator、candidate commit、通知queue、Runtime owner/handleは含まない。
+
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
 | --- | --- | --- | --- |
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
@@ -331,6 +339,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-21 | UT-CORE-BINDING-INIT-COPY-001 oracle | Codex | 承認済みRQ/DDからtyped initial-copy candidateとtarget非変更のoracleを追補。Runtime graph/queueとのcommitは含まない |
 | 2026-10-21 | UT-CORE-BINDING-INIT-COPY-001全文 | 利用者 | 「ok」により、typed candidate準備のfocused実装・動作確認を開始。target validatorとRuntime graph/queue integrationは別単位 |
 | 2026-10-21 | UT-CORE-BINDING-INIT-COPY-001実行結果 | Codex | focused 4件、workspace 128件、開発ゲート成功。kind rejection、equivalent no-op、遅延commit、UTF-8独立所有を確認 |
+| 2026-10-21 | UT-CORE-BINDING-INIT-PREPARE-001 oracle | Codex | 承認済みRQ/DDからtopology・typed initial candidateの組合せと失敗時不変のoracleを追補。Runtime integrationは別単位 |
+| 2026-10-21 | UT-CORE-BINDING-INIT-PREPARE-001全文 | 利用者 | 「ok」によりOneWay prepare proposalのfocused実装・動作確認を開始。application validationとRuntime commitは別単位 |
+| 2026-10-21 | UT-CORE-BINDING-INIT-PREPARE-001実行結果 | Codex | focused 3件、workspace 131件、開発ゲート成功。合法proposal、topology/kind rejection時のgraph・target不変、UTF-8候補所有を確認 |
 
 ## 改訂履歴
 
@@ -380,3 +391,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 4.2 | 2026-10-21 | UT-CORE-BINDING-GRAPH-002のTwoWay merge topology oracleを追補 | Codex | 利用者の「ok」によるfocused実装単位。値同期と伝播は含まない |
 | 4.3 | 2026-10-21 | UNIT-CORE-053のfocused/workspace testと開発ゲート結果を記録 | Codex | oracleと当該実装revisionの検証状態。Property値同期と伝播は別単位 |
 | 4.4 | 2026-10-21 | UT-CORE-BINDING-INIT-COPY-001のtyped copy candidate oracleとUNIT-CORE-054実行結果を追補 | Codex | 利用者の「ok」に基づく実装単位。target validationおよびRuntime graph/queueとのatomic commitは別単位 |
+| 4.5 | 2026-10-21 | UT-CORE-BINDING-INIT-PREPARE-001のgraph/value proposal準備oracleを追補 | Codex | 利用者の「ok」に基づくfocused実装単位。candidate commitとRuntime ownershipは別単位 |
+| 4.6 | 2026-10-21 | UNIT-CORE-055のfocused/workspace testと開発ゲート結果を記録 | Codex | prepare段階の実装・検証状態。Runtime commit、Binding ownership、通知queueは別単位 |

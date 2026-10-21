@@ -1,4 +1,5 @@
 use crate::handle_registry::registry::ObjectIdentity;
+use crate::value::{BindingCopyError, TypedValue, ValueStorage};
 use std::collections::{HashMap, HashSet};
 
 /// Core graph topology for connections between singleton Property synchronization groups.
@@ -26,6 +27,19 @@ pub(crate) struct PreparedOneWayEdge {
     generation: u64,
 }
 
+/// A validated OneWay edge and the uncommitted initial value for its target.
+pub(crate) struct PreparedOneWayBinding {
+    edge: PreparedOneWayEdge,
+    initial_value: Option<TypedValue>,
+}
+
+impl PreparedOneWayBinding {
+    /// Splits the proposal for a caller that coordinates the eventual cross-state commit.
+    pub(crate) fn into_parts(self) -> (PreparedOneWayEdge, Option<TypedValue>) {
+        (self.edge, self.initial_value)
+    }
+}
+
 /// A proposed union of two distinct synchronization groups.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct PreparedTwoWayMerge {
@@ -45,7 +59,37 @@ pub(crate) enum BindingGraphError {
     OutOfMemory,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BindingInitialPrepareError {
+    Graph(BindingGraphError),
+    InitialCopy(BindingCopyError),
+}
+
 impl BindingGraph {
+    /// Prepares a OneWay topology edge and the target's initial value as one proposal.
+    ///
+    /// Neither the accepted graph topology nor the target value is committed here. The edge
+    /// reservation may increase vector capacity, but a rejected proposal leaves observable graph
+    /// state and the target value unchanged.
+    pub(crate) fn prepare_one_way_with_initial_copy(
+        &mut self,
+        source: ObjectIdentity,
+        target: ObjectIdentity,
+        source_value: &TypedValue,
+        target_value: &ValueStorage,
+    ) -> Result<PreparedOneWayBinding, BindingInitialPrepareError> {
+        let edge = self
+            .prepare_one_way(source, target)
+            .map_err(BindingInitialPrepareError::Graph)?;
+        let initial_value = target_value
+            .prepare_binding_initial_copy(source_value)
+            .map_err(BindingInitialPrepareError::InitialCopy)?;
+        Ok(PreparedOneWayBinding {
+            edge,
+            initial_value,
+        })
+    }
+
     /// Validates a OneWay edge and reserves storage without changing the accepted topology.
     pub(crate) fn prepare_one_way(
         &mut self,
@@ -256,6 +300,7 @@ impl BindingGraph {
 mod tests {
     use super::{BindingGraph, BindingGraphError};
     use crate::handle_registry::registry::ObjectIdentity;
+    use crate::value::{DecimalValue, OwnedUtf8, TypedValue, ValueStorage};
     use std::num::NonZeroU64;
 
     fn identity(slot: u64) -> ObjectIdentity {
@@ -395,5 +440,121 @@ mod tests {
         );
         assert!(graph.same_group(identity(1), identity(2)));
         assert!(!graph.same_group(identity(3), identity(4)));
+    }
+
+    #[test]
+    fn binding_initial_prepare_returns_graph_and_value_candidates_without_committing() {
+        let mut graph = BindingGraph::default();
+        let original = DecimalValue::new(false, 1, 10).expect("valid decimal");
+        let incoming = DecimalValue::new(false, 0, 2).expect("valid decimal");
+        let target = ValueStorage::new(TypedValue::Decimal(original));
+        let generation = graph.generation;
+
+        let proposal = graph
+            .prepare_one_way_with_initial_copy(
+                identity(1),
+                identity(2),
+                &TypedValue::Decimal(incoming),
+                &target,
+            )
+            .expect("valid topology and same-kind copy prepare");
+
+        assert_eq!(graph.generation, generation);
+        assert!(graph.one_way_edges.is_empty());
+        assert!(matches!(target.read(), TypedValue::Decimal(value) if *value == original));
+        let (_, candidate) = proposal.into_parts();
+        assert!(matches!(candidate, Some(TypedValue::Decimal(value)) if value == incoming));
+    }
+
+    #[test]
+    fn binding_initial_prepare_rejections_preserve_topology_and_target() {
+        let mut graph = BindingGraph::default();
+        connect(&mut graph, 1, 2);
+        connect(&mut graph, 2, 3);
+        let edge_count = graph.one_way_edges.len();
+        let generation = graph.generation;
+        let target = ValueStorage::new(TypedValue::I64(99));
+
+        assert!(matches!(
+            graph.prepare_one_way_with_initial_copy(
+                identity(3),
+                identity(1),
+                &TypedValue::I64(0),
+                &target,
+            ),
+            Err(super::BindingInitialPrepareError::Graph(
+                BindingGraphError::Cycle
+            ))
+        ));
+        assert!(matches!(
+            graph.prepare_one_way_with_initial_copy(
+                identity(4),
+                identity(3),
+                &TypedValue::I64(0),
+                &target,
+            ),
+            Err(super::BindingInitialPrepareError::Graph(
+                BindingGraphError::TargetAlreadyHasInput
+            ))
+        ));
+        assert!(matches!(
+            graph.prepare_one_way_with_initial_copy(
+                identity(1),
+                identity(2),
+                &TypedValue::I64(0),
+                &target,
+            ),
+            Err(super::BindingInitialPrepareError::Graph(
+                BindingGraphError::DuplicateEdge
+            ))
+        ));
+        assert!(matches!(
+            graph.prepare_one_way_with_initial_copy(
+                identity(4),
+                identity(4),
+                &TypedValue::I64(0),
+                &target,
+            ),
+            Err(super::BindingInitialPrepareError::Graph(
+                BindingGraphError::SelfConnection
+            ))
+        ));
+        assert!(matches!(
+            graph.prepare_one_way_with_initial_copy(
+                identity(4),
+                identity(5),
+                &TypedValue::Bool(true),
+                &target,
+            ),
+            Err(super::BindingInitialPrepareError::InitialCopy(
+                crate::value::BindingCopyError::KindMismatch(_)
+            ))
+        ));
+
+        assert_eq!(graph.one_way_edges.len(), edge_count);
+        assert_eq!(graph.generation, generation);
+        assert!(matches!(target.read(), TypedValue::I64(99)));
+    }
+
+    #[test]
+    fn binding_initial_prepare_owns_source_utf8_in_candidate() {
+        let mut graph = BindingGraph::default();
+        let source = TypedValue::Utf8(
+            OwnedUtf8::copy_from_bytes("初期\0source".as_bytes()).expect("valid UTF-8"),
+        );
+        let target = ValueStorage::new(TypedValue::Utf8(
+            OwnedUtf8::copy_from_bytes(b"target").expect("valid UTF-8"),
+        ));
+
+        let proposal = graph
+            .prepare_one_way_with_initial_copy(identity(8), identity(9), &source, &target)
+            .expect("valid topology and same-kind copy prepare");
+        drop(source);
+
+        let (_, candidate) = proposal.into_parts();
+        assert!(
+            matches!(candidate, Some(TypedValue::Utf8(value)) if value.as_bytes() == "初期\0source".as_bytes())
+        );
+        assert!(matches!(target.read(), TypedValue::Utf8(value) if value.as_bytes() == b"target"));
     }
 }
