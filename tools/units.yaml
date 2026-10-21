@@ -1596,6 +1596,25 @@
         {"id": "UT-CORE-RUNTIME-BINDING-CANCEL-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_binding_cancel"]},
         {"id": "UT-CORE-RUNTIME-TWOWAY-CANCEL-SHUTDOWN-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_two_way_cancel_splits_group_and_shutdown_clears_active_owners"]}
       ]
+    },
+    {
+      "id": "UNIT-ABI-014",
+      "state": "complete",
+      "scope": "c-abi-binding-create-cancel-release",
+      "sources": ["crates/core-runtime/src/lib.rs", "crates/core-runtime/src/runtime.rs", "crates/c-abi/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-ABI-013", "UNIT-CORE-063"],
+      "design": [
+        {"path": ".docs/13_detail_design/runtime-objects/abi.md", "version": "1.2", "section": "BindingのC ABI / 作成と解除"},
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "Binding registration lifecycle"},
+        {"path": ".docs/13_detail_design/runtime-objects/runtime.md", "version": "1.2", "section": "Runtime ownership / shutdown cleanup"}
+      ],
+      "requirements": ["RQ-05-002", "RQ-07-002", "RQ-07-003", "RQ-07-011"],
+      "cases": ["TC-BIND-01", "TC-ABI-REP-01", "TC-LIFE-01", "TC-THREAD-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-ABI-BINDING-LIFECYCLE-001", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "binding_lifecycle"]}
+      ]
     }
   ]
 }

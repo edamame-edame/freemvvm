@@ -1252,13 +1252,23 @@ impl RuntimeCore {
 
     /// Applies the initial OneWay source value and publishes an active Runtime connection.
     ///
-    /// A public Binding owner handle is supplied by a later ABI integration unit.
+    /// Returns only the value outcome; the ABI path uses the identity-returning companion below.
     pub(crate) fn create_one_way_binding_initial(
         &self,
         registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
         source_token: HandleToken,
         target_token: HandleToken,
     ) -> Result<ValueCommit, RuntimeBindingError> {
+        self.create_one_way_binding_initial_with_id(registry, source_token, target_token)
+            .map(|(commit, _)| commit)
+    }
+
+    pub(crate) fn create_one_way_binding_initial_with_id(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        source_token: HandleToken,
+        target_token: HandleToken,
+    ) -> Result<(ValueCommit, BindingConnectionId), RuntimeBindingError> {
         let source_pin = registry
             .validate(source_token, &PropertyHandleKind::Property, &self.identity)
             .map_err(RuntimeBindingError::Registry)?;
@@ -1319,7 +1329,7 @@ impl RuntimeCore {
                     );
                 })
                 .map_err(RuntimeBindingError::Graph)?;
-            return Ok(ValueCommit::Unchanged);
+            return Ok((ValueCommit::Unchanged, connection_id));
         };
 
         let mut changes = self
@@ -1365,18 +1375,28 @@ impl RuntimeCore {
                 );
             })
             .map_err(RuntimeBindingError::Graph)?;
-        Ok(ValueCommit::Changed)
+        Ok((ValueCommit::Changed, connection_id))
     }
 
     /// Applies the initial TwoWay source value and publishes an active Runtime connection.
     ///
-    /// A public Binding owner handle is supplied by a later ABI integration unit.
+    /// Returns only the value outcome; the ABI path uses the identity-returning companion below.
     pub(crate) fn create_two_way_binding_initial(
         &self,
         registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
         source_token: HandleToken,
         target_token: HandleToken,
     ) -> Result<ValueCommit, RuntimeBindingError> {
+        self.create_two_way_binding_initial_with_id(registry, source_token, target_token)
+            .map(|(commit, _)| commit)
+    }
+
+    pub(crate) fn create_two_way_binding_initial_with_id(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        source_token: HandleToken,
+        target_token: HandleToken,
+    ) -> Result<(ValueCommit, BindingConnectionId), RuntimeBindingError> {
         let source_pin = registry
             .validate(source_token, &PropertyHandleKind::Property, &self.identity)
             .map_err(RuntimeBindingError::Registry)?;
@@ -1437,7 +1457,7 @@ impl RuntimeCore {
                     );
                 })
                 .map_err(RuntimeBindingError::Graph)?;
-            return Ok(ValueCommit::Unchanged);
+            return Ok((ValueCommit::Unchanged, connection_id));
         }
 
         let mut changes = self
@@ -1483,7 +1503,7 @@ impl RuntimeCore {
                 );
             })
             .map_err(RuntimeBindingError::Graph)?;
-        Ok(ValueCommit::Changed)
+        Ok((ValueCommit::Changed, connection_id))
     }
 
     /// Cancels one active Runtime connection, preserving its already committed Property values.

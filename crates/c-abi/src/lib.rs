@@ -3,8 +3,9 @@
 //! The public API is under construction and is not distributable yet.
 
 use freemvvm_core::abi_support::{
-    DestroyCallback, PostCallback, PropertyApiError, RuntimeCreateError, RuntimeQueryError,
-    RuntimeRetainError, ShutdownApiError, ShutdownApiState, WakeCallback,
+    BindingApiError, DestroyCallback, PostCallback, PropertyApiError, RuntimeCreateError,
+    RuntimeQueryError, RuntimeRetainError, ShutdownApiError, ShutdownApiState, WakeCallback,
+    binding_cancel as core_binding_cancel, binding_create as core_binding_create,
     handle_release as core_handle_release, property_create_bool as core_property_create_bool,
     property_create_decimal as core_property_create_decimal,
     property_create_f64 as core_property_create_f64,
@@ -29,6 +30,7 @@ const UI_OK: u32 = 0;
 const UI_INVALID_ARGUMENT: u32 = 1;
 const UI_INVALID_HANDLE: u32 = 2;
 const UI_WRONG_TYPE: u32 = 3;
+const UI_WRONG_RUNTIME: u32 = 4;
 const UI_OUT_OF_MEMORY: u32 = 8;
 const UI_INTERNAL_ERROR: u32 = 9;
 const UI_WRONG_THREAD: u32 = 5;
@@ -169,6 +171,19 @@ fn map_property_error(error: PropertyApiError) -> u32 {
         PropertyApiError::OutOfMemory => UI_OUT_OF_MEMORY,
         PropertyApiError::BufferTooSmall { .. } => UI_BUFFER_TOO_SMALL,
         PropertyApiError::Internal => UI_INTERNAL_ERROR,
+    }
+}
+
+fn map_binding_error(error: BindingApiError) -> u32 {
+    match error {
+        BindingApiError::InvalidHandle => UI_INVALID_HANDLE,
+        BindingApiError::InvalidArgument => UI_INVALID_ARGUMENT,
+        BindingApiError::WrongType => UI_WRONG_TYPE,
+        BindingApiError::WrongRuntime => UI_WRONG_RUNTIME,
+        BindingApiError::WrongThread => UI_WRONG_THREAD,
+        BindingApiError::Closed => UI_CLOSED,
+        BindingApiError::OutOfMemory => UI_OUT_OF_MEMORY,
+        BindingApiError::Internal => UI_INTERNAL_ERROR,
     }
 }
 
@@ -719,6 +734,64 @@ pub unsafe extern "C" fn ui_abi_1_subscription_cancel(
     }
 }
 
+/// Create a one-time, one-way, or two-way Binding between same-kind Properties.
+///
+/// Mode values are 1 (one-time), 2 (one-way), and 3 (two-way). One-time success returns a zero
+/// Binding handle; persistent modes return an owned handle. `out_error` is reserved for the
+/// designed validation-error result and is zero for this validator-free implementation slice.
+///
+/// # Safety
+/// `out_binding` must point to writable storage for one `u64`; a non-null `out_error` must be
+/// writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_binding_create(
+    source_property: u64,
+    target_property: u64,
+    mode: u32,
+    out_binding: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if !out_binding.is_null() {
+        // SAFETY: the caller guarantees a non-null binding output is writable.
+        unsafe { out_binding.write(0) };
+    }
+    if out_binding.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_binding_create(source_property, target_property, mode)
+    })) {
+        Ok(Ok(binding)) => {
+            // SAFETY: required output is non-null and writable per the caller contract.
+            unsafe { out_binding.write(binding) };
+            UI_OK
+        }
+        Ok(Err(error)) => map_binding_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Explicitly cancel a Binding without releasing its owned handle.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_binding_cancel(binding: u64, out_error: *mut u64) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    match catch_unwind(AssertUnwindSafe(|| core_binding_cancel(binding))) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_binding_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
 /// Register the Runtime's one-time UI-loop wake bridge.
 ///
 /// # Safety
@@ -1126,8 +1199,9 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
 mod tests {
     use super::{
         RuntimeRetainError, UI_BUFFER_TOO_SMALL, UI_INTERNAL_ERROR, UI_INVALID_ARGUMENT,
-        UI_INVALID_HANDLE, UI_OK, UI_OUT_OF_MEMORY, UI_PENDING, UI_UNSUPPORTED, UI_WRONG_THREAD,
-        UI_WRONG_TYPE, catch_runtime_creation, catch_runtime_query, catch_runtime_retain,
+        UI_INVALID_HANDLE, UI_OK, UI_OUT_OF_MEMORY, UI_PENDING, UI_UNSUPPORTED, UI_WRONG_RUNTIME,
+        UI_WRONG_THREAD, UI_WRONG_TYPE, catch_runtime_creation, catch_runtime_query,
+        catch_runtime_retain, ui_abi_1_binding_cancel, ui_abi_1_binding_create,
         ui_abi_1_get_version, ui_abi_1_handle_release, ui_abi_1_handle_retain,
         ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32, ui_abi_1_numeric_narrow_f64,
         ui_abi_1_property_create_bool, ui_abi_1_property_create_decimal,
@@ -2996,6 +3070,259 @@ mod tests {
         assert_eq!(ui_abi_1_handle_release(property), UI_OK);
         assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
     }
+    // This integration-style test passes only live handles and local writable outputs; worker
+    // calls use null optional outputs and are deliberately rejected before accessing Runtime state.
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[test]
+    fn binding_lifecycle_supports_one_time_release_cancel_and_validation() {
+        let mut runtime = 0;
+        // SAFETY: runtime output is writable.
+        assert_eq!(
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let bridge = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        // SAFETY: probe stays live through shutdown, and callbacks are thread-safe test functions.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&bridge as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let create_i64 = |initial, out: &mut u64| {
+            // SAFETY: output is writable and Runtime is used from its UI thread.
+            unsafe { ui_abi_1_property_create_i64(runtime, initial, out, std::ptr::null_mut()) }
+        };
+        let (mut once_source, mut once_target) = (0, 0);
+        assert_eq!(create_i64(10, &mut once_source), UI_OK);
+        assert_eq!(create_i64(0, &mut once_target), UI_OK);
+        let (mut binding, mut error) = (u64::MAX, u64::MAX);
+        // SAFETY: both Property handles are live, same-Runtime I64 values, and outputs are writable.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_create(once_source, once_target, 1, &mut binding, &mut error)
+            },
+            UI_OK
+        );
+        assert_eq!((binding, error), (0, 0));
+        let mut value = 0;
+        // SAFETY: target value output is writable.
+        assert_eq!(
+            unsafe { ui_abi_1_property_get_i64(once_target, &mut value) },
+            UI_OK
+        );
+        assert_eq!(value, 10);
+        // SAFETY: setter is called on the Runtime UI thread.
+        assert_eq!(
+            unsafe { ui_abi_1_property_set_i64(once_source, 11, &mut error) },
+            UI_OK
+        );
+        // SAFETY: target value output is writable.
+        assert_eq!(
+            unsafe { ui_abi_1_property_get_i64(once_target, &mut value) },
+            UI_OK
+        );
+        assert_eq!(value, 10, "OneTime does not retain a graph edge");
+
+        let (mut one_way_source, mut one_way_target) = (0, 0);
+        assert_eq!(create_i64(20, &mut one_way_source), UI_OK);
+        assert_eq!(create_i64(0, &mut one_way_target), UI_OK);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_create(one_way_source, one_way_target, 2, &mut binding, &mut error)
+            },
+            UI_OK
+        );
+        assert_ne!(binding, 0);
+        assert_eq!(error, 0);
+        assert_eq!(ui_abi_1_handle_release(binding), UI_OK);
+        assert_eq!(
+            unsafe { ui_abi_1_property_set_i64(one_way_source, 21, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_property_get_i64(one_way_target, &mut value) },
+            UI_OK
+        );
+        assert_eq!(
+            value, 21,
+            "releasing the owner token leaves Runtime Binding active"
+        );
+
+        let (mut two_way_source, mut two_way_target) = (0, 0);
+        assert_eq!(create_i64(30, &mut two_way_source), UI_OK);
+        assert_eq!(create_i64(0, &mut two_way_target), UI_OK);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_create(two_way_source, two_way_target, 3, &mut binding, &mut error)
+            },
+            UI_OK
+        );
+        assert_ne!(binding, 0);
+        let mut retained_binding = 0;
+        assert_eq!(
+            unsafe { ui_abi_1_handle_retain(binding, &mut retained_binding) },
+            UI_OK
+        );
+        assert_ne!(retained_binding, binding);
+        assert_eq!(ui_abi_1_handle_release(binding), UI_OK);
+        let worker_binding = retained_binding;
+        let worker_status = std::thread::spawn(move || unsafe {
+            ui_abi_1_binding_cancel(worker_binding, std::ptr::null_mut())
+        })
+        .join()
+        .expect("worker cancel attempt completes");
+        assert_eq!(worker_status, UI_WRONG_THREAD);
+        assert_eq!(
+            unsafe { ui_abi_1_binding_cancel(retained_binding, &mut error) },
+            UI_OK
+        );
+        assert_eq!(error, 0);
+        assert_eq!(
+            unsafe { ui_abi_1_binding_cancel(retained_binding, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_property_set_i64(two_way_source, 31, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_property_get_i64(two_way_target, &mut value) },
+            UI_OK
+        );
+        assert_eq!(
+            value, 30,
+            "cancel preserves the last value and blocks future propagation"
+        );
+        let canceled_binding = retained_binding;
+        assert_eq!(ui_abi_1_handle_release(canceled_binding), UI_OK);
+
+        let mut bool_property = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_create_bool(runtime, 0, &mut bool_property, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        binding = u64::MAX;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_create(two_way_source, bool_property, 2, &mut binding, &mut error)
+            },
+            UI_WRONG_TYPE
+        );
+        assert_eq!((binding, error), (0, 0));
+
+        let mut foreign_runtime = 0;
+        assert_eq!(
+            unsafe { ui_abi_1_runtime_create(&mut foreign_runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let foreign_bridge = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        assert_eq!(
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    foreign_runtime,
+                    Some(record_wake),
+                    (&foreign_bridge as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut foreign_property = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_create_i64(
+                    foreign_runtime,
+                    0,
+                    &mut foreign_property,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_create(
+                    two_way_source,
+                    foreign_property,
+                    2,
+                    &mut binding,
+                    &mut error,
+                )
+            },
+            UI_WRONG_RUNTIME
+        );
+        assert_eq!((binding, error), (0, 0));
+        complete_runtime_shutdown_at_host_boundary(foreign_runtime);
+        assert_eq!(foreign_bridge.destroyed.load(Ordering::SeqCst), 1);
+        assert_eq!(ui_abi_1_handle_release(foreign_property), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(foreign_runtime), UI_OK);
+
+        binding = u64::MAX;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_create(
+                    two_way_source,
+                    two_way_target,
+                    99,
+                    &mut binding,
+                    &mut error,
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!((binding, error), (0, 0));
+        error = u64::MAX;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_create(
+                    two_way_source,
+                    two_way_source,
+                    2,
+                    std::ptr::null_mut(),
+                    &mut error,
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(error, 0);
+        assert_eq!(
+            unsafe { ui_abi_1_binding_cancel(0, std::ptr::null_mut()) },
+            UI_INVALID_HANDLE
+        );
+
+        complete_runtime_shutdown_at_host_boundary(runtime);
+        assert_eq!(bridge.destroyed.load(Ordering::SeqCst), 1);
+        for property in [
+            once_source,
+            once_target,
+            one_way_source,
+            one_way_target,
+            two_way_source,
+            two_way_target,
+            bool_property,
+        ] {
+            assert_eq!(ui_abi_1_handle_release(property), UI_OK);
+        }
+        assert_eq!(ui_abi_1_handle_release(canceled_binding), UI_INVALID_HANDLE);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
     #[test]
     fn get_version_rejects_each_missing_output_and_zeros_remaining_outputs() {
         for null_index in 0..3 {

@@ -26,9 +26,9 @@ pub mod abi_support {
     use crate::object_store::UiObjectStoreError;
     use crate::property::{PropertyHandleKind, Subscription};
     use crate::runtime::{
-        RuntimeCore, RuntimeCoreError, RuntimeIdentity, RuntimeObjectRegistrationError,
-        RuntimePropertyError, ShutdownCompletionState, ShutdownRequest, ShutdownRequestMode,
-        ShutdownRequestOutcome,
+        RuntimeBindingError, RuntimeCore, RuntimeCoreError, RuntimeIdentity,
+        RuntimeObjectRegistrationError, RuntimePropertyError, ShutdownCompletionState,
+        ShutdownRequest, ShutdownRequestMode, ShutdownRequestOutcome,
     };
     use crate::runtime_handles::{RuntimeHandleError, process_runtime_handles};
     use crate::value::{
@@ -90,6 +90,22 @@ pub mod abi_support {
         BufferTooSmall { required: usize },
         Internal,
     }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum BindingApiError {
+        InvalidHandle,
+        InvalidArgument,
+        WrongType,
+        WrongRuntime,
+        WrongThread,
+        Closed,
+        OutOfMemory,
+        Internal,
+    }
+
+    pub const BIND_ONCE: u32 = 1;
+    pub const BIND_ONE_WAY: u32 = 2;
+    pub const BIND_TWO_WAY: u32 = 3;
 
     pub type WakeCallback = unsafe extern "C" fn(*mut c_void, u32);
     pub type DestroyCallback = unsafe extern "C" fn(*mut c_void);
@@ -207,10 +223,17 @@ pub mod abi_support {
         subscription: Arc<Subscription>,
     }
 
+    struct BindingHandleEntry {
+        runtime: Arc<RuntimeCore>,
+        connection: crate::binding::BindingConnectionId,
+    }
+
     static PROPERTY_HANDLES: OnceLock<PropertyHandles> = OnceLock::new();
     static SUBSCRIPTION_HANDLES: OnceLock<
         Mutex<HashMap<HandleToken, Arc<SubscriptionHandleEntry>>>,
     > = OnceLock::new();
+    static BINDING_HANDLES: OnceLock<Mutex<HashMap<HandleToken, BindingHandleEntry>>> =
+        OnceLock::new();
 
     fn property_handles() -> &'static PropertyHandles {
         PROPERTY_HANDLES.get_or_init(|| PropertyHandles {
@@ -222,6 +245,58 @@ pub mod abi_support {
     fn subscription_handles() -> &'static Mutex<HashMap<HandleToken, Arc<SubscriptionHandleEntry>>>
     {
         SUBSCRIPTION_HANDLES.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    fn binding_handles() -> &'static Mutex<HashMap<HandleToken, BindingHandleEntry>> {
+        BINDING_HANDLES.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    fn map_binding_runtime_error(error: RuntimeBindingError) -> BindingApiError {
+        match error {
+            RuntimeBindingError::Property(RuntimePropertyError::WrongThread) => {
+                BindingApiError::WrongThread
+            }
+            RuntimeBindingError::Property(RuntimePropertyError::Closed) => BindingApiError::Closed,
+            RuntimeBindingError::Property(_) => BindingApiError::Internal,
+            RuntimeBindingError::Registry(RegistryError::InvalidToken) => {
+                BindingApiError::InvalidHandle
+            }
+            RuntimeBindingError::Registry(RegistryError::WrongRuntime) => {
+                BindingApiError::WrongRuntime
+            }
+            RuntimeBindingError::Registry(RegistryError::WrongKind) => BindingApiError::WrongType,
+            RuntimeBindingError::Registry(RegistryError::OutOfMemory) => {
+                BindingApiError::OutOfMemory
+            }
+            RuntimeBindingError::Registry(_) => BindingApiError::Internal,
+            RuntimeBindingError::Graph(crate::binding::BindingGraphError::OutOfMemory) => {
+                BindingApiError::OutOfMemory
+            }
+            RuntimeBindingError::Graph(
+                crate::binding::BindingGraphError::SelfConnection
+                | crate::binding::BindingGraphError::DuplicateEdge
+                | crate::binding::BindingGraphError::TargetAlreadyHasInput
+                | crate::binding::BindingGraphError::Cycle,
+            ) => BindingApiError::InvalidArgument,
+            RuntimeBindingError::Graph(_) => BindingApiError::Internal,
+            RuntimeBindingError::InitialCopy(crate::value::BindingCopyError::KindMismatch(_)) => {
+                BindingApiError::WrongType
+            }
+            RuntimeBindingError::InitialCopy(crate::value::BindingCopyError::Copy(
+                OwnedUtf8Error::OutOfMemory,
+            ))
+            | RuntimeBindingError::SourceSnapshotCopy(OwnedUtf8Error::OutOfMemory)
+            | RuntimeBindingError::NotificationQueueOutOfMemory
+            | RuntimeBindingError::BindingOwnerOutOfMemory
+            | RuntimeBindingError::PropagationPreparationOutOfMemory => {
+                BindingApiError::OutOfMemory
+            }
+            RuntimeBindingError::InitialCopy(crate::value::BindingCopyError::Copy(_))
+            | RuntimeBindingError::SourceSnapshotCopy(_)
+            | RuntimeBindingError::Store(_)
+            | RuntimeBindingError::WrongObjectState
+            | RuntimeBindingError::SynchronizationPoisoned => BindingApiError::Internal,
+        }
     }
 
     fn request_handles() -> &'static Mutex<HashMap<HandleToken, Option<RequestHandleEntry>>> {
@@ -259,6 +334,27 @@ pub mod abi_support {
     /// Creates an independent owner token for an existing Runtime handle.
     pub fn runtime_retain_handle(handle: u64) -> Result<u64, RuntimeRetainError> {
         let token = HandleToken::from_abi(handle).ok_or(RuntimeRetainError::InvalidHandle)?;
+        {
+            let mut bindings = binding_handles()
+                .lock()
+                .map_err(|_| RuntimeRetainError::Internal)?;
+            if let Some((runtime, connection)) = bindings
+                .get(&token)
+                .map(|entry| (Arc::clone(&entry.runtime), entry.connection))
+            {
+                bindings
+                    .try_reserve(1)
+                    .map_err(|_| RuntimeRetainError::OutOfMemory)?;
+                let retained = crate::handle_registry::issue_handle_token()
+                    .ok_or(RuntimeRetainError::Internal)?;
+                let retained_entry = BindingHandleEntry {
+                    runtime,
+                    connection,
+                };
+                bindings.insert(retained, retained_entry);
+                return Ok(retained.into_abi());
+            }
+        }
         {
             let mut subscriptions = subscription_handles()
                 .lock()
@@ -504,6 +600,89 @@ pub mod abi_support {
                 .map_err(map_property_read_error)?;
         }
         Ok(())
+    }
+
+    /// Creates a Property Binding and returns an owned handle for persistent modes.
+    pub fn binding_create(source: u64, target: u64, mode: u32) -> Result<u64, BindingApiError> {
+        if !matches!(mode, BIND_ONCE | BIND_ONE_WAY | BIND_TWO_WAY) {
+            return Err(BindingApiError::InvalidArgument);
+        }
+        let source_token = HandleToken::from_abi(source).ok_or(BindingApiError::InvalidHandle)?;
+        let target_token = HandleToken::from_abi(target).ok_or(BindingApiError::InvalidHandle)?;
+        let handles = property_handles();
+        let owners = handles
+            .owners
+            .lock()
+            .map_err(|_| BindingApiError::Internal)?;
+        let runtime = owners
+            .get(&source_token)
+            .cloned()
+            .ok_or(BindingApiError::InvalidHandle)?;
+        let target_runtime = owners
+            .get(&target_token)
+            .ok_or(BindingApiError::InvalidHandle)?;
+        if !Arc::ptr_eq(&runtime, target_runtime) {
+            return Err(BindingApiError::WrongRuntime);
+        }
+        if !runtime.is_ui_thread() {
+            return Err(BindingApiError::WrongThread);
+        }
+        let mut binding_map = binding_handles()
+            .lock()
+            .map_err(|_| BindingApiError::Internal)?;
+        if mode != BIND_ONCE {
+            binding_map
+                .try_reserve(1)
+                .map_err(|_| BindingApiError::OutOfMemory)?;
+        }
+        let token = if mode == BIND_ONCE {
+            None
+        } else {
+            Some(crate::handle_registry::issue_handle_token().ok_or(BindingApiError::Internal)?)
+        };
+        let registry = &handles.registry;
+        let created = match mode {
+            BIND_ONCE | BIND_ONE_WAY => runtime
+                .create_one_way_binding_initial_with_id(registry, source_token, target_token)
+                .map_err(map_binding_runtime_error)?,
+            BIND_TWO_WAY => runtime
+                .create_two_way_binding_initial_with_id(registry, source_token, target_token)
+                .map_err(map_binding_runtime_error)?,
+            _ => unreachable!("mode checked above"),
+        };
+        let (_, connection) = created;
+        if let Some(token) = token {
+            binding_map.insert(
+                token,
+                BindingHandleEntry {
+                    runtime: Arc::clone(&runtime),
+                    connection,
+                },
+            );
+            Ok(token.into_abi())
+        } else {
+            runtime
+                .cancel_binding_connection(connection)
+                .map_err(map_binding_runtime_error)?;
+            Ok(0)
+        }
+    }
+
+    /// Explicitly cancels one Binding while leaving its owned handle valid for release.
+    pub fn binding_cancel(handle: u64) -> Result<(), BindingApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(BindingApiError::InvalidHandle)?;
+        let bindings = binding_handles()
+            .lock()
+            .map_err(|_| BindingApiError::Internal)?;
+        let entry = bindings.get(&token).ok_or(BindingApiError::InvalidHandle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(BindingApiError::WrongThread);
+        }
+        entry
+            .runtime
+            .cancel_binding_connection(entry.connection)
+            .map(|_| ())
+            .map_err(map_binding_runtime_error)
     }
 
     pub fn property_kind(handle: u64) -> Result<u32, ShutdownApiError> {
@@ -888,6 +1067,14 @@ pub mod abi_support {
             }
         }
         if subscription_handles()
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?
+            .remove(&token)
+            .is_some()
+        {
+            return Ok(());
+        }
+        if binding_handles()
             .lock()
             .map_err(|_| ShutdownApiError::Internal)?
             .remove(&token)

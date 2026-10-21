@@ -1,7 +1,7 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 1.8
-- 状態: Runtime post/dispatch turn、Property create/kind、Property getters、OneWay propagation candidate/commit、TwoWay initial-sync/group propagation、Binding graph取消・Runtime active lifecycle oracle追補は利用者承認済み範囲。製品test実装・実行状態は別管理
+- 文書版: 6.5
+- 状態: Runtime post/dispatch turn、Property create/kind、Property getters、OneWay propagation candidate/commit、TwoWay initial-sync/group propagation、Binding graph取消・Runtime active lifecycle、C ABI Binding lifecycleのoracle追補は承認済み実装範囲。製品test実装・実行状態は別管理
 - 更新日: 2026-10-21
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
@@ -234,6 +234,12 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | <a id="ut-abi-010"></a>UT-ABI-010 | 各kindの初期Propertyから一致するtyped getterを呼び、次に異なるkind用getter・無効handle・worker thread・null required outputを試す。UTF8は`(NULL,0)`照会、embedded NULを含む十分なbuffer、短いbuffer、null+positive capacityを個別に試す | BOOL/I64/F64/DECIMALは初期値のC表現をそのまま返し、出力は失敗前に0。型違いは`UI_WRONG_TYPE`、無効tokenは`UI_INVALID_HANDLE`、workerは`UI_WRONG_THREAD`、null required outputは`UI_INVALID_ARGUMENT`。UTF8照会は必要byte数、成功copyは終端NULなしの完全なbyte列、短bufferは`UI_BUFFER_TOO_SMALL`と必要長のみ更新しbuffer全体を保持、null+positive capacityは`UI_INVALID_ARGUMENT`。UTF8 size-queryとcopyの間のsnapshot一致は要求しない | [RQ-02-017](../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-04-003](../11_requirements/RQ-04_abi-boundary.md#rq-04-003)、[RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-019](../11_requirements/RQ-04_abi-boundary.md#rq-04-019)、[RQ-04-020](../11_requirements/RQ-04_abi-boundary.md#rq-04-020)、[RQ-04-021](../11_requirements/RQ-04_abi-boundary.md#rq-04-021)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01)、[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-OWN-01](../30_release_test/requirement-test-matrix.md#case-tc-own-01) |
 | <a id="ut-abi-011"></a>UT-ABI-011 | BOOL/I64/UTF8/F64/DECIMAL各Propertyをcreateし、異なるcandidateと同値candidateをsetterへ渡してgetterで確認する。kind違い・無効handle・worker thread・BOOL=2・UTF8 null+positive length・不正UTF8を試す。F64は異なるNaN payloadと符号付きzero、DECIMALは`1.0`と`1.00`を比較する | 変更値はsetter直後のgetterで観測される。同値候補は格納済みF64 bit pattern/DECIMAL canonical bitsを保持する。kind違いは`UI_WRONG_TYPE`、無効tokenは`UI_INVALID_HANDLE`、workerは`UI_WRONG_THREAD`、BOOL不正/null positive UTF8/invalid UTF8は`UI_INVALID_ARGUMENT`相当の定義statusで拒否し、値を変えない。UTF8はembedded NULを含む正確なbyte列を保持する | [RQ-02-017](../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-02-018](../11_requirements/RQ-02_core-features.md#rq-02-018)、[RQ-02-019](../11_requirements/RQ-02_core-features.md#rq-02-019)、[RQ-04-003](../11_requirements/RQ-04_abi-boundary.md#rq-04-003)、[RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-019](../11_requirements/RQ-04_abi-boundary.md#rq-04-019)、[RQ-04-020](../11_requirements/RQ-04_abi-boundary.md#rq-04-020)、[RQ-04-025](../11_requirements/RQ-04_abi-boundary.md#rq-04-025)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01)、[TC-CORE-OBJ-01](../30_release_test/requirement-test-matrix.md#case-tc-core-obj-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### C ABI Binding lifecycle — implementation slice
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-abi-binding-lifecycle-001"></a>UT-ABI-BINDING-LIFECYCLE-001 | 同一Runtimeの同種PropertyでOneTime/OneWay/TwoWayを作成し、初期同期後に値変更を行う。継続modeはhandle release後にも値変更し、さらに明示cancelを繰り返した後に変更する。invalid mode/handle、異Runtime、型違い、worker thread、null outputも試す | OneTimeは初期コピー後にhandle 0を返し、その後は伝播しない。OneWay/TwoWayは非zero owned handleを返し初期値を同期する。releaseだけでは伝播を維持し、cancelは反復して成功し以後の伝播を止めて確定値を保つ。失敗はout_binding/out_errorを0へ初期化し、値・graph・ownerに部分状態を残さない。異Runtime/型違い/不正mode/グラフ制約はDD記載のstatusになる。worker操作は`UI_WRONG_THREAD` | [RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-07-002](../11_requirements/RQ-07_binding.md#rq-07-002)、[RQ-07-003](../11_requirements/RQ-07_binding.md#rq-07-003)、[RQ-07-011](../11_requirements/RQ-07_binding.md#rq-07-011)<br/>[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01)、[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
+
 ### C ABI Property setter host scope — implementation slice
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
@@ -434,6 +440,9 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-LIFECYCLE-001 / UT-CORE-BINDING-GRAPH-CANCEL-001 oracle | Codex | RQ-05-002/RQ-07-011および承認済みDD v1.1からactive owner・connection removal・shutdown lifecycle oracleを追補 |
 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-LIFECYCLE-001開始 | 利用者 | 継続指示「ok」によりCore RuntimeのOneWay/TwoWay Binding lifecycle基盤の実装・動作確認を開始 |
 | 2026-10-21 | UT-CORE-RUNTIME-BINDING-LIFECYCLE-001実行結果 | Codex | focused 4件、workspace 148件、tools/dev.py check成功。endpoint token release後保持、cancel後pending/future抑止、TwoWay unlink、shutdown cleanupを確認 |
+| 2026-10-21 | UT-ABI-BINDING-LIFECYCLE-001 oracle | Codex | 承認済みRQ/DDからOneTime / OneWay / TwoWay create、Binding token retain/release、explicit cancel、failure statusのoracleを追補 |
+| 2026-10-21 | UT-ABI-BINDING-LIFECYCLE-001開始 | 利用者 | 継続指示「ok」によりC ABI Binding lifecycleのfocused実装・動作確認を開始 |
+| 2026-10-21 | UNIT-ABI-014実行結果 | Codex | focused 1件、workspace 149件、tools/dev.py check成功。OneTimeの非永続同期、OneWay release後伝播、retained TwoWay cancel、wrong thread/runtime/typeを確認 |
 
 ## 改訂履歴
 
@@ -501,3 +510,5 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | 6.1 | 2026-10-21 | UNIT-CORE-062のTwoWay group propagation、OneWay連携、既存target groupへの初期同期のfocused/workspace testと開発ゲート結果を追記 | Codex | 最新成功setterの勝者規則・通知世代分割を含む実装検証結果。validatorとpublic Binding lifecycleは別単位 |
 | 6.2 | 2026-10-21 | Binding graph cancellation / Runtime active lifecycle oraclesと実装開始を追記 | Codex | Core Runtime lifecycle基盤。公開Binding owner token/C ABI/wrapperとvalidator/error reportingは別単位 |
 | 6.3 | 2026-10-21 | UNIT-CORE-063のfocused/workspace testと開発ゲート結果を追記 | Codex | Core Runtime lifecycle基盤の検証状態。公開Binding owner token/C ABI/wrapperとvalidator/error reportingは別単位 |
+| 6.4 | 2026-10-21 | C ABI Binding lifecycle create/cancel oracleをUT-ABI-BINDING-LIFECYCLE-001として追補 | Codex | 承認済みRQ/DDに基づくOneTime、OneWay、TwoWay、token保持、cancelと失敗出力の実装単位 |
+| 6.5 | 2026-10-21 | UNIT-ABI-014のfocused/workspace testと開発ゲート結果を記録 | Codex | 実行結果のみ。Binding error snapshot/notification、Validator、wrapperは後続範囲 |
