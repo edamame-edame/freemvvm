@@ -7,7 +7,9 @@
 
 ## 1. 目的と上位参照
 
-分野別の具体的な試験設計案は[テスト設計の入口](README.md)にまとめる。各0.1文書は今回作成した未承認案であり、本書の既承認契約やtest実装・実行状態を変更しない。
+分野別の具体的な試験設計は[テスト設計の入口](README.md)にまとめる。入口と分野別6文書・release縦断・version回帰の各0.1全文は2026-10-17の実装開始指示に伴い承認済み。test実装・実行状態は別管理する。
+
+開発基盤の実装・確認範囲は[bootstrap検証](development-bootstrap.md)と[開発手順](../../DEVELOPMENT.md)へ記録する。workspace・workflow・言語manifestは作成済みであり、以下の過去時点の「未作成」は現在の環境状態を示さない。製品unit境界とpath選択・対応testは各機能実装時に登録する。
 
 本書は、実装単位ごとのunit-testを設計・実行し、変更がGitHubにpushまたはpull requestとして届いたときに、対応するテストをGitHub Actionsで検証するための方針案である。実装とunit-testを同じ変更単位で対にし、テスト結果を対象revisionへ結び付ける。
 

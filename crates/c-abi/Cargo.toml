@@ -1,0 +1,18 @@
+[package]
+name = "freemvvm-c-abi"
+description = "Versioned C ABI boundary under construction; not yet distributable"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "freemvvm_abi_1"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+freemvvm-core = { path = "../core-runtime" }
+
+[lints]
+workspace = true

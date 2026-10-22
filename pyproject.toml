@@ -1,0 +1,7 @@
+[tool.ruff]
+target-version = "py313"
+line-length = 79
+include = ["tools/*.py", "wrappers/python/src/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]

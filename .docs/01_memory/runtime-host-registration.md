@@ -1,0 +1,10 @@
+# Rust Core Runtime: HostRegistration scopes and stop notification
+
+Scope: `C:\Users\yuki\Desktop\program\freemvvm`, `UNIT-CORE-011`.
+
+- Keep active host event scopes in a thread-local LIFO stack keyed by a stable per-registration Arc identity plus a monotonically increasing per-registration scope ID. This detects cross-Runtime nesting as well as mismatched end_event calls.
+- `end_event` mutates only when the exact host/scope pair is at the top; its boolean result reports whether the entire UI-thread host scope stack is empty. `before_stop` requires that safe outer boundary.
+- Graceful `before_stop` closes new request admission first, then services a pending priority shutdown and commits cleanup before the host reports `stopped`. With no pending shutdown it stops host admission without closing the Runtime. An abrupt `stopped(reason)` notification remains a separate HostUnavailable path.
+- HostRegistration strongly retains each distinct accepted completion until cleanup commit or host-stop notification. This keeps cleanup/completion work alive if an observer releases its request handle; terminal transitions drain the list without invoking user callbacks under the registration lock.
+- After the same UI host resumes, explicit retry holds the host state lock while it re-arms and re-registers the completion record, preventing a stop/retry race from leaving a request Pending on a stopped host. It also verifies the same Dispatcher still has pending shutdown and schedules a fresh wake after releasing the host lock.
+- UNIT-CORE-012 connects the outer scope boundary to Dispatcher priority shutdown; UNIT-CORE-014 serializes accepted completion registration and priority-flag admission against host stop; UNIT-CORE-015 re-arms Dispatcher wake on explicit retry; UNIT-CORE-017 drains a pending shutdown at graceful host stop; UNIT-CORE-018 completes all coalesced accepted requests. Platform-specific event hooks, full Runtime coordinator ownership, and public ABI wiring remain separate units.

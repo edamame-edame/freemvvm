@@ -3,7 +3,7 @@
 - 本テストの通過なしにリリースすることは不可。
 ## Traceabilityと実行証跡
 
-具体的な用途適合の試験案は[共通UI縦断・profile・配布物](system-scenarios.md)にまとめる。0.1レビュー案・未承認であり、既存必須gateの代替やrelease合格の記録ではない。
+具体的な用途適合の試験設計は[共通UI縦断・profile・配布物](system-scenarios.md)にまとめる。0.1全文は2026-10-17の実装開始指示に伴い承認済み。既存必須gateの代替やrelease合格の記録ではない。
 
 releaseごとの用途適合と必須gateを確認し、対象RQ/case、commit SHA、artifact identity/digest、target/profile、結果・reportを対応付ける。今回のcase割当だけでrelease合格としない。実test IDは `REL-` から始める。共通記録は [Requirements Test Manifest](requirements-test-manifest.md)、要求別対応は [要求-test対応表](requirement-test-matrix.md) に従う。
 

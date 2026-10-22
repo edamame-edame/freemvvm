@@ -1,7 +1,7 @@
 # Version試験：変更影響・互換性・回帰選択
 
 - 文書版: 0.1
-- 状態: レビュー案・未承認。全項目planned / 未実装 / not-run
+- 状態: 0.1全文承認済み（利用者、2026-10-17）。製品testは未実装・未実行。接続gapは別管理
 - 更新日: 2026-10-17
 
 上位規約は[version-test](version-test.md)、[共通manifest](../30_release_test/requirements-test-manifest.md)、[実装unit台帳](../32_unit_test/implementation-test-inventory.md) 1.1。要求oracleは[RQ-04の互換契約](../11_requirements/RQ-04_abi-boundary.md)、[RQ-12のartifact/信頼契約](../11_requirements/RQ-12_build-distribution.md)。設計oracleは[ABI](../13_detail_design/runtime-objects/abi.md) 1.1と[build/package](../13_detail_design/build/toolchain-packages.md) 1.1、関連SDとする。
@@ -53,6 +53,7 @@
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
 | --- | --- | --- | --- |
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
+| 2026-10-17 | 0.1全文 | 利用者 | 「OK そろそろスクラッチを開始しましょうか。環境整備から始めてください。」により既存試験案を承認し環境整備を開始。製品test実装・合格を意味しない |
 
 ## 改訂履歴
 

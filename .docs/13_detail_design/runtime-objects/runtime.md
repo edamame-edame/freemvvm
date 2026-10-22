@@ -1,9 +1,9 @@
 # ランタイム：実行基盤と終了
 
-- 文書版: 1.1
+- 文書版: 1.2
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-10-19
+- 状態: 1.2全文承認済み（利用者、2026-10-19。Runtime dispatch turn追加を選択）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -193,7 +193,7 @@ UI threadからpostされたcallbackもqueueに入るため、現在のcallback/
 
 本案のbridgeは、(1) workerから安全に呼べる非同期wake、(2) UI thread上でのdispatch turn実行、(3) UI thread外からuser callbackを実行しない、の三条件を持つ。Coreはhost loopをpollingしたり、別threadからUI callbackを直接実行したりしない。
 
-ABI仕様の`runtime_create`にはbridge引数がなく、`runtime_post`は既に承認済みである。そのため本書は公開関数signatureを追加しない。共通C ABI：宣言・検査・互換性では、hostがbridgeをRuntimeへ設定する時点・所有者・未設定時の失敗statusを決定し、4言語から同じ契約を利用できる具体的な接続面を示す。
+hostがwake callbackの後に次のUI turnを明示的に開始できるよう、共通C ABIは`runtime_dispatch_turn(runtime)`を提供する。これはhost event scopeを内部で開閉し、最大一件の通常callbackを実行する。既存の外側scope中はnested scopeとして扱い、shutdown優先要求があれば通常callbackを飛ばしてscope終了時にshutdown処理を行う。通常wakeが既にpendingでも、新規shutdown要求の成立時はControl wakeを追加して優先度をhostへ伝える。
 
 ### 失敗と所有権
 
@@ -245,6 +245,8 @@ ui_status ui_abi_1_runtime_host_stopped(ui_handle runtime, uint32_t reason);
 request tokenのreleaseは待機取消やRuntime終了取消ではない。requestの作成資源を受付前に準備し、失敗時out=0・shutdown flag非変更。受付成功時はrequest handleを返し、未完了ならUI_PENDING、完了ならUI_OK。受付済みのrequestがhost停止で実行不能になった場合、拡張APIはUI_PENDINGとowned requestを返し、queryでHostUnavailableと理由を取得する。これはcleanup完了ではない。受付前からhostが停止済みならUI_UNSUPPORTED + domain1/HOST_LOOP_STOPPED、out_request=0とする。既存runtime_shutdownは内部requestを回収し、同期waitを停止通知で解除する場合はUI_UNSUPPORTEDとerrorを返す。失敗時out=0という既存規則を崩さない。
 
 queryはUI_OKとstate/reasonを返し、Completedだけがcleanup完了を示す。通知callbackを新設せずpoll/言語Async wrapperをqueryへ接続する。worker waitはcondition variableでlockを解放し、Closed commitとhost-stoppedの競合ではcompletion recordを同じlockで判定しCompletedを優先する。UI threadからのrequest_waitは公開しない。
+
+公開APIでは、同じUI hostの再開後に`runtime_host_begin_event`でhostをAvailableへ戻し、呼出し側が`runtime_request_shutdown`を明示的に再度呼ぶ。この再要求はHostUnavailableだった同一completion recordをretryし、そのrecordを観測する新しいowned request handleを返す。retry専用の追加symbolは設けない。
 
 ```mermaid
 stateDiagram-v2
@@ -349,3 +351,4 @@ HostUnavailableはcleanup完了ではない。bridgeと登録callbackのdestroy�
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-10-19 | 1.2全文 | 利用者がhost turnごとのdispatch入口として`runtime_dispatch_turn(runtime)`を選択。既存1.1承認内容を維持してturnの進行境界を具体化。実装・試験状態は別管理 |

@@ -1,0 +1,73 @@
+# 全案適用前の文書記録
+
+- 状態: 履歴専用（2026-10-17）
+
+現行本文から分離した当時の要求混在・作業指示・承認文を、元の記述で保存した。現行の保証はRQ、実現手段は改訂後BD/DDを参照する。
+
+| 元文書 | 履歴 |
+| --- | --- |
+| abi-spec.md | [適用前記録](abi-spec.md) |
+| BD-00_basic-design-resumption.md | [適用前記録](BD-00_basic-design-resumption.md) |
+| BD-01_value-types-upper-design.md | [適用前記録](BD-01_value-types-upper-design.md) |
+| BD-02_ui-transaction-upper-design.md | [適用前記録](BD-02_ui-transaction-upper-design.md) |
+| BD-03_runtime-notification-upper-design.md | [適用前記録](BD-03_runtime-notification-upper-design.md) |
+| BD-04_ui-tree-lifetime-upper-design.md | [適用前記録](BD-04_ui-tree-lifetime-upper-design.md) |
+| BD-05_logical-visual-tree-upper-design.md | [適用前記録](BD-05_logical-visual-tree-upper-design.md) |
+| BD-06_layout-upper-design.md | [適用前記録](BD-06_layout-upper-design.md) |
+| BD-07_input-event-boundary-upper-design.md | [適用前記録](BD-07_input-event-boundary-upper-design.md) |
+| BD-08_focus-upper-design.md | [適用前記録](BD-08_focus-upper-design.md) |
+| BD-09_ime-focus-transition-upper-design.md | [適用前記録](BD-09_ime-focus-transition-upper-design.md) |
+| BD-10_ime-platform-boundary-upper-design.md | [適用前記録](BD-10_ime-platform-boundary-upper-design.md) |
+| BD-11_initial-control-contract-upper-design.md | [適用前記録](BD-11_initial-control-contract-upper-design.md) |
+| BD-12_rendering-platform-upper-design.md | [適用前記録](BD-12_rendering-platform-upper-design.md) |
+| BD-13_accessibility-upper-design.md | [適用前記録](BD-13_accessibility-upper-design.md) |
+| BD-14_python-wrapper-upper-design.md | [適用前記録](BD-14_python-wrapper-upper-design.md) |
+| BD-15_python-lint-mcp-upper-design.md | [適用前記録](BD-15_python-lint-mcp-upper-design.md) |
+| BD-16_build-ci-target-matrix-upper-design.md | [適用前記録](BD-16_build-ci-target-matrix-upper-design.md) |
+| BD-17_python-package-distribution-upper-design.md | [適用前記録](BD-17_python-package-distribution-upper-design.md) |
+| BD-18_csharp-nuget-native-assets-upper-design.md | [適用前記録](BD-18_csharp-nuget-native-assets-upper-design.md) |
+| BD-19_cpp-cmake-package-upper-design.md | [適用前記録](BD-19_cpp-cmake-package-upper-design.md) |
+| BD-20_rust-cargo-package-upper-design.md | [適用前記録](BD-20_rust-cargo-package-upper-design.md) |
+| BD-21_license-upper-design.md | [適用前記録](BD-21_license-upper-design.md) |
+| BD-22_support-lifecycle-upper-design.md | [適用前記録](BD-22_support-lifecycle-upper-design.md) |
+| BD-23_text-shaping-upper-design.md | [適用前記録](BD-23_text-shaping-upper-design.md) |
+| BD-24_ime-edit-session-upper-design.md | [適用前記録](BD-24_ime-edit-session-upper-design.md) |
+| BD-25_async-validation-upper-design.md | [適用前記録](BD-25_async-validation-upper-design.md) |
+| BD-26_async-command-progress-upper-design.md | [適用前記録](BD-26_async-command-progress-upper-design.md) |
+| BD-27_error-object-upper-design.md | [適用前記録](BD-27_error-object-upper-design.md) |
+| BD-28_abi-release-version-upper-design.md | [適用前記録](BD-28_abi-release-version-upper-design.md) |
+| BD-29_artifact-provenance-upper-design.md | [適用前記録](BD-29_artifact-provenance-upper-design.md) |
+| BD-30_artifact-distribution-upper-design.md | [適用前記録](BD-30_artifact-distribution-upper-design.md) |
+| BD-31_artifact-signing-trust-upper-design.md | [適用前記録](BD-31_artifact-signing-trust-upper-design.md) |
+| BD-32_artifact-manifest-schema-upper-design.md | [適用前記録](BD-32_artifact-manifest-schema-upper-design.md) |
+| BD-33_collection-grid-upper-design.md | [適用前記録](BD-33_collection-grid-upper-design.md) |
+| BD-34_selection-model-upper-design.md | [適用前記録](BD-34_selection-model-upper-design.md) |
+| BD-35_collection-change-batch-upper-design.md | [適用前記録](BD-35_collection-change-batch-upper-design.md) |
+| BD-36_runtime-shutdown-dispatch-upper-design.md | [適用前記録](BD-36_runtime-shutdown-dispatch-upper-design.md) |
+| design-overview.md | [適用前記録](design-overview.md) |
+| language-bindings.md | [適用前記録](language-bindings.md) |
+| mvvm-semantics.md | [適用前記録](mvvm-semantics.md) |
+| runtime-contract.md | [適用前記録](runtime-contract.md) |
+| 00-decision-map.md | [適用前記録](00-decision-map.md) |
+| 01-handle-registry.md | [適用前記録](01-handle-registry.md) |
+| 02-runtime-lifetime.md | [適用前記録](02-runtime-lifetime.md) |
+| 03-dispatcher.md | [適用前記録](03-dispatcher.md) |
+| 04-callback-lifecycle.md | [適用前記録](04-callback-lifecycle.md) |
+| 05-boundary-values-errors.md | [適用前記録](05-boundary-values-errors.md) |
+| 06-abi-surface.md | [適用前記録](06-abi-surface.md) |
+| 07-property-notification.md | [適用前記録](07-property-notification.md) |
+| 08-binding-graph.md | [適用前記録](08-binding-graph.md) |
+| 09-validation-input.md | [適用前記録](09-validation-input.md) |
+| 10-async-command.md | [適用前記録](10-async-command.md) |
+| 11-ui-tree-lifetime.md | [適用前記録](11-ui-tree-lifetime.md) |
+| 12-layout.md | [適用前記録](12-layout.md) |
+| 13-input-focus.md | [適用前記録](13-input-focus.md) |
+| 14-textbox-ime.md | [適用前記録](14-textbox-ime.md) |
+| 15-controls-v1.md | [適用前記録](15-controls-v1.md) |
+| 16-platform-rendering.md | [適用前記録](16-platform-rendering.md) |
+| 17-accessibility.md | [適用前記録](17-accessibility.md) |
+| 18-wrapper-cpp.md | [適用前記録](18-wrapper-cpp.md) |
+| 19-wrapper-csharp.md | [適用前記録](19-wrapper-csharp.md) |
+| 20-wrapper-rust.md | [適用前記録](20-wrapper-rust.md) |
+| 21-wrapper-python.md | [適用前記録](21-wrapper-python.md) |
+| 22-build-distribution.md | [適用前記録](22-build-distribution.md) |

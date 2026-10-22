@@ -1,0 +1,567 @@
+use crate::handle_registry::registry::ObjectIdentity;
+use crate::value::{TypedValue, ValueCommit, ValueKind, ValueKindMismatch, ValueStorage};
+use std::ffi::c_void;
+use std::sync::{Arc, Mutex, Weak};
+
+/// Kind stored in the internal Runtime handle registry for an initial Property.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PropertyHandleKind {
+    Property,
+    #[cfg(test)]
+    Other,
+}
+
+/// Runtime-owned state for one Property with a fixed initial value kind.
+pub(crate) struct PropertyState {
+    value: ValueStorage,
+    subscribers: Vec<Weak<Subscription>>,
+    validator: Option<Arc<PropertyValidator>>,
+}
+
+/// Synchronous candidate check. Runtime invokes it without holding Core state locks.
+pub(crate) type PropertyValidator = dyn Fn(&TypedValue) -> ValidatorResult + Send + Sync;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ValidatorResult {
+    Accepted,
+    Rejected(Option<Arc<ValidationError>>),
+    Failed,
+}
+
+/// Immutable machine-readable detail transferred from a synchronous Validator.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ValidationError {
+    pub status: u32,
+    pub domain: u32,
+    pub code: u32,
+    pub message: Vec<u8>,
+}
+
+/// Runtime-local first-change-ordered set for the next pending Property generation.
+#[derive(Default)]
+pub(crate) struct PropertyChangeQueue {
+    pending: Vec<ObjectIdentity>,
+    direct_changes: Vec<ObjectIdentity>,
+}
+
+/// Active/in-flight state for one Property subscription.
+///
+/// This primitive does not own the callback closure. It reports the single transition at which
+/// the owner may destroy that closure: immediately on cancellation with no delivery in flight,
+/// or when the last in-flight delivery ends after cancellation.
+#[derive(Default)]
+pub(crate) struct SubscriptionLifecycle {
+    state: Mutex<SubscriptionLifecycleState>,
+}
+
+#[derive(Default)]
+struct SubscriptionLifecycleState {
+    active: bool,
+    in_flight: usize,
+    destroy_ready: bool,
+}
+
+impl SubscriptionLifecycle {
+    pub(crate) fn new() -> Self {
+        Self {
+            state: Mutex::new(SubscriptionLifecycleState {
+                active: true,
+                in_flight: 0,
+                destroy_ready: false,
+            }),
+        }
+    }
+
+    /// Starts a delivery only while active.
+    pub(crate) fn begin_delivery(&self) -> bool {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !state.active {
+            return false;
+        }
+        let Some(next) = state.in_flight.checked_add(1) else {
+            return false;
+        };
+        state.in_flight = next;
+        true
+    }
+
+    /// Completes a started delivery and reports the one-time destroy-ready transition.
+    pub(crate) fn finish_delivery(&self) -> bool {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.in_flight == 0 {
+            return false;
+        }
+        state.in_flight -= 1;
+        if !state.active && state.in_flight == 0 && !state.destroy_ready {
+            state.destroy_ready = true;
+            return true;
+        }
+        false
+    }
+
+    /// Cancels future starts and reports whether destruction is immediately safe.
+    pub(crate) fn cancel(&self) -> bool {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.active = false;
+        if state.in_flight == 0 && !state.destroy_ready {
+            state.destroy_ready = true;
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn is_active(&self) -> bool {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .active
+    }
+}
+
+pub(crate) type SubscriptionCallback = unsafe extern "C" fn(*mut c_void);
+
+#[derive(Clone, Copy)]
+struct SubscriptionClosure {
+    callback: SubscriptionCallback,
+    userdata: usize,
+    destroy: SubscriptionCallback,
+}
+
+/// One owned callback closure coupled to its cancel/in-flight state.
+///
+/// Delivery and cancellation must be called on the owning Runtime's UI thread. The Runtime
+/// integration layer enforces that precondition; this primitive keeps user code outside locks.
+#[allow(dead_code)] // Connected to Runtime-owned registration storage in the follow-up slice.
+pub(crate) struct Subscription {
+    lifecycle: SubscriptionLifecycle,
+    closure: Mutex<Option<SubscriptionClosure>>,
+}
+
+#[allow(dead_code)] // Exercised now; Runtime integration consumes these methods in a later slice.
+impl Subscription {
+    /// Takes ownership of one callback closure.
+    ///
+    /// # Safety
+    /// `callback`, `destroy`, and `userdata` must remain valid according to the Subscription ABI
+    /// contract until `destroy` is called. The caller must cancel this Subscription on its UI
+    /// thread before dropping it if no delivery is in flight.
+    pub(crate) unsafe fn new(
+        callback: SubscriptionCallback,
+        userdata: *mut c_void,
+        destroy: SubscriptionCallback,
+    ) -> Self {
+        Self {
+            lifecycle: SubscriptionLifecycle::new(),
+            closure: Mutex::new(Some(SubscriptionClosure {
+                callback,
+                userdata: userdata as usize,
+                destroy,
+            })),
+        }
+    }
+
+    /// Runs one callback if the registration is still active.
+    pub(crate) fn invoke(&self) -> bool {
+        if !self.lifecycle.begin_delivery() {
+            return false;
+        }
+
+        let closure = self
+            .closure
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .copied();
+        if let Some(closure) = closure {
+            // SAFETY: `new` establishes validity for the owned callback and userdata tuple.
+            // Delivery is constrained to the owning Runtime's UI thread by its integration layer.
+            unsafe { (closure.callback)(closure.userdata as *mut c_void) };
+        }
+
+        if self.lifecycle.finish_delivery() {
+            self.destroy_closure();
+        }
+        closure.is_some()
+    }
+
+    /// Prevents future delivery starts and destroys the closure when no callback is in flight.
+    pub(crate) fn cancel(&self) {
+        if self.lifecycle.cancel() {
+            self.destroy_closure();
+        }
+    }
+
+    pub(crate) fn is_active(&self) -> bool {
+        self.lifecycle.is_active()
+    }
+
+    fn destroy_closure(&self) {
+        let closure = self
+            .closure
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(closure) = closure {
+            // SAFETY: the closure is taken once, after cancel and all in-flight callbacks finish.
+            // The owning Runtime invokes cancel/delivery on its UI thread.
+            unsafe { (closure.destroy)(closure.userdata as *mut c_void) };
+        }
+    }
+}
+
+impl PropertyChangeQueue {
+    /// Reserves one queue slot before the corresponding Property value is committed.
+    pub(crate) fn reserve_change(
+        &mut self,
+        identity: ObjectIdentity,
+    ) -> Result<bool, std::collections::TryReserveError> {
+        if self.pending.contains(&identity) {
+            return Ok(false);
+        }
+        self.pending.try_reserve(1)?;
+        Ok(true)
+    }
+
+    /// Adds a previously reserved identity without allocating.
+    pub(crate) fn commit_change(&mut self, identity: ObjectIdentity) {
+        if !self.pending.contains(&identity) {
+            self.pending.push(identity);
+        }
+    }
+
+    /// Reserves notification and direct-order storage before a direct Property commit.
+    pub(crate) fn reserve_direct_change(
+        &mut self,
+        identity: ObjectIdentity,
+    ) -> Result<(), std::collections::TryReserveError> {
+        self.reserve_change(identity)?;
+        if !self.direct_changes.contains(&identity) {
+            self.direct_changes.try_reserve(1)?;
+        }
+        Ok(())
+    }
+
+    /// Records the most recent successful direct setter at the end of the recency order.
+    pub(crate) fn commit_direct_change(&mut self, identity: ObjectIdentity) {
+        if let Some(position) = self
+            .direct_changes
+            .iter()
+            .position(|previous| *previous == identity)
+        {
+            self.direct_changes.remove(position);
+        }
+        self.direct_changes.push(identity);
+        self.commit_change(identity);
+    }
+
+    /// Starts the next generation; subsequent changes are collected independently.
+    pub(crate) fn take_generation(&mut self) -> Vec<ObjectIdentity> {
+        std::mem::take(&mut self.pending)
+    }
+
+    /// Takes direct-setter recency associated with the generation being prepared.
+    pub(crate) fn take_direct_changes(&mut self) -> Vec<ObjectIdentity> {
+        std::mem::take(&mut self.direct_changes)
+    }
+
+    /// Restores a generation after preparation failed before any delivery item was published.
+    pub(crate) fn restore_generation(&mut self, generation: Vec<ObjectIdentity>) {
+        debug_assert!(self.pending.is_empty());
+        self.pending = generation;
+    }
+
+    /// Restores direct-setter recency when generation preparation fails before delivery.
+    pub(crate) fn restore_direct_changes(&mut self, direct_changes: Vec<ObjectIdentity>) {
+        debug_assert!(self.direct_changes.is_empty());
+        self.direct_changes = direct_changes;
+    }
+
+    pub(crate) fn pending_len(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// Removes notification work for an object whose owner is being finalized.
+    pub(crate) fn remove(&mut self, identity: ObjectIdentity) {
+        self.pending.retain(|pending| *pending != identity);
+        self.direct_changes
+            .retain(|direct_change| *direct_change != identity);
+    }
+}
+
+impl PropertyState {
+    pub(crate) fn new(initial: TypedValue) -> Self {
+        Self {
+            value: ValueStorage::new(initial),
+            subscribers: Vec::new(),
+            validator: None,
+        }
+    }
+
+    pub(crate) fn register_validator(
+        &mut self,
+        validator: Arc<PropertyValidator>,
+    ) -> Result<(), Arc<PropertyValidator>> {
+        if self.validator.is_some() {
+            return Err(validator);
+        }
+        self.validator = Some(validator);
+        Ok(())
+    }
+
+    pub(crate) fn validator(&self) -> Option<Arc<PropertyValidator>> {
+        self.validator.clone()
+    }
+
+    pub(crate) fn remove_validator(&mut self, validator: &Arc<PropertyValidator>) -> bool {
+        if self
+            .validator
+            .as_ref()
+            .is_some_and(|current| Arc::ptr_eq(current, validator))
+        {
+            self.validator = None;
+            return true;
+        }
+        false
+    }
+
+    /// Adds a non-owning Property index entry for an active Subscription.
+    #[allow(dead_code)] // Used by Runtime subscription registration integration.
+    pub(crate) fn add_subscription(
+        &mut self,
+        subscription: &Arc<Subscription>,
+    ) -> Result<(), std::collections::TryReserveError> {
+        if self
+            .subscribers
+            .iter()
+            .filter_map(Weak::upgrade)
+            .any(|current| Arc::ptr_eq(&current, subscription))
+        {
+            return Ok(());
+        }
+        self.subscribers.try_reserve(1)?;
+        self.subscribers.push(Arc::downgrade(subscription));
+        Ok(())
+    }
+
+    /// Removes one non-owning registration entry by Subscription pointer identity.
+    pub(crate) fn remove_subscription(&mut self, subscription: &Arc<Subscription>) {
+        self.subscribers.retain(|current| {
+            current
+                .upgrade()
+                .is_some_and(|current| !Arc::ptr_eq(&current, subscription))
+        });
+    }
+
+    /// Pins live active subscriptions for one delivery snapshot and prunes stale entries.
+    #[allow(dead_code)] // Used by notification delivery after releasing the object-store lock.
+    pub(crate) fn snapshot_subscriptions(
+        &mut self,
+    ) -> Result<Vec<Arc<Subscription>>, std::collections::TryReserveError> {
+        let mut snapshot = Vec::new();
+        snapshot.try_reserve(self.subscribers.len())?;
+        self.subscribers.retain(|subscriber| {
+            let Some(subscription) = subscriber.upgrade() else {
+                return false;
+            };
+            if !subscription.is_active() {
+                return false;
+            }
+            snapshot.push(subscription);
+            true
+        });
+        Ok(snapshot)
+    }
+
+    pub(crate) fn read(&self) -> &TypedValue {
+        self.value.read()
+    }
+
+    pub(crate) fn kind(&self) -> ValueKind {
+        self.value.read().kind()
+    }
+
+    pub(crate) fn would_change(&self, candidate: &TypedValue) -> Result<bool, ValueKindMismatch> {
+        self.value.would_change(candidate)
+    }
+
+    pub(crate) fn value_for_binding_prepare(&self) -> &ValueStorage {
+        &self.value
+    }
+
+    pub(crate) fn apply_validated(
+        &mut self,
+        candidate: TypedValue,
+    ) -> Result<ValueCommit, ValueKindMismatch> {
+        self.value.apply_validated(candidate)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Subscription, SubscriptionLifecycle};
+    use std::ffi::c_void;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct CallbackProbe {
+        callbacks: AtomicUsize,
+        destroys: AtomicUsize,
+        destroyed_during_callback: AtomicBool,
+        cancel_on_callback: AtomicBool,
+        subscription: Mutex<Option<Arc<Subscription>>>,
+    }
+
+    unsafe extern "C" fn record_callback(userdata: *mut c_void) {
+        // SAFETY: the test keeps CallbackProbe alive until after the Subscription is canceled.
+        let probe = unsafe { &*userdata.cast::<CallbackProbe>() };
+        probe.callbacks.fetch_add(1, Ordering::SeqCst);
+        if probe.cancel_on_callback.load(Ordering::SeqCst) {
+            let subscription = probe
+                .subscription
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_ref()
+                .cloned()
+                .expect("test Subscription is installed before invoke");
+            subscription.cancel();
+            probe
+                .destroyed_during_callback
+                .store(probe.destroys.load(Ordering::SeqCst) != 0, Ordering::SeqCst);
+        }
+    }
+
+    unsafe extern "C" fn record_destroy(userdata: *mut c_void) {
+        // SAFETY: the test keeps CallbackProbe alive until after the Subscription is canceled.
+        let probe = unsafe { &*userdata.cast::<CallbackProbe>() };
+        probe.destroys.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn make_subscription(probe: &CallbackProbe) -> Arc<Subscription> {
+        let userdata = (std::ptr::from_ref(probe)).cast_mut().cast::<c_void>();
+        // SAFETY: the test owns `probe` until after cancellation, and both callbacks use only it.
+        Arc::new(unsafe { Subscription::new(record_callback, userdata, record_destroy) })
+    }
+
+    #[test]
+    fn subscription_lifecycle_allows_delivery_until_cancel() {
+        let lifecycle = SubscriptionLifecycle::new();
+
+        assert!(lifecycle.begin_delivery());
+        assert!(!lifecycle.finish_delivery());
+        assert!(lifecycle.cancel());
+        assert!(!lifecycle.begin_delivery());
+        assert!(!lifecycle.cancel());
+        assert!(!lifecycle.finish_delivery());
+    }
+
+    #[test]
+    fn subscription_lifecycle_defers_destroy_until_all_deliveries_finish() {
+        let lifecycle = SubscriptionLifecycle::new();
+
+        assert!(lifecycle.begin_delivery());
+        assert!(lifecycle.begin_delivery());
+        assert!(!lifecycle.cancel());
+        assert!(!lifecycle.begin_delivery());
+        assert!(!lifecycle.finish_delivery());
+        assert!(lifecycle.finish_delivery());
+        assert!(!lifecycle.finish_delivery());
+        assert!(!lifecycle.cancel());
+    }
+
+    #[test]
+    fn subscription_lifecycle_cancel_without_delivery_is_destroy_ready_once() {
+        let lifecycle = SubscriptionLifecycle::new();
+
+        assert!(lifecycle.cancel());
+        assert!(!lifecycle.cancel());
+        assert!(!lifecycle.begin_delivery());
+        assert!(!lifecycle.finish_delivery());
+    }
+
+    #[test]
+    fn subscription_callback_is_owned_until_explicit_cancel() {
+        let probe = CallbackProbe::default();
+        let subscription = make_subscription(&probe);
+
+        assert!(subscription.invoke());
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 0);
+
+        subscription.cancel();
+        subscription.cancel();
+        assert!(!subscription.invoke());
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn subscription_callback_self_cancel_destroys_after_callback_returns() {
+        let probe = Box::new(CallbackProbe::default());
+        probe.cancel_on_callback.store(true, Ordering::SeqCst);
+        let subscription = make_subscription(&probe);
+        *probe
+            .subscription
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::clone(&subscription));
+
+        assert!(subscription.invoke());
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 1);
+        assert!(!probe.destroyed_during_callback.load(Ordering::SeqCst));
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+        assert!(!subscription.invoke());
+
+        probe
+            .subscription
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+    }
+
+    #[test]
+    fn property_subscription_weak_index_pins_only_live_active_entries() {
+        let mut property = super::PropertyState::new(crate::value::TypedValue::I64(0));
+        let probe = Box::new(CallbackProbe::default());
+        let expired = make_subscription(&probe);
+        let expired_weak = Arc::downgrade(&expired);
+        property
+            .add_subscription(&expired)
+            .expect("reserve weak subscriber entry");
+        expired.cancel();
+        drop(expired);
+        assert!(expired_weak.upgrade().is_none());
+
+        let active = make_subscription(&probe);
+        let active_weak = Arc::downgrade(&active);
+        property
+            .add_subscription(&active)
+            .expect("add live weak subscriber entry");
+        let snapshot = property
+            .snapshot_subscriptions()
+            .expect("pin active subscriber snapshot");
+        assert_eq!(snapshot.len(), 1);
+        assert!(Arc::ptr_eq(&snapshot[0], &active));
+        drop(active);
+        assert!(active_weak.upgrade().is_some());
+
+        snapshot[0].cancel();
+        assert!(
+            property
+                .snapshot_subscriptions()
+                .expect("prune canceled subscriber")
+                .is_empty()
+        );
+        drop(snapshot);
+        assert!(active_weak.upgrade().is_none());
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 2);
+    }
+}
