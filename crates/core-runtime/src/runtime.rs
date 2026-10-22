@@ -2909,10 +2909,10 @@ impl RuntimeCore {
             return Ok(false);
         };
         let removed = bucket.remove(index);
-        if let Ok(state) = store.resolve_mut(identity)
-            && let Some(property) = state.downcast_mut::<PropertyState>()
-        {
-            property.remove_subscription(&removed);
+        if let Ok(state) = store.resolve_mut(identity) {
+            if let Some(property) = state.downcast_mut::<PropertyState>() {
+                property.remove_subscription(&removed);
+            }
         }
         if bucket.is_empty() {
             owners.remove(&identity);

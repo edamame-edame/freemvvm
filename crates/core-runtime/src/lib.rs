@@ -433,9 +433,11 @@ pub mod abi_support {
             state.destroyed = true;
             let call_destroy = state.armed;
             drop(state);
-            if call_destroy && let Some(destroy) = self.destroy {
-                // SAFETY: destroy is called exactly once after in-flight wake callbacks drain.
-                unsafe { destroy(self.userdata as *mut c_void) };
+            if call_destroy {
+                if let Some(destroy) = self.destroy {
+                    // SAFETY: destroy is called exactly once after in-flight wake callbacks drain.
+                    unsafe { destroy(self.userdata as *mut c_void) };
+                }
             }
         }
     }
