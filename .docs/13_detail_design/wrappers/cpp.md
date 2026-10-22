@@ -1,9 +1,9 @@
 # 言語ラッパー：C++
 
-- 文書版: 1.1
+- 文書版: 1.2 レビュー案
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-10-22
+- 状態: 1.2全文承認済み（利用者、2026-10-22）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -16,7 +16,7 @@
 | 設計項目 | 要求根拠 |
 | --- | --- |
 | 所有型・callback・例外・thread | [RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-03-005](../../11_requirements/RQ-03_language-support.md#rq-03-005)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-04-016](../../11_requirements/RQ-04_abi-boundary.md#rq-04-016)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-023](../../11_requirements/RQ-04_abi-boundary.md#rq-04-023)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-06-006](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-006) |
-| 公開API・handler・cleanup同期 | [RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-03-005](../../11_requirements/RQ-03_language-support.md#rq-03-005)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-05-014](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-014) |
+| 公開API・handler・cleanup同期 | [RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-03-005](../../11_requirements/RQ-03_language-support.md#rq-03-005)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-05-014](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-014)、[RQ-12-004](../../11_requirements/RQ-12_build-distribution.md#rq-12-004) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -24,7 +24,7 @@
 
 ### 実現のcall/data/ownership flow
 
-OwnedHandleはnative token取得前にcleanup nodeを確保し、明示retain成功でだけ新ownerを作る。moveはtoken/nodeの所有を一度移し、borrow viewはcall期間だけ参照する。destructorのrelease失敗ではnode/tokenをpending registryへ移し、UI safe pointでretryし、Closed shell drain後にRuntime anchorを解放する。noexcept trampolineは例外をhandlerと種別固有failureへ変換する。
+OwnedHandleはnative token取得前にcleanup nodeを確保し、明示retain成功でだけ新ownerを作る。moveはtoken/nodeの所有を一度移し、borrow viewはcall期間だけ参照する。destructorのrelease失敗ではnode/tokenをRuntime専用pending queueへ移す。process-wide CleanupSupervisorはpending nodeを持つRuntimeCleanupStateを強参照で保持し、Runtimeごとのsafe pointまたはClosed shellから再試行する。全nodeが解決した後にRuntime anchorとnative module pinを解放する。noexcept trampolineは例外をhandlerと種別固有failureへ変換する。
 
 ```mermaid
 flowchart LR
@@ -67,7 +67,7 @@ flowchart LR
 | Runtime所有と終了の「worker finalizer enqueue失敗時は公開tokenを消費しない」契約を維持し、C++ wrapper内でtokenの所有を保つ。destructorはrelease失敗を隠さずcleanup管理へ移管し、UI threadで再試行する。 | Runtime所有と終了、handle登録・検証、公開ABI契約、C++ wrapper。Core側release契約は変更しない。 |
 | 例外無効buildでも全てのwrapper操作とcallback adapterを利用できるよう、status/resultによる非throw経路を基底とする。例外有効buildのthrowing APIは同じ基底結果から構成する薄い便宜層とする。 | 公開ABI契約、値・error境界。例外無効buildでC++例外を要求せず、callbackは明示結果または種別固有failureを返す。 |
 | 例外有効buildで、callback内の捕捉した`std::exception_ptr`を利用者設定のexception handlerへ渡せるようにする。handlerは`noexcept`で、対象Runtime/callback種別に関連付ける。handler内の再throw・UI API呼出し可否は別途制約を定めるまで禁止候補とし、C ABIへ例外を漏らさない。 | Runtime契約、callback実行規則。公開登録API名・handler交換時の同期・既定handlerは後続API設計で具体化する。 |
-| 各OwnedHandleはnative owned tokenを受け取る前にcleanup nodeを確保する。node確保に失敗する場合はcreate/retain等のnative callを開始せず、optional error outputも要求しない。destructorでnative releaseが失敗した場合はtokenとnodeをC++内のintrusive pending-cleanup registryへ移管する。registryはUI thread safe pointで再試行し、Runtime shutdown完了後にも残ったtokenをClosed shellのreleaseとしてdrainする。shutdown APIはcleanup drainの完了までRuntime ownerを保持する。 | Runtime所有と終了、UI dispatcher、C++ wrapper。registryの同期・Runtime pinning・OOM・library unload境界は実装前のAPI設計で具体化し、silent leakを成功扱いしない。 |
+| 各OwnedHandleはnative owned tokenを受け取る前にcleanup nodeを確保する。node確保に失敗する場合はcreate/retain等のnative callを開始しない。destructorでnative releaseが失敗した場合はtokenとnodeをRuntime専用intrusive queueへ移管する。process-wide supervisorがpending queueを持つRuntime stateを強参照で保持し、UI thread safe pointまたはClosed shellから再試行する。native moduleはpending tokenがある限りpinする。 | Runtime所有と終了、UI dispatcher、C++ wrapper。Core側release契約は変更せず、supervisorの同期・登録node・終了時処理は本改訂で具体化する。 |
 
 ### 所有wrapperとborrowed view
 
@@ -184,14 +184,14 @@ C++の`std::string`は便宜上UTF-8 byte列を保持できるが、型だけで
 |---|---|
 | `handle_retain`失敗 | cloneは失敗を返し、元owned tokenを変更しない |
 | 明示closeでrelease失敗 | wrapper内のtokenを保持し、callerが再試行できる |
-| destructorでrelease失敗 | 事前確保済みcleanup nodeにtokenを移し、C++内pending-cleanup registryがUI thread safe pointまたはshutdown後に再試行 |
+| destructorでrelease失敗 | 事前確保済みnodeへtokenを移しRuntime専用queueへ登録する。process-wide supervisorがそのRuntime stateを強参照し、UI safe pointまたはClosed shellから再試行 |
 | callback登録失敗 | callback stateはwrapperが解放し、destroyを二重実行しない |
 | callback中のC++例外 | trampolineで捕捉し、ABIへ伝えない。owner固有のfailure/diagnosticへ変換 |
 | callback自己解除 | in-flight callbackを終えた後にdestroyし、同一callbackを再度開始しない |
 | unknown status | raw valueを保持しgeneric errorとして扱う |
 | error snapshot生成不能 | 元のstatusを報告し、架空のdetail/error handleを作らない |
 | UTF-8 getterでbuffer不足 | caller bufferを一部更新せず、必要長を使い再試行する |
-| worker release時queue満杯/OOM | C ABIはtokenを消費しない。明示closeは失敗を返し、destructorは事前確保cleanup nodeへ所有権を移す |
+| worker release時queue満杯/OOM | C ABIはtokenを消費しない。明示closeは失敗を返す。destructor経路のnodeとsupervisor登録枠はowned token取得前に確保し、破棄時の追加allocationを避ける |
 | callback/event中shutdown | 現eventを中断せず、要求受付済みで戻る。完了済みと表示しない |
 
 ## 公開API・handler・cleanup同期
@@ -205,7 +205,7 @@ C++の`std::string`は便宜上UTF-8 byte列を保持できるが、型だけで
 | 通常APIはResultを基本、例外有効時のみvalue_or_throw()を補助提供。例外無効時にも同じ基本型を使う。 | 上記の根拠RQ |
 | Runtime単位のhandlerは共有HandlerRecordをmutexでsnapshot取得し、lock外でinvoke。交換は以降のinvokeに適用し旧recordは最後のin-flight後destroy。 | 上記の根拠RQ |
 | handler型はvoid(*)(const CallbackFailure&,void*)、destroy pointerを別保持。handler内例外は捕捉し既定diagnosticへ一度送る。 | 上記の根拠RQ |
-| CleanupManagerはstd::mutex+intrusive PendingNode、node/token/anchorの所有移転を一同期点で行う。lock外でnative release、失敗なら同nodeを再登録。 | 上記の根拠RQ |
+| RuntimeCleanupStateはRuntimeごとにstd::mutex+intrusive PendingNode queueを持ち、node/token/anchorの所有移転を一同期点で行う。CleanupSupervisorはprocess-wideでpending stateを強参照する。native releaseはすべてのmanager lock外で実行し、失敗時は同nodeを再登録する。 | 上記の根拠RQ |
 | UiThreadRefは非所有UI affinity marker、RuntimeAnchorはshellを保持する共有内部owner。Runtime destructorから暗黙shutdownしない。 | 上記の根拠RQ |
 
 ### 実現設計
@@ -225,16 +225,21 @@ classDiagram
     class Borrowed~T~ {
         -uint64 token
     }
-    class CleanupManager {
+    class RuntimeCleanupState {
         +enqueue(PendingNode)
-        +drain_ui()
+        +drain_runtime()
+    }
+    class CleanupSupervisor {
+        +retain_pending(RuntimeCleanupState)
+        +retry_closed_shells()
     }
     class RuntimeAnchor {
         -SharedShell shell
     }
     Owned --> Borrowed : call期間だけ借用
     Owned *-- RuntimeAnchor
-    Owned --> CleanupManager : release失敗でnode移管
+    Owned --> RuntimeCleanupState : release失敗でnode移管
+    RuntimeCleanupState --> CleanupSupervisor : pending時にstateを強参照登録
 ```
 
 `Result<T>`はsuccess値または`UiError { raw_status, ErrorSnapshot? }`を持つ。success判定をstatus==0だけにせず、shutdownのUI_PENDINGは`ShutdownReceipt`のAcceptedとして表す。unknown status/domain/codeは数値を保持する。UTF8 decode失敗はライブラリ内部不整合としてraw bytesを保持し、置換文字へ黙って変換しない。
@@ -243,13 +248,14 @@ classDiagram
 |---|---|---|
 | Runtime::create(HostRegistration) | Result<Runtime>、UI thread | nodeを先に確保。native失敗でtokenなし |
 | Property<T>::get/set | Result<T>/Result<void>、UI | borrow pin、失敗commitなし |
-| Runtime::request_shutdown(Mode) | Result<ShutdownReceipt> | 受付済みUI_PENDINGはHostUnavailableを含むreceiptへ保持 |
+| Runtime::shutdown() | ShutdownResult | 完了と`UI_PENDING`受付を識別し、C ABIの同期shutdown結果を保持 |
+| Runtime::request_shutdown() | Result<ShutdownRequest> | request handleを所有し、完了/pending/host unavailableをqueryできる |
 | Runtime::set_callback_handler | Result<HandlerRegistration> | 新record prepare失敗なら旧handler維持 |
 | Decimal64::try_from_parts | Result<Decimal64>、任意thread | scalarのみ。丸めなし |
 
 handler recordは関数+userdata+destroyを共有所有する。例外有効時のCallbackFailureはstd::exception_ptrをoptionalに含み、例外無効時は空でnative分類を提供する。CallbackFailureはinvoke中borrow、保存には利用者が明示copyする。Runtimeのhandler交換もUI mutationとは分けた同期操作だが、handler userdataのdestroyは最後のinvoke終了後のsafe pointで行う。
 
-moveでは元をemptyにしnode/anchorを一度だけ渡す。destructorはtry_release→失敗node enqueueで戻り、nativeを呼ぶ間manager lockを保持しない。handlerやfinalizerからRuntime facadeへの強い逆参照をmanagerに保存しない。
+moveでは元をemptyにしnode/anchorを一度だけ渡す。destructorはtry_release→失敗node enqueueで戻り、nativeを呼ぶ間Runtime queue/supervisor lockを保持しない。handlerやfinalizerからRuntime facadeへの強い逆参照をcleanup managerに保存しない。
 
 ## クラス設計の補足（1.1承認済み）
 
@@ -257,7 +263,7 @@ moveでは元をemptyにしnode/anchorを一度だけ渡す。destructorはtry_r
 
 要求根拠: [RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-05-014](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-014)。
 
-既存Owned<T>/Borrowed<T>/CleanupManager/HandlerRecordを、正常API呼出しとnoexceptな後始末経路に分けて補足する。図は型引数を省略している。
+既存Owned<T>/Borrowed<T>/RuntimeCleanupState/CleanupSupervisor/HandlerRecordを、正常API呼出しとnoexceptな後始末経路に分けて補足する。図は型引数を省略している。
 
 ### 型の責務と所有
 
@@ -266,7 +272,8 @@ moveでは元をemptyにしnode/anchorを一度だけ渡す。destructorはtry_r
 | Owned | token、事前PendingNode、共有RuntimeAnchor | try_retain(); borrow(); close() | copy禁止・move可能。明示close失敗ではowner内にtokenを残す |
 | Borrowed | 非所有token viewと有効期間の契約 | get_token_for_call() | 元owner/callbackの寿命内のみ使用。destructorはreleaseしない |
 | PendingNode | 再試行token、anchorとcleanup状態 | take_from_owner(); return_to_pending() | destructor失敗時にownerからmanagerへ同nodeを移し二重解放を避ける |
-| CleanupManager | mutexとintrusive pending node集合 | enqueue(node); retry_pending() | 同期下で所有を移し、lock外でnative releaseを実行 |
+| RuntimeCleanupState | Runtime単位のmutexとintrusive pending node集合 | enqueue(node); drain_runtime() | Runtimeごとにqueueを分離し、node/token/anchorを同期下で移す。native releaseはlock外で実行 |
+| CleanupSupervisor | process-wide mutexとpending RuntimeCleanupStateの強参照集合 | retain_pending(state); retry_closed_shells() | pending nodeがあるstateだけ保持する。Runtime間のcleanup状態・順序を統合しない |
 | RuntimeAnchor | 終了後もreleaseに必要なRuntime shell保持 | retain_shell(); release_shell() | ticket/nodeより先に失われない。Runtime destructorで暗黙shutdownしない |
 | HandlerRecord | handler/userdata/destroyとin-flight共有寿命 | snapshot(); invoke(failure) | Runtime単位でmutex下snapshot取得、user handlerはlock外 |
 
@@ -288,9 +295,13 @@ classDiagram
         take_from_owner()
         return_to_pending()
     }
-    class CleanupManager {
+    class RuntimeCleanupState {
         enqueue()
-        retry_pending()
+        drain_runtime()
+    }
+    class CleanupSupervisor {
+        retain_pending()
+        retry_closed_shells()
     }
     class RuntimeAnchor {
         retain_shell()
@@ -303,16 +314,123 @@ classDiagram
     Owned *-- PendingNode : owner保持中
     Owned o-- RuntimeAnchor
     Borrowed ..> Owned : lifetime契約
-    CleanupManager o-- PendingNode : 移管後のみ
+    RuntimeCleanupState o-- PendingNode : 移管後のみ
+    CleanupSupervisor o-- RuntimeCleanupState : pending時だけ強参照保持
     PendingNode o-- RuntimeAnchor
     HandlerRecord ..> RuntimeAnchor : handler所属
 ```
 
 ### 主要な呼出しと失敗境界
 
-通常closeはnative release成功後にtokenをemptyにする。destructor経路で失敗した場合は事前nodeへtoken/anchorを移し、CleanupManagerがlock外で再試行する。callback例外はtrampolineで捕捉しHandlerRecord snapshotへ配送する。
+通常closeはnative release成功後にtokenをemptyにする。destructor経路で失敗した場合は事前nodeへtoken/anchorを移し、RuntimeCleanupStateがlock外で再試行する。pending中はCleanupSupervisorがstateを強参照し、native moduleをpinする。callback例外はtrampolineで捕捉しHandlerRecord snapshotへ配送する。
 
-OwnedとCleanupManagerが同じPendingNode/tokenを同時所有する図ではなく、移管前後を示す。Borrowedの寿命規則をnative retainの実行と混同しない。handler自身の例外は既定診断へ一度だけ送る。
+OwnedとRuntimeCleanupStateが同じPendingNode/tokenを同時所有する図ではなく、移管前後を示す。Borrowedの寿命規則をnative retainの実行と混同しない。handler自身の例外は既定診断へ一度だけ送る。
+
+## Runtime最小公開APIとcleanup supervisor（1.2レビュー案）
+
+この節は1.1全文承認後に追加する最小Runtime surfaceとrelease失敗時の寿命設計案であり、未承認である。1.1の他のwrapper型・callback・Property APIはこの変更では削除・再設計せず、最初のC++実装範囲をRuntime操作に限定する。
+
+### 公開型と操作
+
+| 型・操作案 | 契約とC ABI接続 |
+| --- | --- |
+| `freemvvm::Result<T>` / `Result<void>` | C++17のnon-throw基底結果。`Result<T>`はtagged storageでsuccess valueか`UiError`の一方を保持し、`Result<void>`はvoid用にspecializeする。例外有効/無効で同じsurfaceを使い、throwing convenienceは後続とする。 |
+| `freemvvm::UiError` | 元の`ui_status`数値を必ず保持し、C ABIがerror handleを返した場合だけowned immutable `ErrorSnapshot`を保持する。詳細生成失敗や未知statusでも元statusを失わない。 |
+| `freemvvm::Runtime` | move-only。Runtime token、共有`RuntimeCleanupState`、library pinを保持する。copyは公開しない。 |
+| `Runtime::create(HostRegistration)` | C ABI Runtime作成とhost bridge登録を行い、全owned output用のcleanup nodeとsupervisor registration slotをnative call前に確保する。失敗時はtokenを残さない。 |
+| `Runtime::is_ui_thread()` | 状態変更・dispatchをせず、C ABIのthread照会結果を返す。暗黙dispatchしない。 |
+| `Runtime::shutdown()` | C ABI同期shutdownを呼ぶ。完了と`UI_PENDING`受付を区別する`ShutdownResult`を返し、pendingを完了扱いにしない。worker同期呼出しとhost停止時の結果は承認済みRuntime契約を保持する。 |
+| `Runtime::request_shutdown()` | C ABIのrequest APIを呼び、owned `ShutdownRequest`を持つ`Result<ShutdownRequest>`を返す。受付後のqueryは完了・pending・host unavailableを区別する。 |
+| `Runtime::close()` | Runtimeのowned tokenだけをreleaseする明示操作。成功時だけtokenをemptyにする。shutdownを開始・完了したことにはならない。 |
+| `Runtime::~Runtime()` | shutdownを開始しない。通常releaseを試し、失敗時は事前準備済みPendingNodeへtoken/state anchorを移し、例外を投げずsupervisorへhandoffする。 |
+
+`ShutdownResult`は`completed`、`accepted_pending`、`error`を識別するtagged resultとし、`UI_PENDING`を通常のAPI failureに変換しない。`request_shutdown()`はquery可能なowned requestを返すため、非同期の完了観測はこの経路に限る。`Runtime::close()`はshutdownとは別操作であり、決定的な終了を望む利用者はshutdown完了後にcloseする。
+
+### cleanupの寿命・同期境界
+
+| 型 | 責務と所有 |
+| --- | --- |
+| `RuntimeCleanupState` | Runtime一つに専属するmutex、pending intrusive queue、Runtime shell anchor、native module pinを保持する。異なるRuntimeのqueueを共有しない。 |
+| `PendingNode` | 受取前に確保し、owned token・最後のrelease失敗・Runtime anchorを保持する。nodeの所有者はOwnedHandleかRuntimeCleanupStateの一方だけ。 |
+| `CleanupSupervisor` | process-wideな同期点とpending Runtime stateのintrusive listを管理する。pending中だけstateを強参照し、Runtime専用queueの内容・順序は混ぜない。 |
+| `SupervisorLink` | state生成時に別領域へ一度確保し、idle時はRuntimeCleanupStateが所有する。pending移行時にsupervisorへ所有権を移し、その間だけstrong state referenceを持つ。pending解除時にreferenceを外してstateへ戻し、destructor handoffに追加allocationを要求しない。 |
+
+native releaseはsupervisor lockとRuntime queue lockのどちらも保持せずに呼ぶ。各nodeをRuntime queue mutex下で一つのdrainerだけがclaimし、成功時はtoken/nodeを空にする。queueが空ならsupervisorからstateをunlinkしてmodule pinとRuntime anchorを解放する。失敗時は元のRuntime queueへ同じnodeを戻し、最後のfailureを診断用に保持する。supervisorはtokenを消費する判断をせず、C ABI成功だけを解放完了とみなす。
+
+```mermaid
+classDiagram
+    direction TB
+    class Runtime {
+        +create(host) Result~Runtime~
+        +is_ui_thread() Result~bool~
+        +shutdown() ShutdownResult
+        +request_shutdown() Result~ShutdownRequest~
+        +close() Result~void~
+    }
+    class OwnedHandle {
+        -token
+        -PendingNode
+        -RuntimeCleanupState
+        +close() Result~void~
+    }
+    class RuntimeCleanupState {
+        -pending queue
+        -Runtime anchor
+        -module pin
+    }
+    class PendingNode {
+        -token
+        -failure snapshot
+    }
+    class CleanupSupervisor {
+        -pending states
+        +retain_pending(state)
+        +retry()
+    }
+    class SupervisorLink {
+        -strong state reference
+    }
+    Runtime o-- RuntimeCleanupState
+    OwnedHandle o-- RuntimeCleanupState
+    OwnedHandle *-- PendingNode : owner時に予約
+    RuntimeCleanupState o-- PendingNode : handoff後のみ
+    RuntimeCleanupState *-- SupervisorLink : idle時に予約
+    CleanupSupervisor o-- SupervisorLink : pending時に所有
+```
+
+```mermaid
+sequenceDiagram
+    participant O as OwnedHandle destructor
+    participant C as C ABI handle_release
+    participant Q as RuntimeCleanupState
+    participant S as CleanupSupervisor
+    participant W as Supervisor worker
+    O->>C: handle_release(token)
+    C-->>O: failure (token not consumed)
+    O->>Q: preallocated nodeへtoken/anchorをhandoff
+    Q->>S: preallocated SupervisorLinkを登録
+    S-->>Q: stateをstrong referenceで保持
+    W->>Q: pending nodeを一つ取得
+    W->>C: lock外でhandle_release(token)をretry
+    alt release succeeds
+        C-->>W: success (token consumed)
+        W->>S: nodeを除去しstateが空ならunlink
+    else release fails
+        C-->>W: failure (token retained)
+        W->>Q: 同じnodeを再登録して遅延retry
+    end
+```
+
+`handle_release`は承認済みC ABIで任意threadから呼べる。supervisor workerはrelease以外のUI操作を行わず、必要なUI状態の最終破棄はCoreのRuntime finalizer契約へ委ねる。retryは即時busy loopにせず、Runtime safe point/wakeと遅延retryを併用する。C ABI成功前のtoken・module pin解放、Runtime間queue混在、global lock保持中のnative callは禁止する。
+
+### 未決境界
+
+- process exit時の未解決tokenは、in-process cleanup完了を保証できない。module pinを保ったままprocess終了に委ねる扱いを候補とし、終了hookからUI cleanupを強制しない。明示診断の公開方法は別判断とする。
+- dynamic libraryのpin/unpinはOSごとに実装を選ぶ。C ABI関数pointerを呼出し可能な間、対応するmoduleをunloadしないことを必須条件とする。
+- supervisor workerの起動・停止・retry backoff・診断出力は内部実装詳細として本設計の推奨を示したが、shutdown中にworker joinを待つことはしない。正確なスケジュール定数とlogging sinkは実装準備時に決める。
+- 専用workerがprocess全体で一つであるため、C++ wrapperが独立Runtime間にcleanup順序保証を加えない。各Runtimeの順序はそのRuntime専用queue内のみ保持する。
+
+この1.2案は公開C ABIを追加せず、既承認要求の外部保証も変更しない。cleanup workerが受け持つのは言語wrapperが保持するowned tokenのrelease再試行であり、Core UI状態のfinalizer実行主体はRuntimeの承認済み設計から移さない。
 
 ## 文書の承認・改訂履歴
 
@@ -322,3 +440,5 @@ OwnedとCleanupManagerが同じPendingNode/tokenを同時所有する図では�
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-10-22 | 1.2改訂案 | 最初のC++ Runtime API、C++17 non-throw Result、Runtime専用cleanup queueとprocess-wide supervisorの所有・retry・module pin境界を追加。1.1承認内容を維持し、全文レビュー待ち |
+| 2026-10-22 | 1.2全文 | 利用者が全文を承認。既承認要求とC ABI契約の範囲でAPI・cleanup寿命を具体化。実装・試験状態は別管理 |
