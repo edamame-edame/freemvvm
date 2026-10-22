@@ -118,6 +118,7 @@ def main():
             "abi-smoke",
             "abi-smoke-cpp",
             "cpp-runtime-test",
+            "cpp-package-test",
             "format",
             "minimum",
         ],
@@ -140,12 +141,18 @@ def main():
     results = []
     report = {
         "scope": (
-            "cpp-runtime-unit-test"
+            "cpp-package-integration-test"
+            if args.command == "cpp-package-test"
+            else "cpp-runtime-unit-test"
             if args.command == "cpp-runtime-test"
             else "development-bootstrap"
         ),
         "product_tests": (
-            "cpp-runtime unit test executed"
+            "cpp package consumer test executed"
+            if args.command == "cpp-package-test"
+            else "C++ Runtime and package integration tests executed"
+            if args.command == "check"
+            else "cpp-runtime unit test executed"
             if args.command == "cpp-runtime-test"
             else "not implemented"
         ),
@@ -350,6 +357,107 @@ def main():
                 results,
                 "cpp-runtime-test",
             )
+        elif args.command == "cpp-package-test":
+            run(
+                [
+                    "cmake",
+                    "-E",
+                    "rm",
+                    "-rf",
+                    "out/cmake/package-stage",
+                    "out/cmake/package-moved",
+                    "out/cmake/package-consumer",
+                    "out/cmake/cpp-package-build",
+                ],
+                environment,
+                results,
+                "package-test-clean",
+            )
+            run(
+                [
+                    "cmake",
+                    "-S",
+                    ".",
+                    "-B",
+                    "out/cmake/cpp-package-build",
+                    "-G",
+                    "Ninja",
+                    "-DBUILD_TESTING=OFF",
+                    "-DCMAKE_BUILD_TYPE=Release",
+                ],
+                environment,
+                results,
+                "cpp-package-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "out/cmake/cpp-package-build",
+                    "--target",
+                    "freemvvm_cpp",
+                ],
+                environment,
+                results,
+                "cpp-package-build",
+            )
+            run(
+                [
+                    "cmake",
+                    "--install",
+                    "out/cmake/cpp-package-build",
+                    "--prefix",
+                    "out/cmake/package-stage",
+                ],
+                environment,
+                results,
+                "cpp-package-install",
+            )
+            run(
+                [
+                    "cmake",
+                    "-E",
+                    "rename",
+                    "out/cmake/package-stage",
+                    "out/cmake/package-moved",
+                ],
+                environment,
+                results,
+                "cpp-package-relocate",
+            )
+            run(
+                [
+                    "cmake",
+                    "-S",
+                    "wrappers/cpp/tests/package_consumer",
+                    "-B",
+                    "out/cmake/package-consumer",
+                    "-G",
+                    "Ninja",
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    f"-DCMAKE_PREFIX_PATH={ROOT / 'out/cmake/package-moved'}",
+                ],
+                environment,
+                results,
+                "cpp-package-consumer-configure",
+            )
+            run(
+                ["cmake", "--build", "out/cmake/package-consumer"],
+                environment,
+                results,
+                "cpp-package-consumer-build",
+            )
+            run(
+                [
+                    "ctest",
+                    "--test-dir",
+                    "out/cmake/package-consumer",
+                    "--output-on-failure",
+                ],
+                environment,
+                results,
+                "cpp-package-consumer-test",
+            )
         elif args.command == "check":
             run(
                 [sys.executable, "tools/check_docs.py"],
@@ -426,6 +534,12 @@ def main():
                 environment,
                 results,
                 "c-cpp-probes",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "cpp-package-test"],
+                environment,
+                results,
+                "cpp-package-integration",
             )
             project = "wrappers/csharp/FreeMvvm/FreeMvvm.csproj"
             run(

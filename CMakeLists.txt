@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 project(freemvvm_bootstrap LANGUAGES C CXX)
 
 include(CTest)
+include(GNUInstallDirs)
 find_package(Threads REQUIRED)
 add_subdirectory(wrappers/cpp)
 
@@ -24,15 +25,22 @@ add_custom_target(freemvvm_abi_native_build
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
   BYPRODUCTS ${FREEMVVM_ABI_BYPRODUCTS}
   VERBATIM)
-add_library(freemvvm_abi_native SHARED IMPORTED GLOBAL)
-set_target_properties(freemvvm_abi_native PROPERTIES
+add_library(FreeMvvm::runtime SHARED IMPORTED GLOBAL)
+set_target_properties(FreeMvvm::runtime PROPERTIES
   IMPORTED_LOCATION "${FREEMVVM_ABI_RUNTIME}")
 if(WIN32)
-  set_target_properties(freemvvm_abi_native PROPERTIES
+  set_target_properties(FreeMvvm::runtime PROPERTIES
     IMPORTED_IMPLIB "${FREEMVVM_ABI_IMPORT_LIBRARY}")
 endif()
-target_link_libraries(freemvvm_cpp PUBLIC freemvvm_abi_native Threads::Threads)
+target_link_libraries(freemvvm_cpp PUBLIC FreeMvvm::runtime Threads::Threads)
 add_dependencies(freemvvm_cpp freemvvm_abi_native_build)
+
+if(WIN32)
+  install(FILES "${FREEMVVM_ABI_RUNTIME}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
+  install(FILES "${FREEMVVM_ABI_IMPORT_LIBRARY}" DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+else()
+  install(FILES "${FREEMVVM_ABI_RUNTIME}" DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+endif()
 
 if(BUILD_TESTING)
   add_executable(freemvvm_c_environment_probe tools/probes/c_environment.c)
@@ -51,7 +59,7 @@ if(BUILD_TESTING)
     DEPENDS freemvvm_abi_header_c_probe freemvvm_abi_header_cpp_probe)
   add_executable(freemvvm_abi_runtime_smoke_exe tools/probes/abi_runtime_smoke.c)
   target_include_directories(freemvvm_abi_runtime_smoke_exe PRIVATE crates/c-abi/include)
-  target_link_libraries(freemvvm_abi_runtime_smoke_exe PRIVATE freemvvm_abi_native)
+  target_link_libraries(freemvvm_abi_runtime_smoke_exe PRIVATE FreeMvvm::runtime)
   add_dependencies(freemvvm_abi_runtime_smoke_exe freemvvm_abi_native_build)
   if(WIN32)
     add_custom_command(TARGET freemvvm_abi_runtime_smoke_exe POST_BUILD
@@ -71,7 +79,7 @@ if(BUILD_TESTING)
   target_include_directories(freemvvm_abi_cpp_runtime_smoke_exe PRIVATE
     crates/c-abi/include)
   target_link_libraries(freemvvm_abi_cpp_runtime_smoke_exe PRIVATE
-    freemvvm_cpp freemvvm_abi_native)
+    freemvvm_cpp FreeMvvm::runtime)
   add_dependencies(freemvvm_abi_cpp_runtime_smoke_exe freemvvm_abi_native_build)
   if(WIN32)
     add_custom_command(TARGET freemvvm_abi_cpp_runtime_smoke_exe POST_BUILD

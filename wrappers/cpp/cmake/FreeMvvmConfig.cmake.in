@@ -1,0 +1,18 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+if(NOT TARGET FreeMvvm::runtime)
+  add_library(FreeMvvm::runtime SHARED IMPORTED)
+  if(WIN32)
+    set_target_properties(FreeMvvm::runtime PROPERTIES
+      IMPORTED_LOCATION "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_BINDIR@/freemvvm_abi_1.dll"
+      IMPORTED_IMPLIB "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/freemvvm_abi_1.dll.lib")
+  else()
+    set_target_properties(FreeMvvm::runtime PROPERTIES
+      IMPORTED_LOCATION "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/libfreemvvm_abi_1.so")
+  endif()
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/FreeMvvmTargets.cmake")

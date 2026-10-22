@@ -1,6 +1,6 @@
 # 開発環境
 
-現段階では、各言語のビルド、C/C++環境probe、文書検査を行える土台を用意する。製品のhandle・Runtime・UI・公開C ABIは後続実装で追加する。
+現段階では、各言語のビルド、C/C++環境probe、文書検査を行える土台を用意している。C++ Runtime最小wrapperとCMake install/export packageは実装済み。handleの各種wrapper・UIは後続実装で追加する。
 
 ## 基準と固定版
 
@@ -14,7 +14,7 @@
 | Python | 標準CPython3.13、CIは3.13.12、repository内venv | pyproject.toml / tools/requirements-dev.txt |
 | 検査 | Rust fmt/clippy、Python Ruff0.11.13、pytest8.3.5を導入 | tools/dev.py / tools/requirements-dev.txt |
 
-Python開発依存はtransitiveもexact版へ固定している。現在のpinは開発用で、release artifactの署名済みprofile lockではない。Rust/C#/Pythonのpackage version0.0.0は未公開の骨格を示す。現在exportされるC ABI関数を宣言するheaderとC/C++ compile-only probeは存在するが、CMake install/export、配布package、native loaderは未実装。
+Python開発依存はtransitiveもexact版へ固定している。現在のpinは開発用で、release artifactの署名済みprofile lockではない。Rust/C#/Pythonのpackage version0.0.0は未公開の骨格を示す。現在exportされるC ABI関数を宣言するheaderとC/C++ compile-only probeがあり、C++は`FreeMvvm::cpp`と`FreeMvvm::runtime`をexportするrelocatable CMake packageを持つ。正式release packageと他言語のnative loaderは未実装。
 
 ## Windowsで開始
 
@@ -55,10 +55,12 @@ Linux/ARMのsysroot・compiler・container digestを固定するrelease profile�
 | `tools/dev.py format` | Rust/Pythonのformat |
 | `tools/dev.py abi-smoke` | Cargo C ABI native libraryをC consumerへlinkし、version queryとRuntime lifecycleを実行 |
 | `tools/dev.py abi-smoke-cpp` | Cargo C ABI native libraryをC++17 consumerへlinkし、version queryとRuntime lifecycleを実行 |
-| `tools/dev.py check` | 文書リンク/表/fence、Python format/lint、Rust fmt/clippy/buildとtest harness compile、C/C++ compile/linkとCTest probe、.NET locked restore/build、Python wheel build/install/import |
+| `tools/dev.py cpp-runtime-test` | C++ Runtime fake-ABI unit testと`BUILD_TESTING=OFF`のwrapper build |
+| `tools/dev.py cpp-package-test` | CMake packageをinstall・移動し、独立consumerのconfigure/link/Runtime smokeを実行 |
+| `tools/dev.py check` | 文書リンク/表/fence、Python format/lint、Rust fmt/clippy/buildとtest harness compile、C/C++ CTest、relocated C++ package consumer、.NET locked restore/build、Python wheel build/install/import |
 | `tools/dev.py minimum` | Rust1.85.0でworkspace/all-targetsをlocked check |
 
-実行は常に上記venvのPythonで行う。checkは初期化済みvenvへ開発wheelを導入し直す。製品unit-testを0件成功として数えず、pytestの製品suiteも未作成のため実行しない。C/C++の2probeはtoolchain確認で、UIやFFIの振る舞いの証明ではない。
+実行は常に上記venvのPythonで行う。checkは初期化済みvenvへ開発wheelを導入し直す。C++ Runtimeとpackage consumerは製品unit/integration testとして実行し、他のpytest製品suiteは未作成である。C/C++環境probeはtoolchain確認で、UI全体の振る舞いの証明ではない。
 
 結果はGit除外の `.local/verification/check.json` と `minimum.json` に保存する。git HEAD、dirty状態、入力hash、host、tool版、command、終了codeを記録する。未commitのローカル結果は、同じHEADだけを根拠にcommit済みsource/testの試験証拠と扱わない。
 

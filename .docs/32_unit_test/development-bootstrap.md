@@ -14,7 +14,7 @@
 
 | 検証ID | 操作・期待結果 | 実行入口 |
 | --- | --- | --- |
-| UT-BUILD-ENV-001 | 固定toolとvenvを照合し、全言語の骨格をcompile/build。C/C++ probeで固定幅値・C++17・float特性とatomic利用を確認 | venv Pythonで `tools/dev.py check` |
+| UT-BUILD-ENV-001 | 固定toolとvenvを照合し、全言語の骨格をcompile/build。C/C++ probeで固定幅値・C++17・float特性とatomic利用を確認し、C++ Runtime unitとrelocated package consumerを実行 | venv Pythonで `tools/dev.py check` |
 | UT-BUILD-MIN-001 | Rust1.85/edition2024で全workspaceをcompile check。minimum未確認を開発版成功で代替しない | venv Pythonで `tools/dev.py minimum` |
 
 後始末はcompiler/installerの子process終了を確認し、生成物をvenv/target/out/obj/bin/egg-infoへ分離する。checkで開発wheelをrepositoryのvenvへ再導入するが、OS既定環境へinstallしない。自動再帰削除は行わず、再実行時はbuild toolの増分更新を使う。

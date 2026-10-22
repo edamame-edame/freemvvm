@@ -1782,6 +1782,41 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-runtime-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-PKG-CPP-001",
+      "state": "ready",
+      "scope": "relocatable-cmake-install-export-and-downstream-consumer",
+      "sources": [
+        "wrappers/cpp/CMakeLists.txt",
+        "wrappers/cpp/cmake/FreeMvvmConfig.cmake.in",
+        "wrappers/cpp/tests/package_consumer/CMakeLists.txt",
+        "wrappers/cpp/tests/package_consumer/main.cpp",
+        "tools/dev.py"
+      ],
+      "config": ["CMakeLists.txt", "tools/units.yaml"],
+      "depends_on": ["UNIT-BUILD-001", "UNIT-ABI-019", "UNIT-WRAP-CPP-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/build/toolchain-packages.md",
+          "version": "1.1",
+          "section": "CMake package integration"
+        },
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.2",
+          "section": "Runtime最小公開API"
+        }
+      ],
+      "requirements": ["RQ-12-004"],
+      "cases": ["TC-WRAP-CPP-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-PKG-CPP-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]
+        }
+      ]
     }
   ]
 }
