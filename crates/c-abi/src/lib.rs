@@ -3,10 +3,13 @@
 //! The public API is under construction and is not distributable yet.
 
 use freemvvm_core::abi_support::{
-    BindingApiError, DestroyCallback, PostCallback, PropertyApiError, RuntimeCreateError,
-    RuntimeQueryError, RuntimeRetainError, ShutdownApiError, ShutdownApiState, WakeCallback,
+    BindingApiError, DestroyCallback, ErrorApiError, PostCallback, PropertyApiError,
+    RuntimeCreateError, RuntimeQueryError, RuntimeRetainError, ShutdownApiError, ShutdownApiState,
+    ValidateBoolCallback, ValidateI64Callback, ValidateUtf8Callback, WakeCallback,
     binding_cancel as core_binding_cancel, binding_create as core_binding_create,
-    handle_release as core_handle_release, property_create_bool as core_property_create_bool,
+    error_code as core_error_code, error_message_utf8 as core_error_message_utf8,
+    error_status as core_error_status, handle_release as core_handle_release,
+    property_create_bool as core_property_create_bool,
     property_create_decimal as core_property_create_decimal,
     property_create_f64 as core_property_create_f64,
     property_create_i64 as core_property_create_i64,
@@ -16,11 +19,17 @@ use freemvvm_core::abi_support::{
     property_kind as core_property_kind, property_set_bool as core_property_set_bool,
     property_set_decimal as core_property_set_decimal, property_set_f64 as core_property_set_f64,
     property_set_i64 as core_property_set_i64, property_set_utf8 as core_property_set_utf8,
-    property_subscribe as core_property_subscribe, runtime_create_handle, runtime_dispatch_turn,
-    runtime_host_begin_event, runtime_host_end_event, runtime_host_stopped,
-    runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post, runtime_request_shutdown,
-    runtime_retain_handle as core_runtime_retain_handle, runtime_set_ui_loop_bridge,
-    runtime_shutdown, shutdown_request_query, subscription_cancel as core_subscription_cancel,
+    property_subscribe as core_property_subscribe,
+    property_validator_cancel as core_property_validator_cancel,
+    property_validator_register_bool as core_property_validator_register_bool,
+    property_validator_register_i64 as core_property_validator_register_i64,
+    property_validator_register_utf8 as core_property_validator_register_utf8,
+    runtime_create_handle, runtime_dispatch_turn, runtime_host_begin_event, runtime_host_end_event,
+    runtime_host_stopped, runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post,
+    runtime_request_shutdown, runtime_retain_handle as core_runtime_retain_handle,
+    runtime_set_ui_loop_bridge, runtime_shutdown, shutdown_request_query,
+    subscription_cancel as core_subscription_cancel,
+    validation_error_create as core_validation_error_create,
 };
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
 use std::ffi::c_void;
@@ -169,7 +178,7 @@ fn map_property_error(error: PropertyApiError) -> u32 {
         PropertyApiError::WrongType => UI_WRONG_TYPE,
         PropertyApiError::WrongThread => UI_WRONG_THREAD,
         PropertyApiError::Closed => UI_CLOSED,
-        PropertyApiError::ValidationFailed => UI_VALIDATION_FAILED,
+        PropertyApiError::ValidationFailed { .. } => UI_VALIDATION_FAILED,
         PropertyApiError::OutOfMemory => UI_OUT_OF_MEMORY,
         PropertyApiError::BufferTooSmall { .. } => UI_BUFFER_TOO_SMALL,
         PropertyApiError::Internal => UI_INTERNAL_ERROR,
@@ -185,7 +194,19 @@ fn map_binding_error(error: BindingApiError) -> u32 {
         BindingApiError::WrongThread => UI_WRONG_THREAD,
         BindingApiError::Closed => UI_CLOSED,
         BindingApiError::OutOfMemory => UI_OUT_OF_MEMORY,
+        BindingApiError::ValidationFailed { .. } => UI_VALIDATION_FAILED,
         BindingApiError::Internal => UI_INTERNAL_ERROR,
+    }
+}
+
+fn map_error_api_error(error: ErrorApiError) -> u32 {
+    match error {
+        ErrorApiError::InvalidHandle => UI_INVALID_HANDLE,
+        ErrorApiError::InvalidArgument => UI_INVALID_ARGUMENT,
+        ErrorApiError::WrongThread => UI_WRONG_THREAD,
+        ErrorApiError::OutOfMemory => UI_OUT_OF_MEMORY,
+        ErrorApiError::BufferTooSmall { .. } => UI_BUFFER_TOO_SMALL,
+        ErrorApiError::Internal => UI_INTERNAL_ERROR,
     }
 }
 
@@ -199,12 +220,26 @@ fn catch_property_get<T>(
     }
 }
 
-fn catch_property_set(operation: impl FnOnce() -> Result<(), PropertyApiError>) -> u32 {
+fn catch_property_set(operation: impl FnOnce() -> Result<(), PropertyApiError>) -> (u32, u64) {
     match catch_unwind(AssertUnwindSafe(operation)) {
-        Ok(Ok(())) => UI_OK,
-        Ok(Err(error)) => map_property_error(error),
-        Err(_) => UI_INTERNAL_ERROR,
+        Ok(Ok(())) => (UI_OK, 0),
+        Ok(Err(PropertyApiError::ValidationFailed { error_handle })) => {
+            (UI_VALIDATION_FAILED, error_handle)
+        }
+        Ok(Err(error)) => (map_property_error(error), 0),
+        Err(_) => (UI_INTERNAL_ERROR, 0),
     }
+}
+
+unsafe fn finish_property_set(result: (u32, u64), out_error: *mut u64) -> u32 {
+    let (status, error_handle) = result;
+    if !out_error.is_null() {
+        // SAFETY: the exported setter's contract requires a writable optional output.
+        unsafe { out_error.write(error_handle) };
+    } else if error_handle != 0 {
+        let _ = core_handle_release(error_handle);
+    }
+    status
 }
 
 /// Create an owned BOOL Property with initial value 0 or 1.
@@ -582,7 +617,13 @@ pub unsafe extern "C" fn ui_abi_1_property_set_bool(
     if value > 1 {
         return UI_INVALID_ARGUMENT;
     }
-    catch_property_set(|| core_property_set_bool(property, value != 0))
+    // SAFETY: this function forwards the caller's optional writable error output to the helper.
+    unsafe {
+        finish_property_set(
+            catch_property_set(|| core_property_set_bool(property, value != 0)),
+            out_error,
+        )
+    }
 }
 
 /// Set an I64 Property.
@@ -599,7 +640,13 @@ pub unsafe extern "C" fn ui_abi_1_property_set_i64(
         // SAFETY: the caller promises that a non-null optional error output is writable.
         unsafe { out_error.write(0) };
     }
-    catch_property_set(|| core_property_set_i64(property, value))
+    // SAFETY: this function forwards the caller's optional writable error output to the helper.
+    unsafe {
+        finish_property_set(
+            catch_property_set(|| core_property_set_i64(property, value)),
+            out_error,
+        )
+    }
 }
 
 /// Set a UTF-8 Property by copying the specified bytes.
@@ -631,7 +678,13 @@ pub unsafe extern "C" fn ui_abi_1_property_set_utf8(
         // guarantees the length fits this platform's slice representation.
         unsafe { std::slice::from_raw_parts(bytes, length) }
     };
-    catch_property_set(|| core_property_set_utf8(property, input))
+    // SAFETY: the input slice is valid for this call and the optional error output is writable.
+    unsafe {
+        finish_property_set(
+            catch_property_set(|| core_property_set_utf8(property, input)),
+            out_error,
+        )
+    }
 }
 
 /// Set an F64 Property.
@@ -648,7 +701,13 @@ pub unsafe extern "C" fn ui_abi_1_property_set_f64(
         // SAFETY: the caller promises that a non-null optional error output is writable.
         unsafe { out_error.write(0) };
     }
-    catch_property_set(|| core_property_set_f64(property, value))
+    // SAFETY: this function forwards the caller's optional writable error output to the helper.
+    unsafe {
+        finish_property_set(
+            catch_property_set(|| core_property_set_f64(property, value)),
+            out_error,
+        )
+    }
 }
 
 /// Set a DECIMAL Property from its canonical `uint64_t` representation.
@@ -665,7 +724,314 @@ pub unsafe extern "C" fn ui_abi_1_property_set_decimal(
         // SAFETY: the caller promises that a non-null optional error output is writable.
         unsafe { out_error.write(0) };
     }
-    catch_property_set(|| core_property_set_decimal(property, bits))
+    // SAFETY: this function forwards the caller's optional writable error output to the helper.
+    unsafe {
+        finish_property_set(
+            catch_property_set(|| core_property_set_decimal(property, bits)),
+            out_error,
+        )
+    }
+}
+
+/// Create an immutable validation Error from inside a Property Validator callback.
+///
+/// # Safety
+/// For positive length, `message` must point to readable UTF-8 bytes. `out_error` must be
+/// writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_validation_error_create(
+    domain: u32,
+    code: u32,
+    message: *const u8,
+    message_byte_length: u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: the caller guarantees a non-null output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if out_error.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let Ok(length) = usize::try_from(message_byte_length) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    if length > 0 && message.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let bytes = if length == 0 {
+        &[][..]
+    } else {
+        // SAFETY: caller promises `length` readable bytes; conversion above fits usize.
+        unsafe { std::slice::from_raw_parts(message, length) }
+    };
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_validation_error_create(domain, code, bytes)
+    })) {
+        Ok(Ok(error)) => {
+            // SAFETY: required output was checked above.
+            unsafe { out_error.write(error) };
+            UI_OK
+        }
+        Ok(Err(error)) => map_error_api_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Return the stable status stored in an immutable Error.
+///
+/// # Safety
+/// `out_status` must be null or writable storage for one `u32`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_error_status(error: u64, out_status: *mut u32) -> u32 {
+    if !out_status.is_null() {
+        // SAFETY: caller guarantees non-null outputs are writable.
+        unsafe { out_status.write(0) };
+    }
+    if out_status.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| core_error_status(error))) {
+        Ok(Ok(status)) => {
+            // SAFETY: required output was checked above.
+            unsafe { out_status.write(status) };
+            UI_OK
+        }
+        Ok(Err(error)) => map_error_api_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Return the domain and code stored in an immutable Error.
+///
+/// # Safety
+/// Each output must be null or writable storage for one `u32`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_error_code(
+    error: u64,
+    out_domain: *mut u32,
+    out_code: *mut u32,
+) -> u32 {
+    if !out_domain.is_null() {
+        // SAFETY: caller guarantees non-null outputs are writable.
+        unsafe { out_domain.write(0) };
+    }
+    if !out_code.is_null() {
+        // SAFETY: caller guarantees non-null outputs are writable.
+        unsafe { out_code.write(0) };
+    }
+    if out_domain.is_null() || out_code.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| core_error_code(error))) {
+        Ok(Ok((domain, code))) => {
+            // SAFETY: required outputs were checked above.
+            unsafe {
+                out_domain.write(domain);
+                out_code.write(code);
+            }
+            UI_OK
+        }
+        Ok(Err(error)) => map_error_api_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Copy the immutable Error message into a caller-owned UTF-8 buffer.
+///
+/// # Safety
+/// For positive capacity, `buffer` must point to writable storage for that many bytes.
+/// `out_length` must be writable storage for one `u64`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_error_message_utf8(
+    error: u64,
+    buffer: *mut u8,
+    capacity: u64,
+    out_length: *mut u64,
+) -> u32 {
+    if !out_length.is_null() {
+        // SAFETY: caller guarantees non-null output is writable.
+        unsafe { out_length.write(0) };
+    }
+    if out_length.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let Ok(capacity) = usize::try_from(capacity) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    if capacity > 0 && buffer.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let output = if capacity == 0 {
+        None
+    } else {
+        // SAFETY: caller promises writable storage for capacity bytes.
+        Some(unsafe { std::slice::from_raw_parts_mut(buffer, capacity) })
+    };
+    match catch_unwind(AssertUnwindSafe(|| core_error_message_utf8(error, output))) {
+        Ok(Ok(length)) => {
+            // SAFETY: required output was checked above.
+            unsafe { out_length.write(length as u64) };
+            UI_OK
+        }
+        Ok(Err(ErrorApiError::BufferTooSmall { required })) => {
+            // SAFETY: required output was checked above.
+            unsafe { out_length.write(required as u64) };
+            UI_BUFFER_TOO_SMALL
+        }
+        Ok(Err(error)) => map_error_api_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+fn catch_validator_register(
+    operation: impl FnOnce() -> Result<u64, PropertyApiError>,
+) -> Result<u64, u32> {
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(Ok(handle)) => Ok(handle),
+        Ok(Err(error)) => Err(map_property_error(error)),
+        Err(_) => Err(UI_INTERNAL_ERROR),
+    }
+}
+
+/// Register a synchronous BOOL Property Validator.
+///
+/// # Safety
+/// `out_registration` must be writable. A non-null `out_error` must be writable. Callback and
+/// destroy must follow the ABI lifetime contract; ownership transfers only on success.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_validator_register_bool(
+    property: u64,
+    callback: Option<ValidateBoolCallback>,
+    userdata: *mut c_void,
+    destroy: Option<DestroyCallback>,
+    out_registration: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_registration.is_null() {
+        // SAFETY: caller guarantees non-null output is writable.
+        unsafe { out_registration.write(0) };
+    }
+    if !out_error.is_null() {
+        // SAFETY: caller guarantees non-null output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if out_registration.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let (Some(callback), Some(destroy)) = (callback, destroy) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    match catch_validator_register(|| {
+        core_property_validator_register_bool(property, callback, userdata as usize, destroy)
+    }) {
+        Ok(registration) => {
+            // SAFETY: required output was checked above.
+            unsafe { out_registration.write(registration) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Register a synchronous I64 Property Validator.
+///
+/// # Safety
+/// See `ui_abi_1_property_validator_register_bool`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_validator_register_i64(
+    property: u64,
+    callback: Option<ValidateI64Callback>,
+    userdata: *mut c_void,
+    destroy: Option<DestroyCallback>,
+    out_registration: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_registration.is_null() {
+        // SAFETY: caller guarantees non-null output is writable.
+        unsafe { out_registration.write(0) };
+    }
+    if !out_error.is_null() {
+        // SAFETY: caller guarantees non-null output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if out_registration.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let (Some(callback), Some(destroy)) = (callback, destroy) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    match catch_validator_register(|| {
+        core_property_validator_register_i64(property, callback, userdata as usize, destroy)
+    }) {
+        Ok(registration) => {
+            // SAFETY: required output was checked above.
+            unsafe { out_registration.write(registration) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Register a synchronous UTF8 Property Validator.
+///
+/// # Safety
+/// See `ui_abi_1_property_validator_register_bool`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_validator_register_utf8(
+    property: u64,
+    callback: Option<ValidateUtf8Callback>,
+    userdata: *mut c_void,
+    destroy: Option<DestroyCallback>,
+    out_registration: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_registration.is_null() {
+        // SAFETY: caller guarantees non-null output is writable.
+        unsafe { out_registration.write(0) };
+    }
+    if !out_error.is_null() {
+        // SAFETY: caller guarantees non-null output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if out_registration.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let (Some(callback), Some(destroy)) = (callback, destroy) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    match catch_validator_register(|| {
+        core_property_validator_register_utf8(property, callback, userdata as usize, destroy)
+    }) {
+        Ok(registration) => {
+            // SAFETY: required output was checked above.
+            unsafe { out_registration.write(registration) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Explicitly cancel a Property Validator registration without releasing its handle.
+///
+/// # Safety
+/// A non-null `out_error` must be writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_property_validator_cancel(
+    registration: u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: caller guarantees non-null output is writable.
+        unsafe { out_error.write(0) };
+    }
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_property_validator_cancel(registration)
+    })) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_property_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
 }
 
 /// Subscribe to changes of one Property.
@@ -739,8 +1105,8 @@ pub unsafe extern "C" fn ui_abi_1_subscription_cancel(
 /// Create a one-time, one-way, or two-way Binding between same-kind Properties.
 ///
 /// Mode values are 1 (one-time), 2 (one-way), and 3 (two-way). One-time success returns a zero
-/// Binding handle; persistent modes return an owned handle. `out_error` is reserved for the
-/// designed validation-error result and is zero for this validator-free implementation slice.
+/// Binding handle; persistent modes return an owned handle. Initial validation failures return an
+/// owned immutable Error through `out_error` when that output is provided.
 ///
 /// # Safety
 /// `out_binding` must point to writable storage for one `u64`; a non-null `out_error` must be
@@ -771,6 +1137,15 @@ pub unsafe extern "C" fn ui_abi_1_binding_create(
             // SAFETY: required output is non-null and writable per the caller contract.
             unsafe { out_binding.write(binding) };
             UI_OK
+        }
+        Ok(Err(BindingApiError::ValidationFailed { error_handle })) => {
+            if !out_error.is_null() {
+                // SAFETY: the caller guarantees the non-null optional error output is writable.
+                unsafe { out_error.write(error_handle) };
+            } else {
+                let _ = core_handle_release(error_handle);
+            }
+            UI_VALIDATION_FAILED
         }
         Ok(Err(error)) => map_binding_error(error),
         Err(_) => UI_INTERNAL_ERROR,
@@ -1201,22 +1576,27 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
 mod tests {
     use super::{
         RuntimeRetainError, UI_BUFFER_TOO_SMALL, UI_INTERNAL_ERROR, UI_INVALID_ARGUMENT,
-        UI_INVALID_HANDLE, UI_OK, UI_OUT_OF_MEMORY, UI_PENDING, UI_UNSUPPORTED, UI_WRONG_RUNTIME,
-        UI_WRONG_THREAD, UI_WRONG_TYPE, catch_runtime_creation, catch_runtime_query,
-        catch_runtime_retain, ui_abi_1_binding_cancel, ui_abi_1_binding_create,
-        ui_abi_1_get_version, ui_abi_1_handle_release, ui_abi_1_handle_retain,
-        ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32, ui_abi_1_numeric_narrow_f64,
-        ui_abi_1_property_create_bool, ui_abi_1_property_create_decimal,
-        ui_abi_1_property_create_f64, ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8,
-        ui_abi_1_property_get_bool, ui_abi_1_property_get_decimal, ui_abi_1_property_get_f64,
-        ui_abi_1_property_get_i64, ui_abi_1_property_get_utf8, ui_abi_1_property_kind,
-        ui_abi_1_property_set_bool, ui_abi_1_property_set_decimal, ui_abi_1_property_set_f64,
-        ui_abi_1_property_set_i64, ui_abi_1_property_set_utf8, ui_abi_1_property_subscribe,
+        UI_INVALID_HANDLE, UI_OK, UI_OUT_OF_MEMORY, UI_PENDING, UI_UNSUPPORTED,
+        UI_VALIDATION_FAILED, UI_WRONG_RUNTIME, UI_WRONG_THREAD, UI_WRONG_TYPE,
+        catch_runtime_creation, catch_runtime_query, catch_runtime_retain, ui_abi_1_binding_cancel,
+        ui_abi_1_binding_create, ui_abi_1_error_code, ui_abi_1_error_message_utf8,
+        ui_abi_1_error_status, ui_abi_1_get_version, ui_abi_1_handle_release,
+        ui_abi_1_handle_retain, ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32,
+        ui_abi_1_numeric_narrow_f64, ui_abi_1_property_create_bool,
+        ui_abi_1_property_create_decimal, ui_abi_1_property_create_f64,
+        ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8, ui_abi_1_property_get_bool,
+        ui_abi_1_property_get_decimal, ui_abi_1_property_get_f64, ui_abi_1_property_get_i64,
+        ui_abi_1_property_get_utf8, ui_abi_1_property_kind, ui_abi_1_property_set_bool,
+        ui_abi_1_property_set_decimal, ui_abi_1_property_set_f64, ui_abi_1_property_set_i64,
+        ui_abi_1_property_set_utf8, ui_abi_1_property_subscribe,
+        ui_abi_1_property_validator_cancel, ui_abi_1_property_validator_register_bool,
+        ui_abi_1_property_validator_register_i64, ui_abi_1_property_validator_register_utf8,
         ui_abi_1_runtime_create, ui_abi_1_runtime_dispatch_turn, ui_abi_1_runtime_host_begin_event,
         ui_abi_1_runtime_host_end_event, ui_abi_1_runtime_host_stopped,
         ui_abi_1_runtime_is_ui_thread, ui_abi_1_runtime_post, ui_abi_1_runtime_request_shutdown,
         ui_abi_1_runtime_set_ui_loop_bridge, ui_abi_1_runtime_shutdown,
         ui_abi_1_shutdown_request_query, ui_abi_1_subscription_cancel,
+        ui_abi_1_validation_error_create,
     };
     use std::ffi::c_void;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -1225,6 +1605,72 @@ mod tests {
     struct BridgeProbe {
         priorities: Mutex<Vec<u32>>,
         destroyed: AtomicUsize,
+    }
+
+    #[derive(Default)]
+    struct ValidatorProbe {
+        calls: AtomicUsize,
+        destroys: AtomicUsize,
+    }
+
+    unsafe extern "C" fn reject_negative_i64(
+        userdata: *mut c_void,
+        candidate: i64,
+        out_error: *mut u64,
+    ) -> u32 {
+        // SAFETY: test keeps this probe alive until after validator cancellation.
+        let probe = unsafe { &*userdata.cast::<ValidatorProbe>() };
+        probe.calls.fetch_add(1, Ordering::SeqCst);
+        if candidate >= 0 {
+            return UI_OK;
+        }
+        let message = b"negative values are rejected";
+        // SAFETY: callback scope permits validation error creation and output is writable.
+        let status = unsafe {
+            ui_abi_1_validation_error_create(
+                41,
+                9,
+                message.as_ptr(),
+                message.len() as u64,
+                out_error,
+            )
+        };
+        if status == UI_OK {
+            UI_VALIDATION_FAILED
+        } else {
+            UI_INTERNAL_ERROR
+        }
+    }
+
+    unsafe extern "C" fn validator_destroy(userdata: *mut c_void) {
+        // SAFETY: test keeps this probe alive until after validator cancellation.
+        let probe = unsafe { &*userdata.cast::<ValidatorProbe>() };
+        probe.destroys.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn accept_bool(
+        userdata: *mut c_void,
+        _candidate: u8,
+        _out_error: *mut u64,
+    ) -> u32 {
+        // SAFETY: the test keeps its probe alive until cancellation.
+        unsafe { &*userdata.cast::<ValidatorProbe>() }
+            .calls
+            .fetch_add(1, Ordering::SeqCst);
+        UI_OK
+    }
+
+    unsafe extern "C" fn accept_utf8(
+        userdata: *mut c_void,
+        _candidate: *const u8,
+        _length: u64,
+        _out_error: *mut u64,
+    ) -> u32 {
+        // SAFETY: the test keeps its probe alive until cancellation.
+        unsafe { &*userdata.cast::<ValidatorProbe>() }
+            .calls
+            .fetch_add(1, Ordering::SeqCst);
+        UI_OK
     }
 
     #[derive(Default)]
@@ -3388,5 +3834,346 @@ mod tests {
         // SAFETY: a null output pointer is explicitly handled before it is dereferenced.
         let null_status = unsafe { ui_abi_1_has_feature(1, std::ptr::null_mut()) };
         assert_eq!(null_status, UI_INVALID_ARGUMENT);
+    }
+
+    #[test]
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    fn i64_validator_error_and_initial_binding_rejection_are_atomic() {
+        let mut runtime = 0;
+        // SAFETY: outputs are valid writable locals.
+        assert_eq!(
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let mut property = 0;
+        // SAFETY: output is writable and Runtime is valid on this UI thread.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_create_i64(runtime, 4, &mut property, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        let probe = ValidatorProbe::default();
+        let mut registration = 0;
+        // SAFETY: probe outlives registration and cancellation.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_validator_register_i64(
+                    property,
+                    Some(reject_negative_i64),
+                    (&probe as *const ValidatorProbe).cast_mut().cast(),
+                    Some(validator_destroy),
+                    &mut registration,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(probe.calls.load(Ordering::SeqCst), 0);
+        let mut duplicate = 1;
+        // SAFETY: failed registration leaves callback ownership with this test.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_validator_register_i64(
+                    property,
+                    Some(reject_negative_i64),
+                    (&probe as *const ValidatorProbe).cast_mut().cast(),
+                    Some(validator_destroy),
+                    &mut duplicate,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(duplicate, 0);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 0);
+
+        let mut error = 0;
+        // SAFETY: nullable error output is valid.
+        assert_eq!(
+            unsafe { ui_abi_1_property_set_i64(property, 4, &mut error) },
+            UI_OK
+        );
+        // SAFETY: rejected set produces an owned immutable Error.
+        assert_eq!(
+            unsafe { ui_abi_1_property_set_i64(property, -2, &mut error) },
+            UI_VALIDATION_FAILED
+        );
+        assert_ne!(error, 0);
+        assert_eq!(probe.calls.load(Ordering::SeqCst), 2);
+        let mut value = 0;
+        // SAFETY: output is writable.
+        assert_eq!(
+            unsafe { ui_abi_1_property_get_i64(property, &mut value) },
+            UI_OK
+        );
+        assert_eq!(value, 4);
+        let mut status = 0;
+        // SAFETY: output is writable.
+        assert_eq!(unsafe { ui_abi_1_error_status(error, &mut status) }, UI_OK);
+        assert_eq!(status, UI_VALIDATION_FAILED);
+        let (mut domain, mut code) = (0, 0);
+        // SAFETY: both outputs are writable.
+        assert_eq!(
+            unsafe { ui_abi_1_error_code(error, &mut domain, &mut code) },
+            UI_OK
+        );
+        assert_eq!((domain, code), (41, 9));
+        let message = b"negative values are rejected";
+        let mut length = 0;
+        // SAFETY: null buffer with zero capacity queries required byte length.
+        assert_eq!(
+            unsafe { ui_abi_1_error_message_utf8(error, std::ptr::null_mut(), 0, &mut length) },
+            UI_OK
+        );
+        assert_eq!(length as usize, message.len());
+        let mut short = [0x5a; 3];
+        // SAFETY: writable buffer is valid for its declared capacity.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_error_message_utf8(
+                    error,
+                    short.as_mut_ptr(),
+                    short.len() as u64,
+                    &mut length,
+                )
+            },
+            UI_BUFFER_TOO_SMALL
+        );
+        assert_eq!(short, [0x5a; 3]);
+        let mut output = vec![0; message.len()];
+        // SAFETY: output buffer is writable for the declared capacity.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_error_message_utf8(
+                    error,
+                    output.as_mut_ptr(),
+                    output.len() as u64,
+                    &mut length,
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(output, message);
+        let mut retained_error = 0;
+        // SAFETY: output is writable; retained copy owns the same immutable Error.
+        assert_eq!(
+            unsafe { ui_abi_1_handle_retain(error, &mut retained_error) },
+            UI_OK
+        );
+        assert_eq!(ui_abi_1_handle_release(error), UI_OK);
+        // SAFETY: retained handle stays valid after original release.
+        assert_eq!(
+            unsafe { ui_abi_1_error_status(retained_error, &mut status) },
+            UI_OK
+        );
+        assert_eq!(ui_abi_1_handle_release(retained_error), UI_OK);
+
+        let mut registration_copy = 0;
+        // SAFETY: output is writable and registration is live.
+        assert_eq!(
+            unsafe { ui_abi_1_handle_retain(registration, &mut registration_copy) },
+            UI_OK
+        );
+        assert_eq!(ui_abi_1_handle_release(registration), UI_OK);
+        // SAFETY: registration's retained owner keeps validation active.
+        assert_eq!(
+            unsafe { ui_abi_1_property_set_i64(property, -3, &mut error) },
+            UI_VALIDATION_FAILED
+        );
+        assert_eq!(ui_abi_1_handle_release(error), UI_OK);
+        let worker_registration = registration_copy;
+        let worker_cancel = std::thread::spawn(move || {
+            // SAFETY: cancel accepts a valid handle and nullable output; this checks UI affinity.
+            unsafe { ui_abi_1_property_validator_cancel(worker_registration, std::ptr::null_mut()) }
+        })
+        .join()
+        .expect("worker cancellation result");
+        assert_eq!(worker_cancel, UI_WRONG_THREAD);
+        // SAFETY: output is writable; cancellation removes the validator and runs destroy once.
+        assert_eq!(
+            unsafe { ui_abi_1_property_validator_cancel(registration_copy, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+        // SAFETY: candidate is accepted after cancellation.
+        assert_eq!(
+            unsafe { ui_abi_1_property_set_i64(property, -3, std::ptr::null_mut()) },
+            UI_OK
+        );
+
+        let bool_probe = ValidatorProbe::default();
+        let mut bool_property = 0;
+        // SAFETY: writable output and live Runtime.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_create_bool(runtime, 0, &mut bool_property, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        let mut bool_registration = 0;
+        // SAFETY: probe outlives cancellation.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_validator_register_bool(
+                    bool_property,
+                    Some(accept_bool),
+                    (&bool_probe as *const ValidatorProbe).cast_mut().cast(),
+                    Some(validator_destroy),
+                    &mut bool_registration,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        // SAFETY: nullable setter error output.
+        assert_eq!(
+            unsafe { ui_abi_1_property_set_bool(bool_property, 1, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(bool_probe.calls.load(Ordering::SeqCst), 1);
+        // SAFETY: nullable cancellation error output.
+        assert_eq!(
+            unsafe { ui_abi_1_property_validator_cancel(bool_registration, std::ptr::null_mut()) },
+            UI_OK
+        );
+
+        let utf8_probe = ValidatorProbe::default();
+        let initial_utf8 = b"initial";
+        let mut utf8_property = 0;
+        // SAFETY: initial bytes are readable and output writable.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_create_utf8(
+                    runtime,
+                    initial_utf8.as_ptr(),
+                    initial_utf8.len() as u64,
+                    &mut utf8_property,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut utf8_registration = 0;
+        // SAFETY: probe outlives cancellation.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_validator_register_utf8(
+                    utf8_property,
+                    Some(accept_utf8),
+                    (&utf8_probe as *const ValidatorProbe).cast_mut().cast(),
+                    Some(validator_destroy),
+                    &mut utf8_registration,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let updated_utf8 = b"updated";
+        // SAFETY: input bytes are readable for the declared length.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_set_utf8(
+                    utf8_property,
+                    updated_utf8.as_ptr(),
+                    updated_utf8.len() as u64,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(utf8_probe.calls.load(Ordering::SeqCst), 1);
+        // SAFETY: nullable cancellation error output.
+        assert_eq!(
+            unsafe { ui_abi_1_property_validator_cancel(utf8_registration, std::ptr::null_mut()) },
+            UI_OK
+        );
+
+        let target_probe = ValidatorProbe::default();
+        let mut source = 0;
+        let mut target = 0;
+        // SAFETY: outputs are writable.
+        assert_eq!(
+            unsafe { ui_abi_1_property_create_i64(runtime, -7, &mut source, std::ptr::null_mut()) },
+            UI_OK
+        );
+        // SAFETY: outputs are writable.
+        assert_eq!(
+            unsafe { ui_abi_1_property_create_i64(runtime, 0, &mut target, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let mut target_registration = 0;
+        // SAFETY: probe outlives registration cancellation.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_validator_register_i64(
+                    target,
+                    Some(reject_negative_i64),
+                    (&target_probe as *const ValidatorProbe).cast_mut().cast(),
+                    Some(validator_destroy),
+                    &mut target_registration,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut binding = 1;
+        let mut binding_error = 0;
+        for mode in [1, 2, 3] {
+            // SAFETY: outputs are writable; rejected initial sync must leave binding zero.
+            assert_eq!(
+                unsafe {
+                    ui_abi_1_binding_create(source, target, mode, &mut binding, &mut binding_error)
+                },
+                UI_VALIDATION_FAILED
+            );
+            assert_eq!(binding, 0);
+            assert_ne!(binding_error, 0);
+            assert_eq!(ui_abi_1_handle_release(binding_error), UI_OK);
+            binding_error = 0;
+        }
+        assert_eq!(target_probe.calls.load(Ordering::SeqCst), 3);
+        let mut target_value = 9;
+        // SAFETY: output is writable.
+        assert_eq!(
+            unsafe { ui_abi_1_property_get_i64(target, &mut target_value) },
+            UI_OK
+        );
+        assert_eq!(target_value, 0);
+        // SAFETY: source setter has no requested Error output.
+        assert_eq!(
+            unsafe { ui_abi_1_property_set_i64(source, 7, std::ptr::null_mut()) },
+            UI_OK
+        );
+        // SAFETY: valid output pointers; success proves failed create published no graph edge.
+        assert_eq!(
+            unsafe { ui_abi_1_binding_create(source, target, 2, &mut binding, &mut binding_error) },
+            UI_OK
+        );
+        assert_ne!(binding, 0);
+        assert_eq!(binding_error, 0);
+
+        // SAFETY: cancel output is nullable; all handles are owned by this test.
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_validator_cancel(target_registration, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        for handle in [
+            binding,
+            target_registration,
+            registration_copy,
+            bool_registration,
+            bool_property,
+            utf8_registration,
+            utf8_property,
+            property,
+            source,
+            target,
+            runtime,
+        ] {
+            assert_eq!(ui_abi_1_handle_release(handle), UI_OK);
+        }
     }
 }

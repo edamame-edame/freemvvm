@@ -8,6 +8,7 @@ use crate::handle_registry::registry::{
 use crate::object_store::{UiObjectStore, UiObjectStoreError};
 use crate::property::{
     PropertyChangeQueue, PropertyHandleKind, PropertyState, PropertyValidator, Subscription,
+    ValidatorResult,
 };
 use crate::value::{
     BindingCopyError, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
@@ -977,7 +978,8 @@ pub(crate) enum RuntimePropertyError {
     BindingPropagationOutOfMemory,
     NotificationQueueOutOfMemory,
     SubscriptionRegistryOutOfMemory,
-    ValidationFailed,
+    ValidationFailed(u64),
+    ValidatorFailed,
     ValidatorReentrancy,
     ValidatorAlreadyRegistered,
     Dispatch(DispatchError),
@@ -1290,6 +1292,138 @@ impl RuntimeCore {
             .ok_or(RuntimePropertyError::WrongObjectState)?
             .register_validator(validator)
             .map_err(|_| RuntimePropertyError::ValidatorAlreadyRegistered)
+    }
+
+    pub(crate) fn cancel_property_validator(
+        &self,
+        identity: ObjectIdentity,
+        validator: &Arc<PropertyValidator>,
+    ) -> Result<bool, RuntimePropertyError> {
+        if self.validator_active.load(Ordering::Acquire) {
+            return Err(RuntimePropertyError::ValidatorReentrancy);
+        }
+        self.ensure_property_access_thread()?;
+        let mut store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve_mut(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_mut::<PropertyState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        Ok(state.remove_validator(validator))
+    }
+
+    /// Validates target-group values before an initial Binding is published.
+    /// Validators run only after the object and graph locks have been released. The caller then
+    /// performs the create operation on this UI thread; callback reentrancy guards prevent state
+    /// changes between this preflight and publication.
+    pub(crate) fn validate_binding_initial_candidates(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        source_token: HandleToken,
+        target_token: HandleToken,
+        two_way: bool,
+    ) -> Result<(), RuntimeBindingError> {
+        if self.validator_active.load(Ordering::Acquire) {
+            return Err(RuntimeBindingError::Property(
+                RuntimePropertyError::ValidatorReentrancy,
+            ));
+        }
+        let source_pin = registry
+            .validate(source_token, &PropertyHandleKind::Property, &self.identity)
+            .map_err(RuntimeBindingError::Registry)?;
+        let target_pin = registry
+            .validate(target_token, &PropertyHandleKind::Property, &self.identity)
+            .map_err(RuntimeBindingError::Registry)?;
+        self.ensure_property_access_thread()
+            .map_err(RuntimeBindingError::Property)?;
+        let source_identity = source_pin.identity();
+        let target_identity = target_pin.identity();
+
+        let checks = {
+            let store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+            let source = store
+                .resolve(source_identity)
+                .map_err(RuntimeBindingError::Store)?
+                .downcast_ref::<PropertyState>()
+                .ok_or(RuntimeBindingError::WrongObjectState)?;
+            let source_value = source
+                .read()
+                .try_owned_copy()
+                .map_err(RuntimeBindingError::SourceSnapshotCopy)?;
+            let mut graph = self
+                .binding_graph
+                .lock()
+                .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+            if two_way {
+                graph
+                    .prepare_two_way_merge(source_identity, target_identity)
+                    .map_err(RuntimeBindingError::Graph)?;
+            } else {
+                graph
+                    .prepare_one_way(source_identity, target_identity)
+                    .map_err(RuntimeBindingError::Graph)?;
+            }
+            let members = graph
+                .group_members(target_identity)
+                .map_err(RuntimeBindingError::Graph)?;
+            let mut checks = Vec::new();
+            checks
+                .try_reserve(members.len())
+                .map_err(|_| RuntimeBindingError::PropagationPreparationOutOfMemory)?;
+            for member in members {
+                let state = store
+                    .resolve(member)
+                    .map_err(RuntimeBindingError::Store)?
+                    .downcast_ref::<PropertyState>()
+                    .ok_or(RuntimeBindingError::WrongObjectState)?;
+                state.would_change(&source_value).map_err(|error| {
+                    RuntimeBindingError::InitialCopy(crate::value::BindingCopyError::KindMismatch(
+                        error,
+                    ))
+                })?;
+                if let Some(validator) = state.validator() {
+                    let candidate = source_value.try_owned_copy().map_err(|error| {
+                        RuntimeBindingError::InitialCopy(crate::value::BindingCopyError::Copy(
+                            error,
+                        ))
+                    })?;
+                    checks.push((validator, candidate));
+                }
+            }
+            checks
+        };
+
+        if checks.is_empty() {
+            return Ok(());
+        }
+        self.validator_active
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .map_err(|_| {
+                RuntimeBindingError::Property(RuntimePropertyError::ValidatorReentrancy)
+            })?;
+        let _guard = RuntimeFlagGuard(&self.validator_active);
+        for (validator, candidate) in checks {
+            match validator(&candidate) {
+                ValidatorResult::Accepted => {}
+                ValidatorResult::Rejected(error) => {
+                    return Err(RuntimeBindingError::Property(
+                        RuntimePropertyError::ValidationFailed(error),
+                    ));
+                }
+                ValidatorResult::Failed => {
+                    return Err(RuntimeBindingError::Property(
+                        RuntimePropertyError::ValidatorFailed,
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Applies the initial OneWay source value and publishes an active Runtime connection.
@@ -1932,7 +2066,13 @@ impl RuntimeCore {
                 .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
                 .map_err(|_| RuntimePropertyError::ValidatorReentrancy)?;
             let _guard = RuntimeFlagGuard(&self.validator_active);
-            validator(&candidate).map_err(|()| RuntimePropertyError::ValidationFailed)?;
+            match validator(&candidate) {
+                ValidatorResult::Accepted => {}
+                ValidatorResult::Rejected(error) => {
+                    return Err(RuntimePropertyError::ValidationFailed(error));
+                }
+                ValidatorResult::Failed => return Err(RuntimePropertyError::ValidatorFailed),
+            }
             drop(_guard);
         }
         let mut store = self
@@ -2622,7 +2762,7 @@ mod tests {
         RuntimeBindingError, RuntimeCleanupQueue, RuntimeCore, RuntimeCoreError, RuntimeIdentity,
         RuntimeObjectRegistrationError, RuntimePropertyError, RuntimeState, ShutdownCompletion,
         ShutdownCompletionError, ShutdownCompletionState, ShutdownRequestMode,
-        ShutdownRequestOutcome, ShutdownWaitResult, UiThreadContext,
+        ShutdownRequestOutcome, ShutdownWaitResult, UiThreadContext, ValidatorResult,
     };
     use crate::dispatcher::{Dispatcher, PostedWork, UiLoopBridge, WakePriority};
     use crate::handle_registry::registry::{
@@ -2971,14 +3111,18 @@ mod tests {
                 Arc::new(move |candidate| {
                     validator_calls.fetch_add(1, Ordering::SeqCst);
                     match candidate {
-                        TypedValue::I64(value) if *value >= 0 => Ok(()),
-                        _ => Err(()),
+                        TypedValue::I64(value) if *value >= 0 => ValidatorResult::Accepted,
+                        _ => ValidatorResult::Rejected(0),
                     }
                 }),
             )
             .expect("register synchronous Validator");
         assert_eq!(
-            runtime.register_property_validator(&registry, property, Arc::new(|_| Ok(()))),
+            runtime.register_property_validator(
+                &registry,
+                property,
+                Arc::new(|_| ValidatorResult::Accepted),
+            ),
             Err(RuntimePropertyError::ValidatorAlreadyRegistered)
         );
         assert!(matches!(
@@ -2997,7 +3141,7 @@ mod tests {
         );
         assert_eq!(
             runtime.apply_property_candidate(&registry, property, TypedValue::I64(-1)),
-            Err(RuntimePropertyError::ValidationFailed)
+            Err(RuntimePropertyError::ValidationFailed(0))
         );
         assert!(matches!(
             runtime.read_property(&registry, property),
@@ -3053,7 +3197,7 @@ mod tests {
                     *callback_binding_result
                         .lock()
                         .expect("nested binding result lock") = Some(binding_result);
-                    Ok(())
+                    ValidatorResult::Accepted
                 }),
             )
             .expect("register synchronous Validator");

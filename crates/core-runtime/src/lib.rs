@@ -24,7 +24,7 @@ pub mod abi_support {
     use crate::handle_registry::HandleToken;
     use crate::handle_registry::registry::{HandleRegistry, RegistryError};
     use crate::object_store::UiObjectStoreError;
-    use crate::property::{PropertyHandleKind, Subscription};
+    use crate::property::{PropertyHandleKind, PropertyValidator, Subscription, ValidatorResult};
     use crate::runtime::{
         RuntimeBindingError, RuntimeCore, RuntimeCoreError, RuntimeIdentity,
         RuntimeObjectRegistrationError, RuntimePropertyError, ShutdownCompletionState,
@@ -36,7 +36,7 @@ pub mod abi_support {
     };
     use std::collections::HashMap;
     use std::ffi::c_void;
-    use std::sync::{Arc, Condvar, Mutex, OnceLock};
+    use std::sync::{Arc, Condvar, Mutex, OnceLock, Weak};
 
     /// Failure categories needed by the versioned C ABI Runtime creation entrypoint.
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -57,6 +57,16 @@ pub mod abi_support {
     pub enum RuntimeRetainError {
         InvalidHandle,
         OutOfMemory,
+        Internal,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum ErrorApiError {
+        InvalidHandle,
+        InvalidArgument,
+        WrongThread,
+        OutOfMemory,
+        BufferTooSmall { required: usize },
         Internal,
     }
 
@@ -86,7 +96,7 @@ pub mod abi_support {
         WrongType,
         WrongThread,
         Closed,
-        ValidationFailed,
+        ValidationFailed { error_handle: u64 },
         OutOfMemory,
         BufferTooSmall { required: usize },
         Internal,
@@ -101,7 +111,227 @@ pub mod abi_support {
         WrongThread,
         Closed,
         OutOfMemory,
+        ValidationFailed { error_handle: u64 },
         Internal,
+    }
+
+    pub type ValidateBoolCallback = unsafe extern "C" fn(*mut c_void, u8, *mut u64) -> u32;
+    pub type ValidateI64Callback = unsafe extern "C" fn(*mut c_void, i64, *mut u64) -> u32;
+    pub type ValidateUtf8Callback =
+        unsafe extern "C" fn(*mut c_void, *const u8, u64, *mut u64) -> u32;
+
+    #[derive(Clone)]
+    struct ImmutableError {
+        status: u32,
+        domain: u32,
+        code: u32,
+        message: Vec<u8>,
+    }
+
+    static ERROR_HANDLES: OnceLock<Mutex<HashMap<HandleToken, Arc<ImmutableError>>>> =
+        OnceLock::new();
+
+    fn error_handles() -> &'static Mutex<HashMap<HandleToken, Arc<ImmutableError>>> {
+        ERROR_HANDLES.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    thread_local! {
+        static VALIDATOR_CALLBACK_ACTIVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+
+    struct ValidatorCallbackScope;
+
+    impl ValidatorCallbackScope {
+        fn enter() -> Option<Self> {
+            VALIDATOR_CALLBACK_ACTIVE.with(|active| {
+                if active.replace(true) {
+                    None
+                } else {
+                    Some(Self)
+                }
+            })
+        }
+    }
+
+    impl Drop for ValidatorCallbackScope {
+        fn drop(&mut self) {
+            VALIDATOR_CALLBACK_ACTIVE.with(|active| active.set(false));
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum CValidatorCallback {
+        Bool(ValidateBoolCallback),
+        I64(ValidateI64Callback),
+        Utf8(ValidateUtf8Callback),
+    }
+
+    struct CValidatorClosure {
+        callback: CValidatorCallback,
+        userdata: usize,
+        destroy: DestroyCallback,
+        armed: std::sync::atomic::AtomicBool,
+    }
+
+    impl Drop for CValidatorClosure {
+        fn drop(&mut self) {
+            if self.armed.swap(false, std::sync::atomic::Ordering::AcqRel) {
+                // SAFETY: ownership is armed only after successful registration.
+                unsafe { (self.destroy)(self.userdata as *mut c_void) };
+            }
+        }
+    }
+
+    struct ValidatorRegistrationEntry {
+        runtime: Arc<RuntimeCore>,
+        identity: crate::handle_registry::registry::ObjectIdentity,
+        validator: Weak<PropertyValidator>,
+        cancelled: std::sync::atomic::AtomicBool,
+    }
+
+    static VALIDATOR_HANDLES: OnceLock<
+        Mutex<HashMap<HandleToken, Arc<ValidatorRegistrationEntry>>>,
+    > = OnceLock::new();
+
+    fn validator_handles() -> &'static Mutex<HashMap<HandleToken, Arc<ValidatorRegistrationEntry>>>
+    {
+        VALIDATOR_HANDLES.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    fn issue_immutable_error(
+        status: u32,
+        domain: u32,
+        code: u32,
+        message: &[u8],
+    ) -> Result<u64, ErrorApiError> {
+        let mut owned_message = Vec::new();
+        owned_message
+            .try_reserve_exact(message.len())
+            .map_err(|_| ErrorApiError::OutOfMemory)?;
+        owned_message.extend_from_slice(message);
+        let mut handles = error_handles()
+            .lock()
+            .map_err(|_| ErrorApiError::Internal)?;
+        handles
+            .try_reserve(1)
+            .map_err(|_| ErrorApiError::OutOfMemory)?;
+        let token = crate::handle_registry::issue_handle_token().ok_or(ErrorApiError::Internal)?;
+        handles.insert(
+            token,
+            Arc::new(ImmutableError {
+                status,
+                domain,
+                code,
+                message: owned_message,
+            }),
+        );
+        Ok(token.into_abi())
+    }
+
+    fn resolve_immutable_error(handle: u64) -> Result<Arc<ImmutableError>, ErrorApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(ErrorApiError::InvalidHandle)?;
+        error_handles()
+            .lock()
+            .map_err(|_| ErrorApiError::Internal)?
+            .get(&token)
+            .cloned()
+            .ok_or(ErrorApiError::InvalidHandle)
+    }
+
+    fn is_valid_error_handle(handle: u64) -> bool {
+        let Some(token) = HandleToken::from_abi(handle) else {
+            return false;
+        };
+        error_handles()
+            .lock()
+            .map(|handles| handles.contains_key(&token))
+            .unwrap_or(false)
+    }
+
+    fn consume_error_handle_if_valid(handle: u64) {
+        if let Some(token) = HandleToken::from_abi(handle) {
+            if let Ok(mut handles) = error_handles().lock() {
+                handles.remove(&token);
+            }
+        }
+    }
+
+    impl CValidatorClosure {
+        fn invoke(&self, candidate: &TypedValue) -> ValidatorResult {
+            let Some(_scope) = ValidatorCallbackScope::enter() else {
+                return ValidatorResult::Failed;
+            };
+            let mut error_handle = 0;
+            // SAFETY: successful registration retains this callback/userdata tuple until destroy.
+            let status = unsafe {
+                match (self.callback, candidate) {
+                    (CValidatorCallback::Bool(callback), TypedValue::Bool(value)) => callback(
+                        self.userdata as *mut c_void,
+                        u8::from(*value),
+                        &mut error_handle,
+                    ),
+                    (CValidatorCallback::I64(callback), TypedValue::I64(value)) => {
+                        callback(self.userdata as *mut c_void, *value, &mut error_handle)
+                    }
+                    (CValidatorCallback::Utf8(callback), TypedValue::Utf8(value)) => callback(
+                        self.userdata as *mut c_void,
+                        value.as_bytes().as_ptr(),
+                        value.as_bytes().len() as u64,
+                        &mut error_handle,
+                    ),
+                    _ => return ValidatorResult::Failed,
+                }
+            };
+            match status {
+                0 if error_handle == 0 => ValidatorResult::Accepted,
+                11 if error_handle == 0 => ValidatorResult::Rejected(0),
+                11 if is_valid_error_handle(error_handle) => {
+                    ValidatorResult::Rejected(error_handle)
+                }
+                _ => {
+                    consume_error_handle_if_valid(error_handle);
+                    ValidatorResult::Failed
+                }
+            }
+        }
+    }
+
+    pub fn validation_error_create(
+        domain: u32,
+        code: u32,
+        message: &[u8],
+    ) -> Result<u64, ErrorApiError> {
+        let active = VALIDATOR_CALLBACK_ACTIVE.with(std::cell::Cell::get);
+        if !active {
+            return Err(ErrorApiError::WrongThread);
+        }
+        std::str::from_utf8(message).map_err(|_| ErrorApiError::InvalidArgument)?;
+        issue_immutable_error(11, domain, code, message)
+    }
+
+    pub fn error_status(handle: u64) -> Result<u32, ErrorApiError> {
+        resolve_immutable_error(handle).map(|error| error.status)
+    }
+
+    pub fn error_code(handle: u64) -> Result<(u32, u32), ErrorApiError> {
+        resolve_immutable_error(handle).map(|error| (error.domain, error.code))
+    }
+
+    pub fn error_message_utf8(
+        handle: u64,
+        buffer: Option<&mut [u8]>,
+    ) -> Result<usize, ErrorApiError> {
+        let error = resolve_immutable_error(handle)?;
+        let Some(buffer) = buffer else {
+            return Ok(error.message.len());
+        };
+        if buffer.len() < error.message.len() {
+            return Err(ErrorApiError::BufferTooSmall {
+                required: error.message.len(),
+            });
+        }
+        buffer[..error.message.len()].copy_from_slice(&error.message);
+        Ok(error.message.len())
     }
 
     pub const BIND_ONCE: u32 = 1;
@@ -258,6 +488,9 @@ pub mod abi_support {
                 BindingApiError::WrongThread
             }
             RuntimeBindingError::Property(RuntimePropertyError::Closed) => BindingApiError::Closed,
+            RuntimeBindingError::Property(RuntimePropertyError::ValidationFailed(error_handle)) => {
+                BindingApiError::ValidationFailed { error_handle }
+            }
             RuntimeBindingError::Property(_) => BindingApiError::Internal,
             RuntimeBindingError::Registry(RegistryError::InvalidToken) => {
                 BindingApiError::InvalidHandle
@@ -335,6 +568,34 @@ pub mod abi_support {
     /// Creates an independent owner token for an existing Runtime handle.
     pub fn runtime_retain_handle(handle: u64) -> Result<u64, RuntimeRetainError> {
         let token = HandleToken::from_abi(handle).ok_or(RuntimeRetainError::InvalidHandle)?;
+        {
+            let mut errors = error_handles()
+                .lock()
+                .map_err(|_| RuntimeRetainError::Internal)?;
+            if let Some(error) = errors.get(&token).cloned() {
+                errors
+                    .try_reserve(1)
+                    .map_err(|_| RuntimeRetainError::OutOfMemory)?;
+                let retained = crate::handle_registry::issue_handle_token()
+                    .ok_or(RuntimeRetainError::Internal)?;
+                errors.insert(retained, error);
+                return Ok(retained.into_abi());
+            }
+        }
+        {
+            let mut validators = validator_handles()
+                .lock()
+                .map_err(|_| RuntimeRetainError::Internal)?;
+            if let Some(entry) = validators.get(&token).cloned() {
+                validators
+                    .try_reserve(1)
+                    .map_err(|_| RuntimeRetainError::OutOfMemory)?;
+                let retained = crate::handle_registry::issue_handle_token()
+                    .ok_or(RuntimeRetainError::Internal)?;
+                validators.insert(retained, entry);
+                return Ok(retained.into_abi());
+            }
+        }
         {
             let mut bindings = binding_handles()
                 .lock()
@@ -582,6 +843,148 @@ pub mod abi_support {
         Ok(subscription_token.into_abi())
     }
 
+    fn register_property_validator_entry(
+        property: u64,
+        callback: CValidatorCallback,
+        userdata: usize,
+        destroy: DestroyCallback,
+        expected_kind: ValueKind,
+    ) -> Result<u64, PropertyApiError> {
+        let token = HandleToken::from_abi(property).ok_or(PropertyApiError::InvalidHandle)?;
+        let handles = property_handles();
+        let runtime = handles
+            .owners
+            .lock()
+            .map_err(|_| PropertyApiError::Internal)?
+            .get(&token)
+            .cloned()
+            .ok_or(PropertyApiError::InvalidHandle)?;
+        if !runtime.is_ui_thread() {
+            return Err(PropertyApiError::WrongThread);
+        }
+        let pin = handles
+            .registry
+            .validate(token, &PropertyHandleKind::Property, &runtime.identity())
+            .map_err(|error| match error {
+                RegistryError::InvalidToken => PropertyApiError::InvalidHandle,
+                RegistryError::WrongKind => PropertyApiError::WrongType,
+                RegistryError::WrongRuntime => PropertyApiError::InvalidHandle,
+                RegistryError::OutOfMemory => PropertyApiError::OutOfMemory,
+                _ => PropertyApiError::Internal,
+            })?;
+        let actual_kind = runtime
+            .property_kind(&handles.registry, token)
+            .map_err(map_property_read_error)?;
+        if actual_kind != expected_kind {
+            return Err(PropertyApiError::WrongType);
+        }
+
+        let mut registrations = validator_handles()
+            .lock()
+            .map_err(|_| PropertyApiError::Internal)?;
+        registrations
+            .try_reserve(1)
+            .map_err(|_| PropertyApiError::OutOfMemory)?;
+        let registration_token =
+            crate::handle_registry::issue_handle_token().ok_or(PropertyApiError::Internal)?;
+        let context = Arc::new(CValidatorClosure {
+            callback,
+            userdata,
+            destroy,
+            armed: std::sync::atomic::AtomicBool::new(false),
+        });
+        let invoke_context = Arc::clone(&context);
+        let validator: Arc<PropertyValidator> =
+            Arc::new(move |candidate| invoke_context.invoke(candidate));
+        runtime
+            .register_property_validator(&handles.registry, token, Arc::clone(&validator))
+            .map_err(map_property_read_error)?;
+        context
+            .armed
+            .store(true, std::sync::atomic::Ordering::Release);
+        registrations.insert(
+            registration_token,
+            Arc::new(ValidatorRegistrationEntry {
+                runtime,
+                identity: pin.identity(),
+                validator: Arc::downgrade(&validator),
+                cancelled: std::sync::atomic::AtomicBool::new(false),
+            }),
+        );
+        Ok(registration_token.into_abi())
+    }
+
+    pub fn property_validator_register_bool(
+        property: u64,
+        callback: ValidateBoolCallback,
+        userdata: usize,
+        destroy: DestroyCallback,
+    ) -> Result<u64, PropertyApiError> {
+        register_property_validator_entry(
+            property,
+            CValidatorCallback::Bool(callback),
+            userdata,
+            destroy,
+            ValueKind::Bool,
+        )
+    }
+
+    pub fn property_validator_register_i64(
+        property: u64,
+        callback: ValidateI64Callback,
+        userdata: usize,
+        destroy: DestroyCallback,
+    ) -> Result<u64, PropertyApiError> {
+        register_property_validator_entry(
+            property,
+            CValidatorCallback::I64(callback),
+            userdata,
+            destroy,
+            ValueKind::I64,
+        )
+    }
+
+    pub fn property_validator_register_utf8(
+        property: u64,
+        callback: ValidateUtf8Callback,
+        userdata: usize,
+        destroy: DestroyCallback,
+    ) -> Result<u64, PropertyApiError> {
+        register_property_validator_entry(
+            property,
+            CValidatorCallback::Utf8(callback),
+            userdata,
+            destroy,
+            ValueKind::Utf8,
+        )
+    }
+
+    pub fn property_validator_cancel(registration: u64) -> Result<(), PropertyApiError> {
+        let token = HandleToken::from_abi(registration).ok_or(PropertyApiError::InvalidHandle)?;
+        let entry = validator_handles()
+            .lock()
+            .map_err(|_| PropertyApiError::Internal)?
+            .get(&token)
+            .cloned()
+            .ok_or(PropertyApiError::InvalidHandle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(PropertyApiError::WrongThread);
+        }
+        if entry.cancelled.load(std::sync::atomic::Ordering::Acquire) {
+            return Ok(());
+        }
+        if let Some(validator) = entry.validator.upgrade() {
+            entry
+                .runtime
+                .cancel_property_validator(entry.identity, &validator)
+                .map_err(map_property_read_error)?;
+        }
+        entry
+            .cancelled
+            .store(true, std::sync::atomic::Ordering::Release);
+        Ok(())
+    }
+
     /// Explicitly cancels one valid Subscription token on its Runtime UI thread.
     pub fn subscription_cancel(handle: u64) -> Result<(), PropertyApiError> {
         let token = HandleToken::from_abi(handle).ok_or(PropertyApiError::InvalidHandle)?;
@@ -625,9 +1028,18 @@ pub mod abi_support {
         if !Arc::ptr_eq(&runtime, target_runtime) {
             return Err(BindingApiError::WrongRuntime);
         }
+        drop(owners);
         if !runtime.is_ui_thread() {
             return Err(BindingApiError::WrongThread);
         }
+        runtime
+            .validate_binding_initial_candidates(
+                &handles.registry,
+                source_token,
+                target_token,
+                mode == BIND_TWO_WAY,
+            )
+            .map_err(map_binding_runtime_error)?;
         let mut binding_map = binding_handles()
             .lock()
             .map_err(|_| BindingApiError::Internal)?;
@@ -713,7 +1125,8 @@ pub mod abi_support {
                     | RuntimePropertyError::BindingGraph(_)
                     | RuntimePropertyError::BindingValueCopy(_)
                     | RuntimePropertyError::BindingPropagationOutOfMemory
-                    | RuntimePropertyError::ValidationFailed
+                    | RuntimePropertyError::ValidationFailed(_)
+                    | RuntimePropertyError::ValidatorFailed
                     | RuntimePropertyError::ValidatorReentrancy
                     | RuntimePropertyError::ValidatorAlreadyRegistered => {
                         ShutdownApiError::Internal
@@ -744,7 +1157,10 @@ pub mod abi_support {
             | RuntimePropertyError::SubscriptionRegistryOutOfMemory => {
                 PropertyApiError::OutOfMemory
             }
-            RuntimePropertyError::ValidationFailed => PropertyApiError::ValidationFailed,
+            RuntimePropertyError::ValidationFailed(error_handle) => {
+                PropertyApiError::ValidationFailed { error_handle }
+            }
+            RuntimePropertyError::ValidatorFailed => PropertyApiError::Internal,
             RuntimePropertyError::Registry(
                 RegistryError::TokenExhausted
                 | RegistryError::CleanupUnavailable
@@ -759,8 +1175,8 @@ pub mod abi_support {
             | RuntimePropertyError::BindingGraph(_)
             | RuntimePropertyError::BindingValueCopy(_)
             | RuntimePropertyError::BindingPropagationOutOfMemory
-            | RuntimePropertyError::ValidatorReentrancy
-            | RuntimePropertyError::ValidatorAlreadyRegistered => PropertyApiError::Internal,
+            | RuntimePropertyError::ValidatorReentrancy => PropertyApiError::Internal,
+            RuntimePropertyError::ValidatorAlreadyRegistered => PropertyApiError::InvalidArgument,
         }
     }
 
@@ -841,6 +1257,9 @@ pub mod abi_support {
             Err(RuntimeCoreError::Property(RuntimePropertyError::ValueKindMismatch(_))) => {
                 Err(PropertyApiError::WrongType)
             }
+            Err(RuntimeCoreError::Property(RuntimePropertyError::ValidationFailed(
+                error_handle,
+            ))) => Err(PropertyApiError::ValidationFailed { error_handle }),
             Err(RuntimeCoreError::Property(error)) => Err(map_property_read_error(error)),
             Err(RuntimeCoreError::WrongThread)
             | Err(RuntimeCoreError::Host(crate::runtime::HostRegistrationError::WrongThread)) => {
@@ -1065,6 +1484,22 @@ pub mod abi_support {
 
     pub fn handle_release(handle: u64) -> Result<(), ShutdownApiError> {
         let token = HandleToken::from_abi(handle).ok_or(ShutdownApiError::InvalidHandle)?;
+        if error_handles()
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?
+            .remove(&token)
+            .is_some()
+        {
+            return Ok(());
+        }
+        if validator_handles()
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?
+            .remove(&token)
+            .is_some()
+        {
+            return Ok(());
+        }
         {
             let mut requests = request_handles()
                 .lock()

@@ -19,7 +19,14 @@ pub(crate) struct PropertyState {
 }
 
 /// Synchronous candidate check. Runtime invokes it without holding Core state locks.
-pub(crate) type PropertyValidator = dyn Fn(&TypedValue) -> Result<(), ()> + Send + Sync;
+pub(crate) type PropertyValidator = dyn Fn(&TypedValue) -> ValidatorResult + Send + Sync;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ValidatorResult {
+    Accepted,
+    Rejected(u64),
+    Failed,
+}
 
 /// Runtime-local first-change-ordered set for the next pending Property generation.
 #[derive(Default)]
@@ -303,6 +310,18 @@ impl PropertyState {
 
     pub(crate) fn validator(&self) -> Option<Arc<PropertyValidator>> {
         self.validator.clone()
+    }
+
+    pub(crate) fn remove_validator(&mut self, validator: &Arc<PropertyValidator>) -> bool {
+        if self
+            .validator
+            .as_ref()
+            .is_some_and(|current| Arc::ptr_eq(current, validator))
+        {
+            self.validator = None;
+            return true;
+        }
+        false
     }
 
     /// Adds a non-owning Property index entry for an active Subscription.
