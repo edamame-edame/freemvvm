@@ -1,7 +1,7 @@
 # C++ Property wrapper UTF-8 value
 
 - 更新日: 2026-10-23
-- 状態: 利用者承認済み。実装・Windows local検証完了、Windows/Linux CI確認待ち
+- 状態: 完了。実装commit `a183765` のWindows/Linux CI成功を確認
 - 対象: `freemvvm::Property<std::string>` のcreate/get/setとUTF-8 byte境界
 
 ## 背景と承認済み根拠
@@ -41,7 +41,7 @@ auto updated = property.value()->set(next_utf8);
 1. [x] 利用者レビューと承認後、計画を日本語commitで先にcommit/pushした（`efcbcf7`）。
 2. [x] unit-test設計と実装unit mappingをsource変更前に登録した。
 3. [x] UTF8 create/get/set、fake ABI試験、relocated package consumerを追加した。
-4. [x] focused test、C++ Runtime/Property tests、`tools/dev.py check`、`tools/dev.py minimum`、文書検査をWindows localで実行した。Windows/Linux CIの結果は実装commit後に記録する。
+4. [x] focused test、C++ Runtime/Property tests、`tools/dev.py check`、`tools/dev.py minimum`、文書検査をWindows localで実行した。実装commit `a183765` に対するWindows/Linux CI run `39872968706` は両runner全gate成功。
 5. [x] C++ wrapperのUTF-8 byte・buffer retry規則を`.docs/01_memory/cpp-property-wrapper.md`へ追記した。
 
 ## 承認境界
@@ -54,4 +54,10 @@ auto updated = property.value()->set(next_utf8);
 - `.venv/Scripts/python.exe tools/dev.py cpp-package-test`: passed（relocated CMake consumer、Windows）
 - `ctest --test-dir out/cmake/dev -R wrapper --output-on-failure`: C++ Runtime / Property BOOL-I64 / Property UTF-8 3 tests passed
 - `.venv/Scripts/python.exe tools/dev.py check`、`minimum`、`tools/check_docs.py`、verification JSON parse、`git diff --check`: passed（Windows）
-- 実装commit後のWindows/Linux CI結果を追記する。
+
+## 完了記録
+
+- 実装commit: `a183765`（`C++ Property UTF-8対応を実装`、push済み）
+- Windows/Linux CI: [Development bootstrap run 39872968706](https://github.com/edamame-edame/freemvvm/actions/runs/39872968706)、両runner success。
+- 両runner artifactで`check.json`、`minimum.json`、`cpp-package-test.json`がすべて`passed`。`LastTest.log`で`wrapper.cpp.property.utf8`を含む全7件を確認。
+- Windows local focused UTF-8 test、relocated package consumer、C++ Runtime/Property 3 tests、全体check/minimum、文書検査も成功。

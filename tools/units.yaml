@@ -1855,7 +1855,7 @@
     },
     {
       "id": "UNIT-WRAP-CPP-003",
-      "state": "planned",
+      "state": "complete",
       "scope": "cpp-property-utf8-byte-preserving-create-get-set-and-buffer-retry",
       "sources": [
         "wrappers/cpp/include/freemvvm/property.hpp",
