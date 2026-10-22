@@ -1687,6 +1687,23 @@
       "tests": [
         {"id": "UT-ABI-BINDING-ERROR-001", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "binding_error"]}
       ]
+    },
+    {
+      "id": "UNIT-ABI-017",
+      "state": "complete",
+      "scope": "c-abi-public-header-c-cpp-compile-probes",
+      "sources": ["crates/c-abi/include/freemvvm/abi.h", "tools/probes/abi_header_c.c", "tools/probes/abi_header_cpp.cpp"],
+      "config": ["CMakeLists.txt", "DEVELOPMENT.md", "tools/units.yaml"],
+      "depends_on": ["UNIT-ABI-016"],
+      "design": [
+        {"path": ".docs/13_detail_design/runtime-objects/abi.md", "version": "1.2", "section": "共通型と操作宣言 / 現在export済みのABI関数"}
+      ],
+      "requirements": ["RQ-04-002", "RQ-04-003", "RQ-04-006", "RQ-04-007", "RQ-04-021", "RQ-04-022", "RQ-04-024"],
+      "cases": ["TC-ABI-REP-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-ABI-PUBLIC-HEADER-001", "command": ["cmake", "--build", "--preset", "dev", "--target", "freemvvm_abi_header_probes"]}
+      ]
     }
   ]
 }

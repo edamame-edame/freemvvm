@@ -1,7 +1,7 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 6.11
-- 状態: Runtime post/dispatch turn、Property create/kind/getter/setter、OneWay/TwoWay Binding、Binding lifecycle、Core/C ABI Property Validator登録・Error・初期同期拒否、Core Binding後続伝播拒否・回復の実装と動作確認は完了。C ABI snapshot/subscriptionは後続
+- 文書版: 6.14
+- 状態: Runtime post/dispatch turn、Property create/kind/getter/setter、OneWay/TwoWay Binding、Binding lifecycle、Core/C ABI Property Validator登録・Error・初期同期拒否、Core Binding後続伝播拒否・回復、公開C ABI headerのC11/C++17 compile probeは実装と動作確認が完了。C ABI snapshot/subscriptionは完了
 - 更新日: 2026-10-22
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
@@ -11,6 +11,12 @@
 設計根拠: [runtime-objects/objects-values.md](../13_detail_design/runtime-objects/objects-values.md) 1.1「handle・値・error / 数値変換 / クラス設計の補足」、[runtime-objects/abi.md](../13_detail_design/runtime-objects/abi.md) 1.1「検証順序 / output初期化」、[runtime-objects/runtime.md](../13_detail_design/runtime-objects/runtime.md) 1.1「終了要求 / クラス設計の補足」。
 
 ## handleと値
+
+### 公開C ABIヘッダー
+
+| 予定test ID | 入力・操作 | 観測・期待結果 | 根拠 |
+| --- | --- | --- | --- |
+| <a id="ut-abi-public-header-001"></a>UT-ABI-PUBLIC-HEADER-001 | 公開C ABI headerをC11およびC++17 translation unitからincludeし、代表的なRuntime・Property・callback関数をそれぞれ厳密な関数ポインタ型へ代入する | 両言語で診断なくcompile-only objectを生成する。テストは宣言の言語互換性・型整合のみを示し、native libraryへのlink・install/exportや実行時ABIの適合を示さない。headerにある関数は現在Rust crateからexportされるものに限り、設計のみのAPIは宣言しない | [RQ-04-002](../11_requirements/RQ-04_abi-boundary.md#rq-04-002)、[RQ-04-003](../11_requirements/RQ-04_abi-boundary.md#rq-04-003)、[RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-04-021](../11_requirements/RQ-04_abi-boundary.md#rq-04-021)、[RQ-04-022](../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-024](../11_requirements/RQ-04_abi-boundary.md#rq-04-024) |
 
 二つのRuntimeと同kind/異kindのobject、同objectの独立ownerを用意する。token発行器とallocatorには決定的なfailpointを設け、実在pointerを捏造して試験しない。
 
@@ -530,3 +536,5 @@ UT-CORE-RUNTIME-BINDING-INIT-001はCore内部OneWayの初期値・graph・notifi
 | 6.11 | 2026-10-22 | UNIT-CORE-065を実装・検証済みへ更新 | Codex | OneWay chain拒否時にtarget通知を保ち、dependent edgeを止め、独立edgeを継続する。TwoWay target group拒否のatomicityと成功回復をCore tests・workspace tests・tools/dev.py checkで検証。ABI snapshot/subscriptionは未実装 |
 | 6.9 | 2026-10-22 | UT-CORE-BINDING-VALIDATION-PROPAGATION-001とUT-ABI-BINDING-ERROR-001のoracleを追補 | Codex | 承認済みRQ/DDからCore伝播reject/error snapshotとABI snapshot/subscriptionの期待結果を定義。実装・動作確認は未実施 |
 | 6.12 | 2026-10-22 | UNIT-ABI-016を実装・検証済みへ更新 | Codex | C ABI snapshot ownership、出力初期化、immutable Error、error-before-Property通知、clear/recovery通知、Binding cancelとRuntime shutdownのdestroyをfocused testで確認 |
+| 6.13 | 2026-10-22 | UT-ABI-PUBLIC-HEADER-001とUNIT-ABI-017のC11/C++17 compile-only probeを追加 | Codex | 実行結果は同一revisionの実装単位で確認する。library link・install/exportはoracle外 |
+| 6.14 | 2026-10-22 | UNIT-ABI-017のC/C++ probe、export inventory、workspace test、開発ゲート結果を記録 | Codex | C11/C++17でheader compile成功、現行export名47件と一致。link・install/exportは引き続き対象外 |

@@ -14,7 +14,7 @@
 | Python | 標準CPython3.13、CIは3.13.12、repository内venv | pyproject.toml / tools/requirements-dev.txt |
 | 検査 | Rust fmt/clippy、Python Ruff0.11.13、pytest8.3.5を導入 | tools/dev.py / tools/requirements-dev.txt |
 
-Python開発依存はtransitiveもexact版へ固定している。現在のpinは開発用で、release artifactの署名済みprofile lockではない。Rust/C#/Pythonのpackage version0.0.0は未公開の骨格を示す。C ABIのexport/header/native loaderとCMake install/exportは未実装。
+Python開発依存はtransitiveもexact版へ固定している。現在のpinは開発用で、release artifactの署名済みprofile lockではない。Rust/C#/Pythonのpackage version0.0.0は未公開の骨格を示す。現在exportされるC ABI関数を宣言するheaderとC/C++ compile-only probeは存在するが、CMake install/export、配布package、native loaderは未実装。
 
 ## Windowsで開始
 
