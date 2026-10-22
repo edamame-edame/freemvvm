@@ -1,7 +1,7 @@
 # C++ Runtime wrapper APIとcleanup境界
 
 - 更新日: 2026-10-22
-- 状態: レビュー案。実装未着手
+- 状態: 計画承認済み（利用者、2026-10-22）。C++詳細設計v1.2の全文レビュー前。実装未着手
 - 対象: C++ wrapperやCMake packageを実装する前に、最初の公開Runtime所有APIと、native release失敗時の寿命境界を決める。
 
 ## 次にこの判断を行う理由
@@ -19,13 +19,15 @@ C++17 consumerからraw C ABIを呼ぶsmokeは`f3c3f78`で完了した。[RQ-12-
 
 最初の公開APIはRuntimeの作成、UI thread判定、明示的なshutdown/request-shutdown、明示的なtoken closeに限定する。基底APIはC++17で使えるnon-throwの結果型とし、throwing convenience APIは後続に分ける。Runtimeの破棄でshutdownを暗黙に開始しない。公開名と結果型の厳密な構造は、この案だけでは確定しない。
 
-所有権については、`handle_release`に失敗してもowned tokenを捨てない承認済み規則を維持する。owned tokenを得るABI呼び出しの前にcleanup nodeを確保し、destructor内のrelease失敗時にはtokenと予約済みnodeを追加allocationなしで移す。別Runtime間でcleanup状態を共有しないよう、process-global registryよりRuntime単位のcleanup ownerを推奨する。未処理releaseがある間はC ABI libraryをロード状態に保ち、全件drain済みか未解決として明示されるまで解除しない。
+所有権については、`handle_release`に失敗してもowned tokenを捨てない承認済み規則を維持する。owned tokenを得るABI呼び出しの前にcleanup nodeを確保し、destructor内のrelease失敗時にはtokenと予約済みnodeを追加allocationなしで移す。Runtimeごとに独立したcleanup queueを持つが、最後のwrapperが破棄されてもqueueを失わないsupervisorが必要になる。Runtime専用queueをprocess-wide supervisorへ登録し、supervisorがRuntime単位でUI safe point/Closed shell drainを管理する案を推奨する。process-wide部分は保管・寿命管理だけを担い、Runtime間のcleanup状態や順序は混ぜない。未処理releaseがある間はC ABI libraryをロード状態に保ち、全件drain済みか未解決として明示されるまで解除しない。
 
 ### 承認を求める推奨案
 
 - 最初にmove-onlyの`freemvvm::Runtime`を公開する。操作は`create`、`is_ui_thread`、`shutdown`、`request_shutdown`、明示的な`close`に絞る。destructionではtokenをreleaseするだけでshutdownを始めない。
 - raw `ui_status`と、返された場合はowned Error snapshotを保持する、小さなC++17対応の`Result<T>`/`Result<void>`を基底経路にする。throwing convenience、Property wrapper、callback adapterは後続にする。
-- Runtimeごとに共有の内部control blockを持たせ、事前確保したintrusive pending-release listを管理し、owned tokenまたは未処理releaseがある間はnative moduleをpinする。Runtimeに結び付くwrapperは同じcontrol blockを共有する。destructorはrelease失敗をlistへallocationなしで移し、明示closeは直近の失敗を返す。safe point/shutdownでlistを再試行し、未解決nodeがある間はrelease関数を呼べる状態を失わないようcontrol blockとnative moduleを保持する。
+- Runtimeごとの共有control blockが、事前確保したintrusive pending-release listを管理し、owned tokenまたは未処理releaseがある間はnative moduleをpinする。Runtimeに結び付くwrapperは同じcontrol blockを共有する。destructorはrelease失敗をlistへallocationなしで移し、明示closeは直近の失敗を返す。control blockが最後のwrapperより長く生存できるよう、process-wide supervisorはpending nodeを持つcontrol blockを強参照で保持する。supervisorはRuntime間のqueueを混ぜず、該当Runtimeのsafe point/Closed shellで再試行する。未解決nodeがある間はcontrol blockとnative moduleを保持し、release関数を呼べる状態を失わない。
+
+前案の「Runtime単位のqueueとcontrol block」だけでは、最後のwrapper破棄後に誰がcontrol blockを所有して再試行するかが定まっていなかった。上記supervisor案でその寿命を補う。supervisor自体の同期、登録nodeの事前確保、process終了時の扱い、module pinningのOS別実装は詳細設計へ具体化する必要がある。
 
 これは提案であり、承認済み設計ですでに決定された内容ではない。公開APIの範囲とcleanup ownerの方式について、この案を承認するか、別案を指定してほしい。
 
@@ -44,3 +46,4 @@ C++17 consumerからraw C ABIを呼ぶsmokeは`f3c3f78`で完了した。[RQ-12-
 | 日付 | 変更 | 承認との対応 |
 | --- | --- | --- |
 | 2026-10-22 | raw ABI smoke完了後、最初のC++ Runtime surfaceとcleanup owner方式を提案 | レビュー案。本書によるAPI・動作の承認なし |
+| 2026-10-22 | 最終wrapper破棄後もpending releaseを保持するprocess-wide supervisor案を追加 | 利用者が計画を承認。旧案の寿命gapを修正。詳細設計の承認と実装は未完了 |
