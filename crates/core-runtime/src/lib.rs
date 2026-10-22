@@ -26,7 +26,8 @@ pub mod abi_support {
     use crate::handle_registry::registry::{HandleRegistry, RegistryError};
     use crate::object_store::UiObjectStoreError;
     use crate::property::{
-        PropertyHandleKind, PropertyValidator, Subscription, ValidationError, ValidatorResult,
+        PropertyHandleKind, PropertyValidator, Subscription, SubscriptionCallback, ValidationError,
+        ValidatorResult,
     };
     use crate::runtime::{
         RuntimeBindingError, RuntimeCore, RuntimeCoreError, RuntimeIdentity,
@@ -455,8 +456,14 @@ pub mod abi_support {
 
     struct SubscriptionHandleEntry {
         runtime: Arc<RuntimeCore>,
-        identity: crate::handle_registry::registry::ObjectIdentity,
+        owner: SubscriptionOwner,
         subscription: Arc<Subscription>,
+    }
+
+    #[derive(Clone, Copy)]
+    enum SubscriptionOwner {
+        Property(crate::handle_registry::registry::ObjectIdentity),
+        Binding(crate::binding::BindingConnectionId),
     }
 
     struct BindingHandleEntry {
@@ -841,7 +848,7 @@ pub mod abi_support {
             subscription_token,
             Arc::new(SubscriptionHandleEntry {
                 runtime,
-                identity: pin.identity(),
+                owner: SubscriptionOwner::Property(pin.identity()),
                 subscription,
             }),
         );
@@ -1003,12 +1010,119 @@ pub mod abi_support {
             return Err(PropertyApiError::WrongThread);
         }
         if entry.subscription.is_active() {
-            entry
-                .runtime
-                .cancel_subscription_owner(entry.identity, &entry.subscription)
-                .map_err(map_property_read_error)?;
+            match entry.owner {
+                SubscriptionOwner::Property(identity) => {
+                    entry
+                        .runtime
+                        .cancel_subscription_owner(identity, &entry.subscription)
+                        .map_err(map_property_read_error)?;
+                }
+                SubscriptionOwner::Binding(connection) => {
+                    entry
+                        .runtime
+                        .cancel_binding_error_subscription(connection, &entry.subscription)
+                        .map_err(|error| match error {
+                            RuntimeBindingError::Property(RuntimePropertyError::WrongThread) => {
+                                PropertyApiError::WrongThread
+                            }
+                            _ => PropertyApiError::Internal,
+                        })?;
+                }
+            }
         }
         Ok(())
+    }
+
+    pub fn binding_error_snapshot(handle: u64) -> Result<(u64, u64, u32), BindingApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(BindingApiError::InvalidHandle)?;
+        let bindings = binding_handles()
+            .lock()
+            .map_err(|_| BindingApiError::Internal)?;
+        let entry = bindings.get(&token).ok_or(BindingApiError::InvalidHandle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(BindingApiError::WrongThread);
+        }
+        let Some(snapshot) = entry
+            .runtime
+            .binding_validation_snapshot(entry.connection)
+            .map_err(map_binding_runtime_error)?
+        else {
+            return Ok((0, 0, 0));
+        };
+        let pin = entry
+            .runtime
+            .binding_property_pin(entry.connection, snapshot.rejected_property)
+            .map_err(map_binding_runtime_error)?;
+        let error = issue_validation_error_snapshot(Arc::clone(&snapshot.error))
+            .map_err(|_| BindingApiError::OutOfMemory)?;
+        let handles = property_handles();
+        let mut owners = handles.owners.lock().map_err(|_| {
+            let _ = handle_release(error);
+            BindingApiError::Internal
+        })?;
+        if owners.try_reserve(1).is_err() {
+            drop(owners);
+            let _ = handle_release(error);
+            return Err(BindingApiError::OutOfMemory);
+        }
+        let property_token = match handles.registry.register_from_pin(
+            PropertyHandleKind::Property,
+            entry.runtime.identity(),
+            &pin,
+        ) {
+            Ok(token) => token,
+            Err(error_kind) => {
+                drop(owners);
+                let _ = handle_release(error);
+                return Err(match error_kind {
+                    RegistryError::OutOfMemory => BindingApiError::OutOfMemory,
+                    RegistryError::WrongRuntime => BindingApiError::WrongRuntime,
+                    _ => BindingApiError::Internal,
+                });
+            }
+        };
+        owners.insert(property_token, Arc::clone(&entry.runtime));
+        Ok((error, property_token.into_abi(), snapshot.direction))
+    }
+
+    pub fn binding_subscribe_error(
+        handle: u64,
+        callback: SubscriptionCallback,
+        userdata: usize,
+        destroy: DestroyCallback,
+    ) -> Result<u64, BindingApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(BindingApiError::InvalidHandle)?;
+        let bindings = binding_handles()
+            .lock()
+            .map_err(|_| BindingApiError::Internal)?;
+        let entry = bindings.get(&token).ok_or(BindingApiError::InvalidHandle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(BindingApiError::WrongThread);
+        }
+        let mut subscriptions = subscription_handles()
+            .lock()
+            .map_err(|_| BindingApiError::Internal)?;
+        subscriptions
+            .try_reserve(1)
+            .map_err(|_| BindingApiError::OutOfMemory)?;
+        let subscription_token =
+            crate::handle_registry::issue_handle_token().ok_or(BindingApiError::Internal)?;
+        // SAFETY: ownership transfers only after Runtime registration succeeds.
+        let subscription =
+            Arc::new(unsafe { Subscription::new(callback, userdata as *mut c_void, destroy) });
+        entry
+            .runtime
+            .register_binding_error_subscription(entry.connection, &subscription)
+            .map_err(map_binding_runtime_error)?;
+        subscriptions.insert(
+            subscription_token,
+            Arc::new(SubscriptionHandleEntry {
+                runtime: Arc::clone(&entry.runtime),
+                owner: SubscriptionOwner::Binding(entry.connection),
+                subscription,
+            }),
+        );
+        Ok(subscription_token.into_abi())
     }
 
     /// Creates a Property Binding and returns an owned handle for persistent modes.
@@ -1096,9 +1210,11 @@ pub mod abi_support {
         if !entry.runtime.is_ui_thread() {
             return Err(BindingApiError::WrongThread);
         }
-        entry
-            .runtime
-            .cancel_binding_connection(entry.connection)
+        let runtime = Arc::clone(&entry.runtime);
+        let connection = entry.connection;
+        drop(bindings);
+        runtime
+            .cancel_binding_connection(connection)
             .map(|_| ())
             .map_err(map_binding_runtime_error)
     }

@@ -529,3 +529,4 @@ UT-CORE-RUNTIME-BINDING-INIT-001はCore内部OneWayの初期値・graph・notifi
 | 6.10 | 2026-10-22 | CORE-065の伝播拒否・回復ケースを実装中へ更新 | Codex | Core oracleはOneWay chain拒否、independent edge継続、TwoWay target group atomic拒否、immutable snapshot recoveryを扱う。ABI oracleは未実装 |
 | 6.11 | 2026-10-22 | UNIT-CORE-065を実装・検証済みへ更新 | Codex | OneWay chain拒否時にtarget通知を保ち、dependent edgeを止め、独立edgeを継続する。TwoWay target group拒否のatomicityと成功回復をCore tests・workspace tests・tools/dev.py checkで検証。ABI snapshot/subscriptionは未実装 |
 | 6.9 | 2026-10-22 | UT-CORE-BINDING-VALIDATION-PROPAGATION-001とUT-ABI-BINDING-ERROR-001のoracleを追補 | Codex | 承認済みRQ/DDからCore伝播reject/error snapshotとABI snapshot/subscriptionの期待結果を定義。実装・動作確認は未実施 |
+| 6.12 | 2026-10-22 | UNIT-ABI-016を実装・検証済みへ更新 | Codex | C ABI snapshot ownership、出力初期化、immutable Error、error-before-Property通知、clear/recovery通知、Binding cancelとRuntime shutdownのdestroyをfocused testで確認 |

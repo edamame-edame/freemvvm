@@ -1048,6 +1048,7 @@ pub(crate) struct RuntimeCore {
     ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
     binding_graph: Arc<Mutex<BindingGraph>>,
     active_bindings: Arc<Mutex<HashMap<BindingConnectionId, RuntimeBindingOwner>>>,
+    binding_error_delivery: Arc<Mutex<VecDeque<BindingErrorDeliveryItem>>>,
     property_changes: Arc<Mutex<PropertyChangeQueue>>,
     property_delivery: Arc<Mutex<Option<VecDeque<PropertyDeliveryItem>>>>,
     property_delivery_active: AtomicBool,
@@ -1063,6 +1064,12 @@ struct RuntimeBindingOwner {
     _source: ValidationPin<RuntimeIdentity>,
     _target: ValidationPin<RuntimeIdentity>,
     current_error: Option<BindingValidationSnapshot>,
+    error_subscribers: Vec<Arc<Subscription>>,
+}
+
+pub(crate) struct BindingErrorDeliveryItem {
+    pub(crate) connection: BindingConnectionId,
+    pub(crate) subscribers: Vec<Arc<Subscription>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1134,12 +1141,14 @@ impl RuntimeCore {
         let binding_graph = Arc::new(Mutex::new(BindingGraph::default()));
         let active_bindings: Arc<Mutex<HashMap<BindingConnectionId, RuntimeBindingOwner>>> =
             Arc::new(Mutex::new(HashMap::new()));
+        let binding_error_delivery = Arc::new(Mutex::new(VecDeque::new()));
         let subscription_owners: Arc<Mutex<HashMap<ObjectIdentity, Vec<Arc<Subscription>>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let shutdown_property_changes = Arc::clone(&property_changes);
         let shutdown_property_delivery = Arc::clone(&property_delivery);
         let shutdown_subscription_owners = Arc::clone(&subscription_owners);
         let shutdown_active_bindings = Arc::clone(&active_bindings);
+        let shutdown_binding_error_delivery = Arc::clone(&binding_error_delivery);
         let shutdown_binding_graph = Arc::clone(&binding_graph);
         cleanup
             .track_ui_state(Box::new(move || {
@@ -1160,6 +1169,10 @@ impl RuntimeCore {
                     subscription.cancel();
                 }
                 drop(delivery);
+                shutdown_binding_error_delivery
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clear();
                 let bindings = std::mem::take(
                     &mut *shutdown_active_bindings
                         .lock()
@@ -1169,6 +1182,11 @@ impl RuntimeCore {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .clear();
+                for owner in bindings.values() {
+                    for subscription in &owner.error_subscribers {
+                        subscription.cancel();
+                    }
+                }
                 drop(bindings);
             }))
             .map_err(|()| RuntimeCoreError::CleanupRegistrationFailed)?;
@@ -1202,6 +1220,7 @@ impl RuntimeCore {
             ui_objects,
             binding_graph,
             active_bindings,
+            binding_error_delivery,
             property_changes,
             property_delivery,
             property_delivery_active: AtomicBool::new(false),
@@ -1521,6 +1540,7 @@ impl RuntimeCore {
                             _source: source_pin,
                             _target: target_pin,
                             current_error: None,
+                            error_subscribers: Vec::new(),
                         },
                     );
                 })
@@ -1568,6 +1588,7 @@ impl RuntimeCore {
                         _source: source_pin,
                         _target: target_pin,
                         current_error: None,
+                        error_subscribers: Vec::new(),
                     },
                 );
             })
@@ -1656,6 +1677,7 @@ impl RuntimeCore {
                             _source: source_pin,
                             _target: target_pin,
                             current_error: None,
+                            error_subscribers: Vec::new(),
                         },
                     );
                 })
@@ -1703,6 +1725,7 @@ impl RuntimeCore {
                         _source: source_pin,
                         _target: target_pin,
                         current_error: None,
+                        error_subscribers: Vec::new(),
                     },
                 );
             })
@@ -1743,7 +1766,17 @@ impl RuntimeCore {
             owner.is_some(),
             "active graph connection has a Runtime owner"
         );
-        drop(owner);
+        drop(owners);
+        drop(graph);
+        if let Some(owner) = owner {
+            for subscription in owner.error_subscribers {
+                subscription.cancel();
+            }
+        }
+        self.binding_error_delivery
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?
+            .retain(|item| item.connection != connection_id);
         Ok(true)
     }
 
@@ -1756,11 +1789,135 @@ impl RuntimeCore {
             .active_bindings
             .lock()
             .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        let mut delivery = self
+            .binding_error_delivery
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
         let owner = owners
             .get_mut(&connection_id)
             .ok_or(RuntimeBindingError::WrongObjectState)?;
+        if owner.current_error == snapshot {
+            return Ok(());
+        }
+        let mut snapshot_subscribers = Vec::new();
+        if !owner.error_subscribers.is_empty() {
+            snapshot_subscribers
+                .try_reserve(owner.error_subscribers.len())
+                .map_err(|_| {
+                    RuntimeBindingError::Property(
+                        RuntimePropertyError::NotificationQueueOutOfMemory,
+                    )
+                })?;
+            snapshot_subscribers.extend(owner.error_subscribers.iter().cloned());
+            if let Some(index) = delivery
+                .iter()
+                .position(|item| item.connection == connection_id)
+            {
+                delivery[index].subscribers = snapshot_subscribers;
+            } else {
+                delivery.try_reserve(1).map_err(|_| {
+                    RuntimeBindingError::Property(
+                        RuntimePropertyError::NotificationQueueOutOfMemory,
+                    )
+                })?;
+                delivery.push_back(BindingErrorDeliveryItem {
+                    connection: connection_id,
+                    subscribers: snapshot_subscribers,
+                });
+            }
+        }
         owner.current_error = snapshot;
         Ok(())
+    }
+
+    pub(crate) fn register_binding_error_subscription(
+        &self,
+        connection_id: BindingConnectionId,
+        subscription: &Arc<Subscription>,
+    ) -> Result<(), RuntimeBindingError> {
+        self.ensure_property_access_thread()
+            .map_err(RuntimeBindingError::Property)?;
+        let mut owners = self
+            .active_bindings
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        let owner = owners
+            .get_mut(&connection_id)
+            .ok_or(RuntimeBindingError::WrongObjectState)?;
+        owner.error_subscribers.try_reserve(1).map_err(|_| {
+            RuntimeBindingError::Property(RuntimePropertyError::NotificationQueueOutOfMemory)
+        })?;
+        owner.error_subscribers.push(Arc::clone(subscription));
+        Ok(())
+    }
+
+    pub(crate) fn cancel_binding_error_subscription(
+        &self,
+        connection_id: BindingConnectionId,
+        subscription: &Arc<Subscription>,
+    ) -> Result<(), RuntimeBindingError> {
+        self.ensure_property_access_thread()
+            .map_err(RuntimeBindingError::Property)?;
+        let mut owners = self
+            .active_bindings
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        if let Some(owner) = owners.get_mut(&connection_id) {
+            owner
+                .error_subscribers
+                .retain(|item| !Arc::ptr_eq(item, subscription));
+        }
+        drop(owners);
+        subscription.cancel();
+        Ok(())
+    }
+
+    pub(crate) fn binding_property_pin(
+        &self,
+        connection_id: BindingConnectionId,
+        identity: ObjectIdentity,
+    ) -> Result<ValidationPin<RuntimeIdentity>, RuntimeBindingError> {
+        let owners = self
+            .active_bindings
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        owners
+            .get(&connection_id)
+            .ok_or(RuntimeBindingError::WrongObjectState)?;
+        if let Some(pin) = owners.values().find_map(|owner| {
+            if owner._source.identity() == identity {
+                Some(&owner._source)
+            } else if owner._target.identity() == identity {
+                Some(&owner._target)
+            } else {
+                None
+            }
+        }) {
+            return self.clone_property_pin(pin);
+        }
+        Err(RuntimeBindingError::WrongObjectState)
+    }
+
+    fn clone_property_pin(
+        &self,
+        pin: &ValidationPin<RuntimeIdentity>,
+    ) -> Result<ValidationPin<RuntimeIdentity>, RuntimeBindingError> {
+        pin.try_clone().map_err(|error| match error {
+            RegistryError::OutOfMemory => {
+                RuntimeBindingError::Property(RuntimePropertyError::NotificationQueueOutOfMemory)
+            }
+            _ => RuntimeBindingError::Property(RuntimePropertyError::WrongObjectState),
+        })
+    }
+
+    pub(crate) fn take_binding_error_deliveries(
+        &self,
+    ) -> Result<VecDeque<BindingErrorDeliveryItem>, RuntimePropertyError> {
+        let mut pending = self
+            .binding_error_delivery
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        Ok(std::mem::take(&mut *pending))
     }
 
     #[allow(dead_code)] // Read by the Core binding error snapshot API in the next step.
@@ -2590,14 +2747,37 @@ impl RuntimeCore {
 
             let generation = self.prepare_property_delivery_generation()?;
             if generation.is_empty() {
+                if self.deliver_binding_error_notifications()? {
+                    continue;
+                }
                 return Ok((completed, false));
             }
+            self.deliver_binding_error_notifications()?;
             let mut pending = self
                 .property_delivery
                 .lock()
                 .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
             *pending = Some(generation.into());
         }
+    }
+
+    fn deliver_binding_error_notifications(&self) -> Result<bool, RuntimePropertyError> {
+        let items = self.take_binding_error_deliveries()?;
+        if items.is_empty() {
+            return Ok(false);
+        }
+        for item in items {
+            for subscription in item.subscribers {
+                subscription.invoke();
+                self.cleanup.drain_pending().map_err(|error| match error {
+                    ShutdownError::WrongThread => RuntimePropertyError::WrongThread,
+                    ShutdownError::SynchronizationPoisoned => {
+                        RuntimePropertyError::SynchronizationPoisoned
+                    }
+                })?;
+            }
+        }
+        Ok(true)
     }
 
     fn has_pending_property_delivery(&self) -> Result<bool, RuntimePropertyError> {

@@ -1672,9 +1672,9 @@
     },
     {
       "id": "UNIT-ABI-016",
-      "state": "planned",
+      "state": "complete",
       "scope": "c-abi-binding-error-snapshot-and-subscription",
-      "sources": ["crates/core-runtime/src/lib.rs", "crates/c-abi/src/lib.rs"],
+      "sources": ["crates/core-runtime/src/lib.rs", "crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/handle_registry/registry.rs", "crates/c-abi/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
       "depends_on": ["UNIT-CORE-065", "UNIT-ABI-015"],
       "design": [

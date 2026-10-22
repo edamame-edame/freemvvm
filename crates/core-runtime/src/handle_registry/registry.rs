@@ -151,6 +151,24 @@ impl<R> ValidationPin<R> {
     pub(crate) fn identity(&self) -> ObjectIdentity {
         self.control.identity()
     }
+
+    pub(crate) fn try_clone(&self) -> Result<Self, RegistryError> {
+        let mut lifecycle = self
+            .control
+            .lifecycle
+            .lock()
+            .map_err(|_| RegistryError::SynchronizationPoisoned)?;
+        if !lifecycle.ui_state_alive || lifecycle.pins == 0 {
+            return Err(RegistryError::InvalidToken);
+        }
+        lifecycle.pins = lifecycle
+            .pins
+            .checked_add(1)
+            .ok_or(RegistryError::ReferenceCountExhausted)?;
+        Ok(Self {
+            control: Arc::clone(&self.control),
+        })
+    }
 }
 
 impl<R> Drop for ValidationPin<R> {
@@ -273,6 +291,37 @@ where
         );
         lifecycle.public_refs = next_ref_count;
         Ok(new_token)
+    }
+
+    pub(crate) fn register_from_pin(
+        &self,
+        kind: K,
+        runtime_id: R,
+        pin: &ValidationPin<R>,
+    ) -> Result<HandleToken, RegistryError> {
+        if pin.control.runtime_id() != &runtime_id {
+            return Err(RegistryError::WrongRuntime);
+        }
+        let mut lifecycle = self.lock_lifecycle(&pin.control)?;
+        if !lifecycle.ui_state_alive || lifecycle.pins == 0 {
+            return Err(RegistryError::InvalidToken);
+        }
+        let mut entries = self.lock_entries()?;
+        self.reserve_table_slot(&mut entries)?;
+        let token = self.issue_token()?;
+        let next_ref_count = lifecycle
+            .public_refs
+            .checked_add(1)
+            .ok_or(RegistryError::ReferenceCountExhausted)?;
+        entries.insert(
+            token,
+            HandleEntry::new(kind, Some(runtime_id), Arc::clone(&pin.control)),
+        );
+        lifecycle.public_refs = next_ref_count;
+        // A live pin can issue a fresh public owner while a previous final release is waiting
+        // for that pin to drain; the newly issued public reference supersedes that cleanup.
+        drop(lifecycle.pending_cleanup.take());
+        Ok(token)
     }
 
     pub(crate) fn validate(
@@ -614,6 +663,34 @@ mod tests {
         assert_eq!(completed[0].0.slot(), 3);
         assert_eq!(completed[0].0.generation().get(), 1);
         assert_eq!(completed[0].2, thread::current().id());
+    }
+
+    #[test]
+    fn active_pin_can_issue_a_new_public_handle_after_final_release() {
+        let queue = FakeQueue::new();
+        let registry = TestRegistry::new();
+        let control = make_control(Arc::clone(&queue), 11, 3);
+        let token = registry
+            .register(7, 11, Arc::clone(&control))
+            .expect("register initial object");
+        let pin = registry.validate(token, &7, &11).expect("active pin");
+        registry.release(token).expect("final release is accepted");
+
+        let replacement = registry
+            .register_from_pin(7, 11, &pin)
+            .expect("pin issues a fresh owned token");
+        drop(pin);
+        assert_eq!(
+            queue.pending_count(),
+            0,
+            "new ownership cancels deferred final cleanup"
+        );
+        let replacement_pin = registry
+            .validate(replacement, &7, &11)
+            .expect("new token stays live");
+        drop(replacement_pin);
+        registry.release(replacement).expect("release fresh owner");
+        assert_eq!(queue.pending_count(), 1);
     }
 
     #[test]

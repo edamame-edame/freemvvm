@@ -7,8 +7,10 @@ use freemvvm_core::abi_support::{
     RuntimeCreateError, RuntimeQueryError, RuntimeRetainError, ShutdownApiError, ShutdownApiState,
     ValidateBoolCallback, ValidateI64Callback, ValidateUtf8Callback, WakeCallback,
     binding_cancel as core_binding_cancel, binding_create as core_binding_create,
-    error_code as core_error_code, error_message_utf8 as core_error_message_utf8,
-    error_status as core_error_status, handle_release as core_handle_release,
+    binding_error_snapshot as core_binding_error_snapshot,
+    binding_subscribe_error as core_binding_subscribe_error, error_code as core_error_code,
+    error_message_utf8 as core_error_message_utf8, error_status as core_error_status,
+    handle_release as core_handle_release,
     issue_validation_error_snapshot as core_issue_validation_error_snapshot,
     property_create_bool as core_property_create_bool,
     property_create_decimal as core_property_create_decimal,
@@ -1176,6 +1178,90 @@ pub unsafe extern "C" fn ui_abi_1_binding_cancel(binding: u64, out_error: *mut u
     }
 }
 
+/// Reads the current immutable Binding validation error and returns newly owned Error and
+/// rejected-Property handles. A successful call with no current error returns three zero values.
+///
+/// # Safety
+/// All three output pointers are required and must point to writable storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_binding_error_snapshot(
+    binding: u64,
+    out_owned_error: *mut u64,
+    out_owned_rejected_property: *mut u64,
+    out_direction: *mut u32,
+) -> u32 {
+    if !out_owned_error.is_null() {
+        // SAFETY: the ABI caller supplies writable storage for every non-null output pointer.
+        unsafe { out_owned_error.write(0) };
+    }
+    if !out_owned_rejected_property.is_null() {
+        // SAFETY: the ABI caller supplies writable storage for every non-null output pointer.
+        unsafe { out_owned_rejected_property.write(0) };
+    }
+    if !out_direction.is_null() {
+        // SAFETY: the ABI caller supplies writable storage for every non-null output pointer.
+        unsafe { out_direction.write(0) };
+    }
+    if out_owned_error.is_null() || out_owned_rejected_property.is_null() || out_direction.is_null()
+    {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| core_binding_error_snapshot(binding))) {
+        Ok(Ok((error, property, direction))) => {
+            // SAFETY: all required output pointers were checked non-null above.
+            unsafe {
+                out_owned_error.write(error);
+                out_owned_rejected_property.write(property);
+                out_direction.write(direction);
+            }
+            UI_OK
+        }
+        Ok(Err(error)) => map_binding_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Subscribes to changes in the current Binding validation error. No initial callback is made.
+///
+/// # Safety
+/// Callback and destroy must be valid function pointers. `userdata` remains owned by the
+/// registration until `destroy` runs. `out_error` is optional; `out_subscription` is required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_binding_subscribe_error(
+    binding: u64,
+    callback: Option<PostCallback>,
+    userdata: *mut c_void,
+    destroy: Option<DestroyCallback>,
+    out_subscription: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_subscription.is_null() {
+        // SAFETY: the ABI caller supplies writable storage for every non-null output pointer.
+        unsafe { out_subscription.write(0) };
+    }
+    if !out_error.is_null() {
+        // SAFETY: the ABI caller supplies writable storage for every non-null output pointer.
+        unsafe { out_error.write(0) };
+    }
+    if out_subscription.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let (Some(callback), Some(destroy)) = (callback, destroy) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_binding_subscribe_error(binding, callback, userdata as usize, destroy)
+    })) {
+        Ok(Ok(subscription)) => {
+            // SAFETY: the required output pointer was checked non-null above.
+            unsafe { out_subscription.write(subscription) };
+            UI_OK
+        }
+        Ok(Err(error)) => map_binding_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
 /// Register the Runtime's one-time UI-loop wake bridge.
 ///
 /// # Safety
@@ -1586,16 +1672,16 @@ mod tests {
         UI_INVALID_HANDLE, UI_OK, UI_OUT_OF_MEMORY, UI_PENDING, UI_UNSUPPORTED,
         UI_VALIDATION_FAILED, UI_WRONG_RUNTIME, UI_WRONG_THREAD, UI_WRONG_TYPE,
         catch_runtime_creation, catch_runtime_query, catch_runtime_retain, ui_abi_1_binding_cancel,
-        ui_abi_1_binding_create, ui_abi_1_error_code, ui_abi_1_error_message_utf8,
-        ui_abi_1_error_status, ui_abi_1_get_version, ui_abi_1_handle_release,
-        ui_abi_1_handle_retain, ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32,
-        ui_abi_1_numeric_narrow_f64, ui_abi_1_property_create_bool,
-        ui_abi_1_property_create_decimal, ui_abi_1_property_create_f64,
-        ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8, ui_abi_1_property_get_bool,
-        ui_abi_1_property_get_decimal, ui_abi_1_property_get_f64, ui_abi_1_property_get_i64,
-        ui_abi_1_property_get_utf8, ui_abi_1_property_kind, ui_abi_1_property_set_bool,
-        ui_abi_1_property_set_decimal, ui_abi_1_property_set_f64, ui_abi_1_property_set_i64,
-        ui_abi_1_property_set_utf8, ui_abi_1_property_subscribe,
+        ui_abi_1_binding_create, ui_abi_1_binding_error_snapshot, ui_abi_1_binding_subscribe_error,
+        ui_abi_1_error_code, ui_abi_1_error_message_utf8, ui_abi_1_error_status,
+        ui_abi_1_get_version, ui_abi_1_handle_release, ui_abi_1_handle_retain,
+        ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32, ui_abi_1_numeric_narrow_f64,
+        ui_abi_1_property_create_bool, ui_abi_1_property_create_decimal,
+        ui_abi_1_property_create_f64, ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8,
+        ui_abi_1_property_get_bool, ui_abi_1_property_get_decimal, ui_abi_1_property_get_f64,
+        ui_abi_1_property_get_i64, ui_abi_1_property_get_utf8, ui_abi_1_property_kind,
+        ui_abi_1_property_set_bool, ui_abi_1_property_set_decimal, ui_abi_1_property_set_f64,
+        ui_abi_1_property_set_i64, ui_abi_1_property_set_utf8, ui_abi_1_property_subscribe,
         ui_abi_1_property_validator_cancel, ui_abi_1_property_validator_register_bool,
         ui_abi_1_property_validator_register_i64, ui_abi_1_property_validator_register_utf8,
         ui_abi_1_runtime_create, ui_abi_1_runtime_dispatch_turn, ui_abi_1_runtime_host_begin_event,
@@ -1684,6 +1770,32 @@ mod tests {
     struct PostProbe {
         callbacks: AtomicUsize,
         destroys: AtomicUsize,
+    }
+
+    #[derive(Default)]
+    struct BindingErrorProbe {
+        callbacks: AtomicUsize,
+        destroys: AtomicUsize,
+        order: Mutex<Vec<&'static str>>,
+    }
+
+    unsafe extern "C" fn binding_error_callback(userdata: *mut c_void) {
+        // SAFETY: tests keep the probe alive until the Subscription destroy callback finishes.
+        let probe = unsafe { &*(userdata.cast::<BindingErrorProbe>()) };
+        probe.callbacks.fetch_add(1, Ordering::SeqCst);
+        probe.order.lock().expect("order lock").push("error");
+    }
+
+    unsafe extern "C" fn binding_error_destroy(userdata: *mut c_void) {
+        // SAFETY: tests keep the probe alive until the Subscription destroy callback finishes.
+        let probe = unsafe { &*(userdata.cast::<BindingErrorProbe>()) };
+        probe.destroys.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn binding_source_callback(userdata: *mut c_void) {
+        // SAFETY: tests keep the probe alive until the Property Subscription is destroyed.
+        let probe = unsafe { &*(userdata.cast::<BindingErrorProbe>()) };
+        probe.order.lock().expect("order lock").push("property");
     }
 
     #[derive(Default)]
@@ -4176,6 +4288,255 @@ mod tests {
             utf8_registration,
             utf8_property,
             property,
+            source,
+            target,
+            runtime,
+        ] {
+            assert_eq!(ui_abi_1_handle_release(handle), UI_OK);
+        }
+    }
+
+    #[test]
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    fn binding_error_snapshot_and_subscription_follow_binding_delivery_order() {
+        let mut runtime = 0;
+        assert_eq!(
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let bridge = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        assert_eq!(
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&bridge as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut source = 0;
+        let mut target = 0;
+        assert_eq!(
+            unsafe { ui_abi_1_property_create_i64(runtime, 7, &mut source, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_property_create_i64(runtime, 7, &mut target, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let validator = ValidatorProbe::default();
+        let mut registration = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_validator_register_i64(
+                    target,
+                    Some(reject_negative_i64),
+                    (&validator as *const ValidatorProbe).cast_mut().cast(),
+                    Some(validator_destroy),
+                    &mut registration,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut binding = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_create(source, target, 2, &mut binding, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        let (mut empty_error, mut empty_property, mut empty_direction) =
+            (u64::MAX, u64::MAX, u32::MAX);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_error_snapshot(
+                    binding,
+                    &mut empty_error,
+                    &mut empty_property,
+                    &mut empty_direction,
+                )
+            },
+            UI_OK
+        );
+        assert_eq!((empty_error, empty_property, empty_direction), (0, 0, 0));
+        let mut partially_null = u64::MAX;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_error_snapshot(
+                    binding,
+                    std::ptr::null_mut(),
+                    &mut partially_null,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(partially_null, 0);
+        let probe = BindingErrorProbe::default();
+        let userdata = (&probe as *const BindingErrorProbe).cast_mut().cast();
+        let mut error_subscription = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_subscribe_error(
+                    binding,
+                    Some(binding_error_callback),
+                    userdata,
+                    Some(binding_error_destroy),
+                    &mut error_subscription,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut property_subscription = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_subscribe(
+                    source,
+                    Some(binding_source_callback),
+                    userdata,
+                    Some(binding_error_destroy),
+                    &mut property_subscription,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(
+            probe.callbacks.load(Ordering::SeqCst),
+            0,
+            "subscription has no initial notification"
+        );
+
+        let mut change_scope = 0;
+        assert_eq!(
+            unsafe { ui_abi_1_runtime_host_begin_event(runtime, &mut change_scope) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_property_set_i64(source, -3, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_property_set_i64(source, -4, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_runtime_host_end_event(runtime, change_scope) },
+            UI_OK
+        );
+        assert_eq!(unsafe { ui_abi_1_runtime_dispatch_turn(runtime) }, UI_OK);
+        assert_eq!(
+            *probe.order.lock().expect("order lock"),
+            vec!["error", "property"]
+        );
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 1);
+
+        let (mut error, mut rejected, mut direction) = (0, 0, 0);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_error_snapshot(binding, &mut error, &mut rejected, &mut direction)
+            },
+            UI_OK
+        );
+        assert_ne!(error, 0);
+        assert_ne!(rejected, 0);
+        assert_eq!(direction, 1);
+        let mut code = (0, 0);
+        assert_eq!(
+            unsafe { ui_abi_1_error_code(error, &mut code.0, &mut code.1) },
+            UI_OK
+        );
+        assert_eq!(code, (41, 9));
+        assert_eq!(
+            unsafe { ui_abi_1_property_set_i64(source, 12, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(unsafe { ui_abi_1_runtime_dispatch_turn(runtime) }, UI_OK);
+        assert_eq!(
+            probe.callbacks.load(Ordering::SeqCst),
+            2,
+            "clearing the current error is also observable"
+        );
+        let (mut cleared_error, mut cleared_property, mut cleared_direction) =
+            (u64::MAX, u64::MAX, u32::MAX);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_error_snapshot(
+                    binding,
+                    &mut cleared_error,
+                    &mut cleared_property,
+                    &mut cleared_direction,
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(
+            (cleared_error, cleared_property, cleared_direction),
+            (0, 0, 0)
+        );
+        let mut retained_code = (0, 0);
+        assert_eq!(
+            unsafe { ui_abi_1_error_code(error, &mut retained_code.0, &mut retained_code.1) },
+            UI_OK,
+            "issued Error snapshots remain immutable after recovery"
+        );
+        assert_eq!(retained_code, (41, 9));
+        assert_eq!(ui_abi_1_handle_release(error), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(rejected), UI_OK);
+
+        assert_eq!(
+            unsafe { ui_abi_1_binding_cancel(binding, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+        let mut shutdown_binding = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_create(
+                    source,
+                    target,
+                    2,
+                    &mut shutdown_binding,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let shutdown_probe = BindingErrorProbe::default();
+        let mut shutdown_subscription = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_binding_subscribe_error(
+                    shutdown_binding,
+                    Some(binding_error_callback),
+                    (&shutdown_probe as *const BindingErrorProbe)
+                        .cast_mut()
+                        .cast(),
+                    Some(binding_error_destroy),
+                    &mut shutdown_subscription,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        complete_runtime_shutdown_at_host_boundary(runtime);
+        assert_eq!(shutdown_probe.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 2);
+        for handle in [
+            shutdown_subscription,
+            shutdown_binding,
+            property_subscription,
+            error_subscription,
+            registration,
+            binding,
             source,
             target,
             runtime,
