@@ -1,7 +1,7 @@
 # C++ Property wrapper 初回実装（BOOL / I64）
 
 - 更新日: 2026-10-23
-- 状態: 計画承認済み（利用者、2026-10-22）。BOOL/I64 Propertyと試験を実装しWindows local全体check成功。Windows/Linux CI確認待ち
+- 状態: 完了。BOOL/I64 Propertyと試験を実装し、commit `66a4caa` のWindows/Linux CI run [39801053995](https://github.com/edamame-edame/freemvvm/actions/runs/39801053995) で全gate成功（2026-10-22 UTC / 2026-10-23 JST）
 - 対象: 承認済みC++ wrapper設計 v1.2 の `Property<T>` create/get/set の初回実装
 
 ## 背景
@@ -38,9 +38,16 @@ auto updated = property.value()->set(next_value);
 2. [x] `.docs/32_unit_test/wrappers.md` にcreate/get/set、move/close、native error、wrong-thread、失敗時状態保持を検証する `UT-WRAP-CPP-PROP-001` を追加する。`tools/units.yaml` に `UNIT-WRAP-CPP-002` と実装source/test mappingをsource変更前に登録した。
 3. [x] 提案した `Property<T>::create(Runtime&, initial)`、`get()`、`set()`をBOOL/I64に実装。token/nodeはnative call前に準備し、close失敗時は所有tokenを保持する。ABI/UI thread/status/error契約とRuntime cleanup supervisorを再利用。
 4. [x] fake C ABI focused unit testとrelocated CMake package consumerにBOOL/I64 Propertyの一往復を追加。
-5. [ ] focused tests、workspace Rust tests、`tools/dev.py check`、`tools/dev.py minimum`、文書検査にWindows localで成功。push後に同じrevisionのWindows/Linux CI成功を確認する。
+5. [x] focused tests、workspace Rust tests、`tools/dev.py check`、`tools/dev.py minimum`、文書検査にWindows localで成功。commit `66a4caa` に対するrun `39801053995` のWindows/Linux両runnerでcheck/minimum/package integrationがpassed、CMake `wrapper.cpp.property`もpassed。
 6. [x] 実装で分かったC++ wrapperの所有・検証方法を [.docs/01_memory/cpp-property-wrapper.md](../01_memory/cpp-property-wrapper.md) に記録した。
 
 ## 承認境界
 
 この計画と `Property<T>::create(Runtime&, T)` API案は2026-10-22に利用者が承認した。計画をcommit/pushした後にtest registrationと実装を開始する。
+
+## 完了記録
+
+- 実装commit: `66a4caa`（日本語commit message、push済み）
+- Windows/Linux CI: [Development bootstrap run 39801053995](https://github.com/edamame-edame/freemvvm/actions/runs/39801053995)、両runner全success
+- artifact: 両runnerの`check.json`、`minimum.json`、`cpp-package-test.json`はすべて`passed`。両OSの`LastTest.log`で`wrapper.cpp.property`は`Test Passed`。
+- ローカル: `tools/dev.py cpp-property-test`、`cpp-runtime-test`、`cpp-package-test`、`check`、`minimum`、`tools/check_docs.py`、`git diff --check`成功。
