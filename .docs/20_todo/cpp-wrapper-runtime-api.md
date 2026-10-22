@@ -1,12 +1,12 @@
 # C++ Runtime wrapper APIとcleanup境界
 
 - 更新日: 2026-10-22
-- 状態: 計画・詳細設計v1.2承認済み（利用者、2026-10-22）。Runtime wrapperとCMake packageの実装・Windows local test完了。CI検証は未完了
+- 状態: 計画・詳細設計v1.2承認済み（利用者、2026-10-22）。Runtime wrapperとCMake packageの実装完了。C++ packageのWindows/Linux CI検証完了。workflow全体はRust 1.85最小版チェックで失敗
 - 対象: C++ wrapperやCMake packageを実装する前に、最初の公開Runtime所有APIと、native release失敗時の寿命境界を決める。
 
 ## 次にこの判断を行う理由
 
-C++17 consumerからraw C ABIを呼ぶsmokeは`f3c3f78`で完了した。[RQ-12-004](../11_requirements/RQ-12_build-distribution.md#rq-12-004)は、public C++ wrapperと共通native libraryを含むCMake install/export packageを要求する。承認済みの[C++ wrapper設計v1.2](../13_detail_design/wrappers/cpp.md)では、move-only Runtime、明示shutdown/close、C++17 non-throw Result、release失敗時にRuntime別queueを保全するsupervisor寿命を定めている。Runtime wrapperとrelocatable packageのWindowsローカル実装・検証は完了し、次の残作業はWindows/Linux CI evidenceである。
+C++17 consumerからraw C ABIを呼ぶsmokeは`f3c3f78`で完了した。[RQ-12-004](../11_requirements/RQ-12_build-distribution.md#rq-12-004)は、public C++ wrapperと共通native libraryを含むCMake install/export packageを要求する。承認済みの[C++ wrapper設計v1.2](../13_detail_design/wrappers/cpp.md)では、move-only Runtime、明示shutdown/close、C++17 non-throw Result、release失敗時にRuntime別queueを保全するsupervisor寿命を定めている。Runtime wrapperとrelocatable packageの実装を完了し、WindowsとLinuxのCIでC++ package consumer検証も成功した。CI workflow全体は、C++変更と無関係なRust 1.85最小版チェックで失敗している。
 
 ## 承認済み根拠
 
@@ -37,9 +37,9 @@ C++17 consumerからraw C ABIを呼ぶsmokeは`f3c3f78`で完了した。[RQ-12-
 
 - [x] 最初のRuntime API、Result型、close/shutdown区別、cleanup supervisorをC++ wrapper設計v1.2へ反映し、利用者承認を記録する。
 - [x] UNIT-WRAP-CPP-001とUT-WRAP-CPP-RT-001を`.docs/32_unit_test/wrappers.md`および`tools/units.yaml`へsource変更前に登録する。
-- [x] 選択した最小Runtime wrapperを実装・検証する。UT-WRAP-CPP-RT-001、C++ ABI smoke、Windows全体checkに成功（2026-10-22）。Linux CIは未確認。
-- [x] wrapperとnative runtimeをrelocatableなCMake install/export packageへ追加し、移動したprefixを使う別のdownstream consumerで利用を確認する。UT-PKG-CPP-001成功（2026-10-22）。Linux CIは未確認。
-- [ ] WindowsとLinuxのCI evidenceを、ローカルhostでの検証と区別して記録する。
+- [x] 選択した最小Runtime wrapperを実装・検証する。UT-WRAP-CPP-RT-001、C++ ABI smoke、Windows local全体checkに成功（2026-10-22）。CI全体ではRust 1.85最小版checkが失敗。
+- [x] wrapperとnative runtimeをrelocatableなCMake install/export packageへ追加し、移動したprefixを使う別のdownstream consumerで利用を確認する。UT-PKG-CPP-001はWindows localおよびWindows/Linux CIのpackage gateで成功（2026-10-22）。
+- [x] WindowsとLinuxのCI evidenceを、ローカルhostでの検証と区別して記録する。commit `1b32ab6` のCI runで両OSの`cpp-package-integration`が成功し、各`check.json`はpassed・clean worktreeを記録。workflow全体の失敗原因は両OSの`rust-minimum`（Rust 1.85.0）で、C++ package gateの結果とは分離して記録した。
 
 ## 改訂履歴
 
@@ -50,3 +50,4 @@ C++17 consumerからraw C ABIを呼ぶsmokeは`f3c3f78`で完了した。[RQ-12-
 | 2026-10-22 | C++ wrapper設計v1.2全文承認とfocused test登録を記録 | 利用者が詳細設計v1.2全文を承認。UNIT-WRAP-CPP-001をplannedで登録し、実装開始 |
 | 2026-10-22 | FreeMvvm::cpp / FreeMvvm::runtimeのinstall/exportとrelocated consumer testを追加 | 既承認RQ-12-004・build DDに基づく。UT-PKG-CPP-001をplanned登録後に実装しWindows local test成功 |
 | 2026-10-22 | CI checkoutに存在しないローカルarchiveへのリンクを通常テキストへ変更 | 初回Windows/Linux CIのdocument-link gateで発見。archiveのGit除外方針は維持 |
+| 2026-10-22 | commit `1b32ab6` のWindows/Linux CIでC++ package gate成功を記録 | 両OSの`cpp-package-integration`は成功。workflow全体は別gateのRust 1.85.0最小版チェックで失敗 |
