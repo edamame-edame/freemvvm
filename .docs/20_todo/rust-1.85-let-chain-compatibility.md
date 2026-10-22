@@ -1,12 +1,12 @@
 # Rust 1.85最小版のlet-chain互換性修正
 
 - 更新日: 2026-10-22
-- 状態: 計画承認済み（利用者、2026-10-22）。実装・検証中
+- 状態: 完了。Rust 1.85対応修正とWindows/Linux CI確認済み（2026-10-22）
 - 対象: CI `rust-minimum` gateがRust 1.85.0で失敗する既存let-chain構文
 
 ## 背景
 
-CI run `39792223019` のWindows/Linux両jobで通常の`check`とC++ package integrationは成功したが、後段の`cargo +1.85.0 check --workspace --all-targets --locked`が`E0658`で失敗した。RQ-03-014でRust 1.85を最低版としている一方、次の3箇所がこの版で不安定なlet-chain構文を使っている。
+CI run `39792223019` のWindows/Linux両jobで通常の`check`とC++ package integrationは成功したが、後段の`cargo +1.85.0 check --workspace --all-targets --locked`が`E0658`で失敗した。RQ-03-014でRust 1.85を最低版としている一方、次の3つのlet-chain条件（source上2ブロック）がこの版で未安定だった。
 
 - `crates/core-runtime/src/lib.rs:436`: `call_destroy`とoptional destroy関数の複合条件
 - `crates/core-runtime/src/runtime.rs:2912-2913`: property store lookupとdowncastの複合条件
@@ -76,12 +76,12 @@ if let Ok(state) = store.resolve_mut(identity) {
 
 ## 承認境界
 
-この計画は2026-10-22に利用者が承認した。変更はこの互換性修正に限定し、結果を以下に記録する。
+この計画は2026-10-22に利用者が承認した。変更はこの互換性修正に限定した。
 
 ## 実装・検証記録
 
-- 実装revision: commit作成後に記録
+- 実装revision: [`ae45097`](https://github.com/edamame-edame/freemvvm/commit/ae45097b6b348436a12c1a365a670a82360ff318)（Windows/Linux CIでclean worktreeを確認）
 - Rust 1.85 minimum check: local成功（`.venv/Scripts/python.exe tools/dev.py minimum`）
 - workspace unit tests: 成功（`cargo test --workspace --all-targets --locked`、156件）
 - 開発check / 文書検査: 成功（`.venv/Scripts/python.exe tools/dev.py check`、C/C++ CTest 5件を含む）
-- Windows/Linux CI: 未実行
+- Windows/Linux CI: 成功（[run 39796877396](https://github.com/edamame-edame/freemvvm/actions/runs/39796877396)）。両OSの`check.json`と`minimum.json`が`passed`、`rust-minimum=0`、対象HEADは`ae45097b6b348436a12c1a365a670a82360ff318`。
