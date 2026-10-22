@@ -112,7 +112,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=["doctor", "check", "abi-smoke", "format", "minimum"],
+        choices=[
+            "doctor",
+            "check",
+            "abi-smoke",
+            "abi-smoke-cpp",
+            "format",
+            "minimum",
+        ],
     )
     args = parser.parse_args()
     if Path(sys.prefix).resolve() != VENV.resolve():
@@ -252,6 +259,26 @@ def main():
                 environment,
                 results,
                 "abi-runtime-smoke",
+            )
+        elif args.command == "abi-smoke-cpp":
+            run(
+                ["cmake", "--preset", "dev"],
+                environment,
+                results,
+                "cmake-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "--preset",
+                    "dev",
+                    "--target",
+                    "freemvvm_abi_cpp_runtime_smoke",
+                ],
+                environment,
+                results,
+                "abi-cpp-runtime-smoke",
             )
         elif args.command == "check":
             run(
