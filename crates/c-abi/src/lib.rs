@@ -9,6 +9,7 @@ use freemvvm_core::abi_support::{
     binding_cancel as core_binding_cancel, binding_create as core_binding_create,
     error_code as core_error_code, error_message_utf8 as core_error_message_utf8,
     error_status as core_error_status, handle_release as core_handle_release,
+    issue_validation_error_snapshot as core_issue_validation_error_snapshot,
     property_create_bool as core_property_create_bool,
     property_create_decimal as core_property_create_decimal,
     property_create_f64 as core_property_create_f64,
@@ -178,7 +179,7 @@ fn map_property_error(error: PropertyApiError) -> u32 {
         PropertyApiError::WrongType => UI_WRONG_TYPE,
         PropertyApiError::WrongThread => UI_WRONG_THREAD,
         PropertyApiError::Closed => UI_CLOSED,
-        PropertyApiError::ValidationFailed { .. } => UI_VALIDATION_FAILED,
+        PropertyApiError::ValidationFailed(_) => UI_VALIDATION_FAILED,
         PropertyApiError::OutOfMemory => UI_OUT_OF_MEMORY,
         PropertyApiError::BufferTooSmall { .. } => UI_BUFFER_TOO_SMALL,
         PropertyApiError::Internal => UI_INTERNAL_ERROR,
@@ -194,7 +195,7 @@ fn map_binding_error(error: BindingApiError) -> u32 {
         BindingApiError::WrongThread => UI_WRONG_THREAD,
         BindingApiError::Closed => UI_CLOSED,
         BindingApiError::OutOfMemory => UI_OUT_OF_MEMORY,
-        BindingApiError::ValidationFailed { .. } => UI_VALIDATION_FAILED,
+        BindingApiError::ValidationFailed(_) => UI_VALIDATION_FAILED,
         BindingApiError::Internal => UI_INTERNAL_ERROR,
     }
 }
@@ -223,7 +224,10 @@ fn catch_property_get<T>(
 fn catch_property_set(operation: impl FnOnce() -> Result<(), PropertyApiError>) -> (u32, u64) {
     match catch_unwind(AssertUnwindSafe(operation)) {
         Ok(Ok(())) => (UI_OK, 0),
-        Ok(Err(PropertyApiError::ValidationFailed { error_handle })) => {
+        Ok(Err(PropertyApiError::ValidationFailed(snapshot))) => {
+            let error_handle = snapshot
+                .and_then(|snapshot| core_issue_validation_error_snapshot(snapshot).ok())
+                .unwrap_or(0);
             (UI_VALIDATION_FAILED, error_handle)
         }
         Ok(Err(error)) => (map_property_error(error), 0),
@@ -1138,7 +1142,10 @@ pub unsafe extern "C" fn ui_abi_1_binding_create(
             unsafe { out_binding.write(binding) };
             UI_OK
         }
-        Ok(Err(BindingApiError::ValidationFailed { error_handle })) => {
+        Ok(Err(BindingApiError::ValidationFailed(snapshot))) => {
+            let error_handle = snapshot
+                .and_then(|snapshot| core_issue_validation_error_snapshot(snapshot).ok())
+                .unwrap_or(0);
             if !out_error.is_null() {
                 // SAFETY: the caller guarantees the non-null optional error output is writable.
                 unsafe { out_error.write(error_handle) };

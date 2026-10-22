@@ -35,8 +35,15 @@ pub(crate) struct BindingConnectionId {
     two_way: bool,
 }
 
+impl BindingConnectionId {
+    pub(crate) fn direction_from(self, origin: ObjectIdentity) -> u32 {
+        if origin == self.second { 2 } else { 1 }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OneWayPropagationEdge {
+    pub(crate) id: BindingConnectionId,
     pub(crate) source: ObjectIdentity,
     pub(crate) target: ObjectIdentity,
 }
@@ -341,6 +348,17 @@ impl BindingGraph {
         }
     }
 
+    pub(crate) fn two_way_connection_for_group(
+        &self,
+        property: ObjectIdentity,
+    ) -> Option<BindingConnectionId> {
+        let representative = self.resolve_group(property);
+        self.two_way_edges
+            .iter()
+            .find(|edge| self.resolve_group(edge.source) == representative)
+            .map(|edge| edge.id)
+    }
+
     pub(crate) fn same_group(&self, first: ObjectIdentity, second: ObjectIdentity) -> bool {
         self.resolve_group(first) == self.resolve_group(second)
     }
@@ -425,6 +443,7 @@ impl BindingGraph {
             };
             let edge = pending.remove(index);
             ordered.push(OneWayPropagationEdge {
+                id: edge.id,
                 source: edge.source,
                 target: edge.target,
             });
@@ -647,6 +666,11 @@ mod tests {
         assert_eq!(
             from_group_member,
             vec![super::OneWayPropagationEdge {
+                id: super::BindingConnectionId {
+                    first: identity(1),
+                    second: identity(3),
+                    two_way: false,
+                },
                 source: identity(1),
                 target: identity(3),
             }]
@@ -732,6 +756,11 @@ mod tests {
                 .prepare_one_way_propagation(&[identity(2)])
                 .expect("original OneWay endpoint remains reachable"),
             vec![super::OneWayPropagationEdge {
+                id: super::BindingConnectionId {
+                    first: identity(2),
+                    second: identity(3),
+                    two_way: false,
+                },
                 source: identity(2),
                 target: identity(3),
             }]

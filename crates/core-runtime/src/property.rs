@@ -21,11 +21,20 @@ pub(crate) struct PropertyState {
 /// Synchronous candidate check. Runtime invokes it without holding Core state locks.
 pub(crate) type PropertyValidator = dyn Fn(&TypedValue) -> ValidatorResult + Send + Sync;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ValidatorResult {
     Accepted,
-    Rejected(u64),
+    Rejected(Option<Arc<ValidationError>>),
     Failed,
+}
+
+/// Immutable machine-readable detail transferred from a synchronous Validator.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ValidationError {
+    pub status: u32,
+    pub domain: u32,
+    pub code: u32,
+    pub message: Vec<u8>,
 }
 
 /// Runtime-local first-change-ordered set for the next pending Property generation.

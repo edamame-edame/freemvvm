@@ -8,7 +8,7 @@ use crate::handle_registry::registry::{
 use crate::object_store::{UiObjectStore, UiObjectStoreError};
 use crate::property::{
     PropertyChangeQueue, PropertyHandleKind, PropertyState, PropertyValidator, Subscription,
-    ValidatorResult,
+    ValidationError, ValidatorResult,
 };
 use crate::value::{
     BindingCopyError, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
@@ -939,7 +939,7 @@ impl HostRegistration {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(dead_code)]
 pub(crate) enum RuntimeCoreError {
     IdentityUnavailable,
@@ -964,7 +964,7 @@ pub(crate) enum RuntimeObjectRegistrationError {
     Registry(RegistryError),
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum RuntimePropertyError {
     WrongThread,
     Closed,
@@ -978,14 +978,14 @@ pub(crate) enum RuntimePropertyError {
     BindingPropagationOutOfMemory,
     NotificationQueueOutOfMemory,
     SubscriptionRegistryOutOfMemory,
-    ValidationFailed(u64),
+    ValidationFailed(Option<Arc<ValidationError>>),
     ValidatorFailed,
     ValidatorReentrancy,
     ValidatorAlreadyRegistered,
     Dispatch(DispatchError),
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum RuntimeBindingError {
     Property(RuntimePropertyError),
     Registry(RegistryError),
@@ -1062,6 +1062,14 @@ pub(crate) struct RuntimeCore {
 struct RuntimeBindingOwner {
     _source: ValidationPin<RuntimeIdentity>,
     _target: ValidationPin<RuntimeIdentity>,
+    current_error: Option<BindingValidationSnapshot>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct BindingValidationSnapshot {
+    pub(crate) error: Arc<ValidationError>,
+    pub(crate) rejected_property: ObjectIdentity,
+    pub(crate) direction: u32,
 }
 
 /// One changed Property and its ordered, temporary subscriber pins.
@@ -1076,6 +1084,12 @@ pub(crate) struct PropertyDeliveryItem {
 pub(crate) struct PreparedBindingValue {
     pub(crate) target: ObjectIdentity,
     pub(crate) value: TypedValue,
+}
+
+struct PreparedValidatorCheck {
+    property: ObjectIdentity,
+    validator: Arc<PropertyValidator>,
+    candidate: TypedValue,
 }
 
 impl PropertyDeliveryItem {
@@ -1506,6 +1520,7 @@ impl RuntimeCore {
                         RuntimeBindingOwner {
                             _source: source_pin,
                             _target: target_pin,
+                            current_error: None,
                         },
                     );
                 })
@@ -1552,6 +1567,7 @@ impl RuntimeCore {
                     RuntimeBindingOwner {
                         _source: source_pin,
                         _target: target_pin,
+                        current_error: None,
                     },
                 );
             })
@@ -1639,6 +1655,7 @@ impl RuntimeCore {
                         RuntimeBindingOwner {
                             _source: source_pin,
                             _target: target_pin,
+                            current_error: None,
                         },
                     );
                 })
@@ -1685,6 +1702,7 @@ impl RuntimeCore {
                     RuntimeBindingOwner {
                         _source: source_pin,
                         _target: target_pin,
+                        current_error: None,
                     },
                 );
             })
@@ -1727,6 +1745,37 @@ impl RuntimeCore {
         );
         drop(owner);
         Ok(true)
+    }
+
+    pub(crate) fn set_binding_validation_snapshot(
+        &self,
+        connection_id: BindingConnectionId,
+        snapshot: Option<BindingValidationSnapshot>,
+    ) -> Result<(), RuntimeBindingError> {
+        let mut owners = self
+            .active_bindings
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        let owner = owners
+            .get_mut(&connection_id)
+            .ok_or(RuntimeBindingError::WrongObjectState)?;
+        owner.current_error = snapshot;
+        Ok(())
+    }
+
+    #[allow(dead_code)] // Read by the Core binding error snapshot API in the next step.
+    pub(crate) fn binding_validation_snapshot(
+        &self,
+        connection_id: BindingConnectionId,
+    ) -> Result<Option<BindingValidationSnapshot>, RuntimeBindingError> {
+        let owners = self
+            .active_bindings
+            .lock()
+            .map_err(|_| RuntimeBindingError::SynchronizationPoisoned)?;
+        owners
+            .get(&connection_id)
+            .map(|owner| owner.current_error.clone())
+            .ok_or(RuntimeBindingError::WrongObjectState)
     }
 
     /// Prepares owned target candidates for reachable OneWay edges without committing them.
@@ -1828,6 +1877,273 @@ impl RuntimeCore {
             }
         }
         Ok(changed_targets)
+    }
+
+    fn propagate_validated_binding_changes(
+        &self,
+        dirty_properties: &[ObjectIdentity],
+        direct_changes: &[ObjectIdentity],
+        current_generation: &[ObjectIdentity],
+    ) -> Result<(), RuntimePropertyError> {
+        let direct_groups = {
+            let graph = self
+                .binding_graph
+                .lock()
+                .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+            let mut groups: Vec<(ObjectIdentity, ObjectIdentity)> = Vec::new();
+            groups
+                .try_reserve(direct_changes.len())
+                .map_err(|_| RuntimePropertyError::BindingPropagationOutOfMemory)?;
+            for identity in direct_changes {
+                let representative = graph.representative(*identity);
+                if let Some((_, winner)) = groups
+                    .iter_mut()
+                    .find(|(group, _)| *group == representative)
+                {
+                    *winner = *identity;
+                } else {
+                    groups.push((representative, *identity));
+                }
+            }
+            groups
+        };
+
+        for (representative, winner) in direct_groups {
+            let (connection_id, candidates, checks) = {
+                let store = self
+                    .ui_objects
+                    .lock()
+                    .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+                let graph = self
+                    .binding_graph
+                    .lock()
+                    .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+                let Some(connection_id) = graph.two_way_connection_for_group(representative) else {
+                    continue;
+                };
+                let value = store
+                    .resolve(winner)
+                    .map_err(RuntimePropertyError::Store)?
+                    .downcast_ref::<PropertyState>()
+                    .ok_or(RuntimePropertyError::WrongObjectState)?
+                    .read()
+                    .try_owned_copy()
+                    .map_err(|error| {
+                        RuntimePropertyError::BindingValueCopy(BindingCopyError::Copy(error))
+                    })?;
+                let mut candidates = Vec::new();
+                Self::prepare_group_value_candidates_locked(
+                    &store,
+                    &graph,
+                    representative,
+                    &value,
+                    &mut candidates,
+                )
+                .map_err(|error| error.into_property_delivery_error())?;
+                let checks =
+                    Self::validator_checks_for_group(&store, &graph, representative, &value)?;
+                (connection_id, candidates, checks)
+            };
+            if let Some((rejected_property, error)) = self.validate_binding_candidates(checks)? {
+                self.set_binding_validation_snapshot(
+                    connection_id,
+                    Some(BindingValidationSnapshot {
+                        error,
+                        rejected_property,
+                        direction: connection_id.direction_from(winner),
+                    }),
+                )
+                .map_err(|error| error.into_property_delivery_error())?;
+                continue;
+            }
+            self.commit_binding_candidates(candidates, current_generation)?;
+            self.set_binding_validation_snapshot(connection_id, None)
+                .map_err(|error| error.into_property_delivery_error())?;
+        }
+
+        let edges = self
+            .binding_graph
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?
+            .prepare_one_way_propagation(dirty_properties)
+            .map_err(RuntimePropertyError::BindingGraph)?;
+
+        for edge in edges {
+            let (candidates, checks) = {
+                let store = self
+                    .ui_objects
+                    .lock()
+                    .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+                let graph = self
+                    .binding_graph
+                    .lock()
+                    .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+
+                // A TwoWay source group uses the most recently changed member as its winner.
+                let winner = direct_changes
+                    .iter()
+                    .rev()
+                    .copied()
+                    .find(|identity| graph.same_group(*identity, edge.source))
+                    .unwrap_or(edge.source);
+                let source_value = store
+                    .resolve(winner)
+                    .map_err(RuntimePropertyError::Store)?
+                    .downcast_ref::<PropertyState>()
+                    .ok_or(RuntimePropertyError::WrongObjectState)?
+                    .read()
+                    .try_owned_copy()
+                    .map_err(|error| {
+                        RuntimePropertyError::BindingValueCopy(BindingCopyError::Copy(error))
+                    })?;
+                let mut candidates = Vec::new();
+                Self::prepare_group_value_candidates_locked(
+                    &store,
+                    &graph,
+                    edge.target,
+                    &source_value,
+                    &mut candidates,
+                )
+                .map_err(|error| error.into_property_delivery_error())?;
+                let checks =
+                    Self::validator_checks_for_group(&store, &graph, edge.target, &source_value)?;
+                (candidates, checks)
+            };
+
+            if let Some((rejected_property, error)) = self.validate_binding_candidates(checks)? {
+                self.set_binding_validation_snapshot(
+                    edge.id,
+                    Some(BindingValidationSnapshot {
+                        error,
+                        rejected_property,
+                        direction: edge.id.direction_from(edge.source),
+                    }),
+                )
+                .map_err(|error| error.into_property_delivery_error())?;
+                // The target group did not change, so later edges read its committed value.
+                continue;
+            }
+
+            self.commit_binding_candidates(candidates, current_generation)?;
+            self.set_binding_validation_snapshot(edge.id, None)
+                .map_err(|error| error.into_property_delivery_error())?;
+        }
+        Ok(())
+    }
+
+    fn validator_checks_for_group(
+        store: &UiObjectStore<Box<dyn Any + Send>>,
+        graph: &BindingGraph,
+        representative: ObjectIdentity,
+        source_value: &TypedValue,
+    ) -> Result<Vec<PreparedValidatorCheck>, RuntimePropertyError> {
+        let members = graph
+            .group_members(representative)
+            .map_err(RuntimePropertyError::BindingGraph)?;
+        let mut checks = Vec::new();
+        checks
+            .try_reserve(members.len())
+            .map_err(|_| RuntimePropertyError::BindingPropagationOutOfMemory)?;
+        for member in members {
+            let state = store
+                .resolve(member)
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_ref::<PropertyState>()
+                .ok_or(RuntimePropertyError::WrongObjectState)?;
+            state.would_change(source_value).map_err(|error| {
+                RuntimePropertyError::BindingValueCopy(BindingCopyError::KindMismatch(error))
+            })?;
+            if let Some(validator) = state.validator() {
+                checks.push(PreparedValidatorCheck {
+                    property: member,
+                    validator,
+                    candidate: source_value.try_owned_copy().map_err(|error| {
+                        RuntimePropertyError::BindingValueCopy(BindingCopyError::Copy(error))
+                    })?,
+                });
+            }
+        }
+        Ok(checks)
+    }
+
+    fn commit_binding_candidates(
+        &self,
+        candidates: Vec<PreparedBindingValue>,
+        current_generation: &[ObjectIdentity],
+    ) -> Result<(), RuntimePropertyError> {
+        let mut store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let mut changes = self
+            .property_changes
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        for candidate in &candidates {
+            if !current_generation.contains(&candidate.target) {
+                changes
+                    .reserve_change(candidate.target)
+                    .map_err(|_| RuntimePropertyError::NotificationQueueOutOfMemory)?;
+            }
+        }
+        for candidate in candidates {
+            let target = store
+                .resolve_mut(candidate.target)
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_mut::<PropertyState>()
+                .ok_or(RuntimePropertyError::WrongObjectState)?;
+            target
+                .apply_validated(candidate.value)
+                .expect("prepared propagation candidate has the target's fixed kind");
+            if !current_generation.contains(&candidate.target) {
+                changes.commit_change(candidate.target);
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_binding_candidates(
+        &self,
+        checks: Vec<PreparedValidatorCheck>,
+    ) -> Result<Option<(ObjectIdentity, Arc<ValidationError>)>, RuntimePropertyError> {
+        if checks.is_empty() {
+            return Ok(None);
+        }
+        self.validator_active
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .map_err(|_| RuntimePropertyError::ValidatorReentrancy)?;
+        let _guard = RuntimeFlagGuard(&self.validator_active);
+        for check in checks {
+            let result = (check.validator)(&check.candidate);
+            match result {
+                ValidatorResult::Accepted => {}
+                ValidatorResult::Rejected(error) => {
+                    return Ok(Some((
+                        check.property,
+                        error.unwrap_or_else(|| {
+                            Arc::new(ValidationError {
+                                status: 11,
+                                domain: 2,
+                                code: 1,
+                                message: b"binding target rejected the value".to_vec(),
+                            })
+                        }),
+                    )));
+                }
+                ValidatorResult::Failed => {
+                    return Ok(Some((
+                        check.property,
+                        Arc::new(ValidationError {
+                            status: 11,
+                            domain: 2,
+                            code: 2,
+                            message: b"binding target validator failed".to_vec(),
+                        }),
+                    )));
+                }
+            }
+        }
+        Ok(None)
     }
 
     fn prepare_one_way_propagation_candidates_locked(
@@ -2199,17 +2515,19 @@ impl RuntimeCore {
                 subscribers: snapshot,
             });
         }
-        if let Err(error) = Self::propagate_one_way_changes_locked(
-            &mut store,
-            &graph,
-            &mut changes,
-            &generation,
-            &direct_changes,
-            &generation,
-        ) {
+        drop(changes);
+        drop(graph);
+        drop(store);
+        if let Err(error) =
+            self.propagate_validated_binding_changes(&generation, &direct_changes, &generation)
+        {
+            let mut changes = self
+                .property_changes
+                .lock()
+                .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
             changes.restore_generation(generation);
             changes.restore_direct_changes(direct_changes);
-            return Err(error.into_property_delivery_error());
+            return Err(error);
         }
         Ok(items)
     }
@@ -2758,17 +3076,19 @@ impl ShutdownCompletion {
 #[cfg(test)]
 mod tests {
     use super::{
-        HostBoundaryError, HostRegistration, HostRegistrationError, HostShutdownCommitError,
-        RuntimeBindingError, RuntimeCleanupQueue, RuntimeCore, RuntimeCoreError, RuntimeIdentity,
-        RuntimeObjectRegistrationError, RuntimePropertyError, RuntimeState, ShutdownCompletion,
-        ShutdownCompletionError, ShutdownCompletionState, ShutdownRequestMode,
-        ShutdownRequestOutcome, ShutdownWaitResult, UiThreadContext, ValidatorResult,
+        BindingValidationSnapshot, HostBoundaryError, HostRegistration, HostRegistrationError,
+        HostShutdownCommitError, RuntimeBindingError, RuntimeCleanupQueue, RuntimeCore,
+        RuntimeCoreError, RuntimeIdentity, RuntimeObjectRegistrationError, RuntimePropertyError,
+        RuntimeState, ShutdownCompletion, ShutdownCompletionError, ShutdownCompletionState,
+        ShutdownRequestMode, ShutdownRequestOutcome, ShutdownWaitResult, UiThreadContext,
+        ValidatorResult,
     };
     use crate::dispatcher::{Dispatcher, PostedWork, UiLoopBridge, WakePriority};
     use crate::handle_registry::registry::{
         CleanupQueue, CoreObjectControl, HandleRegistry, ObjectIdentity, RegistryError,
     };
     use crate::object_store::UiObjectStoreError;
+    use crate::property::ValidationError;
     use crate::property::{PropertyHandleKind, Subscription};
     use crate::value::{
         BindingCopyError, DecimalValue, OwnedUtf8, TypedValue, ValueCommit, ValueKind,
@@ -3112,7 +3432,7 @@ mod tests {
                     validator_calls.fetch_add(1, Ordering::SeqCst);
                     match candidate {
                         TypedValue::I64(value) if *value >= 0 => ValidatorResult::Accepted,
-                        _ => ValidatorResult::Rejected(0),
+                        _ => ValidatorResult::Rejected(None),
                     }
                 }),
             )
@@ -3141,7 +3461,7 @@ mod tests {
         );
         assert_eq!(
             runtime.apply_property_candidate(&registry, property, TypedValue::I64(-1)),
-            Err(RuntimePropertyError::ValidationFailed(0))
+            Err(RuntimePropertyError::ValidationFailed(None))
         );
         assert!(matches!(
             runtime.read_property(&registry, property),
@@ -3156,6 +3476,200 @@ mod tests {
             Ok(vec![identity])
         );
         assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn runtime_binding_validation_rejection_preserves_group_stops_downstream_and_recovers() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let source = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register source");
+        let middle = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register middle");
+        let downstream = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register downstream");
+        let independent = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register independent target");
+
+        let (_, source_middle) = runtime
+            .create_one_way_binding_initial_with_id(&registry, source, middle)
+            .expect("create first edge");
+        let (_, middle_downstream) = runtime
+            .create_one_way_binding_initial_with_id(&registry, middle, downstream)
+            .expect("create dependent edge");
+        runtime
+            .create_one_way_binding_initial_with_id(&registry, source, independent)
+            .expect("create independent edge");
+
+        let rejection = Arc::new(ValidationError {
+            status: 11,
+            domain: 5,
+            code: 9,
+            message: b"ten is temporarily rejected".to_vec(),
+        });
+        let rejection_for_validator = Arc::clone(&rejection);
+        let middle_identity = registry
+            .validate(middle, &PropertyHandleKind::Property, &runtime.identity())
+            .expect("middle handle is valid")
+            .identity();
+        runtime
+            .register_property_validator(
+                &registry,
+                middle,
+                Arc::new(move |candidate| match candidate {
+                    TypedValue::I64(10) => {
+                        ValidatorResult::Rejected(Some(Arc::clone(&rejection_for_validator)))
+                    }
+                    _ => ValidatorResult::Accepted,
+                }),
+            )
+            .expect("register middle validator after initial Binding creation");
+        runtime
+            .take_property_change_generation()
+            .expect("discard initial Binding notifications");
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, source, TypedValue::I64(10)),
+            Ok(ValueCommit::Changed),
+            "the direct source setter remains successful"
+        );
+        assert_eq!(
+            runtime.process_property_delivery_slice(),
+            Ok((2, false)),
+            "source and independent-target notifications run; rejected targets do not"
+        );
+        assert!(matches!(
+            runtime.read_property(&registry, source),
+            Ok(TypedValue::I64(10))
+        ));
+        assert!(matches!(
+            runtime.read_property(&registry, middle),
+            Ok(TypedValue::I64(0))
+        ));
+        assert!(
+            matches!(
+                runtime.read_property(&registry, downstream),
+                Ok(TypedValue::I64(0))
+            ),
+            "an edge downstream of the rejected target sees its committed value"
+        );
+        assert!(
+            matches!(
+                runtime.read_property(&registry, independent),
+                Ok(TypedValue::I64(10))
+            ),
+            "an independent edge continues"
+        );
+        let current = runtime
+            .binding_validation_snapshot(source_middle)
+            .expect("read edge error")
+            .expect("rejected edge stores an error");
+        assert_eq!(current.rejected_property, middle_identity);
+        assert_eq!(current.direction, 1);
+        assert!(Arc::ptr_eq(&current.error, &rejection));
+        assert_eq!(
+            runtime.binding_validation_snapshot(middle_downstream),
+            Ok(None),
+            "the blocked dependent edge itself did not reject a candidate"
+        );
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, source, TypedValue::I64(20)),
+            Ok(ValueCommit::Changed)
+        );
+        runtime
+            .process_property_delivery_slice()
+            .expect("process successful recovery propagation");
+        assert!(matches!(
+            runtime.read_property(&registry, middle),
+            Ok(TypedValue::I64(20))
+        ));
+        assert!(matches!(
+            runtime.read_property(&registry, downstream),
+            Ok(TypedValue::I64(20))
+        ));
+        assert_eq!(runtime.binding_validation_snapshot(source_middle), Ok(None));
+        assert_eq!(current.error.message, b"ten is temporarily rejected");
+        assert_eq!(rejection.message, b"ten is temporarily rejected");
+    }
+
+    #[test]
+    fn runtime_binding_validation_rejection_keeps_two_way_target_group_atomic() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<PropertyHandleKind, RuntimeIdentity>::new();
+        let source = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register source");
+        let first = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register first group member");
+        let rejecting = runtime
+            .register_property(&registry, TypedValue::I64(0))
+            .expect("register rejecting group member");
+        runtime
+            .create_two_way_binding_initial(&registry, first, rejecting)
+            .expect("create target group");
+        let (_, connection_id) = runtime
+            .create_one_way_binding_initial_with_id(&registry, source, first)
+            .expect("create incoming edge");
+        let rejecting_identity = registry
+            .validate(
+                rejecting,
+                &PropertyHandleKind::Property,
+                &runtime.identity(),
+            )
+            .expect("rejecting target handle is valid")
+            .identity();
+        let error = Arc::new(ValidationError {
+            status: 11,
+            domain: 5,
+            code: 10,
+            message: b"group member rejected".to_vec(),
+        });
+        let error_for_validator = Arc::clone(&error);
+        runtime
+            .register_property_validator(
+                &registry,
+                rejecting,
+                Arc::new(move |_| {
+                    ValidatorResult::Rejected(Some(Arc::clone(&error_for_validator)))
+                }),
+            )
+            .expect("register group-member validator");
+        runtime
+            .take_property_change_generation()
+            .expect("discard initial Binding notifications");
+
+        assert_eq!(
+            runtime.apply_property_candidate(&registry, source, TypedValue::I64(1)),
+            Ok(ValueCommit::Changed)
+        );
+        runtime
+            .process_property_delivery_slice()
+            .expect("process rejected group propagation");
+        assert!(matches!(
+            runtime.read_property(&registry, first),
+            Ok(TypedValue::I64(0))
+        ));
+        assert!(matches!(
+            runtime.read_property(&registry, rejecting),
+            Ok(TypedValue::I64(0))
+        ));
+        assert_eq!(
+            runtime.take_property_change_generation(),
+            Ok(Vec::new()),
+            "rejected group members queue no value notifications"
+        );
+        let snapshot = runtime
+            .binding_validation_snapshot(connection_id)
+            .expect("read incoming edge error")
+            .expect("incoming edge retains rejection");
+        assert_eq!(snapshot.rejected_property, rejecting_identity);
+        assert!(Arc::ptr_eq(&snapshot.error, &error));
     }
 
     #[test]
@@ -3476,6 +3990,30 @@ mod tests {
             .expect("graph lock")
             .connection_id(source_identity, target_identity, false)
             .expect("active edge has an identity");
+        let error = Arc::new(ValidationError {
+            status: 11,
+            domain: 4,
+            code: 7,
+            message: b"rejected".to_vec(),
+        });
+        let snapshot = BindingValidationSnapshot {
+            error: Arc::clone(&error),
+            rejected_property: target_identity,
+            direction: 1,
+        };
+        runtime
+            .set_binding_validation_snapshot(connection_id, Some(snapshot.clone()))
+            .expect("active Binding stores its current validation error");
+        let read = runtime
+            .binding_validation_snapshot(connection_id)
+            .expect("active Binding returns its current error")
+            .expect("error snapshot is present");
+        assert_eq!(read, snapshot);
+        assert!(Arc::ptr_eq(&read.error, &error));
+        runtime
+            .set_binding_validation_snapshot(connection_id, None)
+            .expect("successful propagation clears the current error");
+        assert_eq!(runtime.binding_validation_snapshot(connection_id), Ok(None));
         registry
             .release(source)
             .expect("release source owner token");

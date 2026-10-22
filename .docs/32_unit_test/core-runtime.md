@@ -1,7 +1,7 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 6.8
-- 状態: Runtime post/dispatch turn、Property create/kind/getter/setter、OneWay/TwoWay Binding、Binding lifecycle、Core/C ABI Property Validator登録・Error・初期同期拒否の実装と動作確認は完了。Binding後続伝播のerror snapshot/notificationは後続
+- 文書版: 6.11
+- 状態: Runtime post/dispatch turn、Property create/kind/getter/setter、OneWay/TwoWay Binding、Binding lifecycle、Core/C ABI Property Validator登録・Error・初期同期拒否、Core Binding後続伝播拒否・回復の実装と動作確認は完了。C ABI snapshot/subscriptionは後続
 - 更新日: 2026-10-22
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
@@ -271,6 +271,13 @@ The host invokes `runtime_dispatch_turn` on its UI thread after the bridge wake 
 | <a id="ut-core-property-validator-001"></a>UT-CORE-PROPERTY-VALIDATOR-001 | Runtime内Propertyに同期Validatorを登録し、kind違い・異値・同値・拒否値をsetterへ渡す。validator callbackから同Runtime setterとBinding createを再入呼出しする | kind違いはValidatorを呼ばずValueKindMismatch。kind一致の同値候補にも毎回Validatorが呼ばれる。拒否時はProperty値とnotification queueが不変。callback中のsetterとBinding createは状態を変更せず失敗し、外側callbackは完了してcommitできる | [RQ-02-020](../11_requirements/RQ-02_core-features.md#rq-02-020)、[RQ-02-021](../11_requirements/RQ-02_core-features.md#rq-02-021)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01) |
 | <a id="ut-abi-property-validator-001"></a>UT-ABI-PROPERTY-VALIDATOR-001 | C ABIからBOOL/I64/UTF8 Validatorを登録・解除し、受理/拒否setter、同値候補、Error生成・読取、OneTime/OneWay/TwoWay初期同期を行う | 最大1件の登録、登録時に現在値を呼ばない、重複登録で旧登録を保つ。3型すべてcallbackへ候補を渡す。拒否setterはUI_VALIDATION_FAILEDと所有Errorを返し、値/通知を保つ。3種の初期同期拒否はerror handle付きで失敗しBinding handle/graph/値/通知を作らない。Error保持・短いbufferの非部分書込・worker cancel拒否・callback destroy一度を確認 | [RQ-02-020](../11_requirements/RQ-02_core-features.md#rq-02-020)、[RQ-02-021](../11_requirements/RQ-02_core-features.md#rq-02-021)、[RQ-04-022](../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-07-009](../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../11_requirements/RQ-07_binding.md#rq-07-010)<br/>[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01)、[TC-BIND-INIT-REJECT-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-init-reject-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01) |
 
+### Binding後続propagation rejection — implementation units
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-binding-validation-propagation-001"></a>UT-CORE-BINDING-VALIDATION-PROPAGATION-001 | OneWay A→B→Cを作る。BのValidatorを一度reject後にacceptする設定とし、Aの直接setter、通知generationの伝播、後続の有効伝播を実行する。別fixtureで独立edgeとTwoWay target group memberの拒否を行う | Aのsetterは成功しsource値を保持。B reject時はB/Cの古い値と通知を保ち、該当Bindingのみ拒否Property/directionと不変Error snapshotをcurrent errorとして持つ。独立edgeは継続。成功再伝播はB/Cを同期してcurrent errorをclear。保持済みsnapshotは不変。TwoWay group拒否は対象group値を部分commitしない | [RQ-07-005](../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-009](../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../11_requirements/RQ-07_binding.md#rq-07-010)<br/>[TC-BIND-PROPAGATION-REJECT-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-propagation-reject-01)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01) |
+| <a id="ut-abi-binding-error-001"></a>UT-ABI-BINDING-ERROR-001 | C ABIでBinding errorをsnapshotし、error handle・拒否Property handle・方向を読む。error subscriptionを登録し、reject/同一世代内の複数変化/成功回復/cancel/shutdownを試す | snapshot出力は必須で全出力を初期化。Errorなしは3出力0。Errorありは新規所有handleを返し、方向と拒否Propertyを識別。Error handleとProperty handleはcaller releaseまで有効で、current error clear後もsnapshot Errorは不変。error通知はBinding propagation後・Property subscriber前、同一delivery generationでは一回にcoalesce。cancel/shutdown後のcallbackを抑止しdestroyは一度 | [RQ-05-006](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-008](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-07-006](../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-009](../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../11_requirements/RQ-07_binding.md#rq-07-010)、[RQ-07-011](../11_requirements/RQ-07_binding.md#rq-07-011)<br/>[TC-BIND-PROPAGATION-REJECT-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-propagation-reject-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01) |
+
 UT-CORE-RUNTIME-BINDING-INIT-001はCore内部OneWayの初期値・graph・notification commitを対象とする。Validatorと公開Binding lifecycleはそれぞれのoracleで検証する。
 
 ### Runtime TwoWay Binding初期同期とgroup commit — implementation slice
@@ -519,3 +526,6 @@ UT-CORE-RUNTIME-BINDING-INIT-001はCore内部OneWayの初期値・graph・notifi
 | 6.6 | 2026-10-22 | UNIT-CORE-064のCore setter Validator oracleを追補 | Codex | 承認済みRQ/DDからの実装oracle。ABI登録・Binding初期同期・後続伝播のエラーsnapshot/notificationは含まない |
 | 6.7 | 2026-10-22 | UNIT-CORE-064 focused/workspace testと開発ゲート結果を記録 | Codex | Core内部Validator callbackのlock外実行・kind先行検査・同値候補適用・再入setter/Binding作成拒否を確認。C ABI登録とBinding接続は後続 |
 | 6.8 | 2026-10-22 | UNIT-ABI-015のBOOL/I64/UTF8登録、Error所有、setter/初期Binding拒否oracleとfocused/workspace test・開発ゲート結果を記録 | Codex | C ABI Validatorを3種の初期同期およびError ABIへ接続。後続伝播のBinding error snapshot/notificationは別単位 |
+| 6.10 | 2026-10-22 | CORE-065の伝播拒否・回復ケースを実装中へ更新 | Codex | Core oracleはOneWay chain拒否、independent edge継続、TwoWay target group atomic拒否、immutable snapshot recoveryを扱う。ABI oracleは未実装 |
+| 6.11 | 2026-10-22 | UNIT-CORE-065を実装・検証済みへ更新 | Codex | OneWay chain拒否時にtarget通知を保ち、dependent edgeを止め、独立edgeを継続する。TwoWay target group拒否のatomicityと成功回復をCore tests・workspace tests・tools/dev.py checkで検証。ABI snapshot/subscriptionは未実装 |
+| 6.9 | 2026-10-22 | UT-CORE-BINDING-VALIDATION-PROPAGATION-001とUT-ABI-BINDING-ERROR-001のoracleを追補 | Codex | 承認済みRQ/DDからCore伝播reject/error snapshotとABI snapshot/subscriptionの期待結果を定義。実装・動作確認は未実施 |

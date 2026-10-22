@@ -1651,6 +1651,42 @@
       "tests": [
         {"id": "UT-ABI-PROPERTY-VALIDATOR-001", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "property_validator"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-065",
+      "state": "complete",
+      "scope": "runtime-binding-propagation-validation-error-snapshot",
+      "sources": ["crates/core-runtime/src/property.rs", "crates/core-runtime/src/binding.rs", "crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-064", "UNIT-ABI-015"],
+      "design": [
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "通知slice内の伝播 / 診断・回復とerror catalog"},
+        {"path": ".docs/13_detail_design/runtime-objects/abi.md", "version": "1.2", "section": "Bindingエラーの読み取りと通知"}
+      ],
+      "requirements": ["RQ-07-005", "RQ-07-006", "RQ-07-009", "RQ-07-010"],
+      "cases": ["TC-BIND-PROPAGATION-REJECT-01", "TC-PROP-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-CORE-BINDING-VALIDATION-PROPAGATION-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_binding_validation_rejection"]}
+      ]
+    },
+    {
+      "id": "UNIT-ABI-016",
+      "state": "planned",
+      "scope": "c-abi-binding-error-snapshot-and-subscription",
+      "sources": ["crates/core-runtime/src/lib.rs", "crates/c-abi/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-065", "UNIT-ABI-015"],
+      "design": [
+        {"path": ".docs/13_detail_design/runtime-objects/abi.md", "version": "1.2", "section": "Bindingエラーの読み取りと通知"},
+        {"path": ".docs/13_detail_design/events/notifications-binding.md", "version": "1.1", "section": "通知slice内の伝播"}
+      ],
+      "requirements": ["RQ-05-006", "RQ-05-008", "RQ-07-006", "RQ-07-009", "RQ-07-010", "RQ-07-011"],
+      "cases": ["TC-BIND-PROPAGATION-REJECT-01", "TC-CALLBACK-01", "TC-LIFE-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-ABI-BINDING-ERROR-001", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "binding_error"]}
+      ]
     }
   ]
 }

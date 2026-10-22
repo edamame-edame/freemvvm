@@ -11,6 +11,7 @@ pub mod numeric;
 #[allow(dead_code)]
 mod object_store;
 mod property;
+pub use property::ValidationError;
 mod runtime;
 mod runtime_handles;
 // Typed value semantics back the internal Property state; ABI validation remains a later unit.
@@ -24,7 +25,9 @@ pub mod abi_support {
     use crate::handle_registry::HandleToken;
     use crate::handle_registry::registry::{HandleRegistry, RegistryError};
     use crate::object_store::UiObjectStoreError;
-    use crate::property::{PropertyHandleKind, PropertyValidator, Subscription, ValidatorResult};
+    use crate::property::{
+        PropertyHandleKind, PropertyValidator, Subscription, ValidationError, ValidatorResult,
+    };
     use crate::runtime::{
         RuntimeBindingError, RuntimeCore, RuntimeCoreError, RuntimeIdentity,
         RuntimeObjectRegistrationError, RuntimePropertyError, ShutdownCompletionState,
@@ -89,20 +92,20 @@ pub mod abi_support {
         HostUnavailable { reason: u32 },
     }
 
-    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    #[derive(Clone, Debug, Eq, PartialEq)]
     pub enum PropertyApiError {
         InvalidHandle,
         InvalidArgument,
         WrongType,
         WrongThread,
         Closed,
-        ValidationFailed { error_handle: u64 },
+        ValidationFailed(Option<Arc<ValidationError>>),
         OutOfMemory,
         BufferTooSmall { required: usize },
         Internal,
     }
 
-    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    #[derive(Clone, Debug, Eq, PartialEq)]
     pub enum BindingApiError {
         InvalidHandle,
         InvalidArgument,
@@ -111,7 +114,7 @@ pub mod abi_support {
         WrongThread,
         Closed,
         OutOfMemory,
-        ValidationFailed { error_handle: u64 },
+        ValidationFailed(Option<Arc<ValidationError>>),
         Internal,
     }
 
@@ -120,13 +123,7 @@ pub mod abi_support {
     pub type ValidateUtf8Callback =
         unsafe extern "C" fn(*mut c_void, *const u8, u64, *mut u64) -> u32;
 
-    #[derive(Clone)]
-    struct ImmutableError {
-        status: u32,
-        domain: u32,
-        code: u32,
-        message: Vec<u8>,
-    }
+    type ImmutableError = ValidationError;
 
     static ERROR_HANDLES: OnceLock<Mutex<HashMap<HandleToken, Arc<ImmutableError>>>> =
         OnceLock::new();
@@ -209,6 +206,17 @@ pub mod abi_support {
             .try_reserve_exact(message.len())
             .map_err(|_| ErrorApiError::OutOfMemory)?;
         owned_message.extend_from_slice(message);
+        issue_validation_error_snapshot(Arc::new(ImmutableError {
+            status,
+            domain,
+            code,
+            message: owned_message,
+        }))
+    }
+
+    pub fn issue_validation_error_snapshot(
+        snapshot: Arc<ValidationError>,
+    ) -> Result<u64, ErrorApiError> {
         let mut handles = error_handles()
             .lock()
             .map_err(|_| ErrorApiError::Internal)?;
@@ -216,15 +224,7 @@ pub mod abi_support {
             .try_reserve(1)
             .map_err(|_| ErrorApiError::OutOfMemory)?;
         let token = crate::handle_registry::issue_handle_token().ok_or(ErrorApiError::Internal)?;
-        handles.insert(
-            token,
-            Arc::new(ImmutableError {
-                status,
-                domain,
-                code,
-                message: owned_message,
-            }),
-        );
+        handles.insert(token, snapshot);
         Ok(token.into_abi())
     }
 
@@ -256,6 +256,11 @@ pub mod abi_support {
         }
     }
 
+    fn take_immutable_error_if_valid(handle: u64) -> Option<Arc<ImmutableError>> {
+        let token = HandleToken::from_abi(handle)?;
+        error_handles().lock().ok()?.remove(&token)
+    }
+
     impl CValidatorClosure {
         fn invoke(&self, candidate: &TypedValue) -> ValidatorResult {
             let Some(_scope) = ValidatorCallbackScope::enter() else {
@@ -284,9 +289,9 @@ pub mod abi_support {
             };
             match status {
                 0 if error_handle == 0 => ValidatorResult::Accepted,
-                11 if error_handle == 0 => ValidatorResult::Rejected(0),
+                11 if error_handle == 0 => ValidatorResult::Rejected(None),
                 11 if is_valid_error_handle(error_handle) => {
-                    ValidatorResult::Rejected(error_handle)
+                    ValidatorResult::Rejected(take_immutable_error_if_valid(error_handle))
                 }
                 _ => {
                     consume_error_handle_if_valid(error_handle);
@@ -488,8 +493,8 @@ pub mod abi_support {
                 BindingApiError::WrongThread
             }
             RuntimeBindingError::Property(RuntimePropertyError::Closed) => BindingApiError::Closed,
-            RuntimeBindingError::Property(RuntimePropertyError::ValidationFailed(error_handle)) => {
-                BindingApiError::ValidationFailed { error_handle }
+            RuntimeBindingError::Property(RuntimePropertyError::ValidationFailed(error)) => {
+                BindingApiError::ValidationFailed(error)
             }
             RuntimeBindingError::Property(_) => BindingApiError::Internal,
             RuntimeBindingError::Registry(RegistryError::InvalidToken) => {
@@ -1157,8 +1162,8 @@ pub mod abi_support {
             | RuntimePropertyError::SubscriptionRegistryOutOfMemory => {
                 PropertyApiError::OutOfMemory
             }
-            RuntimePropertyError::ValidationFailed(error_handle) => {
-                PropertyApiError::ValidationFailed { error_handle }
+            RuntimePropertyError::ValidationFailed(error) => {
+                PropertyApiError::ValidationFailed(error)
             }
             RuntimePropertyError::ValidatorFailed => PropertyApiError::Internal,
             RuntimePropertyError::Registry(
@@ -1259,7 +1264,7 @@ pub mod abi_support {
             }
             Err(RuntimeCoreError::Property(RuntimePropertyError::ValidationFailed(
                 error_handle,
-            ))) => Err(PropertyApiError::ValidationFailed { error_handle }),
+            ))) => Err(PropertyApiError::ValidationFailed(error_handle)),
             Err(RuntimeCoreError::Property(error)) => Err(map_property_read_error(error)),
             Err(RuntimeCoreError::WrongThread)
             | Err(RuntimeCoreError::Host(crate::runtime::HostRegistrationError::WrongThread)) => {
