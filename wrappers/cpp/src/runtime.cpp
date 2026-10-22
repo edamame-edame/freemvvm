@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <new>
+#include <stdexcept>
 #include <thread>
 
 namespace freemvvm::detail {
@@ -78,12 +79,27 @@ ui_status api_property_create_i64(ui_handle runtime, std::int64_t initial,
                                       out_error);
 }
 
+ui_status api_property_create_utf8(ui_handle runtime,
+                                   const std::uint8_t* initial,
+                                   std::uint64_t byte_length,
+                                   ui_handle* out_property,
+                                   ui_handle* out_error) {
+  return ui_abi_1_property_create_utf8(runtime, initial, byte_length,
+                                       out_property, out_error);
+}
+
 ui_status api_property_get_bool(ui_handle property, ui_bool* out_value) {
   return ui_abi_1_property_get_bool(property, out_value);
 }
 
 ui_status api_property_get_i64(ui_handle property, std::int64_t* out_value) {
   return ui_abi_1_property_get_i64(property, out_value);
+}
+
+ui_status api_property_get_utf8(ui_handle property, std::uint8_t* buffer,
+                                std::uint64_t capacity,
+                                std::uint64_t* out_length) {
+  return ui_abi_1_property_get_utf8(property, buffer, capacity, out_length);
 }
 
 ui_status api_property_set_bool(ui_handle property, ui_bool value,
@@ -94,6 +110,12 @@ ui_status api_property_set_bool(ui_handle property, ui_bool value,
 ui_status api_property_set_i64(ui_handle property, std::int64_t value,
                                ui_handle* out_error) {
   return ui_abi_1_property_set_i64(property, value, out_error);
+}
+
+ui_status api_property_set_utf8(ui_handle property, const std::uint8_t* bytes,
+                                std::uint64_t byte_length,
+                                ui_handle* out_error) {
+  return ui_abi_1_property_set_utf8(property, bytes, byte_length, out_error);
 }
 
 }  // namespace
@@ -251,10 +273,13 @@ std::shared_ptr<const AbiApi> linked_api() {
       &api_error_code,
       &api_property_create_bool,
       &api_property_create_i64,
+      &api_property_create_utf8,
       &api_property_get_bool,
       &api_property_get_i64,
+      &api_property_get_utf8,
       &api_property_set_bool,
       &api_property_set_i64,
+      &api_property_set_utf8,
   });
   return api;
 }
@@ -599,9 +624,17 @@ Result<Property<T>> Property<T>::create(Runtime& runtime, T initial_value) {
   if constexpr (std::is_same<T, bool>::value) {
     status = runtime.state_->api->property_create_bool(
         runtime.token_, initial_value ? 1 : 0, &property, &error);
-  } else {
+  } else if constexpr (std::is_same<T, std::int64_t>::value) {
     status = runtime.state_->api->property_create_i64(
         runtime.token_, initial_value, &property, &error);
+  } else {
+    const auto* bytes = initial_value.empty()
+                            ? nullptr
+                            : reinterpret_cast<const std::uint8_t*>(
+                                  initial_value.data());
+    status = runtime.state_->api->property_create_utf8(
+        runtime.token_, bytes,
+        static_cast<std::uint64_t>(initial_value.size()), &property, &error);
   }
   if (status != 0 || property == 0) {
     return Result<Property<T>>::failure(detail::make_error(
@@ -616,17 +649,51 @@ Result<Property<T>> Property<T>::create(Runtime& runtime, T initial_value) {
 template <typename T>
 Result<T> Property<T>::get() const {
   if (token_ == 0 || !state_) return Result<T>::failure(UiError(2));
-  T value{};
-  ui_status status;
-  if constexpr (std::is_same<T, bool>::value) {
-    ui_bool raw_value = 0;
-    status = state_->api->property_get_bool(token_, &raw_value);
-    value = raw_value != 0;
+  if constexpr (std::is_same<T, std::string>::value) {
+    try {
+      for (;;) {
+        std::uint64_t required_length = 0;
+        ui_status status = state_->api->property_get_utf8(
+            token_, nullptr, 0, &required_length);
+        if (status != 0) return Result<T>::failure(UiError(status));
+
+        std::string value;
+        if (required_length > value.max_size()) {
+          return Result<T>::failure(UiError(8));
+        }
+        value.resize(static_cast<std::size_t>(required_length));
+        if (required_length == 0) return Result<T>::success(std::move(value));
+
+        std::uint64_t actual_length = 0;
+        auto* buffer = reinterpret_cast<std::uint8_t*>(value.data());
+        status = state_->api->property_get_utf8(
+            token_, buffer, required_length, &actual_length);
+        if (status == 7) continue;
+        if (status != 0) return Result<T>::failure(UiError(status));
+        if (actual_length > required_length) {
+          return Result<T>::failure(UiError(9));
+        }
+        value.resize(static_cast<std::size_t>(actual_length));
+        return Result<T>::success(std::move(value));
+      }
+    } catch (const std::bad_alloc&) {
+      return Result<T>::failure(UiError(8));
+    } catch (const std::length_error&) {
+      return Result<T>::failure(UiError(8));
+    }
   } else {
-    status = state_->api->property_get_i64(token_, &value);
+    T value{};
+    ui_status status;
+    if constexpr (std::is_same<T, bool>::value) {
+      ui_bool raw_value = 0;
+      status = state_->api->property_get_bool(token_, &raw_value);
+      value = raw_value != 0;
+    } else {
+      status = state_->api->property_get_i64(token_, &value);
+    }
+    if (status != 0) return Result<T>::failure(UiError(status));
+    return Result<T>::success(value);
   }
-  if (status != 0) return Result<T>::failure(UiError(status));
-  return Result<T>::success(value);
 }
 
 template <typename T>
@@ -639,8 +706,15 @@ Result<void> Property<T>::set(T value) {
   ui_status status;
   if constexpr (std::is_same<T, bool>::value) {
     status = state_->api->property_set_bool(token_, value ? 1 : 0, &error);
-  } else {
+  } else if constexpr (std::is_same<T, std::int64_t>::value) {
     status = state_->api->property_set_i64(token_, value, &error);
+  } else {
+    const auto* bytes = value.empty()
+                            ? nullptr
+                            : reinterpret_cast<const std::uint8_t*>(
+                                  value.data());
+    status = state_->api->property_set_utf8(
+        token_, bytes, static_cast<std::uint64_t>(value.size()), &error);
   }
   if (status != 0) {
     return Result<void>::failure(
@@ -657,5 +731,6 @@ Result<void> Property<T>::close() noexcept {
 
 template class Property<bool>;
 template class Property<std::int64_t>;
+template class Property<std::string>;
 
 }  // namespace freemvvm

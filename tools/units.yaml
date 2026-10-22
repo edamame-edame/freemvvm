@@ -1852,6 +1852,41 @@
         {"id": "UT-WRAP-CPP-PROP-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-property-test"]},
         {"id": "UT-PKG-CPP-002", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]}
       ]
+    },
+    {
+      "id": "UNIT-WRAP-CPP-003",
+      "state": "planned",
+      "scope": "cpp-property-utf8-byte-preserving-create-get-set-and-buffer-retry",
+      "sources": [
+        "wrappers/cpp/include/freemvvm/property.hpp",
+        "wrappers/cpp/src/runtime.cpp",
+        "wrappers/cpp/src/runtime_internal.hpp",
+        "wrappers/cpp/tests/property_tests.cpp",
+        "wrappers/cpp/tests/utf8_property_tests.cpp",
+        "wrappers/cpp/tests/package_consumer/main.cpp",
+        "tools/dev.py"
+      ],
+      "config": ["CMakeLists.txt", "wrappers/cpp/CMakeLists.txt", "crates/c-abi/include/freemvvm/abi.h", "tools/units.yaml"],
+      "depends_on": ["UNIT-BUILD-001", "UNIT-ABI-019", "UNIT-WRAP-CPP-002", "UNIT-PKG-CPP-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.2",
+          "section": "Errorと値変換 / UTF8 mapping / buffer不足時の失敗"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "UTF-8とbuffer / Property生成・取得・設定"
+        }
+      ],
+      "requirements": ["RQ-02-002", "RQ-02-017", "RQ-04-020", "RQ-05-012", "RQ-06-001"],
+      "cases": ["TC-LIFE-01", "TC-THREAD-01", "TC-ABI-REP-01", "TC-WRAP-CPP-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {"id": "UT-WRAP-CPP-PROP-UTF8-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-property-utf8-test"]},
+        {"id": "UT-PKG-CPP-003", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]}
+      ]
     }
   ]
 }

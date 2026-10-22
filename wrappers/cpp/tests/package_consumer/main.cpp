@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <utility>
 
 namespace {
@@ -36,7 +37,19 @@ int main() {
     return 7;
   }
   if (!count.set(std::numeric_limits<std::int64_t>::max()).has_value()) return 8;
-  if (!enabled.close().has_value() || !count.close().has_value()) return 9;
+  const char utf8_bytes[] = "\xe6\x97\xa5\xe6\x9c\xac\0tail";
+  const std::string initial(utf8_bytes, sizeof(utf8_bytes) - 1);
+  auto text_result = freemvvm::Property<std::string>::create(runtime, initial);
+  if (!text_result.has_value()) return 9;
+  auto text = std::move(*text_result.value());
+  auto text_value = text.get();
+  if (!text_value.has_value() || *text_value.value() != initial) return 10;
+  const std::string replacement("tail\0\xe3\x81\x82", 8);
+  if (!text.set(replacement).has_value()) return 11;
+  text_value = text.get();
+  if (!text_value.has_value() || *text_value.value() != replacement) return 12;
+  if (!enabled.close().has_value() || !count.close().has_value() ||
+      !text.close().has_value()) return 13;
 
-  return runtime.close().has_value() ? 0 : 10;
+  return runtime.close().has_value() ? 0 : 14;
 }

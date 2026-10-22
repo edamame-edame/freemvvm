@@ -1,7 +1,7 @@
 # C++ Property wrapper UTF-8 value
 
 - 更新日: 2026-10-23
-- 状態: 計画案・利用者レビュー待ち。未承認・未commit
+- 状態: 利用者承認済み。実装・Windows local検証完了、Windows/Linux CI確認待ち
 - 対象: `freemvvm::Property<std::string>` のcreate/get/setとUTF-8 byte境界
 
 ## 背景と承認済み根拠
@@ -38,12 +38,20 @@ auto updated = property.value()->set(next_utf8);
 
 ## 実施手順
 
-1. 利用者レビューと承認を受け、この計画を日本語commitで先にcommit/pushする。
-2. unit-test設計と実装unit mappingをsource変更前に登録する。
-3. UTF8 create/get/setを実装し、fake ABIとrelocated package consumerを追加する。
-4. focusedおよび全体検証を行い、Windows/Linux CI evidenceを本書へ記録する。
-5. C++ wrapperのUTF-8 byte・buffer retry規則を`.docs/01_memory/`へ追記し、完了結果を記録する。
+1. [x] 利用者レビューと承認後、計画を日本語commitで先にcommit/pushした（`efcbcf7`）。
+2. [x] unit-test設計と実装unit mappingをsource変更前に登録した。
+3. [x] UTF8 create/get/set、fake ABI試験、relocated package consumerを追加した。
+4. [x] focused test、C++ Runtime/Property tests、`tools/dev.py check`、`tools/dev.py minimum`、文書検査をWindows localで実行した。Windows/Linux CIの結果は実装commit後に記録する。
+5. [x] C++ wrapperのUTF-8 byte・buffer retry規則を`.docs/01_memory/cpp-property-wrapper.md`へ追記した。
 
 ## 承認境界
 
-この文書はレビュー案であり、承認前は計画のcommit/push、source変更、test台帳登録を行わない。承認対象は`Property<std::string>` API、invalid UTF-8をCoreへ渡す方針、容量不足時の再照会・再試行、上記test範囲である。
+利用者は2026-10-23に「ok」と承認し、計画のcommit/push後にtest台帳登録と実装を開始した。承認対象は`Property<std::string>` API、invalid UTF-8をCoreへ渡す方針、容量不足時の再照会・再試行、上記test範囲である。
+
+## ローカル検証記録
+
+- `.venv/Scripts/python.exe tools/dev.py cpp-property-utf8-test`: passed（Windows）
+- `.venv/Scripts/python.exe tools/dev.py cpp-package-test`: passed（relocated CMake consumer、Windows）
+- `ctest --test-dir out/cmake/dev -R wrapper --output-on-failure`: C++ Runtime / Property BOOL-I64 / Property UTF-8 3 tests passed
+- `.venv/Scripts/python.exe tools/dev.py check`、`minimum`、`tools/check_docs.py`、verification JSON parse、`git diff --check`: passed（Windows）
+- 実装commit後のWindows/Linux CI結果を追記する。

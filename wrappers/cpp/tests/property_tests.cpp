@@ -168,9 +168,10 @@ std::shared_ptr<const AbiApi> MakeApi() {
       &FakeRuntimeRequestShutdown, &FakeShutdownQuery,
       &FakeRelease,            &FakeErrorStatus,
       &FakeErrorCode,           &FakeCreateBool,
-      &FakeCreateI64,           &FakeGetBool,
-      &FakeGetI64,              &FakeSetBool,
-      &FakeSetI64,
+      &FakeCreateI64,           nullptr,
+      &FakeGetBool,             &FakeGetI64,
+      nullptr,                  &FakeSetBool,
+      &FakeSetI64,              nullptr,
   };
   return std::shared_ptr<const AbiApi>(std::shared_ptr<const AbiApi>{}, &api);
 }
