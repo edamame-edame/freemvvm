@@ -1741,6 +1741,47 @@
       "tests": [
         {"id": "UT-ABI-CPP-NATIVE-LINK-SMOKE-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "abi-smoke-cpp"]}
       ]
+    },
+    {
+      "id": "UNIT-WRAP-CPP-001",
+      "state": "ready",
+      "scope": "cpp-runtime-result-shutdown-and-failed-release-supervisor",
+      "sources": [
+        "wrappers/cpp/include/freemvvm/runtime.hpp",
+        "wrappers/cpp/src/runtime.cpp",
+        "wrappers/cpp/src/runtime_internal.hpp",
+        "wrappers/cpp/tests/runtime_tests.cpp",
+        "tools/probes/abi_cpp_runtime_smoke.cpp",
+        "tools/dev.py"
+      ],
+      "config": [
+        "CMakeLists.txt",
+        "wrappers/cpp/CMakeLists.txt",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "tools/units.yaml"
+      ],
+      "depends_on": ["UNIT-BUILD-001", "UNIT-ABI-019"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.2",
+          "section": "Runtime最小公開APIとcleanup supervisor"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Runtime lifecycle / handle release"
+        }
+      ],
+      "requirements": ["RQ-03-014", "RQ-04-006", "RQ-04-016", "RQ-05-012", "RQ-06-012", "RQ-12-004"],
+      "cases": ["TC-LIFE-01", "TC-THREAD-01", "TC-WRAP-CPP-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-CPP-RT-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-runtime-test"]
+        }
+      ]
     }
   ]
 }

@@ -117,6 +117,7 @@ def main():
             "check",
             "abi-smoke",
             "abi-smoke-cpp",
+            "cpp-runtime-test",
             "format",
             "minimum",
         ],
@@ -138,8 +139,16 @@ def main():
     environment["PATH"] = str(BIN) + os.pathsep + environment.get("PATH", "")
     results = []
     report = {
-        "scope": "development-bootstrap",
-        "product_tests": "not implemented",
+        "scope": (
+            "cpp-runtime-unit-test"
+            if args.command == "cpp-runtime-test"
+            else "development-bootstrap"
+        ),
+        "product_tests": (
+            "cpp-runtime unit test executed"
+            if args.command == "cpp-runtime-test"
+            else "not implemented"
+        ),
         "host": platform.platform(),
         "python": platform.python_version(),
         "results": results,
@@ -279,6 +288,67 @@ def main():
                 environment,
                 results,
                 "abi-cpp-runtime-smoke",
+            )
+        elif args.command == "cpp-runtime-test":
+            run(
+                ["cmake", "--preset", "dev"],
+                environment,
+                results,
+                "cmake-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "-S",
+                    ".",
+                    "-B",
+                    "out/cmake/cpp-no-tests",
+                    "-G",
+                    "Ninja",
+                    "-DBUILD_TESTING=OFF",
+                    "-DCMAKE_BUILD_TYPE=Debug",
+                ],
+                environment,
+                results,
+                "cpp-runtime-no-tests-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "out/cmake/cpp-no-tests",
+                    "--target",
+                    "freemvvm_cpp",
+                ],
+                environment,
+                results,
+                "cpp-runtime-no-tests-build",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "--preset",
+                    "dev",
+                    "--target",
+                    "freemvvm_cpp_runtime_tests_exe",
+                ],
+                environment,
+                results,
+                "cpp-runtime-test-build",
+            )
+            run(
+                [
+                    "ctest",
+                    "--test-dir",
+                    "out/cmake/dev",
+                    "-R",
+                    "^wrapper\\.cpp\\.runtime$",
+                    "--output-on-failure",
+                ],
+                environment,
+                results,
+                "cpp-runtime-test",
             )
         elif args.command == "check":
             run(
