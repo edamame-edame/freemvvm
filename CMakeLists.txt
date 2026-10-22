@@ -116,6 +116,26 @@ if(BUILD_TESTING)
       -R "^wrapper\\.cpp\\.runtime$" --output-on-failure
     DEPENDS freemvvm_cpp_runtime_tests_exe
     VERBATIM)
+  add_executable(freemvvm_cpp_property_tests_exe
+    wrappers/cpp/tests/property_tests.cpp)
+  target_include_directories(freemvvm_cpp_property_tests_exe PRIVATE
+    wrappers/cpp/src crates/c-abi/include)
+  target_link_libraries(freemvvm_cpp_property_tests_exe PRIVATE freemvvm_cpp)
+  add_dependencies(freemvvm_cpp_property_tests_exe freemvvm_abi_native_build)
+  if(WIN32)
+    add_custom_command(TARGET freemvvm_cpp_property_tests_exe POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${FREEMVVM_ABI_RUNTIME}"
+        "$<TARGET_FILE_DIR:freemvvm_cpp_property_tests_exe>"
+      VERBATIM)
+  endif()
+  add_test(NAME wrapper.cpp.property COMMAND freemvvm_cpp_property_tests_exe)
+  set_tests_properties(wrapper.cpp.property PROPERTIES LABELS "wrapper;unit")
+  add_custom_target(freemvvm_cpp_property_tests
+    COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${CMAKE_BINARY_DIR}"
+      -R "^wrapper\\.cpp\\.property$" --output-on-failure
+    DEPENDS freemvvm_cpp_property_tests_exe
+    VERBATIM)
   if(MSVC)
     target_compile_options(freemvvm_cpp_environment_probe PRIVATE /Zc:__cplusplus)
   endif()

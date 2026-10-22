@@ -118,6 +118,7 @@ def main():
             "abi-smoke",
             "abi-smoke-cpp",
             "cpp-runtime-test",
+            "cpp-property-test",
             "cpp-package-test",
             "format",
             "minimum",
@@ -143,6 +144,8 @@ def main():
         "scope": (
             "cpp-package-integration-test"
             if args.command == "cpp-package-test"
+            else "cpp-property-unit-test"
+            if args.command == "cpp-property-test"
             else "cpp-runtime-unit-test"
             if args.command == "cpp-runtime-test"
             else "development-bootstrap"
@@ -150,6 +153,8 @@ def main():
         "product_tests": (
             "cpp package consumer test executed"
             if args.command == "cpp-package-test"
+            else "C++ Property BOOL/I64 wrapper unit test executed"
+            if args.command == "cpp-property-test"
             else "C++ Runtime and package integration tests executed"
             if args.command == "check"
             else "cpp-runtime unit test executed"
@@ -356,6 +361,39 @@ def main():
                 environment,
                 results,
                 "cpp-runtime-test",
+            )
+        elif args.command == "cpp-property-test":
+            run(
+                ["cmake", "--preset", "dev"],
+                environment,
+                results,
+                "cmake-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "--preset",
+                    "dev",
+                    "--target",
+                    "freemvvm_cpp_property_tests_exe",
+                ],
+                environment,
+                results,
+                "cpp-property-test-build",
+            )
+            run(
+                [
+                    "ctest",
+                    "--test-dir",
+                    "out/cmake/dev",
+                    "-R",
+                    "^wrapper\\.cpp\\.property$",
+                    "--output-on-failure",
+                ],
+                environment,
+                results,
+                "cpp-property-test",
             )
         elif args.command == "cpp-package-test":
             run(

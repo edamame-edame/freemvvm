@@ -1,3 +1,4 @@
+#include "freemvvm/property.hpp"
 #include "freemvvm/runtime.hpp"
 
 #include "runtime_internal.hpp"
@@ -61,6 +62,38 @@ ui_status api_error_status(ui_handle error, std::uint32_t* status) {
 ui_status api_error_code(ui_handle error, std::uint32_t* domain,
                          std::uint32_t* code) {
   return ui_abi_1_error_code(error, domain, code);
+}
+
+ui_status api_property_create_bool(ui_handle runtime, ui_bool initial,
+                                   ui_handle* out_property,
+                                   ui_handle* out_error) {
+  return ui_abi_1_property_create_bool(runtime, initial, out_property,
+                                       out_error);
+}
+
+ui_status api_property_create_i64(ui_handle runtime, std::int64_t initial,
+                                  ui_handle* out_property,
+                                  ui_handle* out_error) {
+  return ui_abi_1_property_create_i64(runtime, initial, out_property,
+                                      out_error);
+}
+
+ui_status api_property_get_bool(ui_handle property, ui_bool* out_value) {
+  return ui_abi_1_property_get_bool(property, out_value);
+}
+
+ui_status api_property_get_i64(ui_handle property, std::int64_t* out_value) {
+  return ui_abi_1_property_get_i64(property, out_value);
+}
+
+ui_status api_property_set_bool(ui_handle property, ui_bool value,
+                                ui_handle* out_error) {
+  return ui_abi_1_property_set_bool(property, value, out_error);
+}
+
+ui_status api_property_set_i64(ui_handle property, std::int64_t value,
+                               ui_handle* out_error) {
+  return ui_abi_1_property_set_i64(property, value, out_error);
 }
 
 }  // namespace
@@ -216,6 +249,12 @@ std::shared_ptr<const AbiApi> linked_api() {
       &api_handle_release,
       &api_error_status,
       &api_error_code,
+      &api_property_create_bool,
+      &api_property_create_i64,
+      &api_property_get_bool,
+      &api_property_get_i64,
+      &api_property_set_bool,
+      &api_property_set_i64,
   });
   return api;
 }
@@ -508,5 +547,115 @@ Result<ShutdownRequest> Runtime::request_shutdown() const {
 Result<void> Runtime::close() noexcept {
   return detail::release_owned(token_, state_, cleanup_node_);
 }
+
+}  // namespace freemvvm
+
+namespace freemvvm {
+
+template <typename T>
+Property<T>::Property(std::uint64_t token,
+                     std::shared_ptr<detail::RuntimeCleanupState> state,
+                     detail::PendingNode* cleanup_node) noexcept
+    : token_(token), state_(std::move(state)), cleanup_node_(cleanup_node) {}
+
+template <typename T>
+Property<T>::Property(Property&& other) noexcept
+    : token_(std::exchange(other.token_, 0)),
+      state_(std::move(other.state_)),
+      cleanup_node_(std::exchange(other.cleanup_node_, nullptr)) {}
+
+template <typename T>
+Property<T>& Property<T>::operator=(Property&& other) noexcept {
+  if (this != &other) {
+    detail::release_in_destructor(token_, state_, cleanup_node_);
+    token_ = std::exchange(other.token_, 0);
+    state_ = std::move(other.state_);
+    cleanup_node_ = std::exchange(other.cleanup_node_, nullptr);
+  }
+  return *this;
+}
+
+template <typename T>
+Property<T>::~Property() noexcept {
+  detail::release_in_destructor(token_, state_, cleanup_node_);
+}
+
+template <typename T>
+Result<Property<T>> Property<T>::create(Runtime& runtime, T initial_value) {
+  if (runtime.token_ == 0 || !runtime.state_) {
+    return Result<Property<T>>::failure(UiError(2));
+  }
+  std::unique_ptr<detail::PendingNode> property_node(
+      new (std::nothrow) detail::PendingNode());
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!property_node || !error_node) {
+    return Result<Property<T>>::failure(UiError(8));
+  }
+
+  ui_handle property = 0;
+  ui_handle error = 0;
+  ui_status status;
+  if constexpr (std::is_same<T, bool>::value) {
+    status = runtime.state_->api->property_create_bool(
+        runtime.token_, initial_value ? 1 : 0, &property, &error);
+  } else {
+    status = runtime.state_->api->property_create_i64(
+        runtime.token_, initial_value, &property, &error);
+  }
+  if (status != 0 || property == 0) {
+    return Result<Property<T>>::failure(detail::make_error(
+        status == 0 ? 9 : status, error, runtime.state_, error_node.release()));
+  }
+  error_node.reset();
+  property_node->token = property;
+  return Result<Property<T>>::success(Property<T>(
+      property, runtime.state_, property_node.release()));
+}
+
+template <typename T>
+Result<T> Property<T>::get() const {
+  if (token_ == 0 || !state_) return Result<T>::failure(UiError(2));
+  T value{};
+  ui_status status;
+  if constexpr (std::is_same<T, bool>::value) {
+    ui_bool raw_value = 0;
+    status = state_->api->property_get_bool(token_, &raw_value);
+    value = raw_value != 0;
+  } else {
+    status = state_->api->property_get_i64(token_, &value);
+  }
+  if (status != 0) return Result<T>::failure(UiError(status));
+  return Result<T>::success(value);
+}
+
+template <typename T>
+Result<void> Property<T>::set(T value) {
+  if (token_ == 0 || !state_) return Result<void>::failure(UiError(2));
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node) return Result<void>::failure(UiError(8));
+  ui_handle error = 0;
+  ui_status status;
+  if constexpr (std::is_same<T, bool>::value) {
+    status = state_->api->property_set_bool(token_, value ? 1 : 0, &error);
+  } else {
+    status = state_->api->property_set_i64(token_, value, &error);
+  }
+  if (status != 0) {
+    return Result<void>::failure(
+        detail::make_error(status, error, state_, error_node.release()));
+  }
+  error_node.reset();
+  return Result<void>::success();
+}
+
+template <typename T>
+Result<void> Property<T>::close() noexcept {
+  return detail::release_owned(token_, state_, cleanup_node_);
+}
+
+template class Property<bool>;
+template class Property<std::int64_t>;
 
 }  // namespace freemvvm

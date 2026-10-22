@@ -11,6 +11,8 @@
 namespace freemvvm {
 
 class UiError;
+template <typename T>
+class Property;
 
 namespace detail {
 struct RuntimeCleanupState;
@@ -177,6 +179,8 @@ class Runtime final {
   Result<void> close() noexcept;
 
  private:
+  template <typename T>
+  friend class Property;
   friend struct detail::RuntimeTestAccess;
   Runtime(std::uint64_t token,
           std::shared_ptr<detail::RuntimeCleanupState> state,

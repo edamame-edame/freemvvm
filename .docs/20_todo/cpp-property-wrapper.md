@@ -1,7 +1,7 @@
 # C++ Property wrapper 初回実装（BOOL / I64）
 
-- 更新日: 2026-10-22
-- 状態: 計画承認済み（利用者、2026-10-22）。計画コミット後にtest登録・実装へ進む
+- 更新日: 2026-10-23
+- 状態: 計画承認済み（利用者、2026-10-22）。BOOL/I64 Propertyと試験を実装しWindows local全体check成功。Windows/Linux CI確認待ち
 - 対象: 承認済みC++ wrapper設計 v1.2 の `Property<T>` create/get/set の初回実装
 
 ## 背景
@@ -34,12 +34,12 @@ auto updated = property.value()->set(next_value);
 
 ## 実施手順案
 
-1. 利用者レビュー後、本計画を承認済みとして記録する。先行するC++ Runtime計画のworkflow結果記述も成功runへ揃える。
-2. `.docs/32_unit_test/wrappers.md` にcreate/get/set、move/close、native error、wrong-thread、失敗時状態保持を検証する `UT-WRAP-CPP-PROP-001` を追加する。`tools/units.yaml` に `UNIT-WRAP-CPP-002` と実装source/test mappingを登録してからsourceを変更する。
-3. 提案した `Property<T>::create(Runtime&, initial)`、`get()`、`set()`をBOOL/I64に実装する。token/nodeはnative call前に準備し、close失敗時は所有tokenを保持する。ABI/UI thread/status/error契約とRuntime cleanup supervisorを再実装しない。
-4. fake C ABIによるfocused unit testとrelocated CMake package consumerにBOOL/I64 Propertyの一往復を追加する。
-5. focused tests、workspace Rust tests、`tools/dev.py check`、`tools/dev.py minimum`、文書検査を行い、同じsource revisionのWindows/Linux CI成功を確認する。
-6. 実装で分かったC++ wrapperの所有・検証方法を `.docs/01_memory/` の適切なscope別文書へ記録し、本計画へ結果を追記する。
+1. [x] 利用者レビュー後、本計画を承認済みとして記録しcommitする。先行するC++ Runtime計画のworkflow結果記述も成功runへ揃えた。
+2. [x] `.docs/32_unit_test/wrappers.md` にcreate/get/set、move/close、native error、wrong-thread、失敗時状態保持を検証する `UT-WRAP-CPP-PROP-001` を追加する。`tools/units.yaml` に `UNIT-WRAP-CPP-002` と実装source/test mappingをsource変更前に登録した。
+3. [x] 提案した `Property<T>::create(Runtime&, initial)`、`get()`、`set()`をBOOL/I64に実装。token/nodeはnative call前に準備し、close失敗時は所有tokenを保持する。ABI/UI thread/status/error契約とRuntime cleanup supervisorを再利用。
+4. [x] fake C ABI focused unit testとrelocated CMake package consumerにBOOL/I64 Propertyの一往復を追加。
+5. [ ] focused tests、workspace Rust tests、`tools/dev.py check`、`tools/dev.py minimum`、文書検査にWindows localで成功。push後に同じrevisionのWindows/Linux CI成功を確認する。
+6. [x] 実装で分かったC++ wrapperの所有・検証方法を [.docs/01_memory/cpp-property-wrapper.md](../01_memory/cpp-property-wrapper.md) に記録した。
 
 ## 承認境界
 

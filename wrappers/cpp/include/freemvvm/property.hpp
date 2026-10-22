@@ -1,0 +1,49 @@
+#ifndef FREEMVVM_CPP_PROPERTY_HPP_
+#define FREEMVVM_CPP_PROPERTY_HPP_
+
+#include "freemvvm/runtime.hpp"
+
+#include <cstdint>
+#include <type_traits>
+#include <utility>
+
+namespace freemvvm {
+
+template <typename T>
+class Property final {
+  static_assert(std::is_same<T, bool>::value ||
+                    std::is_same<T, std::int64_t>::value,
+                "This Property wrapper currently supports bool and int64_t");
+
+ public:
+  Property(const Property&) = delete;
+  Property& operator=(const Property&) = delete;
+  Property(Property&& other) noexcept;
+  Property& operator=(Property&& other) noexcept;
+  ~Property() noexcept;
+
+  static Result<Property<T>> create(Runtime& runtime, T initial_value);
+
+  Result<T> get() const;
+  Result<void> set(T value);
+  Result<void> close() noexcept;
+
+ private:
+  friend struct detail::RuntimeTestAccess;
+  Property(std::uint64_t token,
+           std::shared_ptr<detail::RuntimeCleanupState> state,
+           detail::PendingNode* cleanup_node) noexcept;
+
+  std::uint64_t token_ = 0;
+  std::shared_ptr<detail::RuntimeCleanupState> state_;
+  detail::PendingNode* cleanup_node_ = nullptr;
+};
+
+static_assert(!std::is_copy_constructible<Property<bool>>::value,
+              "Property owns one native reference");
+static_assert(std::is_nothrow_move_constructible<Property<std::int64_t>>::value,
+              "Property moves must not throw");
+
+}  // namespace freemvvm
+
+#endif  // FREEMVVM_CPP_PROPERTY_HPP_

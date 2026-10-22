@@ -25,6 +25,13 @@ struct AbiApi final {
   ui_status (*handle_release)(ui_handle);
   ui_status (*error_status)(ui_handle, std::uint32_t*);
   ui_status (*error_code)(ui_handle, std::uint32_t*, std::uint32_t*);
+  ui_status (*property_create_bool)(ui_handle, ui_bool, ui_handle*, ui_handle*);
+  ui_status (*property_create_i64)(ui_handle, std::int64_t, ui_handle*,
+                                   ui_handle*);
+  ui_status (*property_get_bool)(ui_handle, ui_bool*);
+  ui_status (*property_get_i64)(ui_handle, std::int64_t*);
+  ui_status (*property_set_bool)(ui_handle, ui_bool, ui_handle*);
+  ui_status (*property_set_i64)(ui_handle, std::int64_t, ui_handle*);
 };
 
 struct PendingNode final {

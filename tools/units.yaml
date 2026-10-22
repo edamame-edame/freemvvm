@@ -1817,6 +1817,41 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-WRAP-CPP-002",
+      "state": "ready",
+      "scope": "cpp-property-bool-i64-create-get-set-and-owned-cleanup",
+      "sources": [
+        "wrappers/cpp/include/freemvvm/runtime.hpp",
+        "wrappers/cpp/include/freemvvm/property.hpp",
+        "wrappers/cpp/src/runtime.cpp",
+        "wrappers/cpp/src/runtime_internal.hpp",
+        "wrappers/cpp/tests/property_tests.cpp",
+        "wrappers/cpp/tests/package_consumer/main.cpp",
+        "tools/dev.py"
+      ],
+      "config": ["CMakeLists.txt", "wrappers/cpp/CMakeLists.txt", "crates/c-abi/include/freemvvm/abi.h", "tools/units.yaml"],
+      "depends_on": ["UNIT-BUILD-001", "UNIT-ABI-019", "UNIT-WRAP-CPP-001", "UNIT-PKG-CPP-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.2",
+          "section": "Property<T>::get/set / 値型mapping"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property BOOL/I64 create/get/setとhandle release"
+        }
+      ],
+      "requirements": ["RQ-02-001", "RQ-02-002", "RQ-02-017", "RQ-05-012", "RQ-06-001"],
+      "cases": ["TC-LIFE-01", "TC-THREAD-01", "TC-WRAP-CPP-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {"id": "UT-WRAP-CPP-PROP-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-property-test"]},
+        {"id": "UT-PKG-CPP-002", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]}
+      ]
     }
   ]
 }
