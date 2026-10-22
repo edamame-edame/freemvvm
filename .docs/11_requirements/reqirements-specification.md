@@ -88,7 +88,7 @@ RQ-08は、旧縦断シナリオの各項目がRQ-01～03、RQ-07、RQ-09～10�
 - [今回の要求分離・正式ID対応](requirements-separation-id-migration.md)
 
 - [旧文書・暫定REQ IDから正式RQ IDへの対応](requirements-id-migration.md)
-- [旧版の保存記録](archive/mvvm-ui-library-requirements-20261012.md)
+- 旧版の保存記録（Git管理対象外のローカルarchive: `archive/mvvm-ui-library-requirements-20261012.md`）
 - [旧パスからの移行入口](mvvm-ui-library-requirements.md)
 - [Accepted ADR-0001](../04_approval/adr-0001-rust-core.md)
 - [技術調査・外部根拠](../01_memory/common-ui-library-research.md)

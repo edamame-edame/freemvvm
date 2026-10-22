@@ -49,3 +49,4 @@ C++17 consumerからraw C ABIを呼ぶsmokeは`f3c3f78`で完了した。[RQ-12-
 | 2026-10-22 | 最終wrapper破棄後もpending releaseを保持するprocess-wide supervisor案を追加 | 利用者が計画を承認。旧案の寿命gapを修正 |
 | 2026-10-22 | C++ wrapper設計v1.2全文承認とfocused test登録を記録 | 利用者が詳細設計v1.2全文を承認。UNIT-WRAP-CPP-001をplannedで登録し、実装開始 |
 | 2026-10-22 | FreeMvvm::cpp / FreeMvvm::runtimeのinstall/exportとrelocated consumer testを追加 | 既承認RQ-12-004・build DDに基づく。UT-PKG-CPP-001をplanned登録後に実装しWindows local test成功 |
+| 2026-10-22 | CI checkoutに存在しないローカルarchiveへのリンクを通常テキストへ変更 | 初回Windows/Linux CIのdocument-link gateで発見。archiveのGit除外方針は維持 |
