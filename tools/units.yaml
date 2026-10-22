@@ -1704,6 +1704,24 @@
       "tests": [
         {"id": "UT-ABI-PUBLIC-HEADER-001", "command": ["cmake", "--build", "--preset", "dev", "--target", "freemvvm_abi_header_probes"]}
       ]
+    },
+    {
+      "id": "UNIT-ABI-018",
+      "state": "complete",
+      "scope": "host-native-c-abi-link-load-runtime-smoke",
+      "sources": ["crates/c-abi/include/freemvvm/abi.h", "tools/probes/abi_runtime_smoke.c"],
+      "config": ["CMakeLists.txt", "DEVELOPMENT.md", "tools/dev.py", "tools/units.yaml"],
+      "depends_on": ["UNIT-ABI-017"],
+      "design": [
+        {"path": ".docs/13_detail_design/runtime-objects/abi.md", "version": "1.2", "section": "共通型と操作宣言 / version query / Runtime lifecycle"},
+        {"path": ".docs/13_detail_design/build/toolchain-packages.md", "version": "1.1", "section": "Targetとverification gate"}
+      ],
+      "requirements": ["RQ-04-006", "RQ-04-009", "RQ-04-028", "RQ-04-030", "RQ-12-001", "RQ-12-010"],
+      "cases": ["TC-ABI-COMP-01", "TC-ABI-REP-01"],
+      "test_design": ".docs/32_unit_test/core-runtime.md",
+      "tests": [
+        {"id": "UT-ABI-NATIVE-LINK-SMOKE-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "abi-smoke"]}
+      ]
     }
   ]
 }

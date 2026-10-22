@@ -111,7 +111,8 @@ def run(arguments, environment, results, name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "command", choices=["doctor", "check", "format", "minimum"]
+        "command",
+        choices=["doctor", "check", "abi-smoke", "format", "minimum"],
     )
     args = parser.parse_args()
     if Path(sys.prefix).resolve() != VENV.resolve():
@@ -231,6 +232,26 @@ def main():
                 environment,
                 results,
                 "rust-minimum",
+            )
+        elif args.command == "abi-smoke":
+            run(
+                ["cmake", "--preset", "dev"],
+                environment,
+                results,
+                "cmake-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "--preset",
+                    "dev",
+                    "--target",
+                    "freemvvm_abi_runtime_smoke",
+                ],
+                environment,
+                results,
+                "abi-runtime-smoke",
             )
         elif args.command == "check":
             run(

@@ -1,7 +1,7 @@
 # 単体試験：handle・値・ABI・Runtime
 
-- 文書版: 6.14
-- 状態: Runtime post/dispatch turn、Property create/kind/getter/setter、OneWay/TwoWay Binding、Binding lifecycle、Core/C ABI Property Validator登録・Error・初期同期拒否、Core Binding後続伝播拒否・回復、公開C ABI headerのC11/C++17 compile probeは実装と動作確認が完了。C ABI snapshot/subscriptionは完了
+- 文書版: 6.16
+- 状態: Runtime post/dispatch turn、Property create/kind/getter/setter、OneWay/TwoWay Binding、Binding lifecycle、Core/C ABI Property Validator登録・Error・初期同期拒否、Core Binding後続伝播拒否・回復、公開C ABI headerのC11/C++17 compile probe、Windows host-native C ABI link/runtime smokeは実装と動作確認が完了。C ABI snapshot/subscriptionは完了
 - 更新日: 2026-10-22
 
 候補単位はHandleRegistry、ValueStorage/FloatCodec/ErrorSnapshot、ABI入口、Dispatcher/終了処理。公開結果はRQ、内部pin・lock・queue境界はDDをoracleとする。
@@ -17,6 +17,7 @@
 | 予定test ID | 入力・操作 | 観測・期待結果 | 根拠 |
 | --- | --- | --- | --- |
 | <a id="ut-abi-public-header-001"></a>UT-ABI-PUBLIC-HEADER-001 | 公開C ABI headerをC11およびC++17 translation unitからincludeし、代表的なRuntime・Property・callback関数をそれぞれ厳密な関数ポインタ型へ代入する | 両言語で診断なくcompile-only objectを生成する。テストは宣言の言語互換性・型整合のみを示し、native libraryへのlink・install/exportや実行時ABIの適合を示さない。headerにある関数は現在Rust crateからexportされるものに限り、設計のみのAPIは宣言しない | [RQ-04-002](../11_requirements/RQ-04_abi-boundary.md#rq-04-002)、[RQ-04-003](../11_requirements/RQ-04_abi-boundary.md#rq-04-003)、[RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-04-021](../11_requirements/RQ-04_abi-boundary.md#rq-04-021)、[RQ-04-022](../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-024](../11_requirements/RQ-04_abi-boundary.md#rq-04-024) |
+| <a id="ut-abi-native-link-smoke-001"></a>UT-ABI-NATIVE-LINK-SMOKE-001 | CMakeからCargoのhost-native C ABI cdylibを作り、public headerを使うC executableをlinkして実行する。version query、Runtime create、UI-loop bridge登録、host event内からのshutdown request、outer host boundaryでのshutdown完了、query/releaseを行う | DLL/shared objectがconsumerから解決される。versionは1.0.0、ABI majorは1。各操作が期待statusを返し、Runtime handleはnonzeroでcreate後、request stateがCompleted/reason 0となり、requestとRuntimeのreleaseに成功する。結果は今回のhost-native compile/link/load/callの証拠に限り、install/export packageや他targetのsupport証明としない | [RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-009](../11_requirements/RQ-04_abi-boundary.md#rq-04-009)、[RQ-04-028](../11_requirements/RQ-04_abi-boundary.md#rq-04-028)、[RQ-04-030](../11_requirements/RQ-04_abi-boundary.md#rq-04-030)、[RQ-12-001](../11_requirements/RQ-12_build-distribution.md#rq-12-001)、[RQ-12-010](../11_requirements/RQ-12_build-distribution.md#rq-12-010)<br/>[TC-ABI-COMP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-comp-01)、[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01) |
 
 二つのRuntimeと同kind/異kindのobject、同objectの独立ownerを用意する。token発行器とallocatorには決定的なfailpointを設け、実在pointerを捏造して試験しない。
 
@@ -538,3 +539,5 @@ UT-CORE-RUNTIME-BINDING-INIT-001はCore内部OneWayの初期値・graph・notifi
 | 6.12 | 2026-10-22 | UNIT-ABI-016を実装・検証済みへ更新 | Codex | C ABI snapshot ownership、出力初期化、immutable Error、error-before-Property通知、clear/recovery通知、Binding cancelとRuntime shutdownのdestroyをfocused testで確認 |
 | 6.13 | 2026-10-22 | UT-ABI-PUBLIC-HEADER-001とUNIT-ABI-017のC11/C++17 compile-only probeを追加 | Codex | 実行結果は同一revisionの実装単位で確認する。library link・install/exportはoracle外 |
 | 6.14 | 2026-10-22 | UNIT-ABI-017のC/C++ probe、export inventory、workspace test、開発ゲート結果を記録 | Codex | C11/C++17でheader compile成功、現行export名47件と一致。link・install/exportは引き続き対象外 |
+| 6.15 | 2026-10-22 | UT-ABI-NATIVE-LINK-SMOKE-001を追加 | Codex | native link/load/version/Runtime lifecycle smokeを定義。結果は実装・実行後に記録する |
+| 6.16 | 2026-10-22 | UNIT-ABI-018のWindows host-native link/load/runtime smoke、workspace test、開発ゲート結果を記録 | Codex | version、bridge、host-boundary shutdown completion、request/Runtime releaseを確認。Linux結果はCIで検証する |

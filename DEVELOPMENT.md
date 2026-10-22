@@ -53,6 +53,7 @@ Linux/ARMのsysroot・compiler・container digestを固定するrelease profile�
 | --- | --- |
 | `tools/dev.py doctor` | venv・Python・Rust/CMake/Ninja/.NETと依存pinの確認 |
 | `tools/dev.py format` | Rust/Pythonのformat |
+| `tools/dev.py abi-smoke` | Cargo C ABI native libraryをC consumerへlinkし、version queryとRuntime lifecycleを実行 |
 | `tools/dev.py check` | 文書リンク/表/fence、Python format/lint、Rust fmt/clippy/buildとtest harness compile、C/C++ compile/linkとCTest probe、.NET locked restore/build、Python wheel build/install/import |
 | `tools/dev.py minimum` | Rust1.85.0でworkspace/all-targetsをlocked check |
 

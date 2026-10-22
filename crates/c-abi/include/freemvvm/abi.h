@@ -44,6 +44,14 @@ enum {
   UI_NUMERIC_NARROW_NEAREST_EVEN = 1
 };
 
+enum {
+  UI_SHUTDOWN_ASYNC = 0,
+  UI_SHUTDOWN_SYNC = 1,
+  UI_SHUTDOWN_REQUEST_PENDING = 0,
+  UI_SHUTDOWN_REQUEST_COMPLETED = 1,
+  UI_SHUTDOWN_REQUEST_HOST_UNAVAILABLE = 2
+};
+
 ui_status ui_abi_1_runtime_create(ui_handle *out_runtime, ui_handle *out_error);
 ui_status ui_abi_1_runtime_is_ui_thread(ui_handle runtime, ui_bool *out_yes);
 
