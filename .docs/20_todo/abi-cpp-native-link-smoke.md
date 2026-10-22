@@ -1,7 +1,7 @@
 # Native C++ ABI link and runtime smoke
 
 - Updated: 2026-10-22
-- Status: implemented and verified; ready for commit
+- Status: committed and pushed (`f3c3f78`)
 - Scope: compile and link a native C++17 consumer against the Cargo-generated C ABI library, then exercise its C-linkage declarations at runtime.
 
 ## Approved basis
