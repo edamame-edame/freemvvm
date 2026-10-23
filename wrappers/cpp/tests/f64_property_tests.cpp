@@ -152,11 +152,14 @@ std::shared_ptr<const AbiApi> MakeApi() {
       nullptr,
       nullptr,
       nullptr,
+      nullptr,
       &FakeGetF64,
       nullptr,
       nullptr,
       nullptr,
+      nullptr,
       &FakeSetF64,
+      nullptr,
       nullptr,
   };
   return std::shared_ptr<const AbiApi>(std::shared_ptr<const AbiApi>{}, &api);

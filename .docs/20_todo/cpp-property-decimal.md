@@ -1,7 +1,7 @@
 # C++ Property DECIMAL 対応計画
 
 - 更新日: 2026-10-23
-- 状態: 利用者承認済み。実装開始前
+- 状態: 実装済み・ローカル全体検証済み。Windows/Linux CI確認待ち
 - 対象: `freemvvm::Decimal64` と `freemvvm::Property<Decimal64>` の値型mapping
 
 ## 背景と根拠
@@ -28,6 +28,8 @@ C++ Property の [BOOL/I64](cpp-property-wrapper.md)、[UTF-8](cpp-property-utf8
 5. relocated CMake package consumerから`Decimal64` factoryと`Property<Decimal64>`を使用し、create/get/set/closeを検証する。
 6. focused tests、全C++ wrapper CTest、package consumer、`tools/dev.py check`、`tools/dev.py minimum`、文書検査とWindows/Linux CIを同一revisionで確認する。
 7. 実装境界とCore/wrapperの責務分担を`.docs/01_memory/`へ記録する。
+
+2026-10-23のローカル検証ではDECIMAL focused CTest、relocated package consumer、全C++ CTest 9件、`tools/dev.py check`、Rust 1.85 minimum check、manifest JSON・文書リンク検査が成功した。Windows/Linux CIは実装commit push後に記録する。
 
 ## レビュー対象
 

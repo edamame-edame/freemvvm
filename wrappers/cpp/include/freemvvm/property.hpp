@@ -1,6 +1,7 @@
 #ifndef FREEMVVM_CPP_PROPERTY_HPP_
 #define FREEMVVM_CPP_PROPERTY_HPP_
 
+#include "freemvvm/decimal64.hpp"
 #include "freemvvm/runtime.hpp"
 
 #include <cstdint>
@@ -15,8 +16,9 @@ class Property final {
   static_assert(std::is_same<T, bool>::value ||
                     std::is_same<T, std::int64_t>::value ||
                     std::is_same<T, double>::value ||
+                    std::is_same<T, Decimal64>::value ||
                     std::is_same<T, std::string>::value,
-                "This Property wrapper supports bool, int64_t, double, and UTF-8 string");
+                "This Property wrapper supports bool, int64_t, double, Decimal64, and UTF-8 string");
 
  public:
   Property(const Property&) = delete;
@@ -47,6 +49,8 @@ static_assert(!std::is_copy_constructible<Property<bool>>::value,
 static_assert(std::is_nothrow_move_constructible<Property<std::int64_t>>::value,
               "Property moves must not throw");
 static_assert(std::is_nothrow_move_constructible<Property<double>>::value,
+              "Property moves must not throw");
+static_assert(std::is_nothrow_move_constructible<Property<Decimal64>>::value,
               "Property moves must not throw");
 static_assert(std::is_nothrow_move_constructible<Property<std::string>>::value,
               "Property moves must not throw");

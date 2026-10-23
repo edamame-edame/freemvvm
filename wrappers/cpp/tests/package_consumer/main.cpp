@@ -58,8 +58,31 @@ int main() {
   ratio_value = ratio.get();
   if (!ratio_value.has_value() || !std::isinf(*ratio_value.value()) ||
       std::signbit(*ratio_value.value())) return 16;
+  auto decimal_initial = freemvvm::Decimal64::try_from_parts(true, 2, 123);
+  if (!decimal_initial.has_value() ||
+      !decimal_initial.value()->is_negative() ||
+      decimal_initial.value()->scale() != 2 ||
+      decimal_initial.value()->coefficient() != 123) return 17;
+  auto decimal_result = freemvvm::Property<freemvvm::Decimal64>::create(
+      runtime, *decimal_initial.value());
+  if (!decimal_result.has_value()) return 18;
+  auto decimal = std::move(*decimal_result.value());
+  auto decimal_value = decimal.get();
+  if (!decimal_value.has_value() ||
+      !decimal_value.value()->is_negative() ||
+      decimal_value.value()->scale() != 2 ||
+      decimal_value.value()->coefficient() != 123) return 19;
+  auto decimal_replacement =
+      freemvvm::Decimal64::try_from_parts(false, 31, 0);
+  if (!decimal_replacement.has_value() ||
+      !decimal.set(*decimal_replacement.value()).has_value()) return 20;
+  decimal_value = decimal.get();
+  if (!decimal_value.has_value() || decimal_value.value()->is_negative() ||
+      decimal_value.value()->scale() != 31 ||
+      decimal_value.value()->coefficient() != 0) return 21;
   if (!enabled.close().has_value() || !count.close().has_value() ||
-      !text.close().has_value() || !ratio.close().has_value()) return 17;
+      !text.close().has_value() || !ratio.close().has_value() ||
+      !decimal.close().has_value()) return 22;
 
-  return runtime.close().has_value() ? 0 : 18;
+  return runtime.close().has_value() ? 0 : 23;
 }
