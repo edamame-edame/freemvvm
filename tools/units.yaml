@@ -1931,7 +1931,7 @@
     },
     {
       "id": "UNIT-WRAP-CPP-005",
-      "state": "ready",
+      "state": "complete",
       "scope": "cpp-decimal64-value-and-property-canonical-bits-mapping",
       "sources": [
         "wrappers/cpp/include/freemvvm/decimal64.hpp",

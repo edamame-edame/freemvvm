@@ -6,3 +6,5 @@
 - `Property<Decimal64>`はbitsを`property_create_decimal/get_decimal/set_decimal`へ直接渡す。数値上等価なbitsの比較・既存表現保持・通知抑止はCoreの責務であり、wrapperは再実装しない。
 - `AbiApi`を追加するときは既存fake API tableのaggregate initializerを関数宣言順に拡張し、Runtime/BOOL/I64/UTF-8/F64テストを再実行してslotずれを検出する。
 - relocated CMake package testはinstalled headersを使って`Decimal64`と`Property<Decimal64>`を確認する。新headerは`install(DIRECTORY include/)`でpackageへ含まれる。
+
+実装commit `a06ac219984bf9e8955d34261ebb057038127ca9` は[Development bootstrap CI run 39953038033](https://github.com/edamame-edame/freemvvm/actions/runs/39953038033)でWindows/Linux両runner成功。artifactの`LastTest.log`で`wrapper.cpp.property.decimal`が両runnerとも成功し、relocated CMake package consumerもfull bootstrap gateで成功した。

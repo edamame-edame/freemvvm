@@ -1,7 +1,7 @@
 # C++ Property DECIMAL 対応計画
 
 - 更新日: 2026-10-23
-- 状態: 実装済み・ローカル全体検証済み。Windows/Linux CI確認待ち
+- 状態: 完了（実装・ローカル検証・Windows/Linux CI成功）
 - 対象: `freemvvm::Decimal64` と `freemvvm::Property<Decimal64>` の値型mapping
 
 ## 背景と根拠
@@ -29,7 +29,7 @@ C++ Property の [BOOL/I64](cpp-property-wrapper.md)、[UTF-8](cpp-property-utf8
 6. focused tests、全C++ wrapper CTest、package consumer、`tools/dev.py check`、`tools/dev.py minimum`、文書検査とWindows/Linux CIを同一revisionで確認する。
 7. 実装境界とCore/wrapperの責務分担を`.docs/01_memory/`へ記録する。
 
-2026-10-23のローカル検証ではDECIMAL focused CTest、relocated package consumer、全C++ CTest 9件、`tools/dev.py check`、Rust 1.85 minimum check、manifest JSON・文書リンク検査が成功した。Windows/Linux CIは実装commit push後に記録する。
+2026-10-23のローカル検証ではDECIMAL focused CTest、relocated package consumer、全C++ CTest 9件、`tools/dev.py check`、Rust 1.85 minimum check、manifest JSON・文書リンク検査が成功した。実装commit [`a06ac21`](https://github.com/edamame-edame/freemvvm/commit/a06ac219984bf9e8955d34261ebb057038127ca9) に対する[Windows/Linux CI run 39953038033](https://github.com/edamame-edame/freemvvm/actions/runs/39953038033)も両runner成功。artifact内の`LastTest.log`で`wrapper.cpp.property.decimal`が両runnerとも成功したことを確認した。
 
 ## レビュー対象
 
