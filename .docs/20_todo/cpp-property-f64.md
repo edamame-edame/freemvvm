@@ -1,7 +1,7 @@
 # C++ Property wrapper F64 value
 
 - 更新日: 2026-10-23
-- 状態: 利用者承認済み。実装前
+- 状態: 実装済み。ローカル全体検証済み、Windows/Linux CI確認待ち
 - 対象: `freemvvm::Property<double>` のcreate/get/set
 
 ## 背景と承認済み根拠
@@ -26,7 +26,7 @@ auto updated = property.value()->set(next_value);
 
 WrapperはNaNやinfinityを拒否・正規化せず、signed zeroの符号を含めてC ABIへ渡す。Coreが規定する同値判定、同値時の格納表現保持、通知抑止はC++ wrapperで再実装しない。GetterはC ABIの戻り値を加工せず返し、getter errorにはerror snapshotを付けない。create/setのnative error snapshotとraw status、所有tokenのclose/retryは既存共通経路を維持する。
 
-## 試験案
+## 試験設計・実施結果
 
 - `UNIT-WRAP-CPP-004` / `UT-WRAP-CPP-PROP-F64-001` をsource変更前に`.docs/32_unit_test/wrappers.md`と`tools/units.yaml`へ登録する。
 - fake ABIでProperty<double>のcreate/get/set、有限値、正負infinity、複数のNaN bit pattern、`+0.0`と`-0.0`のbit-preserving引渡し・取得を検証する。NaN値自体の比較には`==`を使わず、bit patternまたは`std::isnan`で観測する。
@@ -35,13 +35,15 @@ WrapperはNaNやinfinityを拒否・正規化せず、signed zeroの符号を含
 - `UT-PKG-CPP-004`をrelocated CMake package consumerへ追加し、別consumerからProperty<double>を作成・取得・設定・closeする。
 - focused tests、C++ Runtime/既存Property tests、package consumer、`tools/dev.py check`、`tools/dev.py minimum`、文書検査とWindows/Linux CIを同じ実装revisionで確認する。
 
+2026-10-23のローカル検証では、C++ CTest 8件、移設後package consumer 1件、`tools/dev.py check`（文書リンク・format/lint・Rust/C++ build・既存bootstrap gateを含む）、Rust 1.85 minimum checkが成功した。Windows/Linux CIは実装commit push後に記録する。
+
 ## 実施手順
 
 1. 利用者レビュー・承認後、この計画を日本語commitで先にcommit/pushする。
-2. unit-test設計と実装unit mappingをsource変更前に登録する。
-3. F64 create/get/setのC++接続、fake ABI試験、relocated package consumerを実装する。
-4. focusedおよび全体検証を行い、Windows/Linux CI evidenceを本書と試験台帳に記録する。
-5. F64 wrapperのbit-preserving境界とCore/ABI責務分担を`.docs/01_memory/`へ記録する。
+2. unit-test設計と実装unit mappingをsource変更前に登録した。
+3. F64 create/get/setのC++接続、fake ABI試験、relocated package consumerを実装した。
+4. focusedおよび全体ローカル検証を完了した。Windows/Linux CI evidenceはpush後に本書と試験台帳へ追記する。
+5. F64 wrapperのbit-preserving境界とCore/ABI責務分担を`.docs/01_memory/cpp-property-f64.md`へ記録した。
 
 ## 承認境界
 

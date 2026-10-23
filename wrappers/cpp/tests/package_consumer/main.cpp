@@ -1,6 +1,7 @@
 #include <freemvvm/runtime.hpp>
 #include <freemvvm/property.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -48,8 +49,17 @@ int main() {
   if (!text.set(replacement).has_value()) return 11;
   text_value = text.get();
   if (!text_value.has_value() || *text_value.value() != replacement) return 12;
+  auto ratio_result = freemvvm::Property<double>::create(runtime, 42.25);
+  if (!ratio_result.has_value()) return 13;
+  auto ratio = std::move(*ratio_result.value());
+  auto ratio_value = ratio.get();
+  if (!ratio_value.has_value() || *ratio_value.value() != 42.25) return 14;
+  if (!ratio.set(std::numeric_limits<double>::infinity()).has_value()) return 15;
+  ratio_value = ratio.get();
+  if (!ratio_value.has_value() || !std::isinf(*ratio_value.value()) ||
+      std::signbit(*ratio_value.value())) return 16;
   if (!enabled.close().has_value() || !count.close().has_value() ||
-      !text.close().has_value()) return 13;
+      !text.close().has_value() || !ratio.close().has_value()) return 17;
 
-  return runtime.close().has_value() ? 0 : 14;
+  return runtime.close().has_value() ? 0 : 18;
 }

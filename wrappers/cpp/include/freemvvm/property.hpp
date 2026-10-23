@@ -14,8 +14,9 @@ template <typename T>
 class Property final {
   static_assert(std::is_same<T, bool>::value ||
                     std::is_same<T, std::int64_t>::value ||
+                    std::is_same<T, double>::value ||
                     std::is_same<T, std::string>::value,
-                "This Property wrapper supports bool, int64_t, and UTF-8 string");
+                "This Property wrapper supports bool, int64_t, double, and UTF-8 string");
 
  public:
   Property(const Property&) = delete;
@@ -44,6 +45,8 @@ class Property final {
 static_assert(!std::is_copy_constructible<Property<bool>>::value,
               "Property owns one native reference");
 static_assert(std::is_nothrow_move_constructible<Property<std::int64_t>>::value,
+              "Property moves must not throw");
+static_assert(std::is_nothrow_move_constructible<Property<double>>::value,
               "Property moves must not throw");
 static_assert(std::is_nothrow_move_constructible<Property<std::string>>::value,
               "Property moves must not throw");

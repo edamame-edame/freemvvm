@@ -79,6 +79,13 @@ ui_status api_property_create_i64(ui_handle runtime, std::int64_t initial,
                                       out_error);
 }
 
+ui_status api_property_create_f64(ui_handle runtime, double initial,
+                                  ui_handle* out_property,
+                                  ui_handle* out_error) {
+  return ui_abi_1_property_create_f64(runtime, initial, out_property,
+                                      out_error);
+}
+
 ui_status api_property_create_utf8(ui_handle runtime,
                                    const std::uint8_t* initial,
                                    std::uint64_t byte_length,
@@ -96,6 +103,10 @@ ui_status api_property_get_i64(ui_handle property, std::int64_t* out_value) {
   return ui_abi_1_property_get_i64(property, out_value);
 }
 
+ui_status api_property_get_f64(ui_handle property, double* out_value) {
+  return ui_abi_1_property_get_f64(property, out_value);
+}
+
 ui_status api_property_get_utf8(ui_handle property, std::uint8_t* buffer,
                                 std::uint64_t capacity,
                                 std::uint64_t* out_length) {
@@ -110,6 +121,11 @@ ui_status api_property_set_bool(ui_handle property, ui_bool value,
 ui_status api_property_set_i64(ui_handle property, std::int64_t value,
                                ui_handle* out_error) {
   return ui_abi_1_property_set_i64(property, value, out_error);
+}
+
+ui_status api_property_set_f64(ui_handle property, double value,
+                               ui_handle* out_error) {
+  return ui_abi_1_property_set_f64(property, value, out_error);
 }
 
 ui_status api_property_set_utf8(ui_handle property, const std::uint8_t* bytes,
@@ -273,12 +289,15 @@ std::shared_ptr<const AbiApi> linked_api() {
       &api_error_code,
       &api_property_create_bool,
       &api_property_create_i64,
+      &api_property_create_f64,
       &api_property_create_utf8,
       &api_property_get_bool,
       &api_property_get_i64,
+      &api_property_get_f64,
       &api_property_get_utf8,
       &api_property_set_bool,
       &api_property_set_i64,
+      &api_property_set_f64,
       &api_property_set_utf8,
   });
   return api;
@@ -627,6 +646,9 @@ Result<Property<T>> Property<T>::create(Runtime& runtime, T initial_value) {
   } else if constexpr (std::is_same<T, std::int64_t>::value) {
     status = runtime.state_->api->property_create_i64(
         runtime.token_, initial_value, &property, &error);
+  } else if constexpr (std::is_same<T, double>::value) {
+    status = runtime.state_->api->property_create_f64(
+        runtime.token_, initial_value, &property, &error);
   } else {
     const auto* bytes = initial_value.empty()
                             ? nullptr
@@ -688,8 +710,10 @@ Result<T> Property<T>::get() const {
       ui_bool raw_value = 0;
       status = state_->api->property_get_bool(token_, &raw_value);
       value = raw_value != 0;
-    } else {
+    } else if constexpr (std::is_same<T, std::int64_t>::value) {
       status = state_->api->property_get_i64(token_, &value);
+    } else {
+      status = state_->api->property_get_f64(token_, &value);
     }
     if (status != 0) return Result<T>::failure(UiError(status));
     return Result<T>::success(value);
@@ -708,6 +732,8 @@ Result<void> Property<T>::set(T value) {
     status = state_->api->property_set_bool(token_, value ? 1 : 0, &error);
   } else if constexpr (std::is_same<T, std::int64_t>::value) {
     status = state_->api->property_set_i64(token_, value, &error);
+  } else if constexpr (std::is_same<T, double>::value) {
+    status = state_->api->property_set_f64(token_, value, &error);
   } else {
     const auto* bytes = value.empty()
                             ? nullptr
@@ -731,6 +757,7 @@ Result<void> Property<T>::close() noexcept {
 
 template class Property<bool>;
 template class Property<std::int64_t>;
+template class Property<double>;
 template class Property<std::string>;
 
 }  // namespace freemvvm

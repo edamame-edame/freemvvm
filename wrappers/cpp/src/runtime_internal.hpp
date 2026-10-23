@@ -28,14 +28,17 @@ struct AbiApi final {
   ui_status (*property_create_bool)(ui_handle, ui_bool, ui_handle*, ui_handle*);
   ui_status (*property_create_i64)(ui_handle, std::int64_t, ui_handle*,
                                    ui_handle*);
+  ui_status (*property_create_f64)(ui_handle, double, ui_handle*, ui_handle*);
   ui_status (*property_create_utf8)(ui_handle, const std::uint8_t*,
                                     std::uint64_t, ui_handle*, ui_handle*);
   ui_status (*property_get_bool)(ui_handle, ui_bool*);
   ui_status (*property_get_i64)(ui_handle, std::int64_t*);
+  ui_status (*property_get_f64)(ui_handle, double*);
   ui_status (*property_get_utf8)(ui_handle, std::uint8_t*, std::uint64_t,
                                  std::uint64_t*);
   ui_status (*property_set_bool)(ui_handle, ui_bool, ui_handle*);
   ui_status (*property_set_i64)(ui_handle, std::int64_t, ui_handle*);
+  ui_status (*property_set_f64)(ui_handle, double, ui_handle*);
   ui_status (*property_set_utf8)(ui_handle, const std::uint8_t*,
                                  std::uint64_t, ui_handle*);
 };

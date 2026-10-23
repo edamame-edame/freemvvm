@@ -120,6 +120,7 @@ def main():
             "cpp-runtime-test",
             "cpp-property-test",
             "cpp-property-utf8-test",
+            "cpp-property-f64-test",
             "cpp-package-test",
             "format",
             "minimum",
@@ -149,6 +150,8 @@ def main():
             if args.command == "cpp-property-test"
             else "cpp-property-utf8-unit-test"
             if args.command == "cpp-property-utf8-test"
+            else "cpp-property-f64-unit-test"
+            if args.command == "cpp-property-f64-test"
             else "cpp-runtime-unit-test"
             if args.command == "cpp-runtime-test"
             else "development-bootstrap"
@@ -160,6 +163,8 @@ def main():
             if args.command == "cpp-property-test"
             else "C++ Property UTF-8 wrapper unit test executed"
             if args.command == "cpp-property-utf8-test"
+            else "C++ Property F64 wrapper unit test executed"
+            if args.command == "cpp-property-f64-test"
             else "C++ Runtime and package integration tests executed"
             if args.command == "check"
             else "cpp-runtime unit test executed"
@@ -432,6 +437,39 @@ def main():
                 environment,
                 results,
                 "cpp-property-utf8-test",
+            )
+        elif args.command == "cpp-property-f64-test":
+            run(
+                ["cmake", "--preset", "dev"],
+                environment,
+                results,
+                "cmake-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "--preset",
+                    "dev",
+                    "--target",
+                    "freemvvm_cpp_f64_property_tests_exe",
+                ],
+                environment,
+                results,
+                "cpp-property-f64-test-build",
+            )
+            run(
+                [
+                    "ctest",
+                    "--test-dir",
+                    "out/cmake/dev",
+                    "-R",
+                    "^wrapper\\.cpp\\.property\\.f64$",
+                    "--output-on-failure",
+                ],
+                environment,
+                results,
+                "cpp-property-f64-test",
             )
         elif args.command == "cpp-package-test":
             run(
