@@ -1,7 +1,7 @@
 # C++ Property 通知購読とcallback境界の計画
 
 - 更新日: 2026-10-23
-- 状態: 提案。API案と実施範囲のレビュー待ち
+- 状態: 利用者承認済み。callback例外の既定診断はstderrを使用（2026-10-23）
 - 対象: C++ wrapperからのProperty通知購読、明示cancel、callback stateの所有移転
 
 ## 背景と根拠
@@ -27,23 +27,24 @@ subscription.value()->close();   // 所有handleをrelease
 - `Subscription`はmove-only。`cancel()`はC ABI `subscription_cancel`を呼び、成功後は新規callback開始を抑止する。`close()`はhandle tokenだけをreleaseする。失敗した明示操作ではtoken/stateを保持し再試行可能にする。
 - `Subscription` destructorによるhandle releaseは通知登録を解除しない。RQ-05-002に従い、明示cancelまたはProperty teardown/Runtime shutdownまでCore registrationがcallback stateを保持する。
 - callback stateはnative registration成功時だけCoreへ所有移転し、登録失敗時はC++側が解放する。destroy thunkはin-flight callbackの終了後に一度だけclosureを解放する。
-- trampolineはC++例外をC ABI境界から漏らさない。通知例外は他subscriberの実行やcommit済みProperty値を取り消さない。利用者handlerが未設定の場合の既定diagnostic経路はDDで未確定のため、本実装が出力先や外部挙動を独自に追加しないよう、実装前に採用済み診断APIの有無を確認し、必要なら本計画を改訂して再レビューする。
+- C++ DDの`Runtime::set_callback_handler`を実装し、`CallbackFailure`を受けるhandler、userdata、destroy関数をRuntime単位で登録する。登録の交換では旧recordをin-flight callback終了後に一度だけdestroyする。`HandlerRegistration::close()`は自分が登録したrecordが現在もactiveな場合だけ解除する。
+- trampolineはC++例外をC ABI境界から漏らさない。handlerがある場合は`CallbackFailure`を渡し、ない場合はstderrへ通知callbackの例外を記録する。`std::exception`は`what()`を記録し、non-standard exceptionは固定メッセージを記録する。handler自体の例外も捕捉し、stderrへ固定メッセージを一度記録する。通知例外は他subscriberの実行やcommit済みProperty値を取り消さない。
 
 ### 試験範囲案
 
 - fake C ABIで各Property値型のsubscribe/cancel/releaseを確認する。登録失敗時のcallback state保持、成功時のownership transfer、token releaseとcancelの独立性、cancel失敗時の再試行、move、destructor cleanupを検証する。
-- deterministic callback hookで通知callbackの呼出し、self-cancel、cancel中のin-flight lifetime、追加購読の次generation適用、C++ exception containmentを確認する。Coreの通知順序/coalescingそのものはCore testsの責務とする。
+- deterministic callback hookで通知callbackの呼出し、self-cancel、cancel中のin-flight lifetime、追加購読の次generation適用、C++ exception containment、handler交換中のin-flight保持、handler/closure destroy一回性、handler未登録時とhandler failure時のstderr診断を確認する。Coreの通知順序/coalescingそのものはCore testsの責務とする。
 - relocated CMake package consumerで`Property<int64_t>`購読・変更・明示cancel・closeを確認する。
 - 実装前に`UT-WRAP-CPP-PROP-SUB-001`と`UT-PKG-CPP-006`を`.docs/32_unit_test/wrappers.md`および`tools/units.yaml`へ登録し、実装unitを`UNIT-WRAP-CPP-006`とする。
 
 ## 実施順
 
-1. 本計画と公開API案・callback例外の扱いをレビューし、利用者承認後に日本語commitで計画を記録する。
+1. 公開API案・callback例外のstderr既定動作を利用者が承認済み。計画を日本語commitで記録する。
 2. C++コーディング規則に従ってテスト設計とunit mappingをsource変更より先に登録する。
-3. `Subscription` owner、`Property<T>::subscribe`、noexcept trampoline/destroy thunkを追加する。C ABI/Coreの通知意味論は変更しない。
+3. `Subscription` owner、`Property<T>::subscribe`、Runtime callback handler、noexcept trampoline/destroy thunkを追加する。C ABI/Coreの通知意味論は変更しない。
 4. fake ABI focused testとrelocated package consumerを実装し、focused CTestと全bootstrap gatesを実行する。
 5. Windows/Linux CIで同一実装revisionを確認し、計画・unit台帳・`.docs/01_memory/`に結果を追記する。
 
 ## レビュー対象
 
-承認対象は、提案した公開API、明示cancelとhandle releaseの分離、callback stateの所有移転、試験範囲、および未定義の既定diagnosticを独自決定しない境界である。API案または範囲を修正する場合は本書を改訂して再提示する。提案どおりなら「承認します」と返信してください。承認前は本計画をcommitせず、source実装も開始しない。
+利用者は2026-10-23に「ok」と返信し、Property subscription API案と試験範囲を承認した。既定例外診断に関する質問には「stderrへ」と回答し、handler未設定時のstderr記録を承認した。C++ DDに定義済みのRuntime callback handlerもこの実装単位へ含める。C ABI/Core通知意味論は変更しない。
