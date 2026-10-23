@@ -1971,6 +1971,47 @@
         {"id": "UT-WRAP-CPP-PROP-DECIMAL-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-property-decimal-test"]},
         {"id": "UT-PKG-CPP-005", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]}
       ]
+    },
+    {
+      "id": "UNIT-WRAP-CPP-006",
+      "state": "ready",
+      "scope": "cpp-property-notification-subscription-and-callback-failure-handler",
+      "sources": [
+        "wrappers/cpp/include/freemvvm/runtime.hpp",
+        "wrappers/cpp/include/freemvvm/property.hpp",
+        "wrappers/cpp/include/freemvvm/subscription.hpp",
+        "wrappers/cpp/src/runtime.cpp",
+        "wrappers/cpp/src/runtime_internal.hpp",
+        "wrappers/cpp/tests/property_subscription_tests.cpp",
+        "wrappers/cpp/tests/package_consumer/main.cpp",
+        "tools/dev.py"
+      ],
+      "config": ["CMakeLists.txt", "wrappers/cpp/CMakeLists.txt", "crates/c-abi/include/freemvvm/abi.h", "tools/units.yaml"],
+      "depends_on": ["UNIT-BUILD-001", "UNIT-ABI-019", "UNIT-WRAP-CPP-005", "UNIT-PKG-CPP-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.2",
+          "section": "callback captureとexception境界 / Runtime callback handler / Subscription"
+        },
+        {
+          "path": ".docs/13_detail_design/events/callbacks.md",
+          "version": "1.1",
+          "section": "例外隔離とnotification callbackの継続"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Notification queueと購読 / Subscription lifecycle"
+        }
+      ],
+      "requirements": ["RQ-02-002", "RQ-05-002", "RQ-05-006", "RQ-05-007", "RQ-05-008", "RQ-05-009", "RQ-05-012", "RQ-06-001", "RQ-12-004"],
+      "cases": ["TC-LIFE-01", "TC-THREAD-01", "TC-ERROR-01", "TC-WRAP-CPP-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {"id": "UT-WRAP-CPP-PROP-SUB-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-property-subscription-test"]},
+        {"id": "UT-PKG-CPP-006", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]}
+      ]
     }
   ]
 }

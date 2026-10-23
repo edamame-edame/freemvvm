@@ -2,6 +2,7 @@
 #define FREEMVVM_CPP_RUNTIME_HPP_
 
 #include <cstdint>
+#include <exception>
 #include <memory>
 #include <optional>
 #include <type_traits>
@@ -11,11 +12,13 @@
 namespace freemvvm {
 
 class UiError;
+class HandlerRegistration;
 template <typename T>
 class Property;
 
 namespace detail {
 struct RuntimeCleanupState;
+struct CallbackHandlerRecord;
 struct PendingNode;
 struct RuntimeTestAccess;
 UiError make_error(std::uint32_t status, std::uint64_t error_token,
@@ -109,6 +112,16 @@ struct HostRegistration final {
   Destroy destroy = nullptr;
 };
 
+enum class CallbackKind { kPropertyNotification };
+
+struct CallbackFailure final {
+  CallbackKind kind;
+  std::exception_ptr exception;
+};
+
+using CallbackHandler = void (*)(const CallbackFailure&, void* userdata);
+using CallbackHandlerDestroy = void (*)(void* userdata);
+
 enum class ShutdownState : std::uint32_t {
   kPending = 0,
   kCompleted = 1,
@@ -163,6 +176,27 @@ class ShutdownRequest final {
   detail::PendingNode* cleanup_node_ = nullptr;
 };
 
+class HandlerRegistration final {
+ public:
+  HandlerRegistration(const HandlerRegistration&) = delete;
+  HandlerRegistration& operator=(const HandlerRegistration&) = delete;
+  HandlerRegistration(HandlerRegistration&& other) noexcept;
+  HandlerRegistration& operator=(HandlerRegistration&& other) noexcept;
+  ~HandlerRegistration() noexcept;
+
+  Result<void> close() noexcept;
+
+ private:
+  friend class Runtime;
+  friend struct detail::RuntimeTestAccess;
+  HandlerRegistration(
+      std::weak_ptr<detail::RuntimeCleanupState> state,
+      std::weak_ptr<detail::CallbackHandlerRecord> record) noexcept;
+
+  std::weak_ptr<detail::RuntimeCleanupState> state_;
+  std::weak_ptr<detail::CallbackHandlerRecord> record_;
+};
+
 class Runtime final {
  public:
   Runtime(const Runtime&) = delete;
@@ -176,6 +210,9 @@ class Runtime final {
   Result<bool> is_ui_thread() const;
   ShutdownResult shutdown() const;
   Result<ShutdownRequest> request_shutdown() const;
+  Result<HandlerRegistration> set_callback_handler(
+      CallbackHandler handler, void* userdata,
+      CallbackHandlerDestroy destroy);
   Result<void> close() noexcept;
 
  private:

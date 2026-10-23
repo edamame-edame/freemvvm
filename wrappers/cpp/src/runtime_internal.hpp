@@ -45,6 +45,17 @@ struct AbiApi final {
   ui_status (*property_set_decimal)(ui_handle, std::uint64_t, ui_handle*);
   ui_status (*property_set_utf8)(ui_handle, const std::uint8_t*,
                                  std::uint64_t, ui_handle*);
+  ui_status (*property_subscribe)(ui_handle, ui_callback, void*,
+                                  ui_destroy_callback, ui_handle*, ui_handle*);
+  ui_status (*subscription_cancel)(ui_handle, ui_handle*);
+};
+
+struct CallbackHandlerRecord final {
+  ~CallbackHandlerRecord() noexcept;
+
+  CallbackHandler handler = nullptr;
+  void* userdata = nullptr;
+  CallbackHandlerDestroy destroy = nullptr;
 };
 
 struct PendingNode final {
@@ -69,6 +80,10 @@ struct RuntimeCleanupState final
   RuntimeCleanupState* supervisor_next = nullptr;
   std::shared_ptr<RuntimeCleanupState> supervisor_keepalive;
   bool registered = false;
+  mutable std::mutex callback_handler_mutex;
+  std::shared_ptr<CallbackHandlerRecord> callback_handler;
+
+  void dispatch_callback_failure(const CallbackFailure& failure) noexcept;
 };
 
 class CleanupSupervisor final {

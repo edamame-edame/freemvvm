@@ -3,8 +3,10 @@
 
 #include "freemvvm/decimal64.hpp"
 #include "freemvvm/runtime.hpp"
+#include "freemvvm/subscription.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -31,6 +33,7 @@ class Property final {
 
   Result<T> get() const;
   Result<void> set(T value);
+  Result<Subscription> subscribe(std::function<void()> callback);
   Result<void> close() noexcept;
 
  private:

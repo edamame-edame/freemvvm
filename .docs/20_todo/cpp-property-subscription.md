@@ -1,7 +1,7 @@
 # C++ Property 通知購読とcallback境界の計画
 
 - 更新日: 2026-10-23
-- 状態: 利用者承認済み。callback例外の既定診断はstderrを使用（2026-10-23）
+- 状態: 実装・Windowsローカル検証完了。Windows/Linux CI結果の記録待ち（2026-10-23）
 - 対象: C++ wrapperからのProperty通知購読、明示cancel、callback stateの所有移転
 
 ## 背景と根拠
@@ -11,7 +11,7 @@ C++ PropertyのBOOL/I64/UTF-8/F64/DECIMAL値mappingは完了した。C ABIには
 - 要求: [RQ-02-002](../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-008](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)
 - アーキテクチャ: [ADR-0001](../04_approval/adr-0001-rust-core.md)。Rust Coreを通知の正本とし、C++はversioned C ABIの薄いwrapperとする。
 - 基本設計: [値・モデル・更新整合性](../12_design/runtime-objects/model-values.md)。Property commitと通知配信を分離する。
-- 詳細設計: 承認済み[C++ wrapper DD v1.2](../13_detail_design/wrappers/cpp.md)はcallback state、noexcept trampoline、C++ exceptionの捕捉、Binding/Subscriptionのowned token・明示解除を定める。[通知とBinding伝播DD v1.2](../13_detail_design/events/notifications-binding.md)は登録順、generation snapshot、cancel後のin-flight完了、Property teardown・Runtime shutdownとの関係を定める。
+- 詳細設計: 承認済み[C++ wrapper DD v1.2](../13_detail_design/wrappers/cpp.md)はcallback state、noexcept trampoline、C++ exceptionの捕捉、Binding/Subscriptionのowned token・明示解除を定める。[callbackと再入DD v1.1](../13_detail_design/events/callbacks.md)は例外を診断経路へ記録して他subscriberを続ける規則を定める。[通知とBinding伝播DD v1.1](../13_detail_design/events/notifications-binding.md)は登録順、generation snapshot、cancel後のin-flight完了、Property teardown・Runtime shutdownとの関係を定める。
 
 ## 実装提案
 
@@ -39,11 +39,17 @@ subscription.value()->close();   // 所有handleをrelease
 
 ## 実施順
 
-1. 公開API案・callback例外のstderr既定動作を利用者が承認済み。計画を日本語commitで記録する。
-2. C++コーディング規則に従ってテスト設計とunit mappingをsource変更より先に登録する。
-3. `Subscription` owner、`Property<T>::subscribe`、Runtime callback handler、noexcept trampoline/destroy thunkを追加する。C ABI/Coreの通知意味論は変更しない。
-4. fake ABI focused testとrelocated package consumerを実装し、focused CTestと全bootstrap gatesを実行する。
-5. Windows/Linux CIで同一実装revisionを確認し、計画・unit台帳・`.docs/01_memory/`に結果を追記する。
+1. [x] 公開API案・callback例外のstderr既定動作を利用者が承認済み。計画を日本語commitで記録した。
+2. [x] C++コーディング規則に従ってテスト設計とunit mappingをsource変更より先に登録した。
+3. [x] `Subscription` owner、`Property<T>::subscribe`、Runtime callback handler、noexcept trampoline/destroy thunkを追加した。C ABI/Coreの通知意味論は変更していない。
+4. [x] fake ABI focused testとrelocated package consumerを実装し、focused CTestと全bootstrap gatesを実行した。
+5. [ ] Windows/Linux CIで同一実装revisionを確認し、計画・unit台帳・`.docs/01_memory/`に結果を追記する。
+
+## ローカル検証結果
+
+- Windows: Visual Studio 2022 Build Tools環境で`tools/dev.py check`成功。CMake/CTest 10件すべてpassし、移設後CMake package consumerもpassした。`tools/dev.py minimum`もRust 1.85.0で成功した。
+- `tools/check_docs.py`成功（active documents 76、local links 6363）。`git diff --check`成功。
+- このPCの通常環境はVisual Studio 18 Build Toolsを優先するが、標準C++ヘッダーが未導入のため、検証はインストール済みのVisual Studio 2022 Build Toolsを明示して実行した。
 
 ## レビュー対象
 

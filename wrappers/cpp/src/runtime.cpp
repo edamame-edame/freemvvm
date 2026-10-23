@@ -1,10 +1,13 @@
 #include "freemvvm/property.hpp"
 #include "freemvvm/runtime.hpp"
+#include "freemvvm/subscription.hpp"
 
 #include "runtime_internal.hpp"
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
+#include <exception>
 #include <new>
 #include <stdexcept>
 #include <thread>
@@ -151,10 +154,111 @@ ui_status api_property_set_utf8(ui_handle property, const std::uint8_t* bytes,
   return ui_abi_1_property_set_utf8(property, bytes, byte_length, out_error);
 }
 
+ui_status api_property_subscribe(ui_handle property, ui_callback callback,
+                                 void* userdata, ui_destroy_callback destroy,
+                                 ui_handle* out_subscription,
+                                 ui_handle* out_error) {
+  return ui_abi_1_property_subscribe(property, callback, userdata, destroy,
+                                     out_subscription, out_error);
+}
+
+ui_status api_subscription_cancel(ui_handle subscription,
+                                  ui_handle* out_error) {
+  return ui_abi_1_subscription_cancel(subscription, out_error);
+}
+
+void report_callback_exception(const std::exception_ptr& exception) noexcept {
+  if (!exception) {
+    std::fputs("FreeMvvm: C++ callback failed without an exception payload\n",
+               stderr);
+    return;
+  }
+#if defined(__cpp_exceptions) || defined(_CPPUNWIND)
+  try {
+    std::rethrow_exception(exception);
+  } catch (const std::exception& error) {
+    std::fprintf(stderr,
+                 "FreeMvvm: C++ property notification callback threw: %s\n",
+                 error.what());
+  } catch (...) {
+    std::fputs(
+        "FreeMvvm: C++ property notification callback threw a non-standard exception\n",
+        stderr);
+  }
+#else
+  (void)exception;
+  std::fputs("FreeMvvm: C++ property notification callback failed\n", stderr);
+#endif
+}
+
+struct SubscriptionCallbackState final {
+  SubscriptionCallbackState(std::function<void()> callback_value,
+                           std::shared_ptr<RuntimeCleanupState> runtime_value)
+      : callback(std::move(callback_value)), runtime(std::move(runtime_value)) {}
+
+  std::function<void()> callback;
+  std::shared_ptr<RuntimeCleanupState> runtime;
+};
+
+void subscription_callback(void* userdata) noexcept {
+  auto* state = static_cast<SubscriptionCallbackState*>(userdata);
+#if defined(__cpp_exceptions) || defined(_CPPUNWIND)
+  try {
+    state->callback();
+  } catch (...) {
+    state->runtime->dispatch_callback_failure(
+        CallbackFailure{CallbackKind::kPropertyNotification,
+                        std::current_exception()});
+  }
+#else
+  state->callback();
+#endif
+}
+
+void subscription_destroy(void* userdata) noexcept {
+  delete static_cast<SubscriptionCallbackState*>(userdata);
+}
+
 }  // namespace
 
 RuntimeCleanupState::RuntimeCleanupState(std::shared_ptr<const AbiApi> api_value)
     : api(std::move(api_value)) {}
+
+CallbackHandlerRecord::~CallbackHandlerRecord() noexcept {
+  if (destroy == nullptr) return;
+#if defined(__cpp_exceptions) || defined(_CPPUNWIND)
+  try {
+    destroy(userdata);
+  } catch (...) {
+    std::fputs("FreeMvvm: C++ callback handler destroy function threw\n",
+               stderr);
+  }
+#else
+  destroy(userdata);
+#endif
+}
+
+void RuntimeCleanupState::dispatch_callback_failure(
+    const CallbackFailure& failure) noexcept {
+  std::shared_ptr<CallbackHandlerRecord> handler;
+  {
+    std::lock_guard<std::mutex> lock(callback_handler_mutex);
+    handler = callback_handler;
+  }
+  if (!handler || handler->handler == nullptr) {
+    report_callback_exception(failure.exception);
+    return;
+  }
+#if defined(__cpp_exceptions) || defined(_CPPUNWIND)
+  try {
+    handler->handler(failure, handler->userdata);
+  } catch (...) {
+    std::fputs("FreeMvvm: C++ callback failure handler threw\n", stderr);
+  }
+#else
+  handler->handler(failure, handler->userdata);
+#endif
+}
 
 RuntimeCleanupState::~RuntimeCleanupState() {
   PendingNode* node = pending_head;
@@ -319,6 +423,8 @@ std::shared_ptr<const AbiApi> linked_api() {
       &api_property_set_f64,
       &api_property_set_decimal,
       &api_property_set_utf8,
+      &api_property_subscribe,
+      &api_subscription_cancel,
   });
   return api;
 }
@@ -491,6 +597,44 @@ ShutdownRequest::~ShutdownRequest() noexcept {
   detail::release_in_destructor(token_, state_, cleanup_node_);
 }
 
+HandlerRegistration::HandlerRegistration(
+    std::weak_ptr<detail::RuntimeCleanupState> state,
+    std::weak_ptr<detail::CallbackHandlerRecord> record) noexcept
+    : state_(std::move(state)), record_(std::move(record)) {}
+
+HandlerRegistration::HandlerRegistration(HandlerRegistration&& other) noexcept
+    : state_(std::move(other.state_)), record_(std::move(other.record_)) {}
+
+HandlerRegistration& HandlerRegistration::operator=(
+    HandlerRegistration&& other) noexcept {
+  if (this != &other) {
+    (void)close();
+    state_ = std::move(other.state_);
+    record_ = std::move(other.record_);
+  }
+  return *this;
+}
+
+HandlerRegistration::~HandlerRegistration() noexcept { (void)close(); }
+
+Result<void> HandlerRegistration::close() noexcept {
+  auto state = state_.lock();
+  auto record = record_.lock();
+  if (state && record) {
+    std::shared_ptr<detail::CallbackHandlerRecord> removed;
+    {
+      std::lock_guard<std::mutex> lock(state->callback_handler_mutex);
+      if (state->callback_handler == record) {
+        removed = std::move(state->callback_handler);
+      }
+    }
+    removed.reset();
+  }
+  state_.reset();
+  record_.reset();
+  return Result<void>::success();
+}
+
 Result<ShutdownOutcome> ShutdownRequest::query() const {
   if (token_ == 0 || !state_) {
     return Result<ShutdownOutcome>::failure(UiError(2));
@@ -606,6 +750,47 @@ Result<ShutdownRequest> Runtime::request_shutdown() const {
   request_node->token = request;
   return Result<ShutdownRequest>::success(ShutdownRequest(
       request, state_, request_node.release()));
+}
+
+Result<HandlerRegistration> Runtime::set_callback_handler(
+    CallbackHandler handler, void* userdata, CallbackHandlerDestroy destroy) {
+  if (token_ == 0 || !state_) {
+    return Result<HandlerRegistration>::failure(UiError(2));
+  }
+  if (handler == nullptr && (userdata != nullptr || destroy != nullptr)) {
+    return Result<HandlerRegistration>::failure(UiError(1));
+  }
+  if (handler == nullptr) {
+    std::shared_ptr<detail::CallbackHandlerRecord> removed;
+    {
+      std::lock_guard<std::mutex> lock(state_->callback_handler_mutex);
+      removed = std::move(state_->callback_handler);
+    }
+    removed.reset();
+    return Result<HandlerRegistration>::success(
+        HandlerRegistration(state_, {}));
+  }
+
+  std::shared_ptr<detail::CallbackHandlerRecord> record;
+  try {
+    record = std::make_shared<detail::CallbackHandlerRecord>();
+  } catch (const std::bad_alloc&) {
+    return Result<HandlerRegistration>::failure(UiError(8));
+  } catch (...) {
+    return Result<HandlerRegistration>::failure(UiError(9));
+  }
+  record->handler = handler;
+  record->userdata = userdata;
+  record->destroy = destroy;
+
+  std::shared_ptr<detail::CallbackHandlerRecord> removed;
+  {
+    std::lock_guard<std::mutex> lock(state_->callback_handler_mutex);
+    removed = std::exchange(state_->callback_handler, record);
+  }
+  removed.reset();
+  return Result<HandlerRegistration>::success(
+      HandlerRegistration(state_, record));
 }
 
 Result<void> Runtime::close() noexcept {
@@ -781,6 +966,44 @@ Result<void> Property<T>::set(T value) {
 }
 
 template <typename T>
+Result<Subscription> Property<T>::subscribe(std::function<void()> callback) {
+  if (token_ == 0 || !state_) {
+    return Result<Subscription>::failure(UiError(2));
+  }
+  if (!callback) return Result<Subscription>::failure(UiError(1));
+
+  std::unique_ptr<detail::PendingNode> subscription_node(
+      new (std::nothrow) detail::PendingNode());
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  auto callback_state = std::unique_ptr<detail::SubscriptionCallbackState>(
+      new (std::nothrow)
+          detail::SubscriptionCallbackState(std::move(callback), state_));
+  if (!subscription_node || !error_node || !callback_state) {
+    return Result<Subscription>::failure(UiError(8));
+  }
+
+  ui_handle subscription = 0;
+  ui_handle error = 0;
+  const ui_status status = state_->api->property_subscribe(
+      token_, &detail::subscription_callback, callback_state.get(),
+      &detail::subscription_destroy, &subscription, &error);
+  if (status != 0) {
+    return Result<Subscription>::failure(detail::make_error(
+        status, error, state_, error_node.release()));
+  }
+  if (subscription == 0) {
+    return Result<Subscription>::failure(
+        detail::make_error(9, error, state_, error_node.release()));
+  }
+
+  callback_state.release();
+  error_node.reset();
+  return Result<Subscription>::success(Subscription(
+      subscription, state_, subscription_node.release()));
+}
+
+template <typename T>
 Result<void> Property<T>::close() noexcept {
   return detail::release_owned(token_, state_, cleanup_node_);
 }
@@ -790,5 +1013,48 @@ template class Property<std::int64_t>;
 template class Property<double>;
 template class Property<Decimal64>;
 template class Property<std::string>;
+
+Subscription::Subscription(
+    std::uint64_t token, std::shared_ptr<detail::RuntimeCleanupState> state,
+    detail::PendingNode* cleanup_node) noexcept
+    : token_(token), state_(std::move(state)), cleanup_node_(cleanup_node) {}
+
+Subscription::Subscription(Subscription&& other) noexcept
+    : token_(std::exchange(other.token_, 0)),
+      state_(std::move(other.state_)),
+      cleanup_node_(std::exchange(other.cleanup_node_, nullptr)) {}
+
+Subscription& Subscription::operator=(Subscription&& other) noexcept {
+  if (this != &other) {
+    detail::release_in_destructor(token_, state_, cleanup_node_);
+    token_ = std::exchange(other.token_, 0);
+    state_ = std::move(other.state_);
+    cleanup_node_ = std::exchange(other.cleanup_node_, nullptr);
+  }
+  return *this;
+}
+
+Subscription::~Subscription() noexcept {
+  detail::release_in_destructor(token_, state_, cleanup_node_);
+}
+
+Result<void> Subscription::cancel() noexcept {
+  if (token_ == 0 || !state_) return Result<void>::failure(UiError(2));
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node) return Result<void>::failure(UiError(8));
+  ui_handle error = 0;
+  const ui_status status = state_->api->subscription_cancel(token_, &error);
+  if (status != 0) {
+    return Result<void>::failure(detail::make_error(
+        status, error, state_, error_node.release()));
+  }
+  error_node.reset();
+  return Result<void>::success();
+}
+
+Result<void> Subscription::close() noexcept {
+  return detail::release_owned(token_, state_, cleanup_node_);
+}
 
 }  // namespace freemvvm

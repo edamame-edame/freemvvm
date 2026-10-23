@@ -37,7 +37,18 @@ int main() {
       *count_value.value() != std::numeric_limits<std::int64_t>::min()) {
     return 7;
   }
-  if (!count.set(std::numeric_limits<std::int64_t>::max()).has_value()) return 8;
+  int notification_count = 0;
+  auto subscription_result = count.subscribe([&notification_count] {
+    ++notification_count;
+  });
+  if (!subscription_result.has_value()) return 8;
+  auto subscription = std::move(*subscription_result.value());
+  if (notification_count != 0) return 9;
+  if (!count.set(std::numeric_limits<std::int64_t>::max()).has_value()) return 10;
+  if (notification_count != 1) return 11;
+  if (!subscription.cancel().has_value()) return 12;
+  if (!count.set(0).has_value() || notification_count != 1) return 13;
+  if (!subscription.close().has_value()) return 14;
   const char utf8_bytes[] = "\xe6\x97\xa5\xe6\x9c\xac\0tail";
   const std::string initial(utf8_bytes, sizeof(utf8_bytes) - 1);
   auto text_result = freemvvm::Property<std::string>::create(runtime, initial);
