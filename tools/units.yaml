@@ -1974,7 +1974,7 @@
     },
     {
       "id": "UNIT-WRAP-CPP-006",
-      "state": "ready",
+      "state": "complete",
       "scope": "cpp-property-notification-subscription-and-callback-failure-handler",
       "sources": [
         "wrappers/cpp/include/freemvvm/runtime.hpp",

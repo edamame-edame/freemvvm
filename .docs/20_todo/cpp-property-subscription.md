@@ -1,7 +1,7 @@
 # C++ Property 通知購読とcallback境界の計画
 
 - 更新日: 2026-10-23
-- 状態: 実装・Windowsローカル検証完了。Windows/Linux CI結果の記録待ち（2026-10-23）
+- 状態: 完了（2026-10-23）
 - 対象: C++ wrapperからのProperty通知購読、明示cancel、callback stateの所有移転
 
 ## 背景と根拠
@@ -43,13 +43,14 @@ subscription.value()->close();   // 所有handleをrelease
 2. [x] C++コーディング規則に従ってテスト設計とunit mappingをsource変更より先に登録した。
 3. [x] `Subscription` owner、`Property<T>::subscribe`、Runtime callback handler、noexcept trampoline/destroy thunkを追加した。C ABI/Coreの通知意味論は変更していない。
 4. [x] fake ABI focused testとrelocated package consumerを実装し、focused CTestと全bootstrap gatesを実行した。
-5. [ ] Windows/Linux CIで同一実装revisionを確認し、計画・unit台帳・`.docs/01_memory/`に結果を追記する。
+5. [x] Windows/Linux CIで同一実装revisionを確認し、計画・unit台帳・`.docs/01_memory/`に結果を追記した。
 
 ## ローカル検証結果
 
 - Windows: Visual Studio 2022 Build Tools環境で`tools/dev.py check`成功。CMake/CTest 10件すべてpassし、移設後CMake package consumerもpassした。`tools/dev.py minimum`もRust 1.85.0で成功した。
 - `tools/check_docs.py`成功（active documents 76、local links 6363）。`git diff --check`成功。
 - このPCの通常環境はVisual Studio 18 Build Toolsを優先するが、標準C++ヘッダーが未導入のため、検証はインストール済みのVisual Studio 2022 Build Toolsを明示して実行した。
+- 実装revision `47c034a4854ed34b2d3614c1160005b1daad062a` は[Development bootstrap CI run 39958879367](https://github.com/edamame-edame/freemvvm/actions/runs/39958879367)でWindows/Ubuntu両runner成功。各runnerの`LastTest.log`で`wrapper.cpp.property.subscription`が成功し、各gate reportとrelocated package consumerもpassした。
 
 ## レビュー対象
 

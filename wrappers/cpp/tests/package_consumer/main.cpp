@@ -44,7 +44,9 @@ int main() {
   if (!subscription_result.has_value()) return 8;
   auto subscription = std::move(*subscription_result.value());
   if (notification_count != 0) return 9;
-  if (!count.set(std::numeric_limits<std::int64_t>::max()).has_value()) return 10;
+  if (!count.set(std::numeric_limits<std::int64_t>::max()).has_value()) {
+    return 10;
+  }
   if (notification_count != 1) return 11;
   if (!subscription.cancel().has_value()) return 12;
   if (!count.set(0).has_value() || notification_count != 1) return 13;

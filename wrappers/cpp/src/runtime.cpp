@@ -182,7 +182,8 @@ void report_callback_exception(const std::exception_ptr& exception) noexcept {
                  error.what());
   } catch (...) {
     std::fputs(
-        "FreeMvvm: C++ property notification callback threw a non-standard exception\n",
+        "FreeMvvm: C++ property notification callback threw a "
+        "non-standard exception\n",
         stderr);
   }
 #else
