@@ -8,3 +8,4 @@
 - Binding error callbackは既存のSubscription callback state/trampolineを再利用するが、`CallbackFailure::kind`を`kBindingErrorNotification`に設定してProperty通知と分類する。登録失敗ではcallback stateをwrapperが保持・破棄し、成功後はCore destroyへ渡す。
 - `binding.hpp`は`property.hpp`の後方からincludeし、単体include時もinclude guardで型定義の循環を避ける。CMake `install(DIRECTORY include/)`により追加公開headerはrelocated packageへ含まれる。
 - fake ABI focused testは全5値型のmode/ownership/error pathsを制御し、relocated CMake package consumerはCore実接続のmode、値伝播、cancelを確認する。C++ public validator APIがない場合、遅延error stateの生成はfake ABIで検証し、Core/C ABI suiteを別のoracleにする。
+- 実装commit `9e89dd5026ea053acd441bc6a5d30147ea992ae3` のCI run [39989485319](https://github.com/edamame-edame/freemvvm/actions/runs/39989485319) はWindows/Linux両runnerで全bootstrap gates成功。unit `UNIT-WRAP-CPP-007` をcompleteにした。

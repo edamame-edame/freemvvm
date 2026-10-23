@@ -2015,7 +2015,7 @@
     },
     {
       "id": "UNIT-WRAP-CPP-007",
-      "state": "planned",
+      "state": "complete",
       "scope": "cpp-property-binding-modes-lifecycle-and-error-observation",
       "sources": [
         "wrappers/cpp/include/freemvvm/binding.hpp",

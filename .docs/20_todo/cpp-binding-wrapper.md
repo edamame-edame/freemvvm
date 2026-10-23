@@ -1,7 +1,7 @@
 # C++ Binding wrapper
 
 - 更新日: 2026-10-24
-- 状態: 実装中。Windows localのfocused test、relocated package consumer、全体check、Rust 1.85 minimumが成功。Windows/Linux CI待ち
+- 状態: 完了。Windows localのfocused test、relocated package consumer、全体check、Rust 1.85 minimum、および実装revisionのWindows/Linux CIが成功
 - 対象: 承認済みC++ wrapper、Binding要求、共通C ABIに基づき、C++からBindingの作成・明示解除・遅延エラー観測を使えるようにする。
 
 ## 背景
@@ -54,7 +54,7 @@ result.value()->close();   // 所有handleだけをrelease
 3. [x] C++ DD v1.3へBinding型、OneTimeの戻り方、cancel/release分離、error snapshotとsubscriptionの公開面を反映した。
 4. [x] Property全値型でBinding wrapperとfake ABI focused testsを実装した。
 5. [x] relocated CMake package consumerへmode・伝播・解除経路を追加した。focused tests、全体check、minimum compiler gateはWindows localで成功した。
-6. [ ] 実装と同じrevisionのWindows/Linux CI結果を確認し、unit台帳・本計画・`.docs/01_memory/`に記録する。
+6. [x] 実装と同じrevisionのWindows/Linux CI結果を確認し、unit台帳・本計画・`.docs/01_memory/`に記録した。run [39989485319](https://github.com/edamame-edame/freemvvm/actions/runs/39989485319) はWindows/Linux両runnerで全bootstrap gates成功。
 
 ## レビュー時に確認する選択
 
@@ -74,3 +74,4 @@ result.value()->close();   // 所有handleだけをrelease
 - `tools/dev.py check`成功。CTest 11件を含む全体gateが成功し、`wrapper.cpp.property.binding`がpass。
 - `tools/dev.py minimum`成功（Rust 1.85.0）。`tools/check_docs.py`はactive documents 76、local links 6402を検査し、`git diff --check`も成功。
 - package consumerは公開C++ validator APIを持たないため、遅延error state生成そのものはfake ABIで検証した。Core/C ABIの遅延validationは既存Core/ABI testsが担当する。
+- CI: 実装commit `9e89dd5026ea053acd441bc6a5d30147ea992ae3` のrun [39989485319](https://github.com/edamame-edame/freemvvm/actions/runs/39989485319) はWindows/Linux両runnerで成功。
