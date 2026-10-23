@@ -14,6 +14,12 @@
 namespace freemvvm {
 
 template <typename T>
+class Binding;
+template <typename T>
+class BindingError;
+enum class BindingMode : std::uint32_t;
+
+template <typename T>
 class Property final {
   static_assert(std::is_same<T, bool>::value ||
                     std::is_same<T, std::int64_t>::value ||
@@ -34,10 +40,16 @@ class Property final {
   Result<T> get() const;
   Result<void> set(T value);
   Result<Subscription> subscribe(std::function<void()> callback);
+  Result<std::optional<Binding<T>>> bind_to(Property<T>& target,
+                                            BindingMode mode);
   Result<void> close() noexcept;
 
  private:
   friend struct detail::RuntimeTestAccess;
+  template <typename U>
+  friend class Binding;
+  template <typename U>
+  friend class BindingError;
   Property(std::uint64_t token,
            std::shared_ptr<detail::RuntimeCleanupState> state,
            detail::PendingNode* cleanup_node) noexcept;
@@ -59,5 +71,7 @@ static_assert(std::is_nothrow_move_constructible<Property<std::string>>::value,
               "Property moves must not throw");
 
 }  // namespace freemvvm
+
+#include "freemvvm/binding.hpp"
 
 #endif  // FREEMVVM_CPP_PROPERTY_HPP_

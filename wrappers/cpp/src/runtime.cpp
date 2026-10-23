@@ -167,6 +167,34 @@ ui_status api_subscription_cancel(ui_handle subscription,
   return ui_abi_1_subscription_cancel(subscription, out_error);
 }
 
+ui_status api_binding_create(ui_handle source, ui_handle target,
+                             std::uint32_t mode, ui_handle* out_binding,
+                             ui_handle* out_error) {
+  return ui_abi_1_binding_create(source, target, mode, out_binding, out_error);
+}
+
+ui_status api_binding_cancel(ui_handle binding, ui_handle* out_error) {
+  return ui_abi_1_binding_cancel(binding, out_error);
+}
+
+ui_status api_binding_error_snapshot(ui_handle binding,
+                                      ui_handle* out_error,
+                                      ui_handle* out_rejected_property,
+                                      std::uint32_t* out_direction) {
+  return ui_abi_1_binding_error_snapshot(binding, out_error,
+                                         out_rejected_property,
+                                         out_direction);
+}
+
+ui_status api_binding_subscribe_error(ui_handle binding, ui_callback callback,
+                                      void* userdata,
+                                      ui_destroy_callback destroy,
+                                      ui_handle* out_subscription,
+                                      ui_handle* out_error) {
+  return ui_abi_1_binding_subscribe_error(binding, callback, userdata, destroy,
+                                          out_subscription, out_error);
+}
+
 void report_callback_exception(const std::exception_ptr& exception) noexcept {
   if (!exception) {
     std::fputs("FreeMvvm: C++ callback failed without an exception payload\n",
@@ -194,11 +222,15 @@ void report_callback_exception(const std::exception_ptr& exception) noexcept {
 
 struct SubscriptionCallbackState final {
   SubscriptionCallbackState(std::function<void()> callback_value,
-                           std::shared_ptr<RuntimeCleanupState> runtime_value)
-      : callback(std::move(callback_value)), runtime(std::move(runtime_value)) {}
+                           std::shared_ptr<RuntimeCleanupState> runtime_value,
+                           CallbackKind callback_kind)
+      : callback(std::move(callback_value)),
+        runtime(std::move(runtime_value)),
+        kind(callback_kind) {}
 
   std::function<void()> callback;
   std::shared_ptr<RuntimeCleanupState> runtime;
+  CallbackKind kind;
 };
 
 void subscription_callback(void* userdata) noexcept {
@@ -208,8 +240,7 @@ void subscription_callback(void* userdata) noexcept {
     state->callback();
   } catch (...) {
     state->runtime->dispatch_callback_failure(
-        CallbackFailure{CallbackKind::kPropertyNotification,
-                        std::current_exception()});
+        CallbackFailure{state->kind, std::current_exception()});
   }
 #else
   state->callback();
@@ -426,6 +457,10 @@ std::shared_ptr<const AbiApi> linked_api() {
       &api_property_set_utf8,
       &api_property_subscribe,
       &api_subscription_cancel,
+      &api_binding_create,
+      &api_binding_cancel,
+      &api_binding_error_snapshot,
+      &api_binding_subscribe_error,
   });
   return api;
 }
@@ -979,7 +1014,9 @@ Result<Subscription> Property<T>::subscribe(std::function<void()> callback) {
       new (std::nothrow) detail::PendingNode());
   auto callback_state = std::unique_ptr<detail::SubscriptionCallbackState>(
       new (std::nothrow)
-          detail::SubscriptionCallbackState(std::move(callback), state_));
+          detail::SubscriptionCallbackState(
+              std::move(callback), state_,
+              CallbackKind::kPropertyNotification));
   if (!subscription_node || !error_node || !callback_state) {
     return Result<Subscription>::failure(UiError(8));
   }
@@ -1005,6 +1042,65 @@ Result<Subscription> Property<T>::subscribe(std::function<void()> callback) {
 }
 
 template <typename T>
+Result<std::optional<Binding<T>>> Property<T>::bind_to(
+    Property<T>& target, BindingMode mode) {
+  if (token_ == 0 || !state_ || target.token_ == 0 || !target.state_) {
+    return Result<std::optional<Binding<T>>>::failure(UiError(2));
+  }
+
+  std::unique_ptr<detail::PendingNode> binding_node(
+      new (std::nothrow) detail::PendingNode());
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!binding_node || !error_node) {
+    return Result<std::optional<Binding<T>>>::failure(UiError(8));
+  }
+
+  ui_handle binding = 0;
+  ui_handle error = 0;
+  const ui_status status = state_->api->binding_create(
+      token_, target.token_, static_cast<std::uint32_t>(mode), &binding,
+      &error);
+  if (status != 0) {
+    if (binding != 0) {
+      binding_node->token = binding;
+      (void)state_->enqueue(binding_node.release());
+    }
+    return Result<std::optional<Binding<T>>>::failure(detail::make_error(
+        status, error, state_, error_node.release()));
+  }
+  if (error != 0) {
+    if (binding != 0) {
+      binding_node->token = binding;
+      (void)state_->enqueue(binding_node.release());
+    } else {
+      binding_node.reset();
+    }
+    return Result<std::optional<Binding<T>>>::failure(detail::make_error(
+        9, error, state_, error_node.release()));
+  }
+
+  error_node.reset();
+  if (mode == BindingMode::kOnce) {
+    if (binding != 0) {
+      binding_node->token = binding;
+      (void)state_->enqueue(binding_node.release());
+      return Result<std::optional<Binding<T>>>::failure(UiError(9));
+    }
+    binding_node.reset();
+    return Result<std::optional<Binding<T>>>::success(std::nullopt);
+  }
+  if (binding == 0) {
+    binding_node.reset();
+    return Result<std::optional<Binding<T>>>::failure(UiError(9));
+  }
+
+  Binding<T> owned_binding(binding, state_, binding_node.release());
+  std::optional<Binding<T>> result(std::move(owned_binding));
+  return Result<std::optional<Binding<T>>>::success(std::move(result));
+}
+
+template <typename T>
 Result<void> Property<T>::close() noexcept {
   return detail::release_owned(token_, state_, cleanup_node_);
 }
@@ -1014,6 +1110,151 @@ template class Property<std::int64_t>;
 template class Property<double>;
 template class Property<Decimal64>;
 template class Property<std::string>;
+
+template <typename T>
+Binding<T>::Binding(std::uint64_t token,
+                    std::shared_ptr<detail::RuntimeCleanupState> state,
+                    detail::PendingNode* cleanup_node) noexcept
+    : token_(token), state_(std::move(state)), cleanup_node_(cleanup_node) {}
+
+template <typename T>
+Binding<T>::Binding(Binding&& other) noexcept
+    : token_(std::exchange(other.token_, 0)),
+      state_(std::move(other.state_)),
+      cleanup_node_(std::exchange(other.cleanup_node_, nullptr)) {}
+
+template <typename T>
+Binding<T>& Binding<T>::operator=(Binding&& other) noexcept {
+  if (this != &other) {
+    detail::release_in_destructor(token_, state_, cleanup_node_);
+    token_ = std::exchange(other.token_, 0);
+    state_ = std::move(other.state_);
+    cleanup_node_ = std::exchange(other.cleanup_node_, nullptr);
+  }
+  return *this;
+}
+
+template <typename T>
+Binding<T>::~Binding() noexcept {
+  detail::release_in_destructor(token_, state_, cleanup_node_);
+}
+
+template <typename T>
+Result<void> Binding<T>::cancel() noexcept {
+  if (token_ == 0 || !state_) return Result<void>::failure(UiError(2));
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node) return Result<void>::failure(UiError(8));
+  ui_handle error = 0;
+  const ui_status status = state_->api->binding_cancel(token_, &error);
+  if (status != 0) {
+    return Result<void>::failure(detail::make_error(
+        status, error, state_, error_node.release()));
+  }
+  error_node.reset();
+  return Result<void>::success();
+}
+
+template <typename T>
+Result<void> Binding<T>::close() noexcept {
+  return detail::release_owned(token_, state_, cleanup_node_);
+}
+
+template <typename T>
+Result<std::optional<BindingError<T>>> Binding<T>::error_snapshot() const {
+  if (token_ == 0 || !state_) {
+    return Result<std::optional<BindingError<T>>>::failure(UiError(2));
+  }
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  std::unique_ptr<detail::PendingNode> property_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node || !property_node) {
+    return Result<std::optional<BindingError<T>>>::failure(UiError(8));
+  }
+
+  ui_handle error = 0;
+  ui_handle rejected_property = 0;
+  std::uint32_t raw_direction = 0;
+  const ui_status status = state_->api->binding_error_snapshot(
+      token_, &error, &rejected_property, &raw_direction);
+  if (status != 0) {
+    return Result<std::optional<BindingError<T>>>::failure(UiError(status));
+  }
+  if (error == 0 && rejected_property == 0 && raw_direction == 0) {
+    return Result<std::optional<BindingError<T>>>::success(std::nullopt);
+  }
+  if (error == 0 || rejected_property == 0 ||
+      (raw_direction != 1 && raw_direction != 2)) {
+    if (error != 0) {
+      error_node->token = error;
+      (void)state_->enqueue(error_node.release());
+    }
+    if (rejected_property != 0) {
+      property_node->token = rejected_property;
+      (void)state_->enqueue(property_node.release());
+    }
+    return Result<std::optional<BindingError<T>>>::failure(UiError(9));
+  }
+
+  std::uint32_t error_status = 0;
+  const ui_status read_status = state_->api->error_status(error, &error_status);
+  if (read_status != 0) error_status = read_status;
+  UiError error_value = detail::make_error(
+      error_status, error, state_, error_node.release());
+  BindingError<T> snapshot(
+      std::move(error_value), rejected_property,
+      raw_direction == 1 ? BindingDirection::kSourceToTarget
+                         : BindingDirection::kTargetToSource,
+      state_, property_node.release());
+  return Result<std::optional<BindingError<T>>>::success(
+      std::optional<BindingError<T>>(std::move(snapshot)));
+}
+
+template <typename T>
+Result<Subscription> Binding<T>::subscribe_error(
+    std::function<void()> callback) {
+  if (token_ == 0 || !state_) return Result<Subscription>::failure(UiError(2));
+  if (!callback) return Result<Subscription>::failure(UiError(1));
+
+  std::unique_ptr<detail::PendingNode> subscription_node(
+      new (std::nothrow) detail::PendingNode());
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  auto callback_state = std::unique_ptr<detail::SubscriptionCallbackState>(
+      new (std::nothrow)
+          detail::SubscriptionCallbackState(
+              std::move(callback), state_,
+              CallbackKind::kBindingErrorNotification));
+  if (!subscription_node || !error_node || !callback_state) {
+    return Result<Subscription>::failure(UiError(8));
+  }
+
+  ui_handle subscription = 0;
+  ui_handle error = 0;
+  const ui_status status = state_->api->binding_subscribe_error(
+      token_, &detail::subscription_callback, callback_state.get(),
+      &detail::subscription_destroy, &subscription, &error);
+  if (status != 0) {
+    return Result<Subscription>::failure(detail::make_error(
+        status, error, state_, error_node.release()));
+  }
+  if (subscription == 0) {
+    return Result<Subscription>::failure(detail::make_error(
+        9, error, state_, error_node.release()));
+  }
+
+  callback_state.release();
+  error_node.reset();
+  return Result<Subscription>::success(Subscription(
+      subscription, state_, subscription_node.release()));
+}
+
+template class Binding<bool>;
+template class Binding<std::int64_t>;
+template class Binding<double>;
+template class Binding<Decimal64>;
+template class Binding<std::string>;
 
 Subscription::Subscription(
     std::uint64_t token, std::shared_ptr<detail::RuntimeCleanupState> state,

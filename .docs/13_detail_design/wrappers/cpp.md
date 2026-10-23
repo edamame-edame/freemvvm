@@ -1,9 +1,9 @@
 # 言語ラッパー：C++
 
-- 文書版: 1.2 レビュー案
+- 文書版: 1.3
 - 文書ロール: detailed-design
-- 更新日: 2026-10-22
-- 状態: 1.2全文承認済み（利用者、2026-10-22）。実装・試験状態は別管理
+- 更新日: 2026-10-24
+- 状態: 1.2全文承認済み（利用者、2026-10-22）。1.3 Binding API補足承認済み（利用者、2026-10-24）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -17,6 +17,7 @@
 | --- | --- |
 | 所有型・callback・例外・thread | [RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-03-005](../../11_requirements/RQ-03_language-support.md#rq-03-005)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-04-016](../../11_requirements/RQ-04_abi-boundary.md#rq-04-016)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-023](../../11_requirements/RQ-04_abi-boundary.md#rq-04-023)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-06-006](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-006) |
 | 公開API・handler・cleanup同期 | [RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-03-005](../../11_requirements/RQ-03_language-support.md#rq-03-005)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-05-014](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-014)、[RQ-12-004](../../11_requirements/RQ-12_build-distribution.md#rq-12-004) |
+| Property Binding | [RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-07-001](../../11_requirements/RQ-07_binding.md#rq-07-001)、[RQ-07-002](../../11_requirements/RQ-07_binding.md#rq-07-002)、[RQ-07-003](../../11_requirements/RQ-07_binding.md#rq-07-003)、[RQ-07-004](../../11_requirements/RQ-07_binding.md#rq-07-004)、[RQ-07-005](../../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-007](../../11_requirements/RQ-07_binding.md#rq-07-007)、[RQ-07-008](../../11_requirements/RQ-07_binding.md#rq-07-008)、[RQ-07-009](../../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../../11_requirements/RQ-07_binding.md#rq-07-010)、[RQ-07-011](../../11_requirements/RQ-07_binding.md#rq-07-011) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -432,6 +433,50 @@ sequenceDiagram
 
 この1.2案は公開C ABIを追加せず、既承認要求の外部保証も変更しない。cleanup workerが受け持つのは言語wrapperが保持するowned tokenのrelease再試行であり、Core UI状態のfinalizer実行主体はRuntimeの承認済み設計から移さない。
 
+## Property Binding API
+
+### 公開型と呼出し
+
+`Property<T>`間のBindingは同じ値型`T`に限定し、暗黙変換やconverterを追加しない。公開面は次のとおりとする。
+
+```cpp
+enum class BindingMode : std::uint32_t {
+  kOnce = 1,
+  kOneWay = 2,
+  kTwoWay = 3,
+};
+
+enum class BindingDirection : std::uint32_t {
+  kSourceToTarget = 1,
+  kTargetToSource = 2,
+};
+
+template <typename T>
+Result<std::optional<Binding<T>>> Property<T>::bind_to(
+    Property<T>& target, BindingMode mode);
+
+template <typename T>
+class Binding final {
+ public:
+  Result<void> cancel() noexcept;
+  Result<void> close() noexcept;
+  Result<std::optional<BindingError<T>>> error_snapshot() const;
+  Result<Subscription> subscribe_error(std::function<void()> callback);
+};
+```
+
+`Binding<T>`と`BindingError<T>`はmove-onlyとする。source/target Property tokenはcreate call中だけ借用し、Binding tokenはnative call成功後にwrapperが所有する。`UI_BIND_ONCE`成功はstatusが`UI_OK`でBinding tokenが0の結果なので、空`optional`を含む`Result`でOneTime成功と失敗を区別する。OneWay/TwoWay成功ではtokenを持つ`Binding<T>`を返す。型・Runtime・thread・graph制約と初期同期の成否はC ABI status/errorを保持し、wrapper側で値を修正しない。
+
+`Binding<T>::cancel()`はC ABI `binding_cancel`を呼んで接続を解除する。`close()`とdestructorはBinding tokenをreleaseするだけであり、接続を解除しない。cancel成功後もhandleは有効で、別途closeする。明示操作失敗時はtokenを保持して再試行でき、destructorのrelease失敗は既存cleanup supervisorへtoken/nodeを移管する。
+
+### 遅延エラーと通知
+
+`Binding<T>::error_snapshot()`は`Result<std::optional<BindingError<T>>>`を返す。エラーなしの`UI_OK`/zero outputsは空optional、エラーありは不変error token、拒否Propertyの新しいowned token、方向を保持する。wrapperはC ABI呼出し前に両owned token分のcleanup nodeを確保し、結果tokenをそれぞれ`UiError`の`ErrorSnapshot`と`Property<T>`へ移す。取得済みsnapshotはBindingの後続状態変化で変更しない。
+
+`BindingError<T>`は`const UiError& error() const`、`const Property<T>& rejected_property() const`、`BindingDirection direction() const`で内容を参照できる。Property handleはsnapshotごとに独立したowned referenceであり、snapshot破棄時に通常のcleanup規則でreleaseする。
+
+`subscribe_error()`はC ABI `binding_subscribe_error`を使い、既存Property subscriptionと同じnoexcept trampoline、callback handler、例外診断、in-flight destroy規則を再利用する。`CallbackFailure::kind`は`kBindingErrorNotification`とする。登録時の初回callbackはなく、利用者はcallback内で`error_snapshot()`を呼ぶ。Subscription handleのreleaseとerror通知のcancelは分離する。通知順・coalescing・Binding解除/Runtime shutdown時のCore所有権は共通ABI/DDを正とし、wrapperから変更しない。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -442,3 +487,4 @@ sequenceDiagram
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
 | 2026-10-22 | 1.2改訂案 | 最初のC++ Runtime API、C++17 non-throw Result、Runtime専用cleanup queueとprocess-wide supervisorの所有・retry・module pin境界を追加。1.1承認内容を維持し、全文レビュー待ち |
 | 2026-10-22 | 1.2全文 | 利用者が全文を承認。既承認要求とC ABI契約の範囲でAPI・cleanup寿命を具体化。実装・試験状態は別管理 |
+| 2026-10-24 | 1.3 Binding API補足 | 利用者が承認済み計画/API案を承認。`Property<T>::bind_to`、OneTime optional、cancel/release分離、error snapshotとSubscriptionを具体化。実装・試験状態は別管理 |

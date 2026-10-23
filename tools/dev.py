@@ -123,6 +123,7 @@ def main():
             "cpp-property-f64-test",
             "cpp-property-decimal-test",
             "cpp-property-subscription-test",
+            "cpp-property-binding-test",
             "cpp-package-test",
             "format",
             "minimum",
@@ -158,6 +159,8 @@ def main():
             if args.command == "cpp-property-decimal-test"
             else "cpp-property-subscription-unit-test"
             if args.command == "cpp-property-subscription-test"
+            else "cpp-property-binding-unit-test"
+            if args.command == "cpp-property-binding-test"
             else "cpp-runtime-unit-test"
             if args.command == "cpp-runtime-test"
             else "development-bootstrap"
@@ -175,6 +178,8 @@ def main():
             if args.command == "cpp-property-decimal-test"
             else "C++ Property subscription unit test executed"
             if args.command == "cpp-property-subscription-test"
+            else "C++ Property Binding wrapper unit test executed"
+            if args.command == "cpp-property-binding-test"
             else "C++ Runtime and package integration tests executed"
             if args.command == "check"
             else "cpp-runtime unit test executed"
@@ -546,6 +551,39 @@ def main():
                 environment,
                 results,
                 "cpp-property-subscription-test",
+            )
+        elif args.command == "cpp-property-binding-test":
+            run(
+                ["cmake", "--preset", "dev"],
+                environment,
+                results,
+                "cmake-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "--preset",
+                    "dev",
+                    "--target",
+                    "freemvvm_cpp_property_binding_tests_exe",
+                ],
+                environment,
+                results,
+                "cpp-property-binding-test-build",
+            )
+            run(
+                [
+                    "ctest",
+                    "--test-dir",
+                    "out/cmake/dev",
+                    "-R",
+                    "^wrapper\\.cpp\\.property\\.binding$",
+                    "--output-on-failure",
+                ],
+                environment,
+                results,
+                "cpp-property-binding-test",
             )
         elif args.command == "cpp-package-test":
             run(

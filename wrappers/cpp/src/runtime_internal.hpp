@@ -48,6 +48,14 @@ struct AbiApi final {
   ui_status (*property_subscribe)(ui_handle, ui_callback, void*,
                                   ui_destroy_callback, ui_handle*, ui_handle*);
   ui_status (*subscription_cancel)(ui_handle, ui_handle*);
+  ui_status (*binding_create)(ui_handle, ui_handle, std::uint32_t,
+                              ui_handle*, ui_handle*);
+  ui_status (*binding_cancel)(ui_handle, ui_handle*);
+  ui_status (*binding_error_snapshot)(ui_handle, ui_handle*, ui_handle*,
+                                      std::uint32_t*);
+  ui_status (*binding_subscribe_error)(ui_handle, ui_callback, void*,
+                                       ui_destroy_callback, ui_handle*,
+                                       ui_handle*);
 };
 
 struct CallbackHandlerRecord final {

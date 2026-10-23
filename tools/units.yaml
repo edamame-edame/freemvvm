@@ -2012,6 +2012,46 @@
         {"id": "UT-WRAP-CPP-PROP-SUB-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-property-subscription-test"]},
         {"id": "UT-PKG-CPP-006", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]}
       ]
+    },
+    {
+      "id": "UNIT-WRAP-CPP-007",
+      "state": "planned",
+      "scope": "cpp-property-binding-modes-lifecycle-and-error-observation",
+      "sources": [
+        "wrappers/cpp/include/freemvvm/binding.hpp",
+        "wrappers/cpp/include/freemvvm/property.hpp",
+        "wrappers/cpp/src/runtime.cpp",
+        "wrappers/cpp/src/runtime_internal.hpp",
+        "wrappers/cpp/tests/property_binding_tests.cpp",
+        "wrappers/cpp/tests/package_consumer/main.cpp",
+        "tools/dev.py"
+      ],
+      "config": ["CMakeLists.txt", "wrappers/cpp/CMakeLists.txt", "crates/c-abi/include/freemvvm/abi.h", "tools/units.yaml"],
+      "depends_on": ["UNIT-BUILD-001", "UNIT-ABI-019", "UNIT-WRAP-CPP-006", "UNIT-PKG-CPP-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.3",
+          "section": "Property Binding API / Binding lifecycle / Binding error snapshot and subscription"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Binding作成と解除 / Bindingエラーの読み取りと通知"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding registration lifecycle / 遅延検証失敗通知"
+        }
+      ],
+      "requirements": ["RQ-05-002", "RQ-05-006", "RQ-05-007", "RQ-05-012", "RQ-06-001", "RQ-07-001", "RQ-07-002", "RQ-07-003", "RQ-07-004", "RQ-07-005", "RQ-07-006", "RQ-07-007", "RQ-07-008", "RQ-07-009", "RQ-07-010", "RQ-07-011", "RQ-12-004"],
+      "cases": ["TC-BIND-01", "TC-BIND-INIT-REJECT-01", "TC-BIND-PROPAGATION-REJECT-01", "TC-LIFE-01", "TC-THREAD-01", "TC-ERROR-01", "TC-WRAP-CPP-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {"id": "UT-WRAP-CPP-BIND-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-property-binding-test"]},
+        {"id": "UT-PKG-CPP-007", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]}
+      ]
     }
   ]
 }

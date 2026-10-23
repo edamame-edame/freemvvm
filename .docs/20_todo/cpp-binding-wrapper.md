@@ -1,7 +1,7 @@
 # C++ Binding wrapper
 
 - 更新日: 2026-10-24
-- 状態: 計画・API案承認済み（利用者、2026-10-24）。未実装
+- 状態: 実装中。Windows localのfocused test、relocated package consumer、全体check、Rust 1.85 minimumが成功。Windows/Linux CI待ち
 - 対象: 承認済みC++ wrapper、Binding要求、共通C ABIに基づき、C++からBindingの作成・明示解除・遅延エラー観測を使えるようにする。
 
 ## 背景
@@ -14,7 +14,7 @@ Bindingの外部動作は承認済み[RQ-07 Binding](../11_requirements/RQ-07_bi
 
 - 要求: [RQ-07-001〜RQ-07-011](../11_requirements/RQ-07_binding.md)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md)、[RQ-05-006](../11_requirements/RQ-05_ownership-callbacks.md)、[RQ-05-007](../11_requirements/RQ-05_ownership-callbacks.md)、[RQ-05-012](../11_requirements/RQ-05_ownership-callbacks.md)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md)
 - アーキテクチャ: [ADR-0001](../04_approval/adr-0001-rust-core.md)。Rust Coreを動作の正本とし、C++ wrapperはversioned C ABIを呼ぶ。
-- 詳細設計: [C++ wrapper DD v1.2](../13_detail_design/wrappers/cpp.md)、[共通C ABI DD v1.2](../13_detail_design/runtime-objects/abi.md)、[通知とBinding伝播 DD v1.1](../13_detail_design/events/notifications-binding.md)
+- 詳細設計: [C++ wrapper DD v1.3](../13_detail_design/wrappers/cpp.md)、[共通C ABI DD v1.2](../13_detail_design/runtime-objects/abi.md)、[通知とBinding伝播 DD v1.1](../13_detail_design/events/notifications-binding.md)
 - 試験: [wrapper unit-test設計](../32_unit_test/wrappers.md)、[unit-test strategy](../32_unit_test/unit-test-strategy.md)、[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01)
 
 ## レビューするC++ API案
@@ -24,7 +24,7 @@ enum class BindingMode { kOnce, kOneWay, kTwoWay };
 enum class BindingDirection { kSourceToTarget, kTargetToSource };
 
 auto result = source.bind_to(target, BindingMode::kTwoWay);
-// Result<std::optional<Binding>>:
+// Result<std::optional<Binding<T>>>:
 // kOnce成功なら空、kOneWay/kTwoWay成功ならmove-only Bindingを返す。
 result.value()->cancel();  // Core接続を明示解除
 result.value()->close();   // 所有handleだけをrelease
@@ -44,16 +44,16 @@ result.value()->close();   // 所有handleだけをrelease
 - Binding ownership testで、move、close、cancelとcloseの独立、release単独で接続を維持、cancel後の伝播停止、close/release失敗時の再試行、destructor cleanupを確認する。
 - Error testで、エラーなしsnapshot、遅延validation error snapshotの値・拒否Property・方向、取得済snapshotの不変性、回復後の空snapshot、初期同期拒否が状態を変えないことを確認する。
 - Error subscription testで、初回通知なし、状態変化通知、明示cancel、callback中のsnapshot取得、in-flight callback中の解除と一度だけのdestroyを確認する。Coreの伝播順・coalescingそのものはCore testsを正とする。
-- relocated CMake package consumerで、OneTime/OneWay/TwoWay、遅延validation error取得・通知、cancel/closeを使い、公開headerとexport targetだけで動作することを確認する。
+- relocated CMake package consumerで、OneTime/OneWay/TwoWay、値伝播、cancel/closeを使い、公開headerとexport targetだけで実Coreへ接続できることを確認する。C++ wrapperのBinding error snapshot/Subscriptionはfake ABIで状態を制御して検証し、Core/C ABIの遅延validation errorは既存suiteを正とする。validator登録を公開するC++ APIは本unitの範囲外。
 - 実装開始前に`.docs/32_unit_test/wrappers.md`へ詳細test設計を追加し、`tools/units.yaml`へ実装path・依存・要求・case・focused test・package testを登録する。候補IDは`UNIT-WRAP-CPP-007`、`UT-WRAP-CPP-BIND-001`、`UT-PKG-CPP-007`。
 
 ## 実施順案
 
 1. [x] 利用者がこの計画と公開API案をレビュー・承認した（2026-10-24）。
 2. [x] 承認済み計画を日本語commit messageで記録する。unit-test設計とunit mappingは実装開始後、source変更前に登録する。
-3. [ ] C++ DDへBinding型、OneTimeの戻り方、cancel/release分離、error snapshotとsubscriptionの公開面を反映する。承認済みRQ/DDの外部動作は変更しない。
-4. [ ] Property全値型でBinding wrapperとfake ABI focused testsを実装する。
-5. [ ] relocated CMake package consumerへ代表的な方向・遅延error・解除経路を追加し、focused tests、全体check、minimum compiler gateを実行する。
+3. [x] C++ DD v1.3へBinding型、OneTimeの戻り方、cancel/release分離、error snapshotとsubscriptionの公開面を反映した。
+4. [x] Property全値型でBinding wrapperとfake ABI focused testsを実装した。
+5. [x] relocated CMake package consumerへmode・伝播・解除経路を追加した。focused tests、全体check、minimum compiler gateはWindows localで成功した。
 6. [ ] 実装と同じrevisionのWindows/Linux CI結果を確認し、unit台帳・本計画・`.docs/01_memory/`に記録する。
 
 ## レビュー時に確認する選択
@@ -65,3 +65,12 @@ result.value()->close();   // 所有handleだけをrelease
 | 日付 | 対象 | 承認者 | 結果 |
 | --- | --- | --- | --- |
 | 2026-10-24 | 本計画と公開API案 | 利用者 | 「ok」により計画・API案を承認。実装開始は別途承認待ち |
+| 2026-10-24 | 実装開始 | 利用者 | 「進めてください」により、本計画に沿う実装を承認 |
+
+## Windows local検証
+
+- Visual Studio 2022 Build Tools (MSVC 19.44)で`tools/dev.py cpp-property-binding-test`成功。fake ABIで全5値型の3 mode、status/error ownership、Binding move/cancel/close、error snapshotとerror subscription callback kindを確認。
+- `tools/dev.py cpp-package-test`成功。移設・別prefixのconsumerでOneTime copy、OneWay/TwoWay伝播、cancel後の停止を確認。
+- `tools/dev.py check`成功。CTest 11件を含む全体gateが成功し、`wrapper.cpp.property.binding`がpass。
+- `tools/dev.py minimum`成功（Rust 1.85.0）。`tools/check_docs.py`はactive documents 76、local links 6402を検査し、`git diff --check`も成功。
+- package consumerは公開C++ validator APIを持たないため、遅延error state生成そのものはfake ABIで検証した。Core/C ABIの遅延validationは既存Core/ABI testsが担当する。

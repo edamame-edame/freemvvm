@@ -112,7 +112,10 @@ struct HostRegistration final {
   Destroy destroy = nullptr;
 };
 
-enum class CallbackKind { kPropertyNotification };
+enum class CallbackKind {
+  kPropertyNotification,
+  kBindingErrorNotification,
+};
 
 struct CallbackFailure final {
   CallbackKind kind;

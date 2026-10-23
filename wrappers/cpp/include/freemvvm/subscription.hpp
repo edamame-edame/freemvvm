@@ -7,6 +7,8 @@ namespace freemvvm {
 
 template <typename T>
 class Property;
+template <typename T>
+class Binding;
 
 class Subscription final {
  public:
@@ -22,6 +24,8 @@ class Subscription final {
  private:
   template <typename T>
   friend class Property;
+  template <typename T>
+  friend class Binding;
   friend struct detail::RuntimeTestAccess;
   Subscription(std::uint64_t token,
                std::shared_ptr<detail::RuntimeCleanupState> state,
