@@ -1890,7 +1890,7 @@
     },
     {
       "id": "UNIT-WRAP-CPP-004",
-      "state": "ready",
+      "state": "complete",
       "scope": "cpp-property-f64-create-get-set-and-bit-preserving-mapping",
       "sources": [
         "wrappers/cpp/include/freemvvm/property.hpp",

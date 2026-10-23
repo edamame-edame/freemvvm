@@ -1,7 +1,7 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 
 - 文書版: 0.1
-- 状態: 0.1全文承認済み（利用者、2026-10-17）。C++ Runtime、Property BOOL/I64/UTF-8/F64、CMake package consumerは実装済み。F64 Propertyはローカル全体検証済み、push後Windows/Linux CI確認待ち。UTF-8 Propertyと全bootstrap gatesはrun [39872968706](https://github.com/edamame-edame/freemvvm/actions/runs/39872968706)、BOOL/I64はrun [39801053995](https://github.com/edamame-edame/freemvvm/actions/runs/39801053995) のWindows/Linux両runnerで成功。その他の製品testは未実装・未実行。接続gapは別管理
+- 状態: 0.1全文承認済み（利用者、2026-10-17）。C++ Runtime、Property BOOL/I64/UTF-8/F64、CMake package consumerは実装済み。F64 Propertyと全bootstrap gatesはrun [39948267794](https://github.com/edamame-edame/freemvvm/actions/runs/39948267794) のWindows/Linux両runnerで成功。UTF-8 Propertyはrun [39872968706](https://github.com/edamame-edame/freemvvm/actions/runs/39872968706)、BOOL/I64はrun [39801053995](https://github.com/edamame-edame/freemvvm/actions/runs/39801053995) のWindows/Linux両runnerで成功。その他の製品testは未実装・未実行。接続gapは別管理
 - 更新日: 2026-10-23
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。

@@ -1,7 +1,7 @@
 # C++ Property wrapper F64 value
 
 - 更新日: 2026-10-23
-- 状態: 実装済み。ローカル全体検証済み、Windows/Linux CI確認待ち
+- 状態: 完了。実装・ローカル検証・Windows/Linux CI確認済み
 - 対象: `freemvvm::Property<double>` のcreate/get/set
 
 ## 背景と承認済み根拠
@@ -35,16 +35,16 @@ WrapperはNaNやinfinityを拒否・正規化せず、signed zeroの符号を含
 - `UT-PKG-CPP-004`をrelocated CMake package consumerへ追加し、別consumerからProperty<double>を作成・取得・設定・closeする。
 - focused tests、C++ Runtime/既存Property tests、package consumer、`tools/dev.py check`、`tools/dev.py minimum`、文書検査とWindows/Linux CIを同じ実装revisionで確認する。
 
-2026-10-23のローカル検証では、C++ CTest 8件、移設後package consumer 1件、`tools/dev.py check`（文書リンク・format/lint・Rust/C++ build・既存bootstrap gateを含む）、Rust 1.85 minimum checkが成功した。Windows/Linux CIは実装commit push後に記録する。
+2026-10-23のローカル検証では、C++ CTest 8件、移設後package consumer 1件、`tools/dev.py check`（文書リンク・format/lint・Rust/C++ build・既存bootstrap gateを含む）、Rust 1.85 minimum checkが成功した。実装revision `e4ab039c99fc61ebd4ffa47858357c56e2cb2c53` は[Windows/Linux CI run 39948267794](https://github.com/edamame-edame/freemvvm/actions/runs/39948267794)で両runner成功し、両方の`LastTest.log`で`wrapper.cpp.property.f64`のpassを確認した。
 
 ## 実施手順
 
 1. 利用者レビュー・承認後、この計画を日本語commitで先にcommit/pushする。
 2. unit-test設計と実装unit mappingをsource変更前に登録した。
 3. F64 create/get/setのC++接続、fake ABI試験、relocated package consumerを実装した。
-4. focusedおよび全体ローカル検証を完了した。Windows/Linux CI evidenceはpush後に本書と試験台帳へ追記する。
+4. focused・全体ローカル検証とWindows/Linux CIを完了した。同一revisionで両runnerおよびF64 CTestのpassを確認した。
 5. F64 wrapperのbit-preserving境界とCore/ABI責務分担を`.docs/01_memory/cpp-property-f64.md`へ記録した。
 
 ## 承認境界
 
-利用者は2026-10-23に「ok」と承認した。承認対象は`Property<double>` API、F64値を変換・正規化せずC ABIへ渡す方針、上記test範囲である。計画を先にcommit/pushし、その後にtest台帳登録とsource変更を開始する。
+利用者は2026-10-23に「ok」と承認した。承認対象は`Property<double>` API、F64値を変換・正規化せずC ABIへ渡す方針、上記test範囲である。計画を先にcommit/pushし、その後test台帳登録・source実装・検証を行った。実装commitは[e4ab039](https://github.com/edamame-edame/freemvvm/commit/e4ab039c99fc61ebd4ffa47858357c56e2cb2c53)。
