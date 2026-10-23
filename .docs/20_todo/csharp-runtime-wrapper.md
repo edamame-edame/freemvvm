@@ -1,7 +1,7 @@
 # C# Runtime wrapper基盤
 
 - 更新日: 2026-10-24
-- 状態: 実装中（計画と実装開始を利用者が承認、2026-10-24）。unit-test設計と台帳を登録済み
+- 状態: 完了（実装commit `0fa8cc7`、Windows/Linux CI成功、2026-10-24）
 - 対象: 承認済みC# wrapper DD v1.1に従い、C#からRuntime作成・UI thread確認・終了要求・明示破棄を安全に利用する最初の製品wrapper unit。
 
 ## 背景と範囲
@@ -39,9 +39,16 @@ Property、Binding、Subscription、Command、callback trampoline、NuGet RID pa
 1. [x] 利用者が本計画の対象・API範囲・試験範囲をレビューし承認した（2026-10-24）。
 2. [x] 承認された計画をcommit `c635470`で記録し、CSharp branchへpushした。
 3. [x] 実装開始の承認後、C# Runtime向けUT設計と`UNIT-WRAP-CS-001` mappingをsource変更前に登録した。
-4. [ ] C# Runtime ownership/interop基盤とfocused testsを実装する。
-5. [ ] C# consumerを追加し、実C ABIとの最小Runtime縦断を確認する。
-6. [ ] local gatesとWindows/Linux CIが同一revisionで成功した後、unit台帳・本計画・`.docs/01_memory/`を完了更新し、日本語commit messageで実装をcommit/pushする。
+4. [x] C# Runtime ownership/interop基盤とfocused testsを実装した（`0fa8cc7`）。
+5. [x] C# consumerを追加し、実C ABIとの最小Runtime縦断を確認した（UI loop bridge未登録時の`UI_UNSUPPORTED`を確認）。
+6. [x] local gatesとWindows/Linux CIが実装commit `0fa8cc7`で成功した。unit台帳・本計画・`.docs/01_memory/`を完了更新した。
+
+## 検証結果
+
+- 実装commit: `0fa8cc73cc18cf8eba2cf9bcffc07b809fcda20a`（`C# Runtime wrapper基盤を実装`）。
+- ローカル: `tools/dev.py csharp-runtime-test`、`tools/dev.py csharp-runtime-consumer-test`、Windows `tools/dev.py check`、`tools/dev.py minimum`、`tools/check_docs.py`が成功。`git diff --check`も成功。
+- GitHub Actions: [Development bootstrap run 39994623749](https://github.com/edamame-edame/freemvvm/actions/runs/39994623749)でWindows/Linux両job成功。
+- C#言語別coding ruleは未作成のため、当該unitではC#14/.NET 10 project設定、nullable、warnings-as-errors、承認済みwrapper DDを適用した。
 
 ## 未決定の実装前確認
 
