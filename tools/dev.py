@@ -125,6 +125,8 @@ def main():
             "cpp-property-subscription-test",
             "cpp-property-binding-test",
             "cpp-package-test",
+            "csharp-runtime-test",
+            "csharp-runtime-consumer-test",
             "format",
             "minimum",
         ],
@@ -147,7 +149,11 @@ def main():
     results = []
     report = {
         "scope": (
-            "cpp-package-integration-test"
+            "csharp-runtime-unit-test"
+            if args.command == "csharp-runtime-test"
+            else "csharp-runtime-consumer-test"
+            if args.command == "csharp-runtime-consumer-test"
+            else "cpp-package-integration-test"
             if args.command == "cpp-package-test"
             else "cpp-property-unit-test"
             if args.command == "cpp-property-test"
@@ -166,7 +172,11 @@ def main():
             else "development-bootstrap"
         ),
         "product_tests": (
-            "cpp package consumer test executed"
+            "C# Runtime wrapper unit tests executed"
+            if args.command == "csharp-runtime-test"
+            else "C# Runtime consumer test executed against the host C ABI"
+            if args.command == "csharp-runtime-consumer-test"
+            else "cpp package consumer test executed"
             if args.command == "cpp-package-test"
             else "C++ Property BOOL/I64 wrapper unit test executed"
             if args.command == "cpp-property-test"
@@ -180,7 +190,7 @@ def main():
             if args.command == "cpp-property-subscription-test"
             else "C++ Property Binding wrapper unit test executed"
             if args.command == "cpp-property-binding-test"
-            else "C++ Runtime and package integration tests executed"
+            else "C++/C# Runtime and package integration tests executed"
             if args.command == "check"
             else "cpp-runtime unit test executed"
             if args.command == "cpp-runtime-test"
@@ -271,6 +281,70 @@ def main():
                 environment,
                 results,
                 "python-format",
+            )
+        elif args.command == "csharp-runtime-test":
+            project = "wrappers/csharp/tests/RuntimeTests/RuntimeTests.csproj"
+            run(
+                ["dotnet", "restore", project, "--locked-mode"],
+                environment,
+                results,
+                "csharp-runtime-test-restore",
+            )
+            run(
+                [
+                    "dotnet",
+                    "run",
+                    "--project",
+                    project,
+                    "--configuration",
+                    "Debug",
+                    "--no-restore",
+                ],
+                environment,
+                results,
+                "csharp-runtime-unit-tests",
+            )
+        elif args.command == "csharp-runtime-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "csharp-consumer-native-build",
+            )
+            project = "wrappers/csharp/tests/Consumer/Consumer.csproj"
+            run(
+                ["dotnet", "restore", project, "--locked-mode"],
+                environment,
+                results,
+                "csharp-consumer-restore",
+            )
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = ROOT / "target/debug" / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            run(
+                [
+                    "dotnet",
+                    "run",
+                    "--project",
+                    project,
+                    "--configuration",
+                    "Debug",
+                    "--no-restore",
+                    "--",
+                    str(native_path.resolve()),
+                ],
+                environment,
+                results,
+                "csharp-runtime-c-abi-consumer",
             )
         elif args.command == "minimum":
             run(
@@ -788,6 +862,22 @@ def main():
                 environment,
                 results,
                 "dotnet-build",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "csharp-runtime-test"],
+                environment,
+                results,
+                "csharp-runtime-unit",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "csharp-runtime-consumer-test",
+                ],
+                environment,
+                results,
+                "csharp-runtime-consumer",
             )
             run(
                 [sys.executable, "-m", "pip", "check"],

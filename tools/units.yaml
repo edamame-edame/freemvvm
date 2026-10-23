@@ -2052,6 +2052,76 @@
         {"id": "UT-WRAP-CPP-BIND-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-property-binding-test"]},
         {"id": "UT-PKG-CPP-007", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]}
       ]
+    },
+    {
+      "id": "UNIT-WRAP-CS-001",
+      "state": "ready",
+      "scope": "csharp-runtime-owner-call-lease-shutdown-receipt-and-cleanup-ticket",
+      "sources": [
+        "wrappers/csharp/FreeMvvm/**/*.cs",
+        "wrappers/csharp/tests/RuntimeTests/**/*.cs",
+        "wrappers/csharp/tests/Consumer/**/*.cs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+        "wrappers/csharp/tests/RuntimeTests/*.csproj",
+        "wrappers/csharp/tests/Consumer/*.csproj",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-004",
+        "UNIT-ABI-005",
+        "UNIT-ABI-007",
+        "UNIT-ABI-018"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.1",
+          "section": "公開API・call lease・native load / Dispose/CallLeaseの線形化 / 型の責務と所有"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Runtime lifecycle / handle release / Shutdown receipt"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Runtime UI thread / Runtime shutdown / cleanup"
+        }
+      ],
+      "requirements": [
+        "RQ-03-002",
+        "RQ-03-006",
+        "RQ-03-013",
+        "RQ-03-014",
+        "RQ-04-004",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-04-022",
+        "RQ-05-003",
+        "RQ-05-010",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-06-005",
+        "RQ-06-006",
+        "RQ-06-012"
+      ],
+      "cases": ["TC-LIFE-01", "TC-THREAD-01", "TC-ERROR-01", "TC-WRAP-CS-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {"id": "UT-WRAP-CS-RT-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "csharp-runtime-test"]},
+        {"id": "UT-WRAP-CS-OWN-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "csharp-runtime-test"]},
+        {"id": "UT-CONSUMER-CS-RT-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "csharp-runtime-consumer-test"]}
+      ]
     }
   ]
 }

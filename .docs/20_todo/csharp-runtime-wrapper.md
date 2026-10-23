@@ -1,7 +1,7 @@
 # C# Runtime wrapper基盤
 
 - 更新日: 2026-10-24
-- 状態: 計画承認済み（利用者、2026-10-24）。実装開始承認待ち
+- 状態: 実装中（計画と実装開始を利用者が承認、2026-10-24）。unit-test設計と台帳を登録済み
 - 対象: 承認済みC# wrapper DD v1.1に従い、C#からRuntime作成・UI thread確認・終了要求・明示破棄を安全に利用する最初の製品wrapper unit。
 
 ## 背景と範囲
@@ -31,14 +31,14 @@ Property、Binding、Subscription、Command、callback trampoline、NuGet RID pa
 
 - fake native dispatchを使うfocused testで、C ABI幅、status/error変換、Runtime create/query/shutdown、unknown status、失敗時のowner保持を確認する。
 - deterministic concurrency testで、native call lease中のDispose、Dispose後の新規call拒否、最後のlease後release、release失敗ticketの保持と再試行、一度だけの解放を確認する。
-- 別processのC# consumerで実C ABIへ接続し、Runtime作成、UI thread判定、shutdown結果、明示Disposeを確認する。C++ package consumerと同様に、callback/event-loop不在時にshutdownがaccepted-pendingとなる結果を完了と誤認しない。
+- 別processのC# consumerで実C ABIへ接続し、Runtime作成、UI thread判定、UI loop bridge未登録時のshutdown拒否（`UI_UNSUPPORTED`）のstatus保持、明示Disposeを確認する。shutdown receiptの`UI_PENDING`とHostUnavailable照会は、mode/stateを制御できるfake ABI focused testで確認する。実C ABIでは未登録loopを受付済みとして誤認しない。
 - focused testとconsumer testをWindows/Linuxで実行し、C# build、既存全体gate、Rust minimum gate、文書検査を同じ実装revisionで確認する。test reportとSHAをplan・unit台帳・memoryへ記録する。
 
 ## 実施順
 
-1. [ ] 利用者が本計画の対象・API範囲・試験範囲をレビューし承認する。
-2. [ ] 承認された計画を日本語commit messageで記録する。計画commit前に利用者の確認を得る。
-3. [ ] 実装開始の承認後、UT設計とunit mappingをsource変更前に登録する。
+1. [x] 利用者が本計画の対象・API範囲・試験範囲をレビューし承認した（2026-10-24）。
+2. [x] 承認された計画をcommit `c635470`で記録し、CSharp branchへpushした。
+3. [x] 実装開始の承認後、C# Runtime向けUT設計と`UNIT-WRAP-CS-001` mappingをsource変更前に登録した。
 4. [ ] C# Runtime ownership/interop基盤とfocused testsを実装する。
 5. [ ] C# consumerを追加し、実C ABIとの最小Runtime縦断を確認する。
 6. [ ] local gatesとWindows/Linux CIが同一revisionで成功した後、unit台帳・本計画・`.docs/01_memory/`を完了更新し、日本語commit messageで実装をcommit/pushする。
@@ -48,6 +48,7 @@ Property、Binding、Subscription、Command、callback trampoline、NuGet RID pa
 - `LibraryImport` source generationとinternal native dispatchの分離方法は、承認済みC# DDに従いつつ、fake ABI試験とAOT/trim設定への影響を確認して決める。新しい公開API契約は追加しない。
 - `CleanupTicket`の再試行起点・safe pointとの接続は既存Core/C ABI契約を確認し、release failure時にtoken ownershipを失わない方式を選ぶ。仕様のない成功扱いやprocess終了一般のcleanup保証は追加しない。
 - AGENTS.mdが参照する`.docs/00_rule/coding_rule_CSharp.md`は現在存在しない。実装開始前にリポジトリの実在ルールを再確認し、存在しない場合は既存のC#14/.NET analyzer設定と承認済みDDを規約根拠にする。
+- 実native consumer試験で、UI loop bridge未登録の`runtime_request_shutdown`は`UI_UNSUPPORTED`を返すことを確認した（2026-10-24）。receipt付きpendingのtest oracleはfake ABIに限定する。
 
 ## 計画承認と実装承認
 
@@ -56,3 +57,4 @@ Property、Binding、Subscription、Command、callback trampoline、NuGet RID pa
 | 日付 | 対象 | 承認者 | 結果 |
 | --- | --- | --- | --- |
 | 2026-10-24 | 本計画と実装範囲 | 利用者 | 「ok」により計画を承認。実装開始は別途承認待ち |
+| 2026-10-24 | 本計画に沿う実装開始 | 利用者 | 「始めてください」により実装を承認 |
