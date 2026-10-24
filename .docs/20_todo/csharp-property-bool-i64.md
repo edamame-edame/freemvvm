@@ -1,7 +1,7 @@
 # C# BOOL/I64 Property wrapper
 
 - 更新日: 2026-10-24
-- 状態: 計画案（レビュー待ち。承認前の方式・API提案）
+- 状態: 実装中（計画・API案承認済み、2026-10-24。実装開始承認済み）
 - 対象: 承認済みC# wrapper DD v1.1の`UiProperty<T>`を実装し、BOOL/I64 Propertyの作成・読取・設定・closeを一つの検証可能なunitとして提供する。
 
 ## 背景と範囲
@@ -36,11 +36,11 @@
 
 ## 実施順
 
-1. [ ] 利用者が本計画のscope、BOOL/I64単位、公開API案をレビューし承認する。
-2. [ ] 承認された計画を承認後に日本語commit messageで記録・pushする。
-3. [ ] 実装開始承認後、C# Property focused/consumer試験設計とunit mappingをsource変更前に登録する。
-4. [ ] Property facadeとfake ABI focused testsを実装する。
-5. [ ] 実C ABI consumer roundtripを追加し、local gatesを実行する。
+1. [x] 利用者が本計画のscope、BOOL/I64単位、公開API案をレビューし承認した（2026-10-24、「ok」）。
+2. [x] 承認計画を`a6473fc`（「C# BOOL I64 Property wrapper計画を承認記録」）でcommit/pushした。
+3. [x] 実装開始承認後、C# Property focused/consumer試験設計と`UNIT-WRAP-CS-PROP-BOOL-I64-001` mappingをsource変更前に登録した。
+4. [x] Property facadeとfake ABI focused testsを実装した。
+5. [x] 実C ABI consumer roundtripを追加した。Windows local `tools/dev.py check`、Rust `tools/dev.py minimum`、文書・Ruff・diff検査が成功した。
 6. [ ] Windows/Linux CI成功後、unit台帳・計画・`.docs/01_memory/`を完了更新し、日本語commitで実装をcommit/pushする。
 
 ## レビュー時の決定点
@@ -48,3 +48,10 @@
 - 初回をBOOL/I64に絞る案でよいか。UTF-8/F64/Decimal64を一つの大きなProperty unitにまとめず、別々の小さな実装単位とする。
 - static factoryを`UiProperty<T>.TryCreate(runtime, initial)`に置く案でよいか。承認済みDDは`UiProperty<T>` facadeと`TrySet/Get`を定めるが、create APIの具体的な配置を明記していないため、この配置は提案としてレビュー対象にする。
 - generic facadeの初回対応型を`bool`/`long`のみに制限し、未対応型をunsupportedで明示拒否する。
+
+## 承認履歴
+
+| 日付 | 対象 | 承認者 | 結果 |
+| --- | --- | --- | --- |
+| 2026-10-24 | 計画scope・公開API案 | 利用者 | 「ok」によりBOOL/I64 scopeと`UiProperty<T>.TryCreate`案を承認 |
+| 2026-10-24 | 本計画に沿う実装開始 | 利用者 | 「実装も進めて」により実装を承認 |
