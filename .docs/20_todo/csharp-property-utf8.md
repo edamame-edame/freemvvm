@@ -39,8 +39,8 @@
 ## 実施順
 
 1. [x] 利用者が本計画のscope、strict conversion、getter buffer retry、invalid UTF-16/UTF-8の失敗扱いをレビューし承認した（2026-10-24、「ok，実装してください」）。
-2. [ ] 承認された計画を日本語commit messageで記録し、現在のC#作業ブランチへpushする。
-3. [ ] 実装開始承認後、wrapper test designとunit mappingをsource変更より先に追加する。
+2. [x] 承認された計画をcommit `a0247ef`（「C# UTF-8 Property wrapper計画を承認記録」）で記録し、現在のC#作業ブランチへpushした。
+3. [x] 実装開始承認後、`UT-WRAP-CS-PROP-UTF8-001`/`UT-CONSUMER-CS-PROP-UTF8-001` test designと`UNIT-WRAP-CS-PROP-UTF8-001` mappingをsource変更より先に追加した。
 4. [ ] C# facade/interops、strict UTF-8 conversion、fake ABI focused testsを実装する。
 5. [ ] 実C ABI consumerでUTF-8代表値を検証し、local checksを完了する。
 6. [ ] Windows/Linux CI成功後、unit台帳・計画・`.docs/01_memory/`を更新し、完了実装を日本語でcommit/pushする。

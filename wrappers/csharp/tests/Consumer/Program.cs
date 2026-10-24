@@ -122,20 +122,51 @@ internal static class Program
             return 14;
         }
 
+        UiResult<UiProperty<string>> utf8Create = UiProperty<string>.TryCreate(runtime, "初期値");
+        if (utf8Create.IsFailure)
+        {
+            Console.Error.WriteLine($"UTF-8 property creation failed: {utf8Create.Error?.RawStatus}");
+            return 15;
+        }
+
+        using UiProperty<string> utf8Property = utf8Create.Value;
+        string[] strings = [string.Empty, "ASCII", "こんにちは", "UI 🙂", "前\0後"];
+        if (utf8Property.TryGet().Value != "初期値")
+        {
+            Console.Error.WriteLine("UTF-8 initial value did not round trip.");
+            return 16;
+        }
+
+        foreach (string value in strings)
+        {
+            if (utf8Property.TrySet(value).IsFailure || utf8Property.TryGet().Value != value)
+            {
+                Console.Error.WriteLine("UTF-8 property did not preserve the exact string value.");
+                return 17;
+            }
+        }
+
+        UiResult<UiCloseDisposition> utf8Close = utf8Property.TryClose();
+        if (utf8Close.IsFailure || utf8Close.Value != UiCloseDisposition.Released)
+        {
+            Console.Error.WriteLine("UTF-8 property handle could not be closed.");
+            return 18;
+        }
+
         UiResult<ShutdownReceipt> request = runtime.RequestShutdown(ShutdownMode.Async);
         if (request.IsSuccess || request.Error?.RawStatus != 10)
         {
             Console.Error.WriteLine($"Expected UI_UNSUPPORTED (10), got success={request.IsSuccess}, status={request.Error?.RawStatus}.");
-            return 15;
+            return 19;
         }
 
         if (runtime.TryClose().IsFailure)
         {
             Console.Error.WriteLine("The Runtime handle could not be closed.");
-            return 16;
+            return 20;
         }
 
-        Console.WriteLine("C# Runtime BOOL/I64/F64 Property C ABI consumer: OK");
+        Console.WriteLine("C# Runtime BOOL/I64/F64/UTF-8 Property C ABI consumer: OK");
         return 0;
     }
 }
