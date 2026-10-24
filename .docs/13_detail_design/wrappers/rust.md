@@ -1,9 +1,9 @@
 # 言語ラッパー：Rust
 
-- 文書版: 1.1
+- 文書版: 1.2
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-10-24
+- 状態: 1.1全文承認済み（利用者、2026-10-17）。1.2全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -17,6 +17,7 @@
 | --- | --- |
 | 所有型・借用・Drop・panic境界 | [RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-03-007](../../11_requirements/RQ-03_language-support.md#rq-03-007)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-04-015](../../11_requirements/RQ-04_abi-boundary.md#rq-04-015)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-023](../../11_requirements/RQ-04_abi-boundary.md#rq-04-023)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-06-006](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-006)、[RQ-12-005](../../11_requirements/RQ-12_build-distribution.md#rq-12-005) |
 | 公開API・registry・Future | [RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-03-007](../../11_requirements/RQ-03_language-support.md#rq-03-007)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-003](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)、[RQ-06-012](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-012)、[RQ-12-005](../../11_requirements/RQ-12_build-distribution.md#rq-12-005) |
+| typed Property生成・利用・終了 | [RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-03-007](../../11_requirements/RQ-03_language-support.md#rq-03-007)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -269,8 +270,10 @@ impl<T> Owned<T> {
     pub fn close(&mut self) -> Result<(), UiError>;
 }
 impl<T: PropertyValue> Property<T> {
-    pub fn get(&self, ui: &UiContext) -> Result<T, UiError>;
-    pub fn set(&self, ui: &UiContext, value: T) -> Result<(), UiError>;
+    pub fn try_new(ui: &UiContext<'_>, initial: T) -> Result<Self, UiError>;
+    pub fn get(&self, ui: &UiContext<'_>) -> Result<T, UiError>;
+    pub fn set(&self, ui: &UiContext<'_>, value: T) -> Result<(), UiError>;
+    pub fn close(&mut self) -> Result<(), UiError>;
 }
 ```
 
@@ -322,6 +325,7 @@ Rustのstruct/trait/lifetimeとして表し、class図の合成は継承を意�
 | Owned | token、事前CleanupTicket、RuntimeAnchor、UI affinity marker | try_clone(&self); borrow(&self); close(&mut self) | try_cloneだけが新しい独立tokenを取得。Drop失敗はticketへ移管 |
 | Borrowed | borrowed token、PhantomDataでowner lifetimeを表現 | as_token_for_call(&self) | 所有権を増やさずreleaseしない。'aを越えて保持しない |
 | UiContext | Runtime identityとUI呼出しcontext | check_runtime(&self, target) | UI APIの権限を示す。任意threadで作成できる単なるID wrapperにしない |
+| Property<T> | typed property token、Runtime anchor、Runtime identity | try_new(ui, initial); get(ui); set(ui, value); close() | UI-affine owner。close/DropまでRuntimeをanchorし、別RuntimeのUiContextを拒否 |
 | PropertyValue | 初期五型のsealedなFFI変換trait | encode(value); decode(native) | 利用者の任意structへunsafe境界の実装を開放しない |
 | CleanupRegistry | Dropから移管されたticket集合と再試行同期 | adopt(ticket); retry_pending() | ticketとanchorを一所有移転で保持。panic中もtokenを失わない |
 | Dispatcher | worker向けpost可能なRuntime shell入口 | post(work) | UI-affine OwnedをSend/Syncへ変更するための型ではない |
@@ -343,6 +347,12 @@ classDiagram
     class UiContext {
         check_runtime()
     }
+    class Property {
+        try_new()
+        get()
+        set()
+        close()
+    }
     class PropertyValue {
         encode()
         decode()
@@ -356,7 +366,9 @@ classDiagram
     }
     Borrowed ..> Owned : lifetime
     Owned ..> UiContext : UI操作
-    Owned ..> PropertyValue : typed変換
+    Property *-- Owned : token owner
+    Property ..> UiContext : Runtime/UI検査
+    Property ..> PropertyValue : typed変換
     Owned ..> CleanupRegistry : Drop失敗の所有移転
     Dispatcher ..> UiContext : UI側で再検査
 ```
@@ -375,3 +387,5 @@ Property get/setはUiContextとRuntime所属を検査してtyped FFIへ進む。
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-10-24 | 1.2改訂案 | Rust Propertyの公開生成・取得・設定・終了APIとRuntime ownership/identityを具体化。1.1の承認状態は維持し、1.2全文は利用者確認待ち。BOOL/I64実装・試験は独立した実装状態として管理 |
+| 2026-10-24 | 1.2全文 | 利用者の「OK」によりPropertyの生成・取得・設定・終了APIとRuntime ownership/identityを含む文書全体を承認。実装・試験状態は別管理 |

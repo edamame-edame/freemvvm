@@ -2152,6 +2152,53 @@
         {"id": "UT-WRAP-RS-RT-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-runtime-test"]},
         {"id": "UT-CONSUMER-RS-RT-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-runtime-consumer-test"]}
       ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-PROP-BOOL-I64-001",
+      "state": "in_progress",
+      "scope": "rust-safe-property-bool-i64-create-get-set-close",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/**/*.rs",
+        "wrappers/rust/freemvvm/**/*.rs",
+        "wrappers/rust/freemvvm/examples/**/*.rs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": ["UNIT-WRAP-RS-001", "UNIT-ABI-009", "UNIT-ABI-010", "UNIT-ABI-011"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.2",
+          "section": "改訂案: Property<T>::try_new/get/set/close / 所有型・Runtime context"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "BOOL/I64 Property create/get/set / handle release"
+        }
+      ],
+      "requirements": [
+        "RQ-02-002", "RQ-03-003", "RQ-03-007",
+        "RQ-04-006", "RQ-04-007", "RQ-04-022",
+        "RQ-05-012", "RQ-06-001"
+      ],
+      "cases": ["TC-LIFE-01", "TC-ERROR-01", "TC-WRAP-RS-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-CONSUMER-RS-PROP-BOOL-I64-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-property-bool-i64-test"]
+        }
+      ]
     }
   ]
 }
