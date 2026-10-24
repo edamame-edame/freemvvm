@@ -1,7 +1,7 @@
 # Core UI TreeとHandleRegistryの内部所有統合
 
 - 計画版: 0.1
-- 状態: A案および関連DD/test文書全体承認済み（利用者、2026-10-24）。Core実装進行中
+- 状態: 完了（Core実装を `version/0.0.1` へ統合、2026-10-24）
 - 対象version branch: `version/0.0.1`
 - Core作業branch: `impl-rust/core-ui-tree-ownership`
 - 対象: Logical Treeのparent-child所有とRuntime object cleanupの接続
@@ -32,13 +32,21 @@ cleanup ticketは、public referenceとinternal ownerがともに0となった�
 ## 承認後の作業範囲
 
 1. 完了: A案に沿うobjects-values / tree-layout / UI単体試験文書の改訂案を作成し、2026-10-24に全文承認を得た。
-2. 承認済み計画・設計・test文書をcommitし、`tools/units.yaml`へCore implementation unitを登録する。
-3. CoreObjectControl internal owner、Tree Coordinator、所有参照からのpublic handle再発行を実装する。
-4. focused test、workspace test、`tools/dev.py check`、`tools/dev.py minimum`を実施し、実装unitごとにcommitする。
-5. 0.0.1 version branchへCore child branchを統合する。別エージェントのWebEngine branchはこの変更に含めない。
+2. 完了: 承認済み計画・設計・test文書をcommitし、`tools/units.yaml`へCore implementation unitを登録。
+3. 完了: UNIT-CORE-067～069でinternal owner、Tree Coordinator、Runtime UI object store統合、子handle再発行を実装。
+4. 完了: focused test、Core全体test、`tools/dev.py check`、`tools/dev.py minimum`を実施し、実装unitごとにcommit/push。
+5. 完了: Core child branchを `version/0.0.1` へ統合。別エージェントのWebEngine branchは含めていない。
 
 ## レビュー履歴
 
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
 | 2026-10-24 | 0.1 / Tree内部所有とHandleRegistry cleanupの接続案 | 計画・DD・test文書全文承認済み | 利用者の「ok」により承認。Core実装へ進行 |
+
+## 実装完了記録
+
+- UNIT-CORE-067: `8eaada9` / Tree internal owner lifetime。
+- UNIT-CORE-068: `aebdb9e` / Logical Tree attach・detach・child owner由来handle。
+- UNIT-CORE-069: `a1d4327` / Runtime UI store統合、parent cleanup、Detached subtree、shutdown drain。
+- `version/0.0.1` への統合commit: 記録はmerge commitに反映。
+- 検証: focused 3件、Core 139件、`tools/dev.py check`、`tools/dev.py minimum` 成功。
