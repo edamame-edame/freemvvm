@@ -1,7 +1,7 @@
 # Rust wrapper: F64 Property
 
 - 更新日: 2026-10-24
-- 状態: 計画承認済み（利用者、2026-10-24）。実装・検証中
+- 状態: 完了（local gates・Rust 1.85・Windows/Linux CI確認済み）
 - 対象ブランチ: `impl-rust/wrappers-runtime-api`
 - 親: [Rust UTF-8 Property](rust-property-utf8.md)
 
@@ -37,3 +37,4 @@
 | 日付 | 対象 | 内容 |
 | --- | --- | --- |
 | 2026-10-24 | 計画承認 | 利用者の「OK」によりF64 Property計画とworkspace側 `property.rs` の編集を承認。添付snapshotと既存UTF-8 consumer snapshotは変更せず、新規F64 consumerを追加する。 |
+| 2026-10-24 | 実装・検証完了 | implementation commit `2b5ae0c`。`tools/dev.py check`、`minimum`、F64 consumerは成功。Windows/Linux CI run `40081760421` success。plan/test design commit `1311576`。 |

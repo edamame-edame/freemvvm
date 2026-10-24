@@ -5,7 +5,7 @@
 
 - 更新日: 2026-10-24
 - Rust UTF-8 consumer/focused tests and bootstrap gates passed on Windows/Linux in [CI run 40079200849](https://github.com/edamame-edame/freemvvm/actions/runs/40079200849).
-- Rust F64 Property consumer case: approved by the user on 2026-10-24; execution pending.
+- Rust F64 Property consumer and bootstrap gates passed on Windows/Linux in [CI run 40081760421](https://github.com/edamame-edame/freemvvm/actions/runs/40081760421).
 - Rust F64 Property consumer case: approved by the user on 2026-10-24; execution pending.
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
