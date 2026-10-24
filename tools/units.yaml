@@ -2224,7 +2224,7 @@
     },
     {
       "id": "UNIT-WRAP-CS-PROP-F64-001",
-      "state": "in_progress",
+      "state": "complete",
       "scope": "csharp-f64-property-create-get-set-close-and-bit-preservation",
       "sources": [
         "wrappers/csharp/FreeMvvm/**/*.cs",
