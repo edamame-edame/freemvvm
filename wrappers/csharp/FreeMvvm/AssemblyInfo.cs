@@ -1,3 +1,6 @@
-// Product facade and P/Invoke declarations are not implemented yet.
-// This build-only skeleton does not load or distribute a native runtime.
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("FreeMvvm.RuntimeTests")]
+[assembly: InternalsVisibleTo("Consumer")]
+
 namespace FreeMvvm;
