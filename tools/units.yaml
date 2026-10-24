@@ -817,7 +817,7 @@
     },
     {
       "id": "UNIT-ABI-008",
-      "state": "ready",
+      "state": "complete",
       "scope": "c-abi-runtime-post-and-dispatch-turn",
       "sources": ["crates/core-runtime/src/dispatcher.rs", "crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/lib.rs", "crates/c-abi/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
@@ -837,7 +837,7 @@
     },
     {
       "id": "UNIT-CORE-027",
-      "state": "ready",
+      "state": "complete",
       "scope": "core-owned-utf8-value",
       "sources": ["crates/core-runtime/src/value.rs", "crates/core-runtime/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
@@ -854,7 +854,7 @@
     },
     {
       "id": "UNIT-CORE-028",
-      "state": "ready",
+      "state": "complete",
       "scope": "core-utf8-caller-buffer-copy",
       "sources": ["crates/core-runtime/src/value.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
@@ -872,7 +872,7 @@
     },
     {
       "id": "UNIT-CORE-029",
-      "state": "ready",
+      "state": "complete",
       "scope": "core-f64-value-equivalence",
       "sources": ["crates/core-runtime/src/value.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
@@ -890,7 +890,7 @@
     },
     {
       "id": "UNIT-CORE-030",
-      "state": "ready",
+      "state": "complete",
       "scope": "typed-value-equivalence-bool-i64-utf8-f64",
       "sources": ["crates/core-runtime/src/value.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
@@ -908,7 +908,7 @@
     },
     {
       "id": "UNIT-CORE-031",
-      "state": "ready",
+      "state": "complete",
       "scope": "decimal-value-range-and-equivalence",
       "sources": ["crates/core-runtime/src/value.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
@@ -926,7 +926,7 @@
     },
     {
       "id": "UNIT-CORE-032",
-      "state": "ready",
+      "state": "complete",
       "scope": "typed-value-storage-commit",
       "sources": ["crates/core-runtime/src/value.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
@@ -944,7 +944,7 @@
     },
     {
       "id": "UNIT-CORE-033",
-      "state": "ready",
+      "state": "complete",
       "scope": "decimal-canonical-u64-encoding",
       "sources": ["crates/core-runtime/src/value.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
@@ -1016,7 +1016,7 @@
     },
     {
       "id": "UNIT-CORE-037",
-      "state": "ready",
+      "state": "complete",
       "scope": "runtime-object-registration-and-cleanup",
       "sources": ["crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/handle_registry/registry.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
@@ -1034,7 +1034,7 @@
     },
     {
       "id": "UNIT-CORE-038",
-      "state": "ready",
+      "state": "complete",
       "scope": "core-property-state",
       "sources": ["crates/core-runtime/src/property.rs", "crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/lib.rs", "crates/c-abi/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
@@ -1052,7 +1052,7 @@
     },
     {
       "id": "UNIT-CORE-039",
-      "state": "ready",
+      "state": "complete",
       "scope": "core-property-kind-query",
       "sources": ["crates/core-runtime/src/value.rs", "crates/core-runtime/src/property.rs", "crates/core-runtime/src/runtime.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
@@ -1070,7 +1070,7 @@
     },
     {
       "id": "UNIT-ABI-009",
-      "state": "ready",
+      "state": "complete",
       "scope": "c-abi-property-create-kind-and-release",
       "sources": ["crates/core-runtime/src/lib.rs", "crates/c-abi/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
@@ -1089,7 +1089,7 @@
     },
     {
       "id": "UNIT-ABI-010",
-      "state": "ready",
+      "state": "complete",
       "scope": "c-abi-property-typed-getters",
       "sources": ["crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/lib.rs", "crates/c-abi/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
@@ -1108,7 +1108,7 @@
     },
     {
       "id": "UNIT-ABI-011",
-      "state": "ready",
+      "state": "complete",
       "scope": "c-abi-property-typed-setters",
       "sources": ["crates/core-runtime/src/lib.rs", "crates/c-abi/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
@@ -1145,7 +1145,7 @@
     },
     {
       "id": "UNIT-CORE-040",
-      "state": "ready",
+      "state": "complete",
       "scope": "core-property-change-generation-queue",
       "sources": ["crates/core-runtime/src/property.rs", "crates/core-runtime/src/runtime.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
