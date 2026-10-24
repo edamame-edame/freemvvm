@@ -2052,6 +2052,45 @@
         {"id": "UT-WRAP-CPP-BIND-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-property-binding-test"]},
         {"id": "UT-PKG-CPP-007", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-066",
+      "state": "ready",
+      "scope": "runtime-async-command-state-machine-and-versioned-c-abi",
+      "sources": [
+        "crates/core-runtime/src/command.rs",
+        "crates/core-runtime/src/lib.rs",
+        "crates/core-runtime/src/runtime.rs",
+        "crates/core-runtime/src/property.rs",
+        "crates/c-abi/src/lib.rs",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "tools/probes/abi_command_smoke.c",
+        "tools/dev.py"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "crates/core-runtime/Cargo.toml",
+        "crates/c-abi/Cargo.toml",
+        "CMakeLists.txt",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": ["UNIT-BUILD-001", "UNIT-CORE-065", "UNIT-ABI-019"],
+      "design": [
+        {"path": ".docs/13_detail_design/events/commands.md", "version": "1.1", "section": "Async Command execution, state, cancellation, completion, and ownership"},
+        {"path": ".docs/13_detail_design/runtime-objects/abi.md", "version": "1.2", "section": "Async Command C ABI"},
+        {"path": ".docs/12_design/events/notifications-commands.md", "version": "1.1", "section": "Command progress and terminal state"},
+        {"path": ".docs/12_design/runtime-objects/model-values.md", "version": "1.1", "section": "Command contract"}
+      ],
+      "requirements": ["RQ-02-004", "RQ-04-006", "RQ-04-007", "RQ-04-022", "RQ-05-002", "RQ-05-006", "RQ-05-007", "RQ-05-012", "RQ-06-001", "RQ-06-004", "RQ-06-008", "RQ-06-009", "RQ-06-010", "RQ-06-011", "RQ-09-006"],
+      "cases": ["TC-CMD-01", "TC-ABI-COMP-01", "TC-OWN-01", "TC-THREAD-01", "TC-LIFE-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/events.md",
+      "tests": [
+        {"id": "UT-CORE-COMMAND-001", "command": ["cargo", "test", "-p", "freemvvm-core", "command::tests"]},
+        {"id": "UT-ABI-COMMAND-001", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "command_"]},
+        {"id": "UT-ABI-COMMAND-SMOKE-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "abi-command-smoke"]}
+      ]
     }
   ]
 }

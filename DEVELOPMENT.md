@@ -54,6 +54,7 @@ Linux/ARMのsysroot・compiler・container digestを固定するrelease profile�
 | `tools/dev.py doctor` | venv・Python・Rust/CMake/Ninja/.NETと依存pinの確認 |
 | `tools/dev.py format` | Rust/Pythonのformat |
 | `tools/dev.py abi-smoke` | Cargo C ABI native libraryをC consumerへlinkし、version queryとRuntime lifecycleを実行 |
+| `tools/dev.py abi-command-smoke` | Link a C11 consumer against the native C ABI and verify Command start, UI-posted completion, state Properties, and close |
 | `tools/dev.py abi-smoke-cpp` | Cargo C ABI native libraryをC++17 consumerへlinkし、version queryとRuntime lifecycleを実行 |
 | `tools/dev.py cpp-runtime-test` | C++ Runtime fake-ABI unit testと`BUILD_TESTING=OFF`のwrapper build |
 | `tools/dev.py cpp-package-test` | CMake packageをinstall・移動し、独立consumerのconfigure/link/Runtime smokeを実行 |

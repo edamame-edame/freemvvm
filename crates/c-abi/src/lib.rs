@@ -3,12 +3,22 @@
 //! The public API is under construction and is not distributable yet.
 
 use freemvvm_core::abi_support::{
-    BindingApiError, DestroyCallback, ErrorApiError, PostCallback, PropertyApiError,
-    RuntimeCreateError, RuntimeQueryError, RuntimeRetainError, ShutdownApiError, ShutdownApiState,
-    ValidateBoolCallback, ValidateI64Callback, ValidateUtf8Callback, WakeCallback,
-    binding_cancel as core_binding_cancel, binding_create as core_binding_create,
-    binding_error_snapshot as core_binding_error_snapshot,
-    binding_subscribe_error as core_binding_subscribe_error, error_code as core_error_code,
+    BindingApiError, CommandApiError, CommandStartCallback, DestroyCallback, ErrorApiError,
+    PostCallback, PropertyApiError, RuntimeCreateError, RuntimeQueryError, RuntimeRetainError,
+    ShutdownApiError, ShutdownApiState, ValidateBoolCallback, ValidateI64Callback,
+    ValidateUtf8Callback, WakeCallback, binding_cancel as core_binding_cancel,
+    binding_create as core_binding_create, binding_error_snapshot as core_binding_error_snapshot,
+    binding_subscribe_error as core_binding_subscribe_error,
+    command_can_execute_property as core_command_can_execute_property,
+    command_cancel as core_command_cancel,
+    command_cancel_token_requested as core_command_cancel_token_requested,
+    command_close as core_command_close,
+    command_complete_cancelled as core_command_complete_cancelled,
+    command_complete_failure as core_command_complete_failure,
+    command_complete_success as core_command_complete_success,
+    command_create_async as core_command_create_async, command_execute as core_command_execute,
+    command_failure_snapshot as core_command_failure_snapshot,
+    command_state_property as core_command_state_property, error_code as core_error_code,
     error_message_utf8 as core_error_message_utf8, error_status as core_error_status,
     handle_release as core_handle_release,
     issue_validation_error_snapshot as core_issue_validation_error_snapshot,
@@ -181,6 +191,7 @@ fn map_property_error(error: PropertyApiError) -> u32 {
         PropertyApiError::WrongType => UI_WRONG_TYPE,
         PropertyApiError::WrongThread => UI_WRONG_THREAD,
         PropertyApiError::Closed => UI_CLOSED,
+        PropertyApiError::Unsupported => UI_UNSUPPORTED,
         PropertyApiError::ValidationFailed(_) => UI_VALIDATION_FAILED,
         PropertyApiError::OutOfMemory => UI_OUT_OF_MEMORY,
         PropertyApiError::BufferTooSmall { .. } => UI_BUFFER_TOO_SMALL,
@@ -196,9 +207,24 @@ fn map_binding_error(error: BindingApiError) -> u32 {
         BindingApiError::WrongRuntime => UI_WRONG_RUNTIME,
         BindingApiError::WrongThread => UI_WRONG_THREAD,
         BindingApiError::Closed => UI_CLOSED,
+        BindingApiError::Unsupported => UI_UNSUPPORTED,
         BindingApiError::OutOfMemory => UI_OUT_OF_MEMORY,
         BindingApiError::ValidationFailed(_) => UI_VALIDATION_FAILED,
         BindingApiError::Internal => UI_INTERNAL_ERROR,
+    }
+}
+
+fn map_command_error(error: CommandApiError) -> u32 {
+    match error {
+        CommandApiError::InvalidHandle => UI_INVALID_HANDLE,
+        CommandApiError::InvalidArgument | CommandApiError::InvalidOperation => UI_INVALID_ARGUMENT,
+        CommandApiError::WrongType => UI_WRONG_TYPE,
+        CommandApiError::WrongRuntime => UI_WRONG_RUNTIME,
+        CommandApiError::WrongThread => UI_WRONG_THREAD,
+        CommandApiError::Closed => UI_CLOSED,
+        CommandApiError::NotExecutable => UI_UNSUPPORTED,
+        CommandApiError::OutOfMemory => UI_OUT_OF_MEMORY,
+        CommandApiError::Internal => UI_INTERNAL_ERROR,
     }
 }
 
@@ -1501,7 +1527,294 @@ pub unsafe extern "C" fn ui_abi_1_runtime_shutdown(runtime: u64, out_error: *mut
     }
 }
 
-/// Release one owned Runtime or shutdown-request handle.
+/// Create one asynchronous Command. Callback ownership transfers only on success.
+///
+/// # Safety
+/// `start` and `destroy` must be non-null valid function pointers, `userdata` must remain valid
+/// until destroy, `out_command` must be writable, and a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_command_create_async(
+    runtime: u64,
+    eligibility_bool_or_zero: u64,
+    start: Option<CommandStartCallback>,
+    userdata: *mut c_void,
+    destroy: Option<DestroyCallback>,
+    out_command: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_command.is_null() {
+        // SAFETY: a non-null output points to writable storage by the ABI contract.
+        unsafe { out_command.write(0) };
+    }
+    if !out_error.is_null() {
+        // SAFETY: a non-null output points to writable storage by the ABI contract.
+        unsafe { out_error.write(0) };
+    }
+    if out_command.is_null() || start.is_none() || destroy.is_none() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_command_create_async(
+            runtime,
+            eligibility_bool_or_zero,
+            start.expect("validated callback"),
+            userdata as usize,
+            destroy.expect("validated destroy"),
+        )
+    })) {
+        Ok(Ok(command)) => {
+            // SAFETY: required output was checked non-null above.
+            unsafe { out_command.write(command) };
+            UI_OK
+        }
+        Ok(Err(error)) => map_command_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Execute one Command operation and return its Runtime-unique operation ID.
+///
+/// # Safety
+/// `out_operation_id` must point to writable storage for one `u64`; a non-null `out_error` must
+/// point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_command_execute(
+    command: u64,
+    out_operation_id: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_operation_id.is_null() {
+        // SAFETY: a non-null output points to writable storage by the ABI contract.
+        unsafe { out_operation_id.write(0) };
+    }
+    if !out_error.is_null() {
+        // SAFETY: a non-null output points to writable storage by the ABI contract.
+        unsafe { out_error.write(0) };
+    }
+    if out_operation_id.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| core_command_execute(command))) {
+        Ok(Ok(operation_id)) => {
+            // SAFETY: required output was checked non-null above.
+            unsafe { out_operation_id.write(operation_id) };
+            UI_OK
+        }
+        Ok(Err(error)) => map_command_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Request cooperative cancellation for the identified operation.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_command_cancel(
+    command: u64,
+    operation_id: u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: a non-null output points to writable storage by the ABI contract.
+        unsafe { out_error.write(0) };
+    }
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_command_cancel(command, operation_id)
+    })) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_command_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Close a Command without waiting for its worker.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_command_close(command: u64, out_error: *mut u64) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: a non-null output points to writable storage by the ABI contract.
+        unsafe { out_error.write(0) };
+    }
+    match catch_unwind(AssertUnwindSafe(|| core_command_close(command))) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_command_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Return an independently owned read-only I64 state Property.
+///
+/// # Safety
+/// `out_owned_property` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_command_state_property(
+    command: u64,
+    out_owned_property: *mut u64,
+) -> u32 {
+    if !out_owned_property.is_null() {
+        // SAFETY: a non-null output points to writable storage by the ABI contract.
+        unsafe { out_owned_property.write(0) };
+    }
+    if out_owned_property.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| core_command_state_property(command))) {
+        Ok(Ok(property)) => {
+            // SAFETY: required output was checked non-null above.
+            unsafe { out_owned_property.write(property) };
+            UI_OK
+        }
+        Ok(Err(error)) => map_command_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Return an independently owned read-only BOOL can-execute Property.
+///
+/// # Safety
+/// `out_owned_property` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_command_can_execute_property(
+    command: u64,
+    out_owned_property: *mut u64,
+) -> u32 {
+    if !out_owned_property.is_null() {
+        // SAFETY: a non-null output points to writable storage by the ABI contract.
+        unsafe { out_owned_property.write(0) };
+    }
+    if out_owned_property.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_command_can_execute_property(command)
+    })) {
+        Ok(Ok(property)) => {
+            // SAFETY: required output was checked non-null above.
+            unsafe { out_owned_property.write(property) };
+            UI_OK
+        }
+        Ok(Err(error)) => map_command_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Return the current immutable Command failure snapshot or zero when none is available.
+///
+/// # Safety
+/// `out_owned_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_command_failure_snapshot(
+    command: u64,
+    out_owned_error: *mut u64,
+) -> u32 {
+    if !out_owned_error.is_null() {
+        // SAFETY: a non-null output points to writable storage by the ABI contract.
+        unsafe { out_owned_error.write(0) };
+    }
+    if out_owned_error.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| core_command_failure_snapshot(command))) {
+        Ok(Ok(error)) => {
+            // SAFETY: required output was checked non-null above.
+            unsafe { out_owned_error.write(error) };
+            UI_OK
+        }
+        Ok(Err(error)) => map_command_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Read the thread-safe cancellation request flag from any worker thread.
+///
+/// # Safety
+/// `out_yes` must point to writable storage for one `ui_bool`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_command_cancel_token_requested(
+    token: u64,
+    out_yes: *mut u8,
+) -> u32 {
+    if !out_yes.is_null() {
+        // SAFETY: a non-null output points to writable storage by the ABI contract.
+        unsafe { out_yes.write(0) };
+    }
+    if out_yes.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_command_cancel_token_requested(token)
+    })) {
+        Ok(Ok(requested)) => {
+            // SAFETY: required output was checked non-null above.
+            unsafe { out_yes.write(u8::from(requested)) };
+            UI_OK
+        }
+        Ok(Err(error)) => map_command_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Report successful completion from a UI-thread post callback.
+#[unsafe(no_mangle)]
+pub extern "C" fn ui_abi_1_command_complete_success(command: u64, operation_id: u64) -> u32 {
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_command_complete_success(command, operation_id)
+    })) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_command_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Report a business failure from a UI-thread post callback.
+///
+/// # Safety
+/// When `message_byte_length` is non-zero, `message` must point to readable storage of that size.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_command_complete_failure_utf8(
+    command: u64,
+    operation_id: u64,
+    domain: u32,
+    code: u32,
+    message: *const u8,
+    message_byte_length: u64,
+) -> u32 {
+    if message_byte_length > usize::MAX as u64 || (message_byte_length != 0 && message.is_null()) {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: the ABI caller supplies readable bytes for the declared length.
+    let message = if message_byte_length == 0 {
+        &[]
+    } else {
+        // SAFETY: validated non-null and usize-sized above; caller guarantees the declared bytes
+        // are readable for this call.
+        unsafe { std::slice::from_raw_parts(message, message_byte_length as usize) }
+    };
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_command_complete_failure(command, operation_id, domain, code, message)
+    })) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_command_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Report cooperative cancellation after the worker confirms it stopped.
+#[unsafe(no_mangle)]
+pub extern "C" fn ui_abi_1_command_complete_cancelled(command: u64, operation_id: u64) -> u32 {
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_command_complete_cancelled(command, operation_id)
+    })) {
+        Ok(Ok(())) => UI_OK,
+        Ok(Err(error)) => map_command_error(error),
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Release one owned Runtime, Command, Property, or shutdown-request handle.
 #[unsafe(no_mangle)]
 pub extern "C" fn ui_abi_1_handle_release(owned: u64) -> u32 {
     match catch_unwind(AssertUnwindSafe(|| core_handle_release(owned))) {
@@ -1673,15 +1986,20 @@ mod tests {
         UI_VALIDATION_FAILED, UI_WRONG_RUNTIME, UI_WRONG_THREAD, UI_WRONG_TYPE,
         catch_runtime_creation, catch_runtime_query, catch_runtime_retain, ui_abi_1_binding_cancel,
         ui_abi_1_binding_create, ui_abi_1_binding_error_snapshot, ui_abi_1_binding_subscribe_error,
-        ui_abi_1_error_code, ui_abi_1_error_message_utf8, ui_abi_1_error_status,
-        ui_abi_1_get_version, ui_abi_1_handle_release, ui_abi_1_handle_retain,
-        ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32, ui_abi_1_numeric_narrow_f64,
-        ui_abi_1_property_create_bool, ui_abi_1_property_create_decimal,
-        ui_abi_1_property_create_f64, ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8,
-        ui_abi_1_property_get_bool, ui_abi_1_property_get_decimal, ui_abi_1_property_get_f64,
-        ui_abi_1_property_get_i64, ui_abi_1_property_get_utf8, ui_abi_1_property_kind,
-        ui_abi_1_property_set_bool, ui_abi_1_property_set_decimal, ui_abi_1_property_set_f64,
-        ui_abi_1_property_set_i64, ui_abi_1_property_set_utf8, ui_abi_1_property_subscribe,
+        ui_abi_1_command_can_execute_property, ui_abi_1_command_cancel,
+        ui_abi_1_command_cancel_token_requested, ui_abi_1_command_close,
+        ui_abi_1_command_complete_cancelled, ui_abi_1_command_create_async,
+        ui_abi_1_command_execute, ui_abi_1_command_failure_snapshot,
+        ui_abi_1_command_state_property, ui_abi_1_error_code, ui_abi_1_error_message_utf8,
+        ui_abi_1_error_status, ui_abi_1_get_version, ui_abi_1_handle_release,
+        ui_abi_1_handle_retain, ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32,
+        ui_abi_1_numeric_narrow_f64, ui_abi_1_property_create_bool,
+        ui_abi_1_property_create_decimal, ui_abi_1_property_create_f64,
+        ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8, ui_abi_1_property_get_bool,
+        ui_abi_1_property_get_decimal, ui_abi_1_property_get_f64, ui_abi_1_property_get_i64,
+        ui_abi_1_property_get_utf8, ui_abi_1_property_kind, ui_abi_1_property_set_bool,
+        ui_abi_1_property_set_decimal, ui_abi_1_property_set_f64, ui_abi_1_property_set_i64,
+        ui_abi_1_property_set_utf8, ui_abi_1_property_subscribe,
         ui_abi_1_property_validator_cancel, ui_abi_1_property_validator_register_bool,
         ui_abi_1_property_validator_register_i64, ui_abi_1_property_validator_register_utf8,
         ui_abi_1_runtime_create, ui_abi_1_runtime_dispatch_turn, ui_abi_1_runtime_host_begin_event,
@@ -1704,6 +2022,72 @@ mod tests {
     struct ValidatorProbe {
         calls: AtomicUsize,
         destroys: AtomicUsize,
+    }
+
+    #[derive(Default)]
+    struct CommandProbe {
+        starts: AtomicUsize,
+        destroys: AtomicUsize,
+        operation_id: AtomicU64,
+        retained_command: AtomicU64,
+        retained_cancel: AtomicU64,
+    }
+
+    unsafe extern "C" fn command_start(
+        userdata: *mut c_void,
+        borrowed_command: u64,
+        operation_id: u64,
+        borrowed_cancel: u64,
+    ) -> u32 {
+        // SAFETY: test keeps the probe alive until Command shutdown and handle release.
+        let probe = unsafe { &*userdata.cast::<CommandProbe>() };
+        let mut retained_command = 0;
+        // SAFETY: both output addresses are writable and callback handles are borrowed/live here.
+        let command_status =
+            unsafe { ui_abi_1_handle_retain(borrowed_command, &mut retained_command) };
+        if command_status != UI_OK {
+            return command_status;
+        }
+        let mut retained_cancel = 0;
+        // SAFETY: both output addresses are writable and callback handles are borrowed/live here.
+        let cancel_status =
+            unsafe { ui_abi_1_handle_retain(borrowed_cancel, &mut retained_cancel) };
+        if cancel_status != UI_OK {
+            let _ = ui_abi_1_handle_release(retained_command);
+            return cancel_status;
+        }
+        probe.operation_id.store(operation_id, Ordering::SeqCst);
+        probe
+            .retained_command
+            .store(retained_command, Ordering::SeqCst);
+        probe
+            .retained_cancel
+            .store(retained_cancel, Ordering::SeqCst);
+        probe.starts.fetch_add(1, Ordering::SeqCst);
+        UI_OK
+    }
+
+    unsafe extern "C" fn command_destroy(userdata: *mut c_void) {
+        // SAFETY: test keeps the probe alive through Runtime shutdown.
+        unsafe { &*userdata.cast::<CommandProbe>() }
+            .destroys
+            .fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn command_start_failure(
+        userdata: *mut c_void,
+        _command: u64,
+        operation_id: u64,
+        _cancel_token: u64,
+    ) -> u32 {
+        // SAFETY: test keeps the probe alive until Command shutdown and handle release.
+        let probe = unsafe { &*userdata.cast::<CommandProbe>() };
+        probe.operation_id.store(operation_id, Ordering::SeqCst);
+        if probe.starts.fetch_add(1, Ordering::SeqCst) == 0 {
+            UI_INTERNAL_ERROR
+        } else {
+            UI_OK
+        }
     }
 
     unsafe extern "C" fn reject_negative_i64(
@@ -1923,6 +2307,331 @@ mod tests {
     }
 
     #[test]
+    fn command_executes_cancels_and_exposes_read_only_state_properties() {
+        let mut runtime = 0;
+        assert_eq!(
+            // SAFETY: runtime output points to writable storage.
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let bridge = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        assert_eq!(
+            // SAFETY: bridge callback state remains alive until after Runtime shutdown.
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&bridge as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+
+        let mut eligibility = 0;
+        // SAFETY: output points to writable storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe {
+                ui_abi_1_property_create_bool(runtime, 1, &mut eligibility, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        let probe = CommandProbe::default();
+        let mut command = 0;
+        // SAFETY: callback probe remains live through shutdown and outputs are writable.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe {
+                ui_abi_1_command_create_async(
+                    runtime,
+                    eligibility,
+                    Some(command_start),
+                    (&probe as *const CommandProbe).cast_mut().cast(),
+                    Some(command_destroy),
+                    &mut command,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+
+        let mut state_property = 0;
+        let mut can_execute_property = 0;
+        // SAFETY: both output handles point to writable storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe { ui_abi_1_command_state_property(command, &mut state_property) },
+            UI_OK
+        );
+        // SAFETY: both output handles point to writable storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe { ui_abi_1_command_can_execute_property(command, &mut can_execute_property) },
+            UI_OK
+        );
+        let mut state = -1;
+        let mut can_execute = 0;
+        // SAFETY: getters write to valid scalar outputs.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe { ui_abi_1_property_get_i64(state_property, &mut state) },
+            UI_OK
+        );
+        // SAFETY: getters write to valid scalar outputs.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe { ui_abi_1_property_get_bool(can_execute_property, &mut can_execute) },
+            UI_OK
+        );
+        assert_eq!((state, can_execute), (0, 1));
+        let mut writable_property = 0;
+        assert_eq!(
+            // SAFETY: output handle points to writable storage.
+            unsafe {
+                ui_abi_1_property_create_i64(
+                    runtime,
+                    0,
+                    &mut writable_property,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut rejected_binding = u64::MAX;
+        assert_eq!(
+            // SAFETY: output handles are writable; state Property cannot be a Binding target.
+            unsafe {
+                ui_abi_1_binding_create(
+                    writable_property,
+                    state_property,
+                    2,
+                    &mut rejected_binding,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_UNSUPPORTED
+        );
+        assert_eq!(rejected_binding, 0);
+        assert_eq!(ui_abi_1_handle_release(writable_property), UI_OK);
+        // SAFETY: the valid BOOL Property handle and optional error output are used synchronously.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_property_set_bool(eligibility, 0, std::ptr::null_mut()) },
+            UI_OK
+        );
+        // SAFETY: output points to writable BOOL storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_property_get_bool(can_execute_property, &mut can_execute) },
+            UI_OK
+        );
+        assert_eq!(can_execute, 0);
+        let mut disabled_operation = u64::MAX;
+        // SAFETY: output points to writable operation ID storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe {
+                ui_abi_1_command_execute(command, &mut disabled_operation, std::ptr::null_mut())
+            },
+            UI_UNSUPPORTED
+        );
+        assert_eq!(disabled_operation, 0);
+        // SAFETY: the valid BOOL Property handle and optional error output are used synchronously.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_property_set_bool(eligibility, 1, std::ptr::null_mut()) },
+            UI_OK
+        );
+        // SAFETY: output points to writable BOOL storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_property_get_bool(can_execute_property, &mut can_execute) },
+            UI_OK
+        );
+        assert_eq!(can_execute, 1);
+        // Public setters cannot modify the Core-owned operation state.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe { ui_abi_1_property_set_i64(state_property, 5, std::ptr::null_mut()) },
+            UI_UNSUPPORTED
+        );
+
+        let mut operation_id = 0;
+        // SAFETY: operation ID output is writable.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe { ui_abi_1_command_execute(command, &mut operation_id, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(operation_id, 1);
+        assert_eq!(probe.starts.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.operation_id.load(Ordering::SeqCst), operation_id);
+        let retained_command = probe.retained_command.load(Ordering::SeqCst);
+        assert_ne!(retained_command, 0);
+        // Releasing the public handle leaves the Runtime-owned active Command intact.
+        assert_eq!(ui_abi_1_handle_release(command), UI_OK);
+        // SAFETY: getters write to valid scalar outputs.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe { ui_abi_1_property_get_i64(state_property, &mut state) },
+            UI_OK
+        );
+        // SAFETY: getters write to valid scalar outputs.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe { ui_abi_1_property_get_bool(can_execute_property, &mut can_execute) },
+            UI_OK
+        );
+        assert_eq!((state, can_execute), (1, 0));
+
+        let mut rejected_operation = u64::MAX;
+        // SAFETY: output is writable; the running command rejects reentry.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe {
+                ui_abi_1_command_execute(
+                    retained_command,
+                    &mut rejected_operation,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_UNSUPPORTED
+        );
+        assert_eq!(rejected_operation, 0);
+
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe {
+                ui_abi_1_command_cancel(retained_command, operation_id, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        let token = probe.retained_cancel.load(Ordering::SeqCst);
+        assert_ne!(token, 0);
+        let query_token = token;
+        assert!(
+            std::thread::spawn(move || {
+                let mut requested = 0;
+                // SAFETY: output is writable and retained cancel-token handle is thread-safe.
+                assert_eq!(
+                    // SAFETY: this test supplies live handles and valid writable output pointers.
+                    unsafe { ui_abi_1_command_cancel_token_requested(query_token, &mut requested) },
+                    UI_OK
+                );
+                requested == 1
+            })
+            .join()
+            .expect("worker cancellation query completes")
+        );
+
+        assert_eq!(
+            ui_abi_1_command_complete_cancelled(
+                probe.retained_command.load(Ordering::SeqCst),
+                operation_id
+            ),
+            UI_OK
+        );
+        // SAFETY: getters write to valid scalar outputs.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe { ui_abi_1_property_get_i64(state_property, &mut state) },
+            UI_OK
+        );
+        // SAFETY: getters write to valid scalar outputs.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe { ui_abi_1_property_get_bool(can_execute_property, &mut can_execute) },
+            UI_OK
+        );
+        assert_eq!((state, can_execute), (5, 1));
+        let mut failure = u64::MAX;
+        // SAFETY: output handle points to writable storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe { ui_abi_1_command_failure_snapshot(retained_command, &mut failure) },
+            UI_OK
+        );
+        assert_eq!(failure, 0);
+        assert_eq!(
+            // SAFETY: this test supplies live handles and valid writable output pointers.
+            unsafe { ui_abi_1_command_close(retained_command, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+
+        let second_probe = CommandProbe::default();
+        let mut second_command = 0;
+        assert_eq!(
+            // SAFETY: second callback state remains live until Runtime shutdown.
+            unsafe {
+                ui_abi_1_command_create_async(
+                    runtime,
+                    0,
+                    Some(command_start),
+                    (&second_probe as *const CommandProbe).cast_mut().cast(),
+                    Some(command_destroy),
+                    &mut second_command,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut second_operation = 0;
+        assert_eq!(
+            // SAFETY: second operation output points to writable storage.
+            unsafe {
+                ui_abi_1_command_execute(
+                    second_command,
+                    &mut second_operation,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(second_operation, 2);
+        assert_eq!(
+            ui_abi_1_command_complete_cancelled(
+                second_probe.retained_command.load(Ordering::SeqCst),
+                second_operation,
+            ),
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: command is live and null is permitted for optional error output.
+            unsafe { ui_abi_1_command_close(second_command, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(second_probe.destroys.load(Ordering::SeqCst), 1);
+
+        complete_runtime_shutdown_at_host_boundary(runtime);
+        assert_eq!(ui_abi_1_handle_release(state_property), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(can_execute_property), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(eligibility), UI_OK);
+        assert_eq!(
+            ui_abi_1_handle_release(probe.retained_command.load(Ordering::SeqCst)),
+            UI_OK
+        );
+        assert_eq!(
+            ui_abi_1_handle_release(probe.retained_cancel.load(Ordering::SeqCst)),
+            UI_OK
+        );
+        assert_eq!(ui_abi_1_handle_release(second_command), UI_OK);
+        assert_eq!(
+            ui_abi_1_handle_release(second_probe.retained_command.load(Ordering::SeqCst)),
+            UI_OK
+        );
+        assert_eq!(
+            ui_abi_1_handle_release(second_probe.retained_cancel.load(Ordering::SeqCst)),
+            UI_OK
+        );
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+    #[test]
     fn runtime_post_transfers_ownership_and_dispatches_one_callback_per_turn() {
         let mut runtime = 0;
         assert_eq!(
@@ -2006,6 +2715,153 @@ mod tests {
         assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
     }
 
+    #[test]
+    fn command_start_failure_is_an_accepted_operation_and_snapshot_is_immutable() {
+        let mut runtime = 0;
+        // SAFETY: output points to writable storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let bridge = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        // SAFETY: bridge state remains live through Runtime shutdown.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&bridge as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let probe = CommandProbe::default();
+        let mut command = 0;
+        // SAFETY: userdata remains live until shutdown and output is writable.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe {
+                ui_abi_1_command_create_async(
+                    runtime,
+                    0,
+                    Some(command_start_failure),
+                    (&probe as *const CommandProbe).cast_mut().cast(),
+                    Some(command_destroy),
+                    &mut command,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut state_property = 0;
+        let mut can_execute_property = 0;
+        // SAFETY: output handles point to writable storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_command_state_property(command, &mut state_property) },
+            UI_OK
+        );
+        // SAFETY: output handles point to writable storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_command_can_execute_property(command, &mut can_execute_property) },
+            UI_OK
+        );
+
+        let mut operation = 0;
+        // SAFETY: output operation ID points to writable storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_command_execute(command, &mut operation, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(operation, 1);
+        let mut state = 0;
+        // SAFETY: output points to writable scalar storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_property_get_i64(state_property, &mut state) },
+            UI_OK
+        );
+        assert_eq!(state, 4);
+        let mut failure = 0;
+        // SAFETY: output handle points to writable storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_command_failure_snapshot(command, &mut failure) },
+            UI_OK
+        );
+        assert_ne!(failure, 0);
+        let mut status = 0;
+        // SAFETY: output status points to writable storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_error_status(failure, &mut status) },
+            UI_OK
+        );
+        assert_eq!(status, 12);
+        let mut domain = 0;
+        let mut code = 0;
+        // SAFETY: both output scalars point to writable storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_error_code(failure, &mut domain, &mut code) },
+            UI_OK
+        );
+        assert_eq!((domain, code), (0, 0));
+
+        let mut second_operation = 0;
+        // SAFETY: output operation ID points to writable storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe {
+                ui_abi_1_command_execute(command, &mut second_operation, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        assert_eq!(second_operation, 2);
+        let mut current_failure = u64::MAX;
+        // SAFETY: output handle points to writable storage.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_command_failure_snapshot(command, &mut current_failure) },
+            UI_OK
+        );
+        assert_eq!(current_failure, 0);
+        let mut preserved_status = 0;
+        // SAFETY: previously returned owned Error remains valid and output is writable.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_error_status(failure, &mut preserved_status) },
+            UI_OK
+        );
+        assert_eq!(preserved_status, 12);
+        assert_eq!(
+            ui_abi_1_command_complete_cancelled(command, second_operation),
+            UI_OK
+        );
+        assert_eq!(ui_abi_1_handle_release(failure), UI_OK);
+        // SAFETY: command handle is live and null is permitted for optional error output.
+        assert_eq!(
+            // SAFETY: this test supplies live handles and writable outputs.
+            unsafe { ui_abi_1_command_close(command, std::ptr::null_mut()) },
+            UI_OK
+        );
+
+        complete_runtime_shutdown_at_host_boundary(runtime);
+        assert_eq!(ui_abi_1_handle_release(command), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(state_property), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(can_execute_property), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+    }
     #[test]
     fn runtime_post_rejection_and_shutdown_cancellation_preserve_ownership_rules() {
         let mut runtime = 0;

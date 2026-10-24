@@ -22,6 +22,10 @@ typedef ui_status (*ui_validate_utf8_callback)(void *userdata,
                                                const uint8_t *candidate,
                                                uint64_t candidate_byte_length,
                                                ui_handle *out_error);
+typedef ui_status (*ui_command_start_callback)(void *userdata,
+                                               ui_handle borrowed_command,
+                                               uint64_t operation_id,
+                                               ui_handle borrowed_cancel_token);
 
 enum {
   UI_OK = 0,
@@ -36,7 +40,17 @@ enum {
   UI_INTERNAL_ERROR = 9,
   UI_UNSUPPORTED = 10,
   UI_VALIDATION_FAILED = 11,
+  UI_COMMAND_EXECUTION_FAILED = 12,
   UI_PENDING = 14
+};
+
+enum {
+  UI_COMMAND_STATE_IDLE = 0,
+  UI_COMMAND_STATE_RUNNING = 1,
+  UI_COMMAND_STATE_CANCELLING = 2,
+  UI_COMMAND_STATE_SUCCEEDED = 3,
+  UI_COMMAND_STATE_FAILED = 4,
+  UI_COMMAND_STATE_CANCELLED = 5
 };
 
 enum {
@@ -136,6 +150,34 @@ ui_status ui_abi_1_binding_subscribe_error(
     ui_handle binding, ui_callback callback, void *userdata,
     ui_destroy_callback destroy, ui_handle *out_subscription,
     ui_handle *out_error);
+
+ui_status ui_abi_1_command_create_async(
+    ui_handle runtime, ui_handle eligibility_bool_or_zero,
+    ui_command_start_callback start, void *userdata,
+    ui_destroy_callback destroy, ui_handle *out_command,
+    ui_handle *out_error);
+ui_status ui_abi_1_command_execute(ui_handle command,
+                                   uint64_t *out_operation_id,
+                                   ui_handle *out_error);
+ui_status ui_abi_1_command_cancel(ui_handle command, uint64_t operation_id,
+                                  ui_handle *out_error);
+ui_status ui_abi_1_command_close(ui_handle command, ui_handle *out_error);
+ui_status ui_abi_1_command_state_property(
+    ui_handle command, ui_handle *out_owned_property);
+ui_status ui_abi_1_command_can_execute_property(
+    ui_handle command, ui_handle *out_owned_property);
+ui_status ui_abi_1_command_failure_snapshot(
+    ui_handle command, ui_handle *out_owned_error);
+ui_status ui_abi_1_command_cancel_token_requested(ui_handle token,
+                                                  ui_bool *out_yes);
+ui_status ui_abi_1_command_complete_success(ui_handle command,
+                                            uint64_t operation_id);
+ui_status ui_abi_1_command_complete_failure_utf8(
+    ui_handle command, uint64_t operation_id, uint32_t domain,
+    uint32_t code, const uint8_t *message,
+    uint64_t message_byte_length);
+ui_status ui_abi_1_command_complete_cancelled(ui_handle command,
+                                              uint64_t operation_id);
 
 ui_status ui_abi_1_runtime_set_ui_loop_bridge(
     ui_handle runtime, ui_wake_callback callback, void *userdata,

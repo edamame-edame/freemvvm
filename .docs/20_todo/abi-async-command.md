@@ -1,7 +1,7 @@
 # Rust Core / C ABI 非同期Command基盤
 
 - 更新日: 2026-10-24
-- 状態: 計画案・レビュー待ち。承認済み設計に基づく基盤実装案
+- 状態: local実装・全gate pass。Windows/Linux CI確認待ち
 - 対象: 承認済み非同期Command DDにあるCore object/state machineとversioned C ABI surfaceを実装し、Rust/C ABI testsで動作確認する
 - 作業branch案: `impl-rust/runtime-async-command`
 
@@ -9,7 +9,7 @@
 
 非同期Command契約は[RQ-02-004](../11_requirements/RQ-02_core-features.md#rq-02-004)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-06-004](../11_requirements/RQ-06_threading-dispatch.md#rq-06-004)、[RQ-06-008](../11_requirements/RQ-06_threading-dispatch.md#rq-06-008)、[RQ-06-009](../11_requirements/RQ-06_threading-dispatch.md#rq-06-009)、[RQ-06-010](../11_requirements/RQ-06_threading-dispatch.md#rq-06-010)、[RQ-06-011](../11_requirements/RQ-06_threading-dispatch.md#rq-06-011)、[RQ-09-006](../11_requirements/RQ-09_ui-scope.md#rq-09-006)で承認済みであり、[イベントハンドリング：非同期Command](../13_detail_design/events/commands.md) v1.1と[共通C ABI](../13_detail_design/runtime-objects/abi.md) v1.2に実現契約・レビュー用API宣言がある。しかしCommand functionは配布header、`crates/c-abi`、`crates/core-runtime`にまだ存在しない。C# wrapperはこのAPIを前提にするため、先にnative基盤を実装する必要がある。
 
-既存DDの意味論を変更せず、Core Command state/objectとC ABI bridgeを一単位で実装する。C# wrapper、Button/UI hookup、進捗専用API、NuGet/配布設定は対象外とする。C# wrapperは後続unitとして[別計画案](csharp-async-command.md)へ記録する。
+既存DDの意味論を変更せず、Core Command state/objectとC ABI bridgeを一単位で実装する。C# wrapper、Button/UI hookup、進捗専用API、NuGet/配布設定は対象外とする。C# wrapperは後続の別unitとして扱う。
 
 ## 根拠
 
@@ -38,10 +38,12 @@
 
 1. [ ] 利用者が基盤unitの範囲と試験境界をレビューする。
 2. [ ] 計画承認後に計画をcommit/pushする。
-3. [ ] test designと`UNIT-CORE-COMMAND-001` mappingをsource変更前に登録する。
-4. [ ] 利用者から明示的な実装開始指示を受け、Core state machineとfocused testsを実装する。
-5. [ ] C ABI exports/header/tests、C/C++ probesまたはconsumer smokeを実装し、local gatesとWindows/Linux CIを実行する。
-6. [ ] 完了記録を本計画・unit台帳・memoryへ反映し、implementation commitをpushする。
-7. [ ] このunit完了後、C# wrapper planへ戻り、C# test design/mappingとC# implementationを進める。
+3. [x] `UT-CORE-COMMAND-001` / `UT-ABI-COMMAND-001` / `UT-ABI-COMMAND-SMOKE-001`と`UNIT-CORE-066` mappingをsource変更前に登録した。
+4. [x] 利用者の「ok」により計画と基盤実装の開始を承認された。Runtime共有operation ID issuerを含むCore state machineとfocused testsを実装し、7 testsがpass。
+5. [x] C ABI exports/header・Command state Properties・read-only setter・C11 consumer smokeを実装。C ABI focused testsと`abi-command-smoke`がpass。
+6. [x] `tools/dev.py check`、`tools/dev.py minimum`、`cargo test --workspace --all-targets --locked`、document/manifest checksがlocal pass。
+7. [ ] implementation commitをpushし、Windows/Linux CIを確認する。
+8. [ ] CI結果を本計画・unit台帳・memoryへ反映してunitを完了記録する。
+9. [ ] このunit完了後、C# wrapper planへ戻り、C# test design/mappingとC# implementationを進める。
 
 この計画案はC# wrapper計画から見つかった未実装依存を切り出したもの。計画承認とnative実装開始承認は別々に記録し、現時点では製品source変更・計画commitを行っていない。
