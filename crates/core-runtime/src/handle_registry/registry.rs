@@ -148,6 +148,10 @@ impl<R> ValidationPin<R> {
         self.control.identity()
     }
 
+    pub(crate) fn runtime_id(&self) -> &R {
+        self.control.runtime_id()
+    }
+
     pub(crate) fn try_clone(&self) -> Result<Self, RegistryError> {
         let mut lifecycle = self
             .control
@@ -601,6 +605,8 @@ mod tests {
         RegistryError,
     };
     use crate::handle_registry::handle::HandleToken;
+    use crate::runtime::UiThreadContext;
+    use crate::ui_tree::{LogicalNode, TreeCoordinator, TreeError};
     use std::collections::VecDeque;
     use std::num::NonZeroU64;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -964,6 +970,288 @@ mod tests {
         assert_eq!(queue.pending_count(), 0);
         assert_eq!(queue.completed().len(), 0);
         assert!(!control.lifecycle.lock().expect("lifecycle").ui_state_alive);
+    }
+
+    #[test]
+    fn tree_owner_tree_attach_child_snapshot_and_detach_preserve_lifetime() {
+        let queue = FakeQueue::new();
+        let registry = TestRegistry::new();
+        let ui_thread = UiThreadContext::capture();
+        let parent_control = make_control(Arc::clone(&queue), 11, 30);
+        let child_control = make_control(Arc::clone(&queue), 11, 31);
+        let parent_token = registry
+            .register(7, 11, Arc::clone(&parent_control))
+            .expect("register parent");
+        let child_token = registry
+            .register(7, 11, Arc::clone(&child_control))
+            .expect("register child");
+        let parent_pin = registry
+            .validate(parent_token, &7, &11)
+            .expect("parent pin");
+        let child_pin = registry.validate(child_token, &7, &11).expect("child pin");
+        let mut parent = LogicalNode::new(&parent_pin, true, ui_thread);
+        let mut child = LogicalNode::new(&child_pin, false, ui_thread);
+        let parent_id = parent.identity();
+        let child_id = child.identity();
+
+        let prepared = TreeCoordinator::prepare_attach(
+            &parent,
+            &parent_pin,
+            &child,
+            &child_pin,
+            &[parent_id],
+            || Ok(()),
+        )
+        .expect("prepare attach");
+        TreeCoordinator::commit_attach(&mut parent, &mut child, prepared).expect("commit attach");
+        assert_eq!(parent.children().collect::<Vec<_>>(), vec![child_id]);
+        assert_eq!(child.parent(), Some(parent_id));
+        drop(child_pin);
+
+        assert!(
+            !registry
+                .release(child_token)
+                .expect("release child's public handle while attached")
+                .cleanup_accepted
+        );
+        assert!(
+            child_control
+                .lifecycle
+                .lock()
+                .expect("child lifecycle")
+                .ui_state_alive
+        );
+        let listed_child = TreeCoordinator::child_handle(&registry, &parent, child_id, 7)
+            .expect("issue child handle from tree owner");
+        let listed_pin = registry
+            .validate(listed_child, &7, &11)
+            .expect("listed child handle is live");
+        drop(listed_pin);
+        assert!(
+            !registry
+                .release(listed_child)
+                .expect("release listed child handle while attached")
+                .cleanup_accepted
+        );
+
+        TreeCoordinator::detach(&mut parent, &mut child).expect("detach child");
+        assert!(parent.children().next().is_none());
+        assert_eq!(child.parent(), None);
+        assert_eq!(queue.pending_count(), 1);
+        queue.drain_on_ui_thread();
+        assert_eq!(queue.completed().len(), 1);
+
+        drop(parent_pin);
+        assert!(
+            registry
+                .release(parent_token)
+                .expect("release parent")
+                .cleanup_accepted
+        );
+        queue.drain_on_ui_thread();
+        assert_eq!(queue.completed().len(), 2);
+    }
+
+    #[test]
+    fn tree_owner_tree_parent_detach_preserves_detached_subtree_links() {
+        let queue = FakeQueue::new();
+        let registry = TestRegistry::new();
+        let ui_thread = UiThreadContext::capture();
+        let root_control = make_control(Arc::clone(&queue), 11, 50);
+        let middle_control = make_control(Arc::clone(&queue), 11, 51);
+        let leaf_control = make_control(Arc::clone(&queue), 11, 52);
+        let root_token = registry
+            .register(7, 11, Arc::clone(&root_control))
+            .expect("register root");
+        let middle_token = registry
+            .register(7, 11, Arc::clone(&middle_control))
+            .expect("register middle");
+        let leaf_token = registry
+            .register(7, 11, Arc::clone(&leaf_control))
+            .expect("register leaf");
+        let root_pin = registry.validate(root_token, &7, &11).expect("root pin");
+        let middle_pin = registry
+            .validate(middle_token, &7, &11)
+            .expect("middle pin");
+        let leaf_pin = registry.validate(leaf_token, &7, &11).expect("leaf pin");
+        let mut root = LogicalNode::new(&root_pin, true, ui_thread);
+        let mut middle = LogicalNode::new(&middle_pin, true, ui_thread);
+        let mut leaf = LogicalNode::new(&leaf_pin, false, ui_thread);
+        let root_id = root.identity();
+        let middle_id = middle.identity();
+        let leaf_id = leaf.identity();
+
+        let attach_middle = TreeCoordinator::prepare_attach(
+            &root,
+            &root_pin,
+            &middle,
+            &middle_pin,
+            &[root_id],
+            || Ok(()),
+        )
+        .expect("prepare root-middle");
+        TreeCoordinator::commit_attach(&mut root, &mut middle, attach_middle)
+            .expect("commit root-middle");
+        let attach_leaf = TreeCoordinator::prepare_attach(
+            &middle,
+            &middle_pin,
+            &leaf,
+            &leaf_pin,
+            &[root_id, middle_id],
+            || Ok(()),
+        )
+        .expect("prepare middle-leaf");
+        TreeCoordinator::commit_attach(&mut middle, &mut leaf, attach_leaf)
+            .expect("commit middle-leaf");
+
+        TreeCoordinator::detach_all(&mut root, std::slice::from_mut(&mut middle))
+            .expect("detach root children");
+        assert!(root.children().next().is_none());
+        assert_eq!(middle.parent(), None);
+        assert_eq!(middle.children().collect::<Vec<_>>(), vec![leaf_id]);
+        TreeCoordinator::detach_all(&mut middle, std::slice::from_mut(&mut leaf))
+            .expect("detach middle children");
+        assert_eq!(leaf.parent(), None);
+
+        drop(root_pin);
+        drop(middle_pin);
+        drop(leaf_pin);
+        drop(middle);
+        drop(leaf);
+        registry.release(root_token).expect("release root");
+        registry.release(middle_token).expect("release middle");
+        registry.release(leaf_token).expect("release leaf");
+    }
+
+    #[test]
+    fn tree_owner_tree_attach_failures_leave_logical_tree_and_counts_unchanged() {
+        let queue = FakeQueue::new();
+        let registry = TestRegistry::new();
+        let ui_thread = UiThreadContext::capture();
+        let parent_control = make_control(Arc::clone(&queue), 11, 40);
+        let child_control = make_control(Arc::clone(&queue), 11, 41);
+        let parent_token = registry
+            .register(7, 11, Arc::clone(&parent_control))
+            .expect("register parent");
+        let child_token = registry
+            .register(7, 11, Arc::clone(&child_control))
+            .expect("register child");
+        let parent_pin = registry
+            .validate(parent_token, &7, &11)
+            .expect("parent pin");
+        let child_pin = registry.validate(child_token, &7, &11).expect("child pin");
+        let parent = LogicalNode::new(&parent_pin, true, ui_thread);
+        let child = LogicalNode::new(&child_pin, false, ui_thread);
+        let parent_id = parent.identity();
+        let child_id = child.identity();
+
+        queue.fail_next_reservation();
+        assert_eq!(
+            TreeCoordinator::prepare_attach(
+                &parent,
+                &parent_pin,
+                &child,
+                &child_pin,
+                &[parent_id],
+                || Ok(()),
+            )
+            .err(),
+            Some(TreeError::Registry(RegistryError::CleanupUnavailable))
+        );
+        assert_eq!(
+            TreeCoordinator::prepare_attach(
+                &parent,
+                &parent_pin,
+                &child,
+                &child_pin,
+                &[parent_id],
+                || Err(()),
+            )
+            .err(),
+            Some(TreeError::PeerPreparationFailed)
+        );
+        assert_eq!(
+            TreeCoordinator::prepare_attach(
+                &parent,
+                &parent_pin,
+                &child,
+                &child_pin,
+                &[parent_id, child_id],
+                || Ok(()),
+            )
+            .err(),
+            Some(TreeError::Cycle)
+        );
+        assert!(parent.children().next().is_none());
+        assert_eq!(child.parent(), None);
+        {
+            let lifecycle = child_control.lifecycle.lock().expect("child lifecycle");
+            assert_eq!(lifecycle.internal_owners, 0);
+            assert_eq!(lifecycle.public_refs, 1);
+        }
+        assert_eq!(queue.pending_count(), 0);
+
+        let not_container = LogicalNode::new(&parent_pin, false, ui_thread);
+        assert_eq!(
+            TreeCoordinator::prepare_attach(
+                &not_container,
+                &parent_pin,
+                &child,
+                &child_pin,
+                &[not_container.identity()],
+                || Ok(()),
+            )
+            .err(),
+            Some(TreeError::ParentNotContainer)
+        );
+        assert_eq!(queue.pending_count(), 0);
+    }
+
+    #[test]
+    fn tree_owner_tree_mutations_require_the_runtime_ui_thread() {
+        let queue = FakeQueue::new();
+        let registry = TestRegistry::new();
+        let ui_thread = UiThreadContext::capture();
+        let parent_control = make_control(Arc::clone(&queue), 11, 60);
+        let child_control = make_control(Arc::clone(&queue), 11, 61);
+        let parent_token = registry
+            .register(7, 11, Arc::clone(&parent_control))
+            .expect("register parent");
+        let child_token = registry
+            .register(7, 11, Arc::clone(&child_control))
+            .expect("register child");
+        let parent_pin = registry
+            .validate(parent_token, &7, &11)
+            .expect("parent pin");
+        let child_pin = registry.validate(child_token, &7, &11).expect("child pin");
+        let parent = LogicalNode::new(&parent_pin, true, ui_thread);
+        let child = LogicalNode::new(&child_pin, false, ui_thread);
+        let parent_id = parent.identity();
+
+        let (result, parent, child) = thread::spawn(move || {
+            let result = TreeCoordinator::prepare_attach(
+                &parent,
+                &parent_pin,
+                &child,
+                &child_pin,
+                &[parent_id],
+                || Ok(()),
+            );
+            (result, parent, child)
+        })
+        .join()
+        .expect("worker completes");
+        assert_eq!(result.err(), Some(TreeError::WrongThread));
+        assert!(parent.children().next().is_none());
+        assert_eq!(child.parent(), None);
+        assert_eq!(
+            child_control
+                .lifecycle
+                .lock()
+                .expect("child lifecycle")
+                .internal_owners,
+            0
+        );
     }
 
     #[test]

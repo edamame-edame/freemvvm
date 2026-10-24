@@ -3199,6 +3199,39 @@
           "command": ["cargo", "test", "-p", "freemvvm-core", "tree_owner_"]
         }
       ]
+    },
+    {
+      "id": "UNIT-CORE-068",
+      "state": "complete",
+      "scope": "core-logical-tree-attach-commit-detach-and-child-owner-reissue",
+      "sources": [
+        "crates/core-runtime/src/ui_tree.rs",
+        "crates/core-runtime/src/handle_registry/registry.rs",
+        "crates/core-runtime/src/lib.rs"
+      ],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-067"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "UI要素の所属と寿命 / 所属状態と操作ごとの失敗境界 / クラス設計"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.3",
+          "section": "Tree内部ownerとpublic参照の独立管理"
+        }
+      ],
+      "requirements": ["RQ-02-007", "RQ-02-013", "RQ-04-025", "RQ-05-002", "RQ-05-003", "RQ-06-001", "RQ-09-003", "RQ-09-043", "RQ-09-044"],
+      "cases": ["TC-TREE-01", "TC-LIFE-01", "TC-OWN-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-TREE-003",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "tree_owner_tree_"]
+        }
+      ]
     }
   ]
 }

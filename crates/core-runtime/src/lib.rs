@@ -16,6 +16,7 @@ pub use property::ValidationError;
 mod runtime;
 mod runtime_handles;
 // Typed value semantics back the internal Property state; ABI validation remains a later unit.
+mod ui_tree;
 #[allow(dead_code)]
 mod value;
 

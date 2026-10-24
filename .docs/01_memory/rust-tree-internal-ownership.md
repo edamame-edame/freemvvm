@@ -11,9 +11,11 @@
 - internal ownerからpublic handleを発行する場合は、live ownerを根拠に独立した新tokenを発行し、token/table確保失敗では既存owner/countを維持する。
 - Runtime shutdownでUI stateが既に破棄されたらpending reservationを破棄し、後続owner/pin dropからcleanup ticketを再発行しない。
 - cleanup reservation activate/dropはregistry map lock外で行う。UI stateにはUI thread上の`ObjectIdentity`経由でアクセスする。
+- `LogicalNode`はUI thread context、弱いparent identity、子ごとの`TreeOwner`を持つ。attachはpeer準備後のcommitで親子リンクを同時に設定し、`detach_all`は親の破棄前に子をDetached化して各subtree内リンクを維持する。
+- Tree mutationとchildren由来public handleの発行はRuntime UI threadでのみ行う。`parent_ancestry`はUI storeから取得したparentを含む祖先snapshotで、child identityを含む場合はcycleとして拒否する。
 
 ## 実装と検証
 
 - 所有制御と予約handoffは `crates/core-runtime/src/handle_registry/registry.rs` の `CoreObjectControl` / `ValidationPin` / `TreeOwner`。
 - focused確認: `cargo test -p freemvvm-core tree_owner_`。
-- `UNIT-CORE-067` はHandleRegistryのowner lifetime primitive。実際のTreeCoordinator attach/detach統合は別unitで実装・確認する。
+- `UNIT-CORE-067` はHandleRegistryのowner lifetime primitive。`UNIT-CORE-068` はTreeCoordinatorのLogical attach/commit/detachとchild-owner由来handle発行を扱う。Runtime UI object storeやC ABIへのWindow/Control接続は別unitで実装・確認する。
