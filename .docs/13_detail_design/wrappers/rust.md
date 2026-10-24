@@ -1,9 +1,9 @@
 # 言語ラッパー：Rust
 
-- 文書版: 1.5
+- 文書版: 1.6
 - 文書ロール: detailed-design
 - 更新日: 2026-10-24
-- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
+- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-24）。1.6全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -487,6 +487,85 @@ sequenceDiagram
 
 遅延伝播失敗は元Property setterの成功を取り消さず、Binding error snapshotでのみ観測する。次の有効な伝播によるerror解消とerror subscriber通知の順序はイベントハンドリング設計に従う。Runtime shutdown時のactive connection teardownも同設計へ委譲する。
 
+## Async Command safe API案（1.6・レビュー待ち）
+
+本節は[RQ-02-004](../../11_requirements/RQ-02_core-features.md#rq-02-004)、[RQ-06-004](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-004)、[RQ-06-008](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-008)、[RQ-06-009](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-009)、[RQ-06-010](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-010)、[RQ-06-011](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-011)と承認済み[非同期Command DD](../events/commands.md)、[C ABI DD](../runtime-objects/abi.md)をRust safe wrapperへ写す提案である。executor・thread poolは組み込まず、アプリが起動するworkerへ専用operation contextを渡す。callbackからのpanicはC ABIを越境させない。
+
+### 公開型/API案
+
+```rust
+pub struct AsyncCommand { /* !Send/!Sync UI-affine owner */ }
+pub struct OperationId(NonZeroU64);
+pub enum CommandState { Idle, Running, Cancelling, Succeeded, Failed, Cancelled, Unknown(i64) }
+pub struct CommandOperation { /* Send worker lease: id + cancellation + completion reporter */ }
+pub struct CancellationToken { /* Send worker-safe read-only query */ }
+
+impl AsyncCommand {
+    pub fn create<F>(
+        ui: &UiContext<'_>,
+        eligibility: Option<&Property<bool>>,
+        start: F,
+    ) -> Result<Self, UiError>
+    where F: FnMut(CommandOperation) + 'static;
+
+    pub fn execute(&self, ui: &UiContext<'_>) -> Result<OperationId, UiError>;
+    pub fn cancel(&self, ui: &UiContext<'_>, operation: OperationId) -> Result<(), UiError>;
+    pub fn state_property(&self, ui: &UiContext<'_>) -> Result<Property<i64>, UiError>;
+    pub fn can_execute_property(&self, ui: &UiContext<'_>) -> Result<Property<bool>, UiError>;
+    pub fn failure_snapshot(&self, ui: &UiContext<'_>) -> Result<Option<UiError>, UiError>;
+    pub fn close(&mut self, ui: &UiContext<'_>) -> Result<(), UiError>;
+}
+
+impl CommandOperation {
+    pub fn id(&self) -> OperationId;
+    pub fn cancellation(&self) -> &CancellationToken;
+    pub fn report_success(&self) -> Result<(), UiError>;
+    pub fn report_failure(&self, domain: u32, code: u32, message: &str) -> Result<(), UiError>;
+    pub fn report_cancelled(&self) -> Result<(), UiError>;
+}
+
+impl CancellationToken {
+    pub fn is_cancel_requested(&self) -> Result<bool, UiError>;
+}
+```
+
+`AsyncCommand::create`の`start`はUI threadで実行される短いclosureであり、登録成功時だけCoreへ所有権を移す。引数の`CommandOperation`は1回のexecuteに限ったSend可能なworker leaseで、アプリは任意のworker/executorへmoveしてよい。`CancellationToken`は取消要求の照会だけを許し、UI操作を公開しない。workerからの終端報告は`runtime_post`へ一度だけenqueueし、UI thread上のpost callbackがC ABI complete関数を適用する。reportが`Ok(())`を返すのはpost受付を示すだけで、終端state反映はstate Propertyで観測する。enqueue失敗はoperation contextの所有権を失わず、再試行可能とする。
+
+`execute`はcallbackを同期的に呼び、operation IDを返す。実行不可など受付前の失敗は`Err(UiError)`でIDを発行しない。開始callbackのpanicはABI境界で捕捉し、Core所定の開始失敗として扱う。完了reporterは同一operationで一度だけ成功enqueueでき、古い・終端済みIDへの報告はCoreの結果に従って拒否する。
+
+`state_property`と`can_execute_property`は独立owned `Property` handleを返す。状態PropertyはI64のraw valueであり、`CommandState::Unknown`で将来値を保持できるよう変換規則を公開する。`failure_snapshot`は現在のimmutable native errorを`UiError` valueとして取得し、snapshotがなければ`None`を返す。`close`はUI contextでC ABI `command_close`を実行して新規executeを止め、実行中operationへcancelを要求した後に公開tokenをreleaseする。Drop/単なるtoken releaseはcloseを代替しない。
+
+### 所有・thread境界案
+
+```mermaid
+sequenceDiagram
+    participant App as Rust application
+    participant UI as AsyncCommand / UI thread
+    participant Core as Rust Core via C ABI
+    participant Worker as app-owned worker
+    App->>UI: create(start closure)
+    UI->>Core: command_create_async
+    App->>UI: execute()
+    UI->>Core: command_execute
+    Core->>UI: start callback(operation id, borrowed command/cancel token)
+    UI->>UI: retain worker lease handles; build CommandOperation
+    UI->>Worker: move CommandOperation
+    Worker->>Worker: cancellation.is_cancel_requested()
+    Worker->>Core: runtime_post(terminal callback)
+    Core->>UI: execute complete_* callback on UI thread
+    UI->>Core: command state/can-execute Property update
+```
+
+`CommandOperation`のworker leaseはRuntime anchorと事前確保cleanup ownershipを保持する。`Send`を付与する範囲はcommand/cancel/runtime tokenのretain-releaseが任意threadで安全に行われること、post callback/destroyがちょうど一度資源を回収することをtestで証明できるprivate owner型に限定する。既存UI-affine `Owned<T>`自体を`Send`へ変更しない。callback登録失敗時はclosureをRust側が回収し、登録成功後はCoreのdestroy thunkへ一度だけ移転する。
+
+### 未確定点と実装境界
+
+- operation worker leaseのretain token set、Send marker、drop失敗時cleanup ticket/Runtime anchorの構成。
+- `runtime_post`が受理した後にRuntime shutdownでpost callbackが破棄された場合、report APIは受付済みだけを返す。終端結果をUI上で必ず観測する保証は追加しない。
+- `CommandState` raw mapping、OperationIdの公開表現、Domain/Codeとfailure messageのRust引数型。
+- callback内からのclose/execute禁止やcallback panicのstatus mappingはCommand/C ABI契約から拡張しない。
+- async Future、progress専用型、executor/thread-pool統合は本unitに含めず、既存C ABI `runtime_post`とPropertyを利用する。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -502,3 +581,4 @@ sequenceDiagram
 | 2026-10-24 | 1.4改訂案 | Property notification closure、Subscription token ownership、cancel/close分離、callback panic境界を追加提案。1.3全文承認状態を維持し、1.4全文は利用者確認待ち |
 | 2026-10-24 | 1.4全文 | 利用者の「OK」によりRust `Property::subscribe`と`Subscription::cancel/close`、callback ownership/lifetimeを含む文書全体を承認。実装・試験状態は別管理 |
 | 2026-10-24 | 1.5全文 | 利用者の「OK」によりRust Property Bindingの3 mode、所有型、明示cancel、遅延error snapshot/subscription APIを含む全文を承認。実装・試験状態は別管理 |
+| 2026-10-24 | 1.6全文 | 利用者の「OK」によりAsync Command Rust safe API、worker lease、cancel/completion、state/failure取得を含む全文を承認。実装・試験状態は別管理 |

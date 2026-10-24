@@ -2448,6 +2448,60 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-runtime-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-CMD-001",
+      "state": "ready",
+      "scope": "rust-async-command-owner-worker-lease-cancellation-completion",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/src/lib.rs",
+        "wrappers/rust/freemvvm/src/lib.rs",
+        "wrappers/rust/freemvvm/src/handle.rs",
+        "wrappers/rust/freemvvm/src/runtime.rs",
+        "wrappers/rust/freemvvm/src/command.rs",
+        "wrappers/rust/freemvvm/tests/**/*.rs"
+      ],
+      "config": [
+        "Cargo.toml", "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "tools/units.yaml"
+      ],
+      "depends_on": ["UNIT-WRAP-RS-BIND-001", "UNIT-CORE-066"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.6",
+          "section": "Async Command safe API / ownership and thread boundary"
+        },
+        {
+          "path": ".docs/13_detail_design/events/commands.md",
+          "version": "1.1",
+          "section": "execute, cancellation, terminal reports, close and shutdown"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Async Command C ABI / runtime_post"
+        }
+      ],
+      "requirements": [
+        "RQ-02-004", "RQ-03-003", "RQ-03-007", "RQ-04-006", "RQ-04-007",
+        "RQ-05-002", "RQ-05-006", "RQ-05-007", "RQ-05-008", "RQ-05-012",
+        "RQ-06-001", "RQ-06-002", "RQ-06-004", "RQ-06-008", "RQ-06-009",
+        "RQ-06-010", "RQ-06-011"
+      ],
+      "cases": [
+        "TC-CMD-01", "TC-CALLBACK-01", "TC-THREAD-01", "TC-LIFE-01",
+        "TC-ERROR-01", "TC-WRAP-RS-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-RS-CMD-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-runtime-test"]
+        }
+      ]
     }
   ]
 }
