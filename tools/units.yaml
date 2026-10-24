@@ -2398,7 +2398,7 @@
     },
     {
       "id": "UNIT-WRAP-RS-BIND-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "rust-property-binding-modes-cancel-error-snapshot-subscription",
       "sources": [
         "wrappers/rust/freemvvm-sys/src/lib.rs",

@@ -1,7 +1,7 @@
 # Rust Property Binding wrapper
 
 - 更新日: 2026-10-24
-- 状態: 実装とlocal gates完了。Windows/Linux CI結果待ち
+- 状態: 完了。local gatesとWindows/Linux CIが成功
 - 対象ブランチ: `impl-rust/wrappers-runtime-api`（親: `impl-rust/runtime-async-command`）
 - 対象unit: `UNIT-WRAP-RS-BIND-001`（test inventory登録は計画承認後）
 
@@ -58,10 +58,11 @@
 - linked C ABI host-loop testで5値型の3 mode、初期検証拒否、遅延拒否と回復、error subscription、Runtime不一致、close/cancel分離を確認。
 - 別crate compile testでpublic APIを確認し、compile-fail doctestで`Binding<T>`の`!Send`を確認。
 - local pass: `cargo test --locked -p freemvvm`、`cargo clippy --workspace --all-targets --locked -- -D warnings`、`tools/dev.py check`、`tools/dev.py minimum`、`tools/check_docs.py`。
-- `tools/dev.py`は変更していない。Windows/Linux CI記録はpush後に追記する。
+- `tools/dev.py`は変更していない。Windows/Linux CI run [40086049739](https://github.com/edamame-edame/freemvvm/actions/runs/40086049739) が成功。
 
 ## 承認履歴
 
 | 日付 | 対象 | 承認者 | 結果 |
 | --- | --- | --- | --- |
 | 2026-10-24 | 計画とRust DD v1.5・test design v0.8 | 利用者 | 「OK」により承認。実装開始 |
+| 2026-10-24 | UNIT-WRAP-RS-BIND-001 | Codex | local gatesとWindows/Linux CI run 40086049739が成功。unit完了 |
