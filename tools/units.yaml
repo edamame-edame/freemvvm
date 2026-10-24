@@ -2199,6 +2199,56 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-property-bool-i64-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-PROP-UTF8-001",
+      "state": "in_progress",
+      "scope": "rust-safe-property-utf8-create-get-set-close",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/**/*.rs",
+        "wrappers/rust/freemvvm/**/*.rs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": ["UNIT-WRAP-RS-PROP-BOOL-I64-001", "UNIT-ABI-009", "UNIT-ABI-010", "UNIT-ABI-011"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.2",
+          "section": "PropertyValue initial five types / Property<T>::try_new/get/set/close"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "UTF-8 Property create/get/set / byte length and buffer retry"
+        }
+      ],
+      "requirements": [
+        "RQ-02-002", "RQ-02-017", "RQ-03-003", "RQ-03-007",
+        "RQ-04-003", "RQ-04-020", "RQ-04-021", "RQ-04-022",
+        "RQ-05-012", "RQ-06-001"
+      ],
+      "cases": ["TC-ABI-REP-01", "TC-LIFE-01", "TC-WRAP-RS-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-RS-PROP-UTF8-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-runtime-test"]
+        },
+        {
+          "id": "UT-CONSUMER-RS-PROP-UTF8-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-property-utf8-test"]
+        }
+      ]
     }
   ]
 }
