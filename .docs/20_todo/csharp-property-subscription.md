@@ -1,7 +1,7 @@
 # C# Property notification Subscription
 
 - 更新日: 2026-10-24
-- 状態: 実装完了・Windows/Linux CI成功（59d4dc9）・検証記録反映中
+- 状態: 完了。実装・検証記録をcommit/push済み。Windows/Linux CI成功
 - 対象: C# `UiProperty<T>`からnotification Subscriptionを登録し、明示cancel・handle close・managed callback root・callback例外通知を安全に扱う。
 
 ## 背景と範囲
@@ -44,7 +44,7 @@ C# Runtime ownerとBOOL/I64/F64/UTF-8/DECIMAL Property facadeが実装済み。�
 4. [x] DD承認後、`UT-WRAP-CS-PROP-SUB-001` / `UT-CONSUMER-CS-PROP-SUB-001`の試験設計と`UNIT-WRAP-CS-PROP-SUB-001` mappingを製品source変更前に登録した。
 5. [x] CallbackFailure/handler、static trampoline/root、Subscription facadeとfake ABI testsを実装した。`tools/dev.py csharp-property-test`成功。
 6. [x] real C ABI consumer、全体check、minimum toolchain check、文書リンク検査を通過。`tools/units.yaml`、wrapper test design、unit台帳、計画、`.docs/01_memory/`を更新した。実装commit `59d4dc9` の [Windows/Linux CI](https://github.com/edamame-edame/freemvvm/actions/runs/40054978936) が両方success。
-7. [ ] CI結果とcommit revisionをこの記録へ反映し、日本語commitでpushする。記録更新commitのCIも成功することを確認する。
+7. [x] 実装commit、Windows/Linux CI run、focused/consumer/local検証結果を計画・unit台帳・`.docs/01_memory/`へ記録し、commit `672d2ce`としてpushした。記録更新revisionの [CI run 40055245538](https://github.com/edamame-edame/freemvvm/actions/runs/40055245538) もWindows/Linux両runnerでsuccess。
 
 ## 承認済みの決定
 
