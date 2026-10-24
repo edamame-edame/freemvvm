@@ -1,7 +1,7 @@
 # Rust wrapper: BOOL/I64 Property
 
 - 更新日: 2026-10-24
-- 状態: 計画承認済み（利用者、2026-10-24）。実装・CI確認中
+- 状態: 完了（実装・local gates・Rust 1.85・Windows/Linux CI確認済み）
 - 対象ブランチ: `impl-rust/wrappers-runtime-api`
 - 親: Rust wrapper Runtime基盤
 
@@ -41,3 +41,4 @@ Rust safe wrapperから共有C ABIのBOOL/I64 Propertyを利用できるよう�
 | 日付 | 対象 | 内容 |
 | --- | --- | --- |
 | 2026-10-24 | 計画承認 | 利用者の「OK」により計画、DD 1.2、BOOL/I64 consumer test設計を承認。`native_api.rs`は未編集。ローカルの`check`と`minimum`は成功。 |
+| 2026-10-24 | 実装・検証完了 | implementation commit `02df263`、CI verification record `40078152572`（Windows/Linux success）。ローカル`tools/dev.py check`、`minimum`、consumer testも成功。計画/DD commitは`ec2f5ab`。 |
