@@ -2249,6 +2249,51 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-property-utf8-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-PROP-F64-001",
+      "state": "planned",
+      "scope": "rust-safe-property-f64-create-get-set-close",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/**/*.rs",
+        "wrappers/rust/freemvvm/**/*.rs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": ["UNIT-WRAP-RS-PROP-UTF8-001", "UNIT-ABI-009", "UNIT-ABI-010", "UNIT-ABI-011"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.2",
+          "section": "PropertyValue initial five types / Property<T>::try_new/get/set/close"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "F64 Property create/get/set / RQ-02-018 equivalence mapping"
+        }
+      ],
+      "requirements": [
+        "RQ-02-002", "RQ-02-017", "RQ-02-018", "RQ-03-003",
+        "RQ-04-002", "RQ-04-006", "RQ-04-007", "RQ-05-012", "RQ-06-001"
+      ],
+      "cases": ["TC-ABI-REP-01", "TC-LIFE-01", "TC-WRAP-RS-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-CONSUMER-RS-PROP-F64-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-property-f64-test"]
+        }
+      ]
     }
   ]
 }
