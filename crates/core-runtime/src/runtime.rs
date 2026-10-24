@@ -1921,6 +1921,13 @@ impl RuntimeCore {
     }
 
     #[allow(dead_code)] // Read by the Core binding error snapshot API in the next step.
+    pub(crate) fn is_binding_active(&self, connection_id: BindingConnectionId) -> bool {
+        self.active_bindings
+            .lock()
+            .map(|owners| owners.contains_key(&connection_id))
+            .unwrap_or(false)
+    }
+
     pub(crate) fn binding_validation_snapshot(
         &self,
         connection_id: BindingConnectionId,

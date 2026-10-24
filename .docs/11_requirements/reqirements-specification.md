@@ -70,6 +70,7 @@ API設計はDD内にまとめ、独立した設計段階・必須の別仕様書
 | RQ-14 | [開発・検証の実施順序](RQ-14_delivery-sequence.md) | 13 |
 | RQ-15 | [旧要求判断の移管案内（22 ID廃止）](RQ-15_requirement-decisions.md) | 0 |
 | RQ-16 | [要求・設計文書の管理と承認](RQ-16_document-governance.md) | 4 |
+| RQ-17 | [WebViewエンジンプラグイン](RQ-17_webview-plugin.md) | 12 |
 
 ## 要求ID・状態の運用
 

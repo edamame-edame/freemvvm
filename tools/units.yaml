@@ -2052,6 +2052,317 @@
         {"id": "UT-WRAP-CPP-BIND-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-property-binding-test"]},
         {"id": "UT-PKG-CPP-007", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]}
       ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-001",
+      "state": "complete",
+      "scope": "webview-dom-arena-and-budget",
+      "sources": ["crates/webview/src/dom.rs", "crates/webview/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/webview/Cargo.toml"],
+      "depends_on": [],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "1. DOM Arena とリソース予算（`crates/webview::dom`）"
+        },
+        {
+          "path": ".docs/14_secure_design/08-webview-sandbox-parser-limits.md",
+          "version": "1.0",
+          "section": "パーサ・DOM のリソース上限（SD-WV-01 / SD-WV-02）"
+        }
+      ],
+      "requirements": ["RQ-17-001", "RQ-17-009"],
+      "cases": ["TC-WEBVIEW-01", "TC-WEBVIEW-03"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-DOM-001", "command": ["cargo", "test", "-p", "freemvvm-webview", "dom::tests::dom_arena_creates_nodes_and_enforces_node_and_depth_limits"]}
+      ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-002",
+      "state": "complete",
+      "scope": "webview-markdown-parser",
+      "sources": ["crates/webview/src/markdown.rs", "crates/webview/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/webview/Cargo.toml"],
+      "depends_on": ["UNIT-WEBVIEW-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "2. Markdown / HTML パーサと URI 無害化（`crates/webview::markdown`, `html`）"
+        }
+      ],
+      "requirements": ["RQ-17-001", "RQ-17-008"],
+      "cases": ["TC-WEBVIEW-01", "TC-WEBVIEW-03"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-MD-001", "command": ["cargo", "test", "-p", "freemvvm-webview", "markdown::tests::markdown_parses_headings_lists_table_code_and_sanitizes_links"]}
+      ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-003",
+      "state": "complete",
+      "scope": "webview-html-parser",
+      "sources": ["crates/webview/src/html.rs", "crates/webview/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/webview/Cargo.toml"],
+      "depends_on": ["UNIT-WEBVIEW-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "2. Markdown / HTML パーサと URI 無害化（`crates/webview::markdown`, `html`）"
+        }
+      ],
+      "requirements": ["RQ-17-001", "RQ-17-008", "RQ-17-009"],
+      "cases": ["TC-WEBVIEW-01", "TC-WEBVIEW-03"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-HTML-001", "command": ["cargo", "test", "-p", "freemvvm-webview", "html::tests::html_parser_handles_void_tags_entities_styles_and_uri_sanitization"]}
+      ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-004",
+      "state": "complete",
+      "scope": "webview-css-cascade",
+      "sources": ["crates/webview/src/css.rs", "crates/webview/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/webview/Cargo.toml"],
+      "depends_on": ["UNIT-WEBVIEW-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "3. CSS セレクタ・Specificity・ComputedStyle（`crates/webview::css`）"
+        }
+      ],
+      "requirements": ["RQ-17-001", "RQ-17-002", "RQ-17-009"],
+      "cases": ["TC-WEBVIEW-01", "TC-WEBVIEW-03"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-CSS-001", "command": ["cargo", "test", "-p", "freemvvm-webview", "css::tests::css_specificity_and_cascade_resolve_deterministically"]}
+      ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-005",
+      "state": "complete",
+      "scope": "webview-layout-engine",
+      "sources": ["crates/webview/src/layout.rs", "crates/webview/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/webview/Cargo.toml"],
+      "depends_on": ["UNIT-WEBVIEW-001", "UNIT-WEBVIEW-004"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "4. Web レイアウトエンジンと Core Layout 統合（`crates/webview::layout`）"
+        }
+      ],
+      "requirements": ["RQ-17-002", "RQ-17-003", "RQ-17-011"],
+      "cases": ["TC-WEBVIEW-01", "TC-WEBVIEW-04"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-LAYOUT-001", "command": ["cargo", "test", "-p", "freemvvm-webview", "layout::tests::layout_computes_block_flex_table_and_hit_testing"]}
+      ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-006",
+      "state": "complete",
+      "scope": "webview-paint-scene-snapshot",
+      "sources": ["crates/webview/src/paint.rs", "crates/webview/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/webview/Cargo.toml"],
+      "depends_on": ["UNIT-WEBVIEW-005"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "5. DisplayList / SceneSnapshot とソフトウェアラスタライザ（`crates/webview::paint`）"
+        }
+      ],
+      "requirements": ["RQ-17-001", "RQ-17-002", "RQ-17-012"],
+      "cases": ["TC-WEBVIEW-01", "TC-WEBVIEW-04"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-PAINT-001", "command": ["cargo", "test", "-p", "freemvvm-webview", "paint::tests::paint_generates_scene_commands_and_rasterizes_rgba_buffer"]}
+      ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-007",
+      "state": "complete",
+      "scope": "webview-script-vm",
+      "sources": ["crates/webview/src/script.rs", "crates/webview/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/webview/Cargo.toml"],
+      "depends_on": ["UNIT-WEBVIEW-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "6. 軽量スクリプト / JavaScript VM とサンドボックス（`crates/webview::script`）"
+        },
+        {
+          "path": ".docs/14_secure_design/08-webview-sandbox-parser-limits.md",
+          "version": "1.0",
+          "section": "スクリプト VM サンドボックスと実行燃料制限（SD-WV-04 / SD-WV-05 / SD-WV-06）"
+        }
+      ],
+      "requirements": ["RQ-17-006", "RQ-17-007", "RQ-17-008"],
+      "cases": ["TC-WEBVIEW-02", "TC-WEBVIEW-03"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-SCRIPT-001", "command": ["cargo", "test", "-p", "freemvvm-webview", "script::tests::script_vm_enforces_fuel_limit_and_rolls_back_dom_on_abort"]}
+      ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-008",
+      "state": "complete",
+      "scope": "webview-script-dom-mvvm-bridge",
+      "sources": ["crates/webview/src/script.rs", "crates/webview/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/webview/Cargo.toml"],
+      "depends_on": ["UNIT-WEBVIEW-006", "UNIT-WEBVIEW-007"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "6. 軽量スクリプト / JavaScript VM とサンドボックス（`crates/webview::script`）"
+        }
+      ],
+      "requirements": ["RQ-17-005", "RQ-17-006", "RQ-17-007"],
+      "cases": ["TC-WEBVIEW-02", "TC-WEBVIEW-03"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-SCRIPT-001", "command": ["cargo", "test", "-p", "freemvvm-webview", "tests::full_pipeline_markdown_and_html_with_script_and_command_execution"]}
+      ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-009",
+      "state": "complete",
+      "scope": "core-runtime-webview-control",
+      "sources": ["crates/core-runtime/src/webview.rs", "crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml"],
+      "depends_on": ["UNIT-WEBVIEW-008"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "7. Core Runtime `WebView` Control と C ABI 契約"
+        }
+      ],
+      "requirements": ["RQ-17-003", "RQ-17-004", "RQ-17-005", "RQ-17-006", "RQ-17-007", "RQ-17-010"],
+      "cases": ["TC-WEBVIEW-02", "TC-WEBVIEW-04"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-MVVM-001", "command": ["cargo", "test", "-p", "freemvvm-core", "webview::tests::webview_binds_source_property_exposes_mvvm_bridge_and_renders_rgba"]}
+      ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-010",
+      "state": "complete",
+      "scope": "c-abi-webview-surface",
+      "sources": ["crates/c-abi/src/lib.rs", "crates/c-abi/include/freemvvm/abi.h"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/c-abi/Cargo.toml"],
+      "depends_on": ["UNIT-WEBVIEW-009"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "7. Core Runtime `WebView` Control と C ABI 契約"
+        }
+      ],
+      "requirements": ["RQ-17-003", "RQ-17-004", "RQ-17-005", "RQ-17-006"],
+      "cases": ["TC-WEBVIEW-01", "TC-WEBVIEW-02", "TC-WEBVIEW-03", "TC-WEBVIEW-04"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-MVVM-001", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "tests::webview_c_abi_renders_markdown_html_css_script_and_enforces_sandbox"]}
+      ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-011",
+      "state": "complete",
+      "scope": "wrappers-webview-cpp",
+      "sources": [
+        "wrappers/cpp/include/freemvvm/webview.hpp",
+        "wrappers/cpp/include/freemvvm/runtime.hpp",
+        "wrappers/cpp/include/freemvvm/property.hpp",
+        "wrappers/cpp/include/freemvvm/binding.hpp",
+        "wrappers/cpp/src/runtime.cpp",
+        "wrappers/cpp/tests/webview_tests.cpp"
+      ],
+      "config": ["CMakeLists.txt", "wrappers/cpp/CMakeLists.txt", "crates/c-abi/include/freemvvm/abi.h", "tools/units.yaml"],
+      "depends_on": ["UNIT-WEBVIEW-010", "UNIT-WRAP-CPP-007"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "7. Core Runtime `WebView` Control と C ABI 契約"
+        }
+      ],
+      "requirements": ["RQ-17-003", "RQ-17-004", "RQ-17-005", "RQ-17-006"],
+      "cases": ["TC-WEBVIEW-01", "TC-WEBVIEW-02", "TC-WEBVIEW-04"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-MVVM-001", "command": ["ctest", "--preset", "dev", "-R", "^wrapper\\.cpp\\.webview$"]}
+      ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-012",
+      "state": "complete",
+      "scope": "wrappers-webview-rust",
+      "sources": ["wrappers/rust/freemvvm-sys/src/lib.rs", "wrappers/rust/freemvvm/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "wrappers/rust/freemvvm-sys/Cargo.toml", "wrappers/rust/freemvvm/Cargo.toml"],
+      "depends_on": ["UNIT-WEBVIEW-010"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "7. Core Runtime `WebView` Control と C ABI 契約"
+        }
+      ],
+      "requirements": ["RQ-17-003", "RQ-17-004", "RQ-17-005", "RQ-17-006"],
+      "cases": ["TC-WEBVIEW-02", "TC-WEBVIEW-04"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-MVVM-001", "command": ["cargo", "test", "-p", "freemvvm", "tests::rust_webview_wrapper_manages_ownership_callbacks_and_deferred_cleanup"]}
+      ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-013",
+      "state": "complete",
+      "scope": "wrappers-webview-csharp",
+      "sources": ["wrappers/csharp/FreeMvvm/WebView.cs"],
+      "config": ["wrappers/csharp/FreeMvvm/FreeMvvm.csproj"],
+      "depends_on": ["UNIT-WEBVIEW-010"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "7. Core Runtime `WebView` Control と C ABI 契約"
+        }
+      ],
+      "requirements": ["RQ-17-003", "RQ-17-004", "RQ-17-005", "RQ-17-006"],
+      "cases": ["TC-WEBVIEW-04"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-MVVM-001", "command": ["dotnet", "build", "wrappers/csharp/FreeMvvm/FreeMvvm.csproj", "--configuration", "Debug", "--no-restore"]}
+      ]
+    },
+    {
+      "id": "UNIT-WEBVIEW-014",
+      "state": "complete",
+      "scope": "wrappers-webview-python",
+      "sources": ["wrappers/python/src/freemvvm/__init__.py"],
+      "config": ["wrappers/python/pyproject.toml", "pyproject.toml"],
+      "depends_on": ["UNIT-WEBVIEW-010"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/webview.md",
+          "version": "1.0",
+          "section": "7. Core Runtime `WebView` Control と C ABI 契約"
+        }
+      ],
+      "requirements": ["RQ-17-003", "RQ-17-004", "RQ-17-005", "RQ-17-006"],
+      "cases": ["TC-WEBVIEW-04"],
+      "test_design": ".docs/32_unit_test/webview.md",
+      "tests": [
+        {"id": "UT-WEBVIEW-MVVM-001", "command": ["ruff", "check", "wrappers/python/src"]}
+      ]
     }
   ]
 }

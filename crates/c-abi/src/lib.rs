@@ -5,10 +5,11 @@
 use freemvvm_core::abi_support::{
     BindingApiError, DestroyCallback, ErrorApiError, PostCallback, PropertyApiError,
     RuntimeCreateError, RuntimeQueryError, RuntimeRetainError, ShutdownApiError, ShutdownApiState,
-    ValidateBoolCallback, ValidateI64Callback, ValidateUtf8Callback, WakeCallback,
+    ValidateBoolCallback, ValidateI64Callback, ValidateUtf8Callback, WakeCallback, WebViewApiError,
     binding_cancel as core_binding_cancel, binding_create as core_binding_create,
     binding_error_snapshot as core_binding_error_snapshot,
-    binding_subscribe_error as core_binding_subscribe_error, error_code as core_error_code,
+    binding_subscribe_error as core_binding_subscribe_error,
+    control_create_webview as core_control_create_webview, error_code as core_error_code,
     error_message_utf8 as core_error_message_utf8, error_status as core_error_status,
     handle_release as core_handle_release,
     issue_validation_error_snapshot as core_issue_validation_error_snapshot,
@@ -33,6 +34,16 @@ use freemvvm_core::abi_support::{
     runtime_set_ui_loop_bridge, runtime_shutdown, shutdown_request_query,
     subscription_cancel as core_subscription_cancel,
     validation_error_create as core_validation_error_create,
+    webview_bind_source_property as core_webview_bind_source_property,
+    webview_click_at as core_webview_click_at,
+    webview_eval_script_utf8 as core_webview_eval_script_utf8,
+    webview_expose_command_utf8 as core_webview_expose_command_utf8,
+    webview_expose_property_utf8 as core_webview_expose_property_utf8,
+    webview_render_rgba as core_webview_render_rgba,
+    webview_set_source_utf8 as core_webview_set_source_utf8,
+    webview_set_stylesheet_utf8 as core_webview_set_stylesheet_utf8,
+    webview_set_viewport as core_webview_set_viewport,
+    webview_text_content_utf8 as core_webview_text_content_utf8,
 };
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
 use std::ffi::c_void;
@@ -1665,6 +1676,421 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
     UI_OK
 }
 
+fn map_webview_error(error: WebViewApiError) -> (u32, u64) {
+    match error {
+        WebViewApiError::InvalidHandle => (UI_INVALID_HANDLE, 0),
+        WebViewApiError::InvalidArgument => (UI_INVALID_ARGUMENT, 0),
+        WebViewApiError::WrongType => (UI_WRONG_TYPE, 0),
+        WebViewApiError::WrongRuntime => (UI_WRONG_RUNTIME, 0),
+        WebViewApiError::WrongThread => (UI_WRONG_THREAD, 0),
+        WebViewApiError::Closed => (UI_CLOSED, 0),
+        WebViewApiError::OutOfMemory => (UI_OUT_OF_MEMORY, 0),
+        WebViewApiError::BufferTooSmall { .. } => (UI_BUFFER_TOO_SMALL, 0),
+        WebViewApiError::ValidationFailed(snapshot) => {
+            let error_handle = snapshot
+                .and_then(|s| core_issue_validation_error_snapshot(s).ok())
+                .unwrap_or(0);
+            (UI_VALIDATION_FAILED, error_handle)
+        }
+        WebViewApiError::Internal => (UI_INTERNAL_ERROR, 0),
+    }
+}
+
+fn catch_webview_action(operation: impl FnOnce() -> Result<(), WebViewApiError>) -> (u32, u64) {
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(Ok(())) => (UI_OK, 0),
+        Ok(Err(error)) => map_webview_error(error),
+        Err(_) => (UI_INTERNAL_ERROR, 0),
+    }
+}
+
+/// Create an owned WebView control bound to `runtime`.
+///
+/// # Safety
+/// `out_webview` must be null or writable; a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_control_create_webview(
+    runtime: u64,
+    out_webview: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if !out_webview.is_null() {
+        // SAFETY: caller guarantees a non-null webview output is writable.
+        unsafe { out_webview.write(0) };
+    }
+    if out_webview.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| core_control_create_webview(runtime))) {
+        Ok(Ok(handle)) => {
+            // SAFETY: required output was checked non-null above.
+            unsafe { out_webview.write(handle) };
+            UI_OK
+        }
+        Ok(Err(err)) => {
+            // SAFETY: out_error is null or writable per caller contract.
+            unsafe { finish_property_set(map_webview_error(err), out_error) }
+        }
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Set the Markdown or HTML document source of a WebView control.
+///
+/// `format` is 1 for HTML (`UI_WEBVIEW_FORMAT_HTML`) or 2 for Markdown (`UI_WEBVIEW_FORMAT_MARKDOWN`).
+///
+/// # Safety
+/// If `byte_length > 0`, `bytes` must point to `byte_length` readable bytes. A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_webview_set_source_utf8(
+    webview: u64,
+    format: u32,
+    bytes: *const u8,
+    byte_length: u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    let Ok(length) = usize::try_from(byte_length) else {
+        return UI_OUT_OF_MEMORY;
+    };
+    if length > 0 && bytes.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: length is 0 or `bytes` is non-null and readable for `length` bytes.
+    let slice = unsafe {
+        if length == 0 {
+            &[][..]
+        } else {
+            std::slice::from_raw_parts(bytes, length)
+        }
+    };
+    let result = catch_webview_action(|| core_webview_set_source_utf8(webview, format, slice));
+    // SAFETY: out_error is null or writable per caller contract.
+    unsafe { finish_property_set(result, out_error) }
+}
+
+/// Set the author CSS stylesheet of a WebView control.
+///
+/// # Safety
+/// If `byte_length > 0`, `bytes` must point to `byte_length` readable bytes. A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_webview_set_stylesheet_utf8(
+    webview: u64,
+    bytes: *const u8,
+    byte_length: u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    let Ok(length) = usize::try_from(byte_length) else {
+        return UI_OUT_OF_MEMORY;
+    };
+    if length > 0 && bytes.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: length is 0 or `bytes` is non-null and readable for `length` bytes.
+    let slice = unsafe {
+        if length == 0 {
+            &[][..]
+        } else {
+            std::slice::from_raw_parts(bytes, length)
+        }
+    };
+    let result = catch_webview_action(|| core_webview_set_stylesheet_utf8(webview, slice));
+    // SAFETY: out_error is null or writable per caller contract.
+    unsafe { finish_property_set(result, out_error) }
+}
+
+/// Set the viewport size of a WebView control in DIP.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_webview_set_viewport(
+    webview: u64,
+    width_dip: f64,
+    height_dip: f64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    let result = catch_webview_action(|| core_webview_set_viewport(webview, width_dip, height_dip));
+    // SAFETY: out_error is null or writable per caller contract.
+    unsafe { finish_property_set(result, out_error) }
+}
+
+/// Bind a `Property<Utf8>` handle as the document source of a WebView control.
+///
+/// # Safety
+/// `out_binding` must be null or writable; a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_webview_bind_source_property(
+    webview: u64,
+    format: u32,
+    utf8_property: u64,
+    out_binding: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if !out_binding.is_null() {
+        // SAFETY: caller guarantees a non-null binding output is writable.
+        unsafe { out_binding.write(0) };
+    }
+    if out_binding.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    match catch_unwind(AssertUnwindSafe(|| {
+        core_webview_bind_source_property(webview, format, utf8_property)
+    })) {
+        Ok(Ok(binding)) => {
+            // SAFETY: required output was checked non-null above.
+            unsafe { out_binding.write(binding) };
+            UI_OK
+        }
+        Ok(Err(err)) => {
+            // SAFETY: out_error is null or writable per caller contract.
+            unsafe { finish_property_set(map_webview_error(err), out_error) }
+        }
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Expose a Runtime `Property` handle to the WebView script bridge under `alias_bytes`.
+///
+/// # Safety
+/// If `alias_byte_length > 0`, `alias_bytes` must point to `alias_byte_length` readable bytes.
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_webview_expose_property_utf8(
+    webview: u64,
+    alias_bytes: *const u8,
+    alias_byte_length: u64,
+    property: u64,
+    allow_write: u8,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    if allow_write > 1 {
+        return UI_INVALID_ARGUMENT;
+    }
+    let Ok(length) = usize::try_from(alias_byte_length) else {
+        return UI_OUT_OF_MEMORY;
+    };
+    if length == 0 || alias_bytes.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: `alias_bytes` is non-null and readable for `length` bytes.
+    let slice = unsafe { std::slice::from_raw_parts(alias_bytes, length) };
+    let result = catch_webview_action(|| {
+        core_webview_expose_property_utf8(webview, slice, property, allow_write != 0)
+    });
+    // SAFETY: out_error is null or writable per caller contract.
+    unsafe { finish_property_set(result, out_error) }
+}
+
+/// Expose a host Command callback to the WebView script bridge under `alias_bytes`.
+///
+/// # Safety
+/// `callback` and `destroy` must be valid callbacks. If `alias_byte_length > 0`, `alias_bytes`
+/// must point to `alias_byte_length` readable bytes. A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_webview_expose_command_utf8(
+    webview: u64,
+    alias_bytes: *const u8,
+    alias_byte_length: u64,
+    callback: Option<PostCallback>,
+    userdata: *mut c_void,
+    destroy: Option<DestroyCallback>,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    let (Some(callback), Some(destroy)) = (callback, destroy) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    let Ok(length) = usize::try_from(alias_byte_length) else {
+        return UI_OUT_OF_MEMORY;
+    };
+    if length == 0 || alias_bytes.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: `alias_bytes` is non-null and readable for `length` bytes.
+    let slice = unsafe { std::slice::from_raw_parts(alias_bytes, length) };
+    let result = catch_webview_action(|| {
+        core_webview_expose_command_utf8(webview, slice, callback, userdata as usize, destroy)
+    });
+    // SAFETY: out_error is null or writable per caller contract.
+    unsafe { finish_property_set(result, out_error) }
+}
+
+/// Evaluate a sandboxed JavaScript snippet inside the WebView control.
+///
+/// # Safety
+/// If `byte_length > 0`, `script_bytes` must point to `byte_length` readable bytes.
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_webview_eval_script_utf8(
+    webview: u64,
+    script_bytes: *const u8,
+    byte_length: u64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    let Ok(length) = usize::try_from(byte_length) else {
+        return UI_OUT_OF_MEMORY;
+    };
+    if length > 0 && script_bytes.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: length is 0 or `script_bytes` is non-null and readable for `length` bytes.
+    let slice = unsafe {
+        if length == 0 {
+            &[][..]
+        } else {
+            std::slice::from_raw_parts(script_bytes, length)
+        }
+    };
+    let result = catch_webview_action(|| core_webview_eval_script_utf8(webview, slice));
+    // SAFETY: out_error is null or writable per caller contract.
+    unsafe { finish_property_set(result, out_error) }
+}
+
+/// Simulate a pointer click at `(x_dip, y_dip)` inside the WebView viewport.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_webview_click_at(
+    webview: u64,
+    x_dip: f64,
+    y_dip: f64,
+    out_error: *mut u64,
+) -> u32 {
+    if !out_error.is_null() {
+        // SAFETY: caller guarantees a non-null optional error output is writable.
+        unsafe { out_error.write(0) };
+    }
+    let result = catch_webview_action(|| core_webview_click_at(webview, x_dip, y_dip));
+    // SAFETY: out_error is null or writable per caller contract.
+    unsafe { finish_property_set(result, out_error) }
+}
+
+/// Copy the rendered document text content as UTF-8 bytes into `buffer`.
+///
+/// # Safety
+/// `out_length` must point to writable `u64` storage. When `buffer` is non-null and `capacity > 0`,
+/// `buffer` must point to `capacity` writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_webview_text_content_utf8(
+    webview: u64,
+    buffer: *mut u8,
+    capacity: u64,
+    out_length: *mut u64,
+) -> u32 {
+    if !out_length.is_null() {
+        // SAFETY: caller guarantees a non-null length output is writable.
+        unsafe { out_length.write(0) };
+    }
+    if out_length.is_null() || (buffer.is_null() && capacity != 0) {
+        return UI_INVALID_ARGUMENT;
+    }
+    let Ok(capacity_usize) = usize::try_from(capacity) else {
+        return UI_OUT_OF_MEMORY;
+    };
+    match catch_unwind(AssertUnwindSafe(|| {
+        if buffer.is_null() {
+            core_webview_text_content_utf8(webview, None)
+        } else {
+            // SAFETY: `buffer` is non-null and writable for `capacity_usize` bytes.
+            let slice = unsafe { std::slice::from_raw_parts_mut(buffer, capacity_usize) };
+            core_webview_text_content_utf8(webview, Some(slice))
+        }
+    })) {
+        Ok(Ok(length)) => {
+            // SAFETY: required output was checked non-null above.
+            unsafe { out_length.write(length as u64) };
+            UI_OK
+        }
+        Ok(Err(WebViewApiError::BufferTooSmall { required })) => {
+            // SAFETY: required output was checked non-null above.
+            unsafe { out_length.write(required as u64) };
+            UI_BUFFER_TOO_SMALL
+        }
+        Ok(Err(error)) => map_webview_error(error).0,
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
+/// Render the WebView scene to an RGBA8888 pixel buffer of `width_px * height_px * 4` bytes.
+///
+/// # Safety
+/// `out_byte_length` must point to writable `u64` storage. When `buffer` is non-null and `capacity > 0`,
+/// `buffer` must point to `capacity` writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_webview_render_rgba(
+    webview: u64,
+    width_px: u32,
+    height_px: u32,
+    buffer: *mut u8,
+    capacity: u64,
+    out_byte_length: *mut u64,
+) -> u32 {
+    if !out_byte_length.is_null() {
+        // SAFETY: caller guarantees a non-null length output is writable.
+        unsafe { out_byte_length.write(0) };
+    }
+    if out_byte_length.is_null() || (buffer.is_null() && capacity != 0) {
+        return UI_INVALID_ARGUMENT;
+    }
+    let Ok(capacity_usize) = usize::try_from(capacity) else {
+        return UI_OUT_OF_MEMORY;
+    };
+    match catch_unwind(AssertUnwindSafe(|| {
+        if buffer.is_null() {
+            core_webview_render_rgba(webview, width_px, height_px, None)
+        } else {
+            // SAFETY: `buffer` is non-null and writable for `capacity_usize` bytes.
+            let slice = unsafe { std::slice::from_raw_parts_mut(buffer, capacity_usize) };
+            core_webview_render_rgba(webview, width_px, height_px, Some(slice))
+        }
+    })) {
+        Ok(Ok(length)) => {
+            // SAFETY: required output was checked non-null above.
+            unsafe { out_byte_length.write(length as u64) };
+            UI_OK
+        }
+        Ok(Err(WebViewApiError::BufferTooSmall { required })) => {
+            // SAFETY: required output was checked non-null above.
+            unsafe { out_byte_length.write(required as u64) };
+            UI_BUFFER_TOO_SMALL
+        }
+        Ok(Err(error)) => map_webview_error(error).0,
+        Err(_) => UI_INTERNAL_ERROR,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1694,6 +2120,161 @@ mod tests {
     use std::ffi::c_void;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
     use std::sync::{Mutex, mpsc};
+
+    #[test]
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    fn webview_c_abi_renders_markdown_html_css_script_and_enforces_sandbox() {
+        let mut runtime = 0;
+        assert_eq!(
+            unsafe { ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+
+        let mut webview = 0;
+        let mut error = u64::MAX;
+        assert_eq!(
+            unsafe { super::ui_abi_1_control_create_webview(runtime, &mut webview, &mut error) },
+            UI_OK
+        );
+        assert_ne!(webview, 0);
+        assert_eq!(error, 0);
+
+        let mut count_prop = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_property_create_i64(runtime, 40, &mut count_prop, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        let alias = b"count";
+        assert_eq!(
+            unsafe {
+                super::ui_abi_1_webview_expose_property_utf8(
+                    webview,
+                    alias.as_ptr(),
+                    alias.len() as u64,
+                    count_prop,
+                    1,
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+
+        let cmd_probe = PostProbe::default();
+        let cmd_alias = b"increment";
+        assert_eq!(
+            unsafe {
+                super::ui_abi_1_webview_expose_command_utf8(
+                    webview,
+                    cmd_alias.as_ptr(),
+                    cmd_alias.len() as u64,
+                    Some(record_post_callback),
+                    (&cmd_probe as *const PostProbe).cast_mut().cast(),
+                    Some(record_post_destroy),
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+
+        let html = br#"<div id="box"><h1 id="title">WebView C ABI</h1><button id="btn">Run</button></div><script>let c = freemvvm.getProperty("count"); freemvvm.setProperty("count", c + 2); freemvvm.invokeCommand("increment");</script>"#;
+        assert_eq!(
+            unsafe {
+                super::ui_abi_1_webview_set_source_utf8(
+                    webview,
+                    1,
+                    html.as_ptr(),
+                    html.len() as u64,
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+
+        let mut current_count = 0;
+        assert_eq!(
+            unsafe { ui_abi_1_property_get_i64(count_prop, &mut current_count) },
+            UI_OK
+        );
+        assert_eq!(current_count, 42);
+        assert_eq!(cmd_probe.callbacks.load(Ordering::SeqCst), 1);
+
+        // Disallowed external URI scheme produces UI_VALIDATION_FAILED with domain=17, code=3
+        let bad_md = b"[External](https://example.com)";
+        let mut uri_err = 0;
+        assert_eq!(
+            unsafe {
+                super::ui_abi_1_webview_set_source_utf8(
+                    webview,
+                    2,
+                    bad_md.as_ptr(),
+                    bad_md.len() as u64,
+                    &mut uri_err,
+                )
+            },
+            UI_VALIDATION_FAILED
+        );
+        assert_ne!(uri_err, 0);
+        let (mut domain, mut code) = (0, 0);
+        assert_eq!(
+            unsafe { ui_abi_1_error_code(uri_err, &mut domain, &mut code) },
+            UI_OK
+        );
+        assert_eq!((domain, code), (17, 3));
+        assert_eq!(ui_abi_1_handle_release(uri_err), UI_OK);
+
+        // Previous DOM remains intact after rejected update
+        let mut text_len = 0;
+        assert_eq!(
+            unsafe {
+                super::ui_abi_1_webview_text_content_utf8(
+                    webview,
+                    std::ptr::null_mut(),
+                    0,
+                    &mut text_len,
+                )
+            },
+            UI_OK
+        );
+        let mut text_buf = vec![0u8; text_len as usize];
+        assert_eq!(
+            unsafe {
+                super::ui_abi_1_webview_text_content_utf8(
+                    webview,
+                    text_buf.as_mut_ptr(),
+                    text_buf.len() as u64,
+                    &mut text_len,
+                )
+            },
+            UI_OK
+        );
+        assert!(
+            String::from_utf8(text_buf)
+                .expect("utf8")
+                .contains("WebView C ABI")
+        );
+
+        let mut rgba_len = 0;
+        assert_eq!(
+            unsafe {
+                super::ui_abi_1_webview_render_rgba(
+                    webview,
+                    32,
+                    16,
+                    std::ptr::null_mut(),
+                    0,
+                    &mut rgba_len,
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(rgba_len, 32 * 16 * 4);
+
+        assert_eq!(ui_abi_1_handle_release(webview), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(count_prop), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
 
     struct BridgeProbe {
         priorities: Mutex<Vec<u32>>,

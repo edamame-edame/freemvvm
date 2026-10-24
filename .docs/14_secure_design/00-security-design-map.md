@@ -30,6 +30,7 @@
 | SD-05 | [DDとの防御interface対応](05-design-interface-alignment.md) |
 | SD-06 | [Manifest wire・署名検証器](06-manifest-wire-verifier.md) |
 | SD-07 | [鍵・失効・offline・staging](07-trust-key-staging.md) |
+| SD-08 | [WebView入力境界・パーサ上限・スクリプトサンドボックス](08-webview-sandbox-parser-limits.md) |
 
 ## 具体化境界
 

@@ -43,6 +43,7 @@
 | [UIクラス：InputとFocus](ui/input-focus.md) | 入力配送・Focus状態・IME接続 |
 | [UIクラス：TextBox・Validation・IME編集](ui/text-editing.md) | PropertyとView入力のValidation、TextBox編集とIME session、編集API・文字位置・失敗回復 |
 | [UIクラス：Window・基本Control・次段階Control](ui/controls.md) | 基本Control、Windowの操作とclose request、次段階Control |
+| [UIクラス：WebViewエンジンプラグイン詳細設計](ui/webview.md) | DOM Arena、Markdown/HTML/CSSパーサ、WebLayout、Script VM、MVVM/ABI接続 |
 
 ## プラットフォーム設計
 

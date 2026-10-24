@@ -17,6 +17,7 @@ mod runtime_handles;
 // Typed value semantics back the internal Property state; ABI validation remains a later unit.
 #[allow(dead_code)]
 mod value;
+mod webview;
 
 /// Narrow support surface used by the C ABI crate while the Core remains private to wrappers.
 #[doc(hidden)]
@@ -38,6 +39,8 @@ pub mod abi_support {
     use crate::value::{
         DecimalValue, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind,
     };
+    pub use crate::webview::WebViewApiError;
+    use crate::webview::{WebViewHandleKind, WebViewInstance};
     use std::collections::HashMap;
     use std::ffi::c_void;
     use std::sync::{Arc, Condvar, Mutex, OnceLock, Weak};
@@ -628,6 +631,11 @@ pub mod abi_support {
                     connection,
                 };
                 bindings.insert(retained, retained_entry);
+                return Ok(retained.into_abi());
+            }
+        }
+        {
+            if let Some(retained) = webview_retain(token)? {
                 return Ok(retained.into_abi());
             }
         }
@@ -1426,6 +1434,289 @@ pub mod abi_support {
         )
     }
 
+    struct WebViewOwnerEntry {
+        runtime_handle: u64,
+        runtime: Arc<RuntimeCore>,
+        instance: Arc<WebViewInstance>,
+    }
+
+    struct WebViewHandles {
+        registry: HandleRegistry<WebViewHandleKind, RuntimeIdentity>,
+        owners: Mutex<HashMap<HandleToken, WebViewOwnerEntry>>,
+    }
+
+    static WEBVIEW_HANDLES: OnceLock<WebViewHandles> = OnceLock::new();
+
+    fn webview_handles() -> &'static WebViewHandles {
+        WEBVIEW_HANDLES.get_or_init(|| WebViewHandles {
+            registry: HandleRegistry::new(),
+            owners: Mutex::new(HashMap::new()),
+        })
+    }
+
+    fn resolve_webview_entry(token: HandleToken) -> Result<WebViewOwnerEntry, WebViewApiError> {
+        let handles = webview_handles();
+        let entry = handles
+            .owners
+            .lock()
+            .map_err(|_| WebViewApiError::Internal)?
+            .get(&token)
+            .map(|e| WebViewOwnerEntry {
+                runtime_handle: e.runtime_handle,
+                runtime: Arc::clone(&e.runtime),
+                instance: Arc::clone(&e.instance),
+            })
+            .ok_or(WebViewApiError::InvalidHandle)?;
+        let _pin = handles
+            .registry
+            .validate(
+                token,
+                &WebViewHandleKind::WebView,
+                &entry.runtime.identity(),
+            )
+            .map_err(|error| match error {
+                RegistryError::InvalidToken
+                | RegistryError::WrongKind
+                | RegistryError::WrongRuntime => WebViewApiError::InvalidHandle,
+                RegistryError::OutOfMemory => WebViewApiError::OutOfMemory,
+                _ => WebViewApiError::Internal,
+            })?;
+        Ok(entry)
+    }
+
+    fn webview_retain(token: HandleToken) -> Result<Option<HandleToken>, RuntimeRetainError> {
+        let handles = webview_handles();
+        let mut owners = handles
+            .owners
+            .lock()
+            .map_err(|_| RuntimeRetainError::Internal)?;
+        let Some(existing) = owners.get(&token).map(|e| WebViewOwnerEntry {
+            runtime_handle: e.runtime_handle,
+            runtime: Arc::clone(&e.runtime),
+            instance: Arc::clone(&e.instance),
+        }) else {
+            return Ok(None);
+        };
+        owners
+            .try_reserve(1)
+            .map_err(|_| RuntimeRetainError::OutOfMemory)?;
+        let retained = handles
+            .registry
+            .retain(token)
+            .map_err(|error| match error {
+                RegistryError::InvalidToken => RuntimeRetainError::InvalidHandle,
+                RegistryError::OutOfMemory => RuntimeRetainError::OutOfMemory,
+                _ => RuntimeRetainError::Internal,
+            })?;
+        owners.insert(retained, existing);
+        Ok(Some(retained))
+    }
+
+    fn webview_release(token: HandleToken) -> Result<bool, ShutdownApiError> {
+        let handles = webview_handles();
+        let has_entry = handles
+            .owners
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?
+            .contains_key(&token);
+        if !has_entry {
+            return Ok(false);
+        }
+        handles
+            .registry
+            .release(token)
+            .map_err(map_registry_error)?;
+        let mut owners = handles
+            .owners
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        owners.remove(&token);
+        Ok(true)
+    }
+
+    pub fn control_create_webview(runtime_handle: u64) -> Result<u64, WebViewApiError> {
+        let runtime = resolve_runtime(runtime_handle).map_err(|e| match e {
+            ShutdownApiError::InvalidHandle => WebViewApiError::InvalidHandle,
+            ShutdownApiError::WrongThread => WebViewApiError::WrongThread,
+            ShutdownApiError::Closed => WebViewApiError::Closed,
+            ShutdownApiError::OutOfMemory => WebViewApiError::OutOfMemory,
+            _ => WebViewApiError::Internal,
+        })?;
+        let handles = webview_handles();
+        let mut owners = handles
+            .owners
+            .lock()
+            .map_err(|_| WebViewApiError::Internal)?;
+        owners
+            .try_reserve(1)
+            .map_err(|_| WebViewApiError::OutOfMemory)?;
+        let instance = WebViewInstance::new(Arc::clone(&runtime));
+        let stored_instance = Arc::clone(&instance);
+        let token = runtime
+            .register_ui_object(&handles.registry, WebViewHandleKind::WebView, move || {
+                stored_instance
+            })
+            .map_err(|error| match map_property_registration_error(error) {
+                ShutdownApiError::WrongThread => WebViewApiError::WrongThread,
+                ShutdownApiError::Closed => WebViewApiError::Closed,
+                ShutdownApiError::OutOfMemory => WebViewApiError::OutOfMemory,
+                _ => WebViewApiError::Internal,
+            })?;
+        owners.insert(
+            token,
+            WebViewOwnerEntry {
+                runtime_handle,
+                runtime,
+                instance,
+            },
+        );
+        Ok(token.into_abi())
+    }
+
+    pub fn webview_set_source_utf8(
+        webview: u64,
+        format: u32,
+        bytes: &[u8],
+    ) -> Result<(), WebViewApiError> {
+        let token = HandleToken::from_abi(webview).ok_or(WebViewApiError::InvalidHandle)?;
+        let entry = resolve_webview_entry(token)?;
+        entry.instance.set_source_utf8(format, bytes)
+    }
+
+    pub fn webview_set_stylesheet_utf8(webview: u64, bytes: &[u8]) -> Result<(), WebViewApiError> {
+        let token = HandleToken::from_abi(webview).ok_or(WebViewApiError::InvalidHandle)?;
+        let entry = resolve_webview_entry(token)?;
+        entry.instance.set_stylesheet_utf8(bytes)
+    }
+
+    pub fn webview_set_viewport(
+        webview: u64,
+        width_dip: f64,
+        height_dip: f64,
+    ) -> Result<(), WebViewApiError> {
+        let token = HandleToken::from_abi(webview).ok_or(WebViewApiError::InvalidHandle)?;
+        let entry = resolve_webview_entry(token)?;
+        entry.instance.set_viewport(width_dip, height_dip)
+    }
+
+    pub fn webview_expose_property_utf8(
+        webview: u64,
+        alias_bytes: &[u8],
+        property: u64,
+        allow_write: bool,
+    ) -> Result<(), WebViewApiError> {
+        let token = HandleToken::from_abi(webview).ok_or(WebViewApiError::InvalidHandle)?;
+        let entry = resolve_webview_entry(token)?;
+        let prop_token = HandleToken::from_abi(property).ok_or(WebViewApiError::InvalidHandle)?;
+        let prop_handles = property_handles();
+        let prop_runtime = prop_handles
+            .owners
+            .lock()
+            .map_err(|_| WebViewApiError::Internal)?
+            .get(&prop_token)
+            .cloned()
+            .ok_or(WebViewApiError::InvalidHandle)?;
+        if !Arc::ptr_eq(&entry.runtime, &prop_runtime) {
+            return Err(WebViewApiError::WrongRuntime);
+        }
+        let kind = property_kind(property).map_err(|e| match e {
+            ShutdownApiError::InvalidHandle => WebViewApiError::InvalidHandle,
+            ShutdownApiError::WrongThread => WebViewApiError::WrongThread,
+            ShutdownApiError::Closed => WebViewApiError::Closed,
+            _ => WebViewApiError::Internal,
+        })?;
+        if !matches!(kind, 1 | 2 | 3 | 5) {
+            return Err(WebViewApiError::WrongType);
+        }
+        entry
+            .instance
+            .expose_property(alias_bytes, property, allow_write)
+    }
+
+    pub fn webview_expose_command_utf8(
+        webview: u64,
+        alias_bytes: &[u8],
+        callback: PostCallback,
+        userdata: usize,
+        destroy: DestroyCallback,
+    ) -> Result<(), WebViewApiError> {
+        let token = HandleToken::from_abi(webview).ok_or(WebViewApiError::InvalidHandle)?;
+        let entry = resolve_webview_entry(token)?;
+        entry
+            .instance
+            .expose_command(alias_bytes, callback, userdata, destroy)
+    }
+
+    pub fn webview_bind_source_property(
+        webview: u64,
+        format: u32,
+        utf8_property: u64,
+    ) -> Result<u64, WebViewApiError> {
+        let token = HandleToken::from_abi(webview).ok_or(WebViewApiError::InvalidHandle)?;
+        let entry = resolve_webview_entry(token)?;
+        let prop_token =
+            HandleToken::from_abi(utf8_property).ok_or(WebViewApiError::InvalidHandle)?;
+        let prop_handles = property_handles();
+        let prop_runtime = prop_handles
+            .owners
+            .lock()
+            .map_err(|_| WebViewApiError::Internal)?
+            .get(&prop_token)
+            .cloned()
+            .ok_or(WebViewApiError::InvalidHandle)?;
+        if !Arc::ptr_eq(&entry.runtime, &prop_runtime) {
+            return Err(WebViewApiError::WrongRuntime);
+        }
+        entry.instance.bind_source_property(
+            entry.runtime_handle,
+            format,
+            utf8_property,
+            |binding_handle| {
+                let btoken = HandleToken::from_abi(binding_handle)?;
+                binding_handles()
+                    .lock()
+                    .ok()?
+                    .get(&btoken)
+                    .map(|b| b.connection)
+            },
+        )
+    }
+
+    pub fn webview_eval_script_utf8(
+        webview: u64,
+        script_bytes: &[u8],
+    ) -> Result<(), WebViewApiError> {
+        let token = HandleToken::from_abi(webview).ok_or(WebViewApiError::InvalidHandle)?;
+        let entry = resolve_webview_entry(token)?;
+        entry.instance.eval_script_utf8(script_bytes)
+    }
+
+    pub fn webview_click_at(webview: u64, x_dip: f64, y_dip: f64) -> Result<(), WebViewApiError> {
+        let token = HandleToken::from_abi(webview).ok_or(WebViewApiError::InvalidHandle)?;
+        let entry = resolve_webview_entry(token)?;
+        entry.instance.click_at(x_dip, y_dip)
+    }
+
+    pub fn webview_text_content_utf8(
+        webview: u64,
+        buffer: Option<&mut [u8]>,
+    ) -> Result<usize, WebViewApiError> {
+        let token = HandleToken::from_abi(webview).ok_or(WebViewApiError::InvalidHandle)?;
+        let entry = resolve_webview_entry(token)?;
+        entry.instance.text_content_utf8(buffer)
+    }
+
+    pub fn webview_render_rgba(
+        webview: u64,
+        width_px: u32,
+        height_px: u32,
+        buffer: Option<&mut [u8]>,
+    ) -> Result<usize, WebViewApiError> {
+        let token = HandleToken::from_abi(webview).ok_or(WebViewApiError::InvalidHandle)?;
+        let entry = resolve_webview_entry(token)?;
+        entry.instance.render_rgba(width_px, height_px, buffer)
+    }
+
     fn property_release(token: HandleToken) -> Result<bool, ShutdownApiError> {
         let handles = property_handles();
         let runtime = handles
@@ -1645,6 +1936,9 @@ pub mod abi_support {
             .remove(&token)
             .is_some()
         {
+            return Ok(());
+        }
+        if webview_release(token)? {
             return Ok(());
         }
         if property_release(token)? {

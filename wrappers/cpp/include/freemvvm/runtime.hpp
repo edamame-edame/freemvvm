@@ -37,6 +37,7 @@ class ErrorSnapshot final {
   bool valid() const noexcept { return token_ != 0; }
 
  private:
+  friend class WebView;
   friend struct detail::RuntimeTestAccess;
   friend UiError detail::make_error(
       std::uint32_t, std::uint64_t,
@@ -169,6 +170,7 @@ class ShutdownRequest final {
 
  private:
   friend class Runtime;
+  friend class WebView;
   friend struct detail::RuntimeTestAccess;
   ShutdownRequest(std::uint64_t token,
                   std::shared_ptr<detail::RuntimeCleanupState> state,
@@ -191,6 +193,7 @@ class HandlerRegistration final {
 
  private:
   friend class Runtime;
+  friend class WebView;
   friend struct detail::RuntimeTestAccess;
   HandlerRegistration(
       std::weak_ptr<detail::RuntimeCleanupState> state,
@@ -221,6 +224,7 @@ class Runtime final {
  private:
   template <typename T>
   friend class Property;
+  friend class WebView;
   friend struct detail::RuntimeTestAccess;
   Runtime(std::uint64_t token,
           std::shared_ptr<detail::RuntimeCleanupState> state,

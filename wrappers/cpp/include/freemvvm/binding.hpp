@@ -71,6 +71,7 @@ class Binding final {
   Result<Subscription> subscribe_error(std::function<void()> callback);
 
  private:
+  friend class WebView;
   friend class Property<T>;
   Binding(std::uint64_t token,
           std::shared_ptr<detail::RuntimeCleanupState> state,

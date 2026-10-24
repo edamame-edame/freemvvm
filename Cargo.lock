@@ -19,7 +19,14 @@ dependencies = [
 [[package]]
 name = "freemvvm-core"
 version = "0.0.0"
+dependencies = [
+ "freemvvm-webview",
+]
 
 [[package]]
 name = "freemvvm-sys"
+version = "0.0.0"
+
+[[package]]
+name = "freemvvm-webview"
 version = "0.0.0"

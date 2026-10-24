@@ -1,6 +1,7 @@
 #include "freemvvm/property.hpp"
 #include "freemvvm/runtime.hpp"
 #include "freemvvm/subscription.hpp"
+#include "freemvvm/webview.hpp"
 
 #include "runtime_internal.hpp"
 
@@ -1293,6 +1294,266 @@ Result<void> Subscription::cancel() noexcept {
   }
   error_node.reset();
   return Result<void>::success();
+}
+
+WebView::WebView(std::uint64_t token,
+                 std::shared_ptr<detail::RuntimeCleanupState> state,
+                 detail::PendingNode* cleanup_node) noexcept
+    : token_(token), state_(std::move(state)), cleanup_node_(cleanup_node) {}
+
+WebView::WebView(WebView&& other) noexcept
+    : token_(std::exchange(other.token_, 0)),
+      state_(std::move(other.state_)),
+      cleanup_node_(std::exchange(other.cleanup_node_, nullptr)) {}
+
+WebView& WebView::operator=(WebView&& other) noexcept {
+  if (this != &other) {
+    detail::release_in_destructor(token_, state_, cleanup_node_);
+    token_ = std::exchange(other.token_, 0);
+    state_ = std::move(other.state_);
+    cleanup_node_ = std::exchange(other.cleanup_node_, nullptr);
+  }
+  return *this;
+}
+
+WebView::~WebView() noexcept {
+  detail::release_in_destructor(token_, state_, cleanup_node_);
+}
+
+Result<WebView> WebView::create(Runtime& runtime) {
+  if (runtime.token_ == 0 || !runtime.state_) {
+    return Result<WebView>::failure(UiError(2));
+  }
+  std::unique_ptr<detail::PendingNode> webview_node(
+      new (std::nothrow) detail::PendingNode());
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!webview_node || !error_node) {
+    return Result<WebView>::failure(UiError(8));
+  }
+  ui_handle webview = 0;
+  ui_handle error = 0;
+  const ui_status status =
+      ui_abi_1_control_create_webview(runtime.token_, &webview, &error);
+  if (status != 0) {
+    return Result<WebView>::failure(detail::make_error(
+        status, error, runtime.state_, error_node.release()));
+  }
+  if (webview == 0) {
+    return Result<WebView>::failure(detail::make_error(
+        9, error, runtime.state_, error_node.release()));
+  }
+  error_node.reset();
+  return Result<WebView>::success(
+      WebView(webview, runtime.state_, webview_node.release()));
+}
+
+Result<void> WebView::set_source(WebViewFormat format,
+                                 const std::string& source_utf8) {
+  if (token_ == 0 || !state_) return Result<void>::failure(UiError(2));
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node) return Result<void>::failure(UiError(8));
+  ui_handle error = 0;
+  const auto* bytes =
+      reinterpret_cast<const std::uint8_t*>(source_utf8.data());
+  const ui_status status = ui_abi_1_webview_set_source_utf8(
+      token_, static_cast<std::uint32_t>(format), bytes,
+      static_cast<std::uint64_t>(source_utf8.size()), &error);
+  if (status != 0) {
+    return Result<void>::failure(
+        detail::make_error(status, error, state_, error_node.release()));
+  }
+  error_node.reset();
+  return Result<void>::success();
+}
+
+Result<void> WebView::set_stylesheet(const std::string& css_utf8) {
+  if (token_ == 0 || !state_) return Result<void>::failure(UiError(2));
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node) return Result<void>::failure(UiError(8));
+  ui_handle error = 0;
+  const auto* bytes = reinterpret_cast<const std::uint8_t*>(css_utf8.data());
+  const ui_status status = ui_abi_1_webview_set_stylesheet_utf8(
+      token_, bytes, static_cast<std::uint64_t>(css_utf8.size()), &error);
+  if (status != 0) {
+    return Result<void>::failure(
+        detail::make_error(status, error, state_, error_node.release()));
+  }
+  error_node.reset();
+  return Result<void>::success();
+}
+
+Result<void> WebView::set_viewport(double width_dip, double height_dip) {
+  if (token_ == 0 || !state_) return Result<void>::failure(UiError(2));
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node) return Result<void>::failure(UiError(8));
+  ui_handle error = 0;
+  const ui_status status =
+      ui_abi_1_webview_set_viewport(token_, width_dip, height_dip, &error);
+  if (status != 0) {
+    return Result<void>::failure(
+        detail::make_error(status, error, state_, error_node.release()));
+  }
+  error_node.reset();
+  return Result<void>::success();
+}
+
+Result<Binding<std::string>> WebView::bind_source_property(
+    WebViewFormat format, Property<std::string>& utf8_property) {
+  if (token_ == 0 || !state_ || utf8_property.token_ == 0) {
+    return Result<Binding<std::string>>::failure(UiError(2));
+  }
+  std::unique_ptr<detail::PendingNode> binding_node(
+      new (std::nothrow) detail::PendingNode());
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!binding_node || !error_node) {
+    return Result<Binding<std::string>>::failure(UiError(8));
+  }
+  ui_handle binding = 0;
+  ui_handle error = 0;
+  const ui_status status = ui_abi_1_webview_bind_source_property(
+      token_, static_cast<std::uint32_t>(format), utf8_property.token_,
+      &binding, &error);
+  if (status != 0) {
+    return Result<Binding<std::string>>::failure(
+        detail::make_error(status, error, state_, error_node.release()));
+  }
+  error_node.reset();
+  return Result<Binding<std::string>>::success(
+      Binding<std::string>(binding, state_, binding_node.release()));
+}
+
+Result<void> WebView::expose_property_handle(const std::string& alias,
+                                             std::uint64_t property_token,
+                                             bool allow_write) {
+  if (token_ == 0 || !state_ || property_token == 0) {
+    return Result<void>::failure(UiError(2));
+  }
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node) return Result<void>::failure(UiError(8));
+  ui_handle error = 0;
+  const auto* alias_bytes = reinterpret_cast<const std::uint8_t*>(alias.data());
+  const ui_status status = ui_abi_1_webview_expose_property_utf8(
+      token_, alias_bytes, static_cast<std::uint64_t>(alias.size()),
+      property_token, allow_write ? 1 : 0, &error);
+  if (status != 0) {
+    return Result<void>::failure(
+        detail::make_error(status, error, state_, error_node.release()));
+  }
+  error_node.reset();
+  return Result<void>::success();
+}
+
+Result<void> WebView::expose_command(const std::string& alias,
+                                     std::function<void()> callback) {
+  if (token_ == 0 || !state_) return Result<void>::failure(UiError(2));
+  if (!callback) return Result<void>::failure(UiError(1));
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  auto callback_state = std::unique_ptr<detail::SubscriptionCallbackState>(
+      new (std::nothrow) detail::SubscriptionCallbackState(
+          std::move(callback), state_, CallbackKind::kPropertyNotification));
+  if (!error_node || !callback_state) {
+    return Result<void>::failure(UiError(8));
+  }
+  ui_handle error = 0;
+  const auto* alias_bytes = reinterpret_cast<const std::uint8_t*>(alias.data());
+  const ui_status status = ui_abi_1_webview_expose_command_utf8(
+      token_, alias_bytes, static_cast<std::uint64_t>(alias.size()),
+      &detail::subscription_callback, callback_state.get(),
+      &detail::subscription_destroy, &error);
+  if (status != 0) {
+    return Result<void>::failure(
+        detail::make_error(status, error, state_, error_node.release()));
+  }
+  callback_state.release();
+  error_node.reset();
+  return Result<void>::success();
+}
+
+Result<void> WebView::eval_script(const std::string& script_utf8) {
+  if (token_ == 0 || !state_) return Result<void>::failure(UiError(2));
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node) return Result<void>::failure(UiError(8));
+  ui_handle error = 0;
+  const auto* bytes =
+      reinterpret_cast<const std::uint8_t*>(script_utf8.data());
+  const ui_status status = ui_abi_1_webview_eval_script_utf8(
+      token_, bytes, static_cast<std::uint64_t>(script_utf8.size()), &error);
+  if (status != 0) {
+    return Result<void>::failure(
+        detail::make_error(status, error, state_, error_node.release()));
+  }
+  error_node.reset();
+  return Result<void>::success();
+}
+
+Result<void> WebView::click_at(double x_dip, double y_dip) {
+  if (token_ == 0 || !state_) return Result<void>::failure(UiError(2));
+  std::unique_ptr<detail::PendingNode> error_node(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node) return Result<void>::failure(UiError(8));
+  ui_handle error = 0;
+  const ui_status status =
+      ui_abi_1_webview_click_at(token_, x_dip, y_dip, &error);
+  if (status != 0) {
+    return Result<void>::failure(
+        detail::make_error(status, error, state_, error_node.release()));
+  }
+  error_node.reset();
+  return Result<void>::success();
+}
+
+Result<std::string> WebView::text_content() const {
+  if (token_ == 0 || !state_) return Result<std::string>::failure(UiError(2));
+  std::uint64_t required = 0;
+  ui_status status =
+      ui_abi_1_webview_text_content_utf8(token_, nullptr, 0, &required);
+  if (status != 0 && status != 7) {
+    return Result<std::string>::failure(UiError(status));
+  }
+  std::string buffer(static_cast<std::size_t>(required), '\0');
+  std::uint64_t written = 0;
+  status = ui_abi_1_webview_text_content_utf8(
+      token_, reinterpret_cast<std::uint8_t*>(buffer.data()), required,
+      &written);
+  if (status != 0) {
+    return Result<std::string>::failure(UiError(status));
+  }
+  buffer.resize(static_cast<std::size_t>(written));
+  return Result<std::string>::success(std::move(buffer));
+}
+
+Result<std::vector<std::uint8_t>> WebView::render_rgba(
+    std::uint32_t width_px, std::uint32_t height_px) const {
+  if (token_ == 0 || !state_) {
+    return Result<std::vector<std::uint8_t>>::failure(UiError(2));
+  }
+  std::uint64_t required = 0;
+  ui_status status = ui_abi_1_webview_render_rgba(token_, width_px, height_px,
+                                                  nullptr, 0, &required);
+  if (status != 0 && status != 7) {
+    return Result<std::vector<std::uint8_t>>::failure(UiError(status));
+  }
+  std::vector<std::uint8_t> pixels(static_cast<std::size_t>(required));
+  std::uint64_t written = 0;
+  status = ui_abi_1_webview_render_rgba(token_, width_px, height_px,
+                                        pixels.data(), required, &written);
+  if (status != 0) {
+    return Result<std::vector<std::uint8_t>>::failure(UiError(status));
+  }
+  pixels.resize(static_cast<std::size_t>(written));
+  return Result<std::vector<std::uint8_t>>::success(std::move(pixels));
+}
+
+Result<void> WebView::close() noexcept {
+  return detail::release_owned(token_, state_, cleanup_node_);
 }
 
 Result<void> Subscription::close() noexcept {

@@ -169,6 +169,57 @@ ui_status ui_abi_1_numeric_narrow_f64(double value, uint32_t mode,
                                      float *out_value, ui_handle *out_error);
 ui_status ui_abi_1_has_feature(uint32_t feature_id, ui_bool *out_supported);
 
+enum {
+  UI_WEBVIEW_FORMAT_HTML = 1,
+  UI_WEBVIEW_FORMAT_MARKDOWN = 2
+};
+
+ui_status ui_abi_1_control_create_webview(ui_handle runtime,
+                                          ui_handle *out_webview,
+                                          ui_handle *out_error);
+ui_status ui_abi_1_webview_set_source_utf8(ui_handle webview, uint32_t format,
+                                           const uint8_t *bytes,
+                                           uint64_t byte_length,
+                                           ui_handle *out_error);
+ui_status ui_abi_1_webview_set_stylesheet_utf8(ui_handle webview,
+                                               const uint8_t *bytes,
+                                               uint64_t byte_length,
+                                               ui_handle *out_error);
+ui_status ui_abi_1_webview_set_viewport(ui_handle webview, double width_dip,
+                                        double height_dip,
+                                        ui_handle *out_error);
+ui_status ui_abi_1_webview_bind_source_property(ui_handle webview,
+                                                uint32_t format,
+                                                ui_handle utf8_property,
+                                                ui_handle *out_binding,
+                                                ui_handle *out_error);
+ui_status ui_abi_1_webview_expose_property_utf8(ui_handle webview,
+                                                const uint8_t *alias_bytes,
+                                                uint64_t alias_byte_length,
+                                                ui_handle property,
+                                                ui_bool allow_write,
+                                                ui_handle *out_error);
+ui_status ui_abi_1_webview_expose_command_utf8(ui_handle webview,
+                                               const uint8_t *alias_bytes,
+                                               uint64_t alias_byte_length,
+                                               ui_callback callback,
+                                               void *userdata,
+                                               ui_destroy_callback destroy,
+                                               ui_handle *out_error);
+ui_status ui_abi_1_webview_eval_script_utf8(ui_handle webview,
+                                            const uint8_t *script_bytes,
+                                            uint64_t byte_length,
+                                            ui_handle *out_error);
+ui_status ui_abi_1_webview_click_at(ui_handle webview, double x_dip,
+                                    double y_dip, ui_handle *out_error);
+ui_status ui_abi_1_webview_text_content_utf8(ui_handle webview, uint8_t *buffer,
+                                             uint64_t capacity,
+                                             uint64_t *out_length);
+ui_status ui_abi_1_webview_render_rgba(ui_handle webview, uint32_t width_px,
+                                       uint32_t height_px, uint8_t *buffer,
+                                       uint64_t capacity,
+                                       uint64_t *out_byte_length);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

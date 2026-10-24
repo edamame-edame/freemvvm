@@ -2991,6 +2991,78 @@
 | [RQ-16-004](../11_requirements/RQ-16_document-governance.md#rq-16-004) | 不整合の記録から差異、変更対象、承認者、影響先を確認できる。要求またはADR/設計の正式変更前に下流文書だけで結論を上書きせず、解決前の設計・実装がAccepted ADRの制約を破っていない。 |
 | [RQ-11-019](../11_requirements/RQ-11_platform.md#rq-11-019) | 依存関係とデータ境界を点検し、列挙した実機依存機能の処理がPlatform側に隔離され、Coreへ渡る値が共通契約で扱えることを確認する。profileごとの差異は対象profileの検証記録に残す。 |
 
+<a id="assert-rq-17-001"></a>
+## RQ-17-001
+- 根拠: [RQ-17-001](../11_requirements/RQ-17_webview-plugin.md#rq-17-001)
+- case: [TC-WEBVIEW-01](requirement-test-matrix.md#case-tc-webview-01)、[TC-WEBVIEW-02](requirement-test-matrix.md#case-tc-webview-02)
+- 期待結果: OS固有ブラウザ部品に依存せずCoreエンジン単体でDOM・スタイル・レイアウト・描画プリミティブを生成できること。
+
+<a id="assert-rq-17-002"></a>
+## RQ-17-002
+- 根拠: [RQ-17-002](../11_requirements/RQ-17_webview-plugin.md#rq-17-002)
+- case: [TC-WEBVIEW-01](requirement-test-matrix.md#case-tc-webview-01)
+- 期待結果: `Cargo.toml` およびビルド依存にサードパーティ製外部crateを含まず、標準ライブラリのみでビルド・テストが完結すること。
+
+<a id="assert-rq-17-003"></a>
+## RQ-17-003
+- 根拠: [RQ-17-003](../11_requirements/RQ-17_webview-plugin.md#rq-17-003)
+- case: [TC-WEBVIEW-01](requirement-test-matrix.md#case-tc-webview-01)、[TC-WEBVIEW-02](requirement-test-matrix.md#case-tc-webview-02)
+- 期待結果: CommonMark/GFMの見出し・段落・強調・リスト・表・コード・引用・リンクから正しいDOM構造と描画コマンドが生成されること。
+
+<a id="assert-rq-17-004"></a>
+## RQ-17-004
+- 根拠: [RQ-17-004](../11_requirements/RQ-17_webview-plugin.md#rq-17-004)
+- case: [TC-WEBVIEW-01](requirement-test-matrix.md#case-tc-webview-01)、[TC-WEBVIEW-02](requirement-test-matrix.md#case-tc-webview-02)
+- 期待結果: HTML要素とCSS規則（詳細度・カスケード・ボックスモデル・Flex/Table）が解決され、未知要素や未対応プロパティで安全にフォールバックすること。
+
+<a id="assert-rq-17-005"></a>
+## RQ-17-005
+- 根拠: [RQ-17-005](../11_requirements/RQ-17_webview-plugin.md#rq-17-005)
+- case: [TC-WEBVIEW-02](requirement-test-matrix.md#case-tc-webview-02)、[TC-WEBVIEW-04](requirement-test-matrix.md#case-tc-webview-04)
+- 期待結果: UI Tree上のWidgetとしてMeasure/ArrangeおよびDetached維持・再所属が機能し、ビューポート寸法に応じた折り返しとスクロール範囲が算出されること。
+
+<a id="assert-rq-17-006"></a>
+## RQ-17-006
+- 根拠: [RQ-17-006](../11_requirements/RQ-17_webview-plugin.md#rq-17-006)
+- case: [TC-WEBVIEW-04](requirement-test-matrix.md#case-tc-webview-04)
+- 期待結果: UTF-8 PropertyおよびOneWay/TwoWay Bindingによって文書ソースやフォーム入力値が同期され、Validator拒否時に既存確定値を維持すること。
+
+<a id="assert-rq-17-007"></a>
+## RQ-17-007
+- 根拠: [RQ-17-007](../11_requirements/RQ-17_webview-plugin.md#rq-17-007)
+- case: [TC-WEBVIEW-04](requirement-test-matrix.md#case-tc-webview-04)
+- 期待結果: リンク選択・ボタン操作・スクリプトアクションからCore Commandが起動され、CanExecute=falseや再入時に抑止されること。
+
+<a id="assert-rq-17-008"></a>
+## RQ-17-008
+- 根拠: [RQ-17-008](../11_requirements/RQ-17_webview-plugin.md#rq-17-008)
+- case: [TC-WEBVIEW-03](requirement-test-matrix.md#case-tc-webview-03)、[TC-WEBVIEW-04](requirement-test-matrix.md#case-tc-webview-04)
+- 期待結果: 軽量スクリプトからDOM要素の参照・更新・イベント処理および許可されたProperty/Command連携が実行でき、変更がレイアウト・描画へ反映されること。
+
+<a id="assert-rq-17-009"></a>
+## RQ-17-009
+- 根拠: [RQ-17-009](../11_requirements/RQ-17_webview-plugin.md#rq-17-009)
+- case: [TC-WEBVIEW-01](requirement-test-matrix.md#case-tc-webview-01)、[TC-WEBVIEW-03](requirement-test-matrix.md#case-tc-webview-03)
+- 期待結果: 入力バイト長・DOMノード数・ネスト深さ・CSSルール数・スクリプト命令ステップ数/スタック/メモリの上限超過時に、フリーズせず安全に中断し直前の有効状態を保つこと。
+
+<a id="assert-rq-17-010"></a>
+## RQ-17-010
+- 根拠: [RQ-17-010](../11_requirements/RQ-17_webview-plugin.md#rq-17-010)
+- case: [TC-WEBVIEW-03](requirement-test-matrix.md#case-tc-webview-03)
+- 期待結果: 暗黙の外部ネットワーク通信やファイルシステムアクセスを行わず、未許可URIスキームを拒否すること。
+
+<a id="assert-rq-17-011"></a>
+## RQ-17-011
+- 根拠: [RQ-17-011](../11_requirements/RQ-17_webview-plugin.md#rq-17-011)
+- case: [TC-WEBVIEW-04](requirement-test-matrix.md#case-tc-webview-04)
+- 期待結果: versioned C ABIおよび4言語ラッパー（C++/C#/Rust/Python 3）から共通の意味論でWebViewを生成・操作・破棄できること。
+
+<a id="assert-rq-17-012"></a>
+## RQ-17-012
+- 根拠: [RQ-17-012](../11_requirements/RQ-17_webview-plugin.md#rq-17-012)
+- case: [TC-WEBVIEW-02](requirement-test-matrix.md#case-tc-webview-02)
+- 期待結果: WebView内部の見出し・リンク・ボタン・入力欄・テキスト・表がAxSnapshotの意味ノードとして出力されること。
+
 ## 承認履歴（今回）
 
 | 日付 | 版・対象 | 承認者 | 結果 |

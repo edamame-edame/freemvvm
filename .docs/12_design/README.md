@@ -18,6 +18,7 @@
 | 言語ラッパー | [言語ラッパー：共通facade・所有変換・解析](wrappers/language-wrappers.md) |
 | UIクラス | [UIクラス：Tree・Layout・Focus・Control](ui/tree-layout-controls.md) |
 | UIクラス | [UIクラス：TextBox・編集・Validation](ui/text-editing-validation.md) |
+| UIクラス | [UIクラス：WebViewエンジンプラグイン](ui/webview-plugin.md) |
 | プラットフォーム | [プラットフォーム：抽象化・描画・text・OS接続](platform/abstraction.md) |
 | ビルド・配布 | [ビルド環境：toolchain・検証・support](build/toolchain-support.md) |
 | ビルド・配布 | [ビルド・配布：package・artifact・信頼境界](build/packages-artifacts.md) |

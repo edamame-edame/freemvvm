@@ -45,6 +45,7 @@ class Property final {
   Result<void> close() noexcept;
 
  private:
+  friend class WebView;
   friend struct detail::RuntimeTestAccess;
   template <typename U>
   friend class Binding;
