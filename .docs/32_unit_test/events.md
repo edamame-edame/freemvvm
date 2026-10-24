@@ -61,7 +61,8 @@ UI実行要求とstart callback、fake worker、ID付きpostを別の制御点�
 - `UT-CORE-COMMAND-001`: `cargo test -p freemvvm-core command::tests` — 7 passed。Runtime共有operation ID issuerはwrapせず、同一Runtimeの複数Command間でIDを再利用しない。
 - `UT-ABI-COMMAND-001`: `cargo test -p freemvvm-c-abi command_` — 2 passed。Command create/start failure/cancel/complete/snapshot/close、read-only Property、eligibility反映、retain/release境界を含む。
 - `UT-ABI-COMMAND-SMOKE-001`: `tools/dev.py abi-command-smoke` — C11 consumerのnative link/load、`runtime_post`完了、state/can-execute、closeがpass。
-- `tools/dev.py check`、`tools/dev.py minimum`、`cargo test --workspace --all-targets --locked` — pass。Windows/Linux CIは実装revision push後に確認する。
+- `tools/dev.py check`、`tools/dev.py minimum`、`cargo test --workspace --all-targets --locked` — pass。
+- 実装commit `594682b`の[Windows/Linux CI run 40072910815](https://github.com/edamame-edame/freemvvm/actions/runs/40072910815)は両runner success。
 
 ## 承認履歴
 
@@ -70,7 +71,7 @@ UI実行要求とstart callback、fake worker、ID付きpostを別の制御点�
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
 | 2026-10-17 | 0.1全文 | 利用者 | 「OK そろそろスクラッチを開始しましょうか。環境整備から始めてください。」により既存試験案を承認し環境整備を開始。製品test実装・合格を意味しない |
 | 2026-10-24 | 0.2追加 | — | 承認済みCommand DDと基盤実装計画に基づきCore/C ABI Command試験設計を登録。実装・合格は別管理 |
-| 2026-10-24 | 0.2実行記録 | — | `UNIT-CORE-066`のCore 6 tests、C ABI 2 tests、C11 consumer smoke、repository check、minimum、全Rust testsがlocal pass。Windows/Linux CI pending |
+| 2026-10-24 | 0.2実行記録 | — | `UNIT-CORE-066`のCore 7 tests、C ABI 2 tests、C11 consumer smoke、repository check、minimum、全Rust tests、実装commit `594682b`のWindows/Linux CI run 40072910815がsuccess |
 
 ## 改訂履歴
 

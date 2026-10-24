@@ -18,7 +18,7 @@ Rust Core and the versioned C ABI own Command state, operation identity, read-on
 - Core state machine: `crates/core-runtime/src/command.rs`; Runtime and Property integration: `crates/core-runtime/src/runtime.rs`, `crates/core-runtime/src/property.rs`, `crates/core-runtime/src/lib.rs`.
 - Versioned API declarations/exports: `crates/c-abi/include/freemvvm/abi.h` and `crates/c-abi/src/lib.rs`.
 - Focused tests: `UT-CORE-COMMAND-001` and `UT-ABI-COMMAND-001`; linked C smoke: `UT-ABI-COMMAND-SMOKE-001`.
-- On 2026-10-24, Core command tests (7), C ABI command tests (2), C11 command smoke, `tools/dev.py check`, Rust 1.85 minimum check, and all Rust workspace tests passed locally. Windows/Linux CI remains pending until the implementation revision is pushed.
+- On 2026-10-24, Core command tests (7), C ABI command tests (2), C11 command smoke, `tools/dev.py check`, Rust 1.85 minimum check, and all Rust workspace tests passed locally. Windows/Linux CI run [40072910815](https://github.com/edamame-edame/freemvvm/actions/runs/40072910815) passed on `impl-rust/runtime-async-command`.
 
 ## Follow-up boundary
 

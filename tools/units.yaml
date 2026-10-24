@@ -2055,7 +2055,7 @@
     },
     {
       "id": "UNIT-CORE-066",
-      "state": "ready",
+      "state": "complete",
       "scope": "runtime-async-command-state-machine-and-versioned-c-abi",
       "sources": [
         "crates/core-runtime/src/command.rs",

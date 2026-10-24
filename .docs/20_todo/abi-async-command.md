@@ -1,7 +1,7 @@
 # Rust Core / C ABI 非同期Command基盤
 
 - 更新日: 2026-10-24
-- 状態: local実装・全gate pass。Windows/Linux CI確認待ち
+- 状態: 完了。Core/C ABI実装、local gate、Windows/Linux CIが成功（2026-10-24）
 - 対象: 承認済み非同期Command DDにあるCore object/state machineとversioned C ABI surfaceを実装し、Rust/C ABI testsで動作確認する
 - 作業branch案: `impl-rust/runtime-async-command`
 
@@ -42,8 +42,8 @@
 4. [x] 利用者の「ok」により計画と基盤実装の開始を承認された。Runtime共有operation ID issuerを含むCore state machineとfocused testsを実装し、7 testsがpass。
 5. [x] C ABI exports/header・Command state Properties・read-only setter・C11 consumer smokeを実装。C ABI focused testsと`abi-command-smoke`がpass。
 6. [x] `tools/dev.py check`、`tools/dev.py minimum`、`cargo test --workspace --all-targets --locked`、document/manifest checksがlocal pass。
-7. [ ] implementation commitをpushし、Windows/Linux CIを確認する。
-8. [ ] CI結果を本計画・unit台帳・memoryへ反映してunitを完了記録する。
-9. [ ] このunit完了後、C# wrapper planへ戻り、C# test design/mappingとC# implementationを進める。
+7. [x] implementation commit `594682b`を`impl-rust/runtime-async-command`へpushした。
+8. [x] Windows/Linux CI run [40072910815](https://github.com/edamame-edame/freemvvm/actions/runs/40072910815)が両方pass。本計画・unit台帳・memoryへ記録し、本unitを完了した。
+9. [ ] このunit完了後、C# wrapper branchへ戻り、C# test design/mappingとC# implementationを進める。
 
 この計画案はC# wrapper計画から見つかった未実装依存を切り出したもの。計画承認とnative実装開始承認は別々に記録し、現時点では製品source変更・計画commitを行っていない。
