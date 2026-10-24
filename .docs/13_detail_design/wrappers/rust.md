@@ -1,9 +1,9 @@
 # 言語ラッパー：Rust
 
-- 文書版: 1.1
+- 文書版: 1.6
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-10-24
+- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-24）。1.6全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -17,6 +17,9 @@
 | --- | --- |
 | 所有型・借用・Drop・panic境界 | [RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-03-007](../../11_requirements/RQ-03_language-support.md#rq-03-007)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-04-015](../../11_requirements/RQ-04_abi-boundary.md#rq-04-015)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-023](../../11_requirements/RQ-04_abi-boundary.md#rq-04-023)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-06-006](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-006)、[RQ-12-005](../../11_requirements/RQ-12_build-distribution.md#rq-12-005) |
 | 公開API・registry・Future | [RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-03-007](../../11_requirements/RQ-03_language-support.md#rq-03-007)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-003](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)、[RQ-06-012](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-012)、[RQ-12-005](../../11_requirements/RQ-12_build-distribution.md#rq-12-005) |
+| typed Property生成・利用・終了 | [RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-03-007](../../11_requirements/RQ-03_language-support.md#rq-03-007)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
+| Decimal64 valueとProperty mapping | [RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-02-019](../../11_requirements/RQ-02_core-features.md#rq-02-019)、[RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007) |
+| Property Subscription登録・cancel・owner lifetime | [RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-03-007](../../11_requirements/RQ-03_language-support.md#rq-03-007)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-008](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -263,18 +266,38 @@ Rustの`extern "C"`はunwindを許可するABIではないため、Rust panicを
 // 設計signature。配布ヘッダ・実装ではない。
 pub struct Owned<T> { /* token, ticket, anchor, !Send/!Sync marker */ }
 pub struct Borrowed<'a, T> { /* borrowed token, PhantomData<&'a Owned<T>> */ }
+pub struct Decimal64 { /* canonical uint64 bits */ }
+pub struct Subscription { /* token owner + Runtime anchor + !Send/!Sync marker */ }
+impl Decimal64 {
+    pub fn try_from_parts(negative: bool, scale: u8, coefficient: u64) -> Result<Self, UiError>;
+    pub const fn is_negative(self) -> bool;
+    pub const fn scale(self) -> u8;
+    pub const fn coefficient(self) -> u64;
+}
 impl<T> Owned<T> {
     pub fn try_clone(&self) -> Result<Self, UiError>;
     pub fn borrow(&self) -> Borrowed<'_, T>;
     pub fn close(&mut self) -> Result<(), UiError>;
 }
 impl<T: PropertyValue> Property<T> {
-    pub fn get(&self, ui: &UiContext) -> Result<T, UiError>;
-    pub fn set(&self, ui: &UiContext, value: T) -> Result<(), UiError>;
+    pub fn try_new(ui: &UiContext<'_>, initial: T) -> Result<Self, UiError>;
+    pub fn get(&self, ui: &UiContext<'_>) -> Result<T, UiError>;
+    pub fn set(&self, ui: &UiContext<'_>, value: T) -> Result<(), UiError>;
+    pub fn subscribe<F>(&self, ui: &UiContext<'_>, callback: F) -> Result<Subscription, UiError>
+    where F: FnMut() + 'static;
+    pub fn close(&mut self) -> Result<(), UiError>;
+}
+impl Subscription {
+    pub fn cancel(&mut self, ui: &UiContext<'_>) -> Result<(), UiError>;
+    pub fn close(&mut self) -> Result<(), UiError>;
 }
 ```
 
-PropertyValueは初期五型のsealed trait。利用者の任意structでunsafe FFI変換を実装させない。`UiError`はraw status/domain/codeとoptional owned immutable ErrorSnapshotを持つ。cloneがnative retainを伴う型はtry_cloneとし、std::error::Error/sourceは取得済みsnapshotへのborrowで返す。
+`Decimal64`はcanonical `uint64_t` representationをprivateに保持するcopyable scalarとする。`try_from_parts`はscaleが0～31、coefficientが0～2^58−1のときだけ成功し、範囲外を`INVALID_ARGUMENT`相当の`UiError`で返す。sign/scale/coefficient accessorを提供し、十進演算・parse/formatは追加しない。異なるscaleや符号付きzeroの数値比較をraw bits比較へ誤って置き換えないため、Rust標準`PartialEq`/`Eq`は本案では実装しない。
+
+PropertyValueは初期五型のsealed traitで、五型は`bool`、`i64`、`String`、`f64`、`Decimal64`とする。DECIMALは`Decimal64`のcanonical bitsをC ABI `uint64_t`へ直接渡す。利用者の任意structでunsafe FFI変換を実装させない。`UiError`はraw status/domain/codeとoptional owned immutable ErrorSnapshotを持つ。cloneがnative retainを伴う型はtry_cloneとし、std::error::Error/sourceは取得済みsnapshotへのborrowで返す。
+
+`Property::subscribe`はUI thread/contextを検証し、初期通知を発生させない。callbackはUI thread上で直列に実行するため`Send`を要求しない。subscribe成功時だけclosure stateをCoreへ移し、失敗時はRust側で回収する。通知中のpanicはC ABI境界で捕捉し、panic hookの診断後も次のsubscriberへ配信を継続する（`panic=abort`ではprocess継続を保証しない）。`Subscription::cancel`はcallback登録を停止し、in-flight callback終了後にclosureを一度だけdestroyする。`Subscription::close`/Dropは公開tokenだけをreleaseし、cancelの代わりにはならない。owner Property teardownとRuntime shutdownのcleanupは通知とBinding伝播DDに従う。
 
 ```mermaid
 flowchart TD
@@ -322,6 +345,9 @@ Rustのstruct/trait/lifetimeとして表し、class図の合成は継承を意�
 | Owned | token、事前CleanupTicket、RuntimeAnchor、UI affinity marker | try_clone(&self); borrow(&self); close(&mut self) | try_cloneだけが新しい独立tokenを取得。Drop失敗はticketへ移管 |
 | Borrowed | borrowed token、PhantomDataでowner lifetimeを表現 | as_token_for_call(&self) | 所有権を増やさずreleaseしない。'aを越えて保持しない |
 | UiContext | Runtime identityとUI呼出しcontext | check_runtime(&self, target) | UI APIの権限を示す。任意threadで作成できる単なるID wrapperにしない |
+| Property<T> | typed property token、Runtime anchor、Runtime identity | try_new(ui, initial); get(ui); set(ui, value); close() | UI-affine owner。close/DropまでRuntimeをanchorし、別RuntimeのUiContextを拒否 |
+| Decimal64 | canonical DECIMAL uint64 bits | try_from_parts(negative, scale, coefficient); is_negative(); scale(); coefficient() | copyable scalar。丸め・演算・parse/formatなし |
+| Subscription | registration token、Runtime anchor、Runtime identity | cancel(ui); close() | UI-affine owner。cancelは登録解除、close/Dropはtoken releaseのみ |
 | PropertyValue | 初期五型のsealedなFFI変換trait | encode(value); decode(native) | 利用者の任意structへunsafe境界の実装を開放しない |
 | CleanupRegistry | Dropから移管されたticket集合と再試行同期 | adopt(ticket); retry_pending() | ticketとanchorを一所有移転で保持。panic中もtokenを失わない |
 | Dispatcher | worker向けpost可能なRuntime shell入口 | post(work) | UI-affine OwnedをSend/Syncへ変更するための型ではない |
@@ -343,6 +369,23 @@ classDiagram
     class UiContext {
         check_runtime()
     }
+    class Property {
+        try_new()
+        get()
+        set()
+        subscribe()
+        close()
+    }
+    class Subscription {
+        cancel()
+        close()
+    }
+    class Decimal64 {
+        try_from_parts()
+        is_negative()
+        scale()
+        coefficient()
+    }
     class PropertyValue {
         encode()
         decode()
@@ -356,7 +399,13 @@ classDiagram
     }
     Borrowed ..> Owned : lifetime
     Owned ..> UiContext : UI操作
-    Owned ..> PropertyValue : typed変換
+    Property *-- Owned : token owner
+    Property ..> UiContext : Runtime/UI検査
+    Property ..> PropertyValue : typed変換
+    PropertyValue ..> Decimal64 : canonical DECIMAL mapping
+    Property --> Subscription : register
+    Subscription ..> UiContext : cancel context
+    Subscription ..> CleanupRegistry : Drop release retry
     Owned ..> CleanupRegistry : Drop失敗の所有移転
     Dispatcher ..> UiContext : UI側で再検査
 ```
@@ -367,6 +416,156 @@ Property get/setはUiContextとRuntime所属を検査してtyped FFIへ進む。
 
 図のOwned→CleanupRegistryは常時二重所有ではない。UI型の!Send/!Sync制約とDispatcherの移送可能性を分ける。optional Futureは既存request queryの観測だけで、Runtime/executorの新しいschedulerを追加しない。
 
+## Property Binding API案（1.5・レビュー待ち）
+
+本節は承認済みBinding要求とイベントハンドリング設計をRust safe wrapperへ写すAPI案である。レビュー承認までは確定仕様・実装済みAPIとして扱わない。Bindingの方向、初期同期、伝播、循環・重複接続拒否、遅延検証errorと回復は[RQ-07](../../11_requirements/RQ-07_binding.md)および[通知とBinding伝播](../events/notifications-binding.md)を正本とする。
+
+### 公開API案
+
+```rust
+pub enum BindingMode { OneTime, OneWay, TwoWay }
+pub enum BindingDirection { SourceToTarget, TargetToSource }
+
+impl<T: PropertyValue> Property<T> {
+    pub fn bind_to(&self, ui: &UiContext<'_>, target: &Property<T>, mode: BindingMode)
+        -> Result<Option<Binding<T>>, UiError>;
+}
+impl<T: PropertyValue> Binding<T> {
+    pub fn cancel(&mut self, ui: &UiContext<'_>) -> Result<(), UiError>;
+    pub fn error_snapshot(&self, ui: &UiContext<'_>) -> Result<Option<BindingError<T>>, UiError>;
+    pub fn subscribe_error<F>(&self, ui: &UiContext<'_>, callback: F)
+        -> Result<Subscription, UiError> where F: FnMut() + 'static;
+    pub fn close(&mut self) -> Result<(), UiError>;
+}
+impl<T: PropertyValue> BindingError<T> {
+    pub fn error(&self) -> &UiError;
+    pub fn rejected_property(&self) -> &Property<T>;
+    pub fn direction(&self) -> BindingDirection;
+}
+```
+
+`OneTime`は初期コピーだけを行い、成功時は`Ok(None)`を返す。`OneWay`と`TwoWay`は初期同期と接続をatomicに成立させて`Some(Binding<T>)`を返す。失敗時は`Err(UiError)`とし、native error ownershipを通常の`UiError`規則で引き取る。modeの整数値はsafe APIへ露出せず、private mappingでC ABIへ渡す。
+
+`Binding<T>`はmove-onlyのUI-affine ownerとする。`cancel`はUI contextのRuntime identity/threadを検査し接続を明示解除する。`close`/Dropは公開handle参照をreleaseするだけで、接続解除とはしない。release失敗時のtoken保持・Drop cleanup ticket移管は既存`Owned`規則に従う。OneTimeではowner自体を作らない。
+
+`error_snapshot`は現在のBinding固有errorを不変のowned snapshotへ複製する。`BindingError<T>`は不変の`UiError`値、独立retainedされた拒否Property owner、伝播方向を保持し、snapshot破棄は各ownerを独立にreleaseする。拒否Propertyは値の複製ではなくlive handleなので、後続回復後の`get`はその時点の値を返す。`subscribe_error`は既存`Subscription`所有・callback trampolineを再利用し、callback引数にはsnapshotを載せず、callback内で必要に応じて`error_snapshot`を再取得する。登録成功時だけclosure ownershipをCoreへ移す。
+
+### 所有関係と呼出し境界
+
+```mermaid
+classDiagram
+    direction TB
+    Property~T~ ..> UiContext : bind_to context
+    Property~T~ --> Binding~T~ : OneWay / TwoWay returns
+    Binding~T~ --> Property~T~ : native connection retains endpoints
+    Binding~T~ --> BindingError~T~ : error_snapshot
+    BindingError~T~ *-- UiError : owned error snapshot
+    BindingError~T~ *-- Property~T~ : retained rejected endpoint
+    Binding~T~ --> Subscription : subscribe_error
+    Subscription ..> UiContext : cancel context
+```
+
+`bind_to`は両PropertyのRuntime identityを先に比較し、同一RuntimeのUI contextでのみC ABIを呼ぶ。API成功形はmodeと整合するか検査し、想定外のstatus/token/errorの組み合わせでは公開ownerを作らず、予期しないtokenを既存の安全なcleanup経路で処理する。初期同期・graph prepare/commit・遅延伝播の責務をRust側で再実装しない。
+
+```mermaid
+sequenceDiagram
+    participant App as Rust caller
+    participant Safe as freemvvm Property/Binding
+    participant ABI as versioned C ABI
+    participant Core as Runtime Binding registry
+    App->>Safe: source.bind_to(ui, target, mode)
+    Safe->>Safe: check UI thread and Runtime identity
+    Safe->>ABI: binding_create(source, target, mode)
+    ABI->>Core: prepare, initial validate, commit
+    Core-->>ABI: OneTime/no owner or persistent token
+    ABI-->>Safe: status, token, error
+    Safe-->>App: Result<Option<Binding<T>>, UiError>
+    App->>Safe: binding.cancel(ui) or close()
+    Safe->>ABI: cancel or handle release
+    Note over ABI,Core: release alone leaves the Runtime-owned connection active
+```
+
+遅延伝播失敗は元Property setterの成功を取り消さず、Binding error snapshotでのみ観測する。次の有効な伝播によるerror解消とerror subscriber通知の順序はイベントハンドリング設計に従う。Runtime shutdown時のactive connection teardownも同設計へ委譲する。
+
+## Async Command safe API案（1.6・レビュー待ち）
+
+本節は[RQ-02-004](../../11_requirements/RQ-02_core-features.md#rq-02-004)、[RQ-06-004](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-004)、[RQ-06-008](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-008)、[RQ-06-009](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-009)、[RQ-06-010](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-010)、[RQ-06-011](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-011)と承認済み[非同期Command DD](../events/commands.md)、[C ABI DD](../runtime-objects/abi.md)をRust safe wrapperへ写す提案である。executor・thread poolは組み込まず、アプリが起動するworkerへ専用operation contextを渡す。callbackからのpanicはC ABIを越境させない。
+
+### 公開型/API案
+
+```rust
+pub struct AsyncCommand { /* !Send/!Sync UI-affine owner */ }
+pub struct OperationId(NonZeroU64);
+pub enum CommandState { Idle, Running, Cancelling, Succeeded, Failed, Cancelled, Unknown(i64) }
+pub struct CommandOperation { /* Send worker lease: id + cancellation + completion reporter */ }
+pub struct CancellationToken { /* Send worker-safe read-only query */ }
+
+impl AsyncCommand {
+    pub fn create<F>(
+        ui: &UiContext<'_>,
+        eligibility: Option<&Property<bool>>,
+        start: F,
+    ) -> Result<Self, UiError>
+    where F: FnMut(CommandOperation) + 'static;
+
+    pub fn execute(&self, ui: &UiContext<'_>) -> Result<OperationId, UiError>;
+    pub fn cancel(&self, ui: &UiContext<'_>, operation: OperationId) -> Result<(), UiError>;
+    pub fn state_property(&self, ui: &UiContext<'_>) -> Result<Property<i64>, UiError>;
+    pub fn can_execute_property(&self, ui: &UiContext<'_>) -> Result<Property<bool>, UiError>;
+    pub fn failure_snapshot(&self, ui: &UiContext<'_>) -> Result<Option<UiError>, UiError>;
+    pub fn close(&mut self, ui: &UiContext<'_>) -> Result<(), UiError>;
+}
+
+impl CommandOperation {
+    pub fn id(&self) -> OperationId;
+    pub fn cancellation(&self) -> &CancellationToken;
+    pub fn report_success(&self) -> Result<(), UiError>;
+    pub fn report_failure(&self, domain: u32, code: u32, message: &str) -> Result<(), UiError>;
+    pub fn report_cancelled(&self) -> Result<(), UiError>;
+}
+
+impl CancellationToken {
+    pub fn is_cancel_requested(&self) -> Result<bool, UiError>;
+}
+```
+
+`AsyncCommand::create`の`start`はUI threadで実行される短いclosureであり、登録成功時だけCoreへ所有権を移す。引数の`CommandOperation`は1回のexecuteに限ったSend可能なworker leaseで、アプリは任意のworker/executorへmoveしてよい。`CancellationToken`は取消要求の照会だけを許し、UI操作を公開しない。workerからの終端報告は`runtime_post`へ一度だけenqueueし、UI thread上のpost callbackがC ABI complete関数を適用する。reportが`Ok(())`を返すのはpost受付を示すだけで、終端state反映はstate Propertyで観測する。enqueue失敗はoperation contextの所有権を失わず、再試行可能とする。
+
+`execute`はcallbackを同期的に呼び、operation IDを返す。実行不可など受付前の失敗は`Err(UiError)`でIDを発行しない。開始callbackのpanicはABI境界で捕捉し、Core所定の開始失敗として扱う。完了reporterは同一operationで一度だけ成功enqueueでき、古い・終端済みIDへの報告はCoreの結果に従って拒否する。
+
+`state_property`と`can_execute_property`は独立owned `Property` handleを返す。状態PropertyはI64のraw valueであり、`CommandState::Unknown`で将来値を保持できるよう変換規則を公開する。`failure_snapshot`は現在のimmutable native errorを`UiError` valueとして取得し、snapshotがなければ`None`を返す。`close`はUI contextでC ABI `command_close`を実行して新規executeを止め、実行中operationへcancelを要求した後に公開tokenをreleaseする。Drop/単なるtoken releaseはcloseを代替しない。
+
+### 所有・thread境界案
+
+```mermaid
+sequenceDiagram
+    participant App as Rust application
+    participant UI as AsyncCommand / UI thread
+    participant Core as Rust Core via C ABI
+    participant Worker as app-owned worker
+    App->>UI: create(start closure)
+    UI->>Core: command_create_async
+    App->>UI: execute()
+    UI->>Core: command_execute
+    Core->>UI: start callback(operation id, borrowed command/cancel token)
+    UI->>UI: retain worker lease handles; build CommandOperation
+    UI->>Worker: move CommandOperation
+    Worker->>Worker: cancellation.is_cancel_requested()
+    Worker->>Core: runtime_post(terminal callback)
+    Core->>UI: execute complete_* callback on UI thread
+    UI->>Core: command state/can-execute Property update
+```
+
+`CommandOperation`のworker leaseはRuntime anchorと事前確保cleanup ownershipを保持する。`Send`を付与する範囲はcommand/cancel/runtime tokenのretain-releaseが任意threadで安全に行われること、post callback/destroyがちょうど一度資源を回収することをtestで証明できるprivate owner型に限定する。既存UI-affine `Owned<T>`自体を`Send`へ変更しない。callback登録失敗時はclosureをRust側が回収し、登録成功後はCoreのdestroy thunkへ一度だけ移転する。
+
+### 未確定点と実装境界
+
+- operation worker leaseのretain token set、Send marker、drop失敗時cleanup ticket/Runtime anchorの構成。
+- `runtime_post`が受理した後にRuntime shutdownでpost callbackが破棄された場合、report APIは受付済みだけを返す。終端結果をUI上で必ず観測する保証は追加しない。
+- `CommandState` raw mapping、OperationIdの公開表現、Domain/Codeとfailure messageのRust引数型。
+- callback内からのclose/execute禁止やcallback panicのstatus mappingはCommand/C ABI契約から拡張しない。
+- async Future、progress専用型、executor/thread-pool統合は本unitに含めず、既存C ABI `runtime_post`とPropertyを利用する。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -375,3 +574,11 @@ Property get/setはUiContextとRuntime所属を検査してtyped FFIへ進む。
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-10-24 | 1.2改訂案 | Rust Propertyの公開生成・取得・設定・終了APIとRuntime ownership/identityを具体化。1.1の承認状態は維持し、1.2全文は利用者確認待ち。BOOL/I64実装・試験は独立した実装状態として管理 |
+| 2026-10-24 | 1.2全文 | 利用者の「OK」によりPropertyの生成・取得・設定・終了APIとRuntime ownership/identityを含む文書全体を承認。実装・試験状態は別管理 |
+| 2026-10-24 | 1.3改訂案 | Rust `Decimal64`のcanonical representation、`try_from_parts`、accessor、PropertyValue mappingを追加提案。1.2全文承認状態を維持し、1.3全文は利用者確認待ち |
+| 2026-10-24 | 1.3全文 | 利用者の「OK」によりRust `Decimal64`の値型/APIとPropertyValue mappingを含む全文を承認。実装・試験状態は別管理 |
+| 2026-10-24 | 1.4改訂案 | Property notification closure、Subscription token ownership、cancel/close分離、callback panic境界を追加提案。1.3全文承認状態を維持し、1.4全文は利用者確認待ち |
+| 2026-10-24 | 1.4全文 | 利用者の「OK」によりRust `Property::subscribe`と`Subscription::cancel/close`、callback ownership/lifetimeを含む文書全体を承認。実装・試験状態は別管理 |
+| 2026-10-24 | 1.5全文 | 利用者の「OK」によりRust Property Bindingの3 mode、所有型、明示cancel、遅延error snapshot/subscription APIを含む全文を承認。実装・試験状態は別管理 |
+| 2026-10-24 | 1.6全文 | 利用者の「OK」によりAsync Command Rust safe API、worker lease、cancel/completion、state/failure取得を含む全文を承認。実装・試験状態は別管理 |

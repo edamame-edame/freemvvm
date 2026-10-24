@@ -126,6 +126,12 @@ def main():
             "cpp-property-subscription-test",
             "cpp-property-binding-test",
             "cpp-package-test",
+            "rust-wrapper-runtime-test",
+            "rust-wrapper-runtime-consumer-test",
+            "rust-wrapper-property-bool-i64-test",
+            "rust-wrapper-property-utf8-test",
+            "rust-wrapper-property-f64-test",
+            "rust-wrapper-property-decimal-test",
             "csharp-runtime-test",
             "csharp-runtime-consumer-test",
             "csharp-property-test",
@@ -156,6 +162,18 @@ def main():
         "scope": (
             "abi-command-smoke"
             if args.command == "abi-command-smoke"
+            else "rust-wrapper-runtime-unit-test"
+            if args.command == "rust-wrapper-runtime-test"
+            else "rust-wrapper-runtime-consumer-test"
+            if args.command == "rust-wrapper-runtime-consumer-test"
+            else "rust-wrapper-property-bool-i64-consumer-test"
+            if args.command == "rust-wrapper-property-bool-i64-test"
+            else "rust-wrapper-property-utf8-consumer-test"
+            if args.command == "rust-wrapper-property-utf8-test"
+            else "rust-wrapper-property-f64-consumer-test"
+            if args.command == "rust-wrapper-property-f64-test"
+            else "rust-wrapper-property-decimal-consumer-test"
+            if args.command == "rust-wrapper-property-decimal-test"
             else "csharp-runtime-unit-test"
             if args.command == "csharp-runtime-test"
             else "csharp-property-unit-test"
@@ -187,7 +205,19 @@ def main():
             else "development-bootstrap"
         ),
         "product_tests": (
-            "C# Runtime wrapper unit tests executed"
+            "Rust Runtime safe wrapper unit tests executed"
+            if args.command == "rust-wrapper-runtime-test"
+            else "Rust Runtime consumer test executed against host C ABI"
+            if args.command == "rust-wrapper-runtime-consumer-test"
+            else "Rust BOOL/I64 Property consumer test executed"
+            if args.command == "rust-wrapper-property-bool-i64-test"
+            else "Rust UTF-8 Property consumer test executed"
+            if args.command == "rust-wrapper-property-utf8-test"
+            else "Rust F64 Property consumer test executed"
+            if args.command == "rust-wrapper-property-f64-test"
+            else "Rust DECIMAL Property consumer test executed"
+            if args.command == "rust-wrapper-property-decimal-test"
+            else "C# Runtime wrapper unit tests executed"
             if args.command == "csharp-runtime-test"
             else "C# Property wrapper unit tests executed"
             if args.command == "csharp-property-test"
@@ -307,6 +337,126 @@ def main():
                 results,
                 "python-format",
             )
+        elif args.command in (
+            "rust-wrapper-runtime-test",
+            "rust-wrapper-runtime-consumer-test",
+            "rust-wrapper-property-bool-i64-test",
+            "rust-wrapper-property-utf8-test",
+            "rust-wrapper-property-f64-test",
+            "rust-wrapper-property-decimal-test",
+        ):
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "rust-wrapper-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_dir = target_dir / "debug"
+            native_environment = dict(environment)
+            native_environment["FREEMVVM_NATIVE_LIB_DIR"] = str(native_dir)
+            if os.name == "nt":
+                native_environment["PATH"] = (
+                    str(native_dir) + os.pathsep + native_environment["PATH"]
+                )
+            elif sys.platform == "darwin":
+                native_environment["DYLD_LIBRARY_PATH"] = (
+                    str(native_dir)
+                    + os.pathsep
+                    + native_environment.get("DYLD_LIBRARY_PATH", "")
+                )
+            else:
+                native_environment["LD_LIBRARY_PATH"] = (
+                    str(native_dir)
+                    + os.pathsep
+                    + native_environment.get("LD_LIBRARY_PATH", "")
+                )
+            if args.command == "rust-wrapper-runtime-test":
+                run(
+                    ["cargo", "test", "--locked", "-p", "freemvvm"],
+                    native_environment,
+                    results,
+                    "rust-wrapper-runtime-tests",
+                )
+            elif args.command == "rust-wrapper-runtime-consumer-test":
+                run(
+                    [
+                        "cargo",
+                        "run",
+                        "--locked",
+                        "-p",
+                        "freemvvm",
+                        "--example",
+                        "runtime_consumer",
+                    ],
+                    native_environment,
+                    results,
+                    "rust-wrapper-runtime-consumer",
+                )
+            elif args.command == "rust-wrapper-property-bool-i64-test":
+                run(
+                    [
+                        "cargo",
+                        "run",
+                        "--locked",
+                        "-p",
+                        "freemvvm",
+                        "--example",
+                        "property_bool_i64_consumer",
+                    ],
+                    native_environment,
+                    results,
+                    "rust-wrapper-property-bool-i64-consumer",
+                )
+            elif args.command == "rust-wrapper-property-utf8-test":
+                run(
+                    [
+                        "cargo",
+                        "run",
+                        "--locked",
+                        "-p",
+                        "freemvvm",
+                        "--example",
+                        "property_utf8_consumer",
+                    ],
+                    native_environment,
+                    results,
+                    "rust-wrapper-property-utf8-consumer",
+                )
+            elif args.command == "rust-wrapper-property-f64-test":
+                run(
+                    [
+                        "cargo",
+                        "run",
+                        "--locked",
+                        "-p",
+                        "freemvvm",
+                        "--example",
+                        "property_f64_consumer",
+                    ],
+                    native_environment,
+                    results,
+                    "rust-wrapper-property-f64-consumer",
+                )
+            else:
+                run(
+                    [
+                        "cargo",
+                        "run",
+                        "--locked",
+                        "-p",
+                        "freemvvm",
+                        "--example",
+                        "property_decimal_consumer",
+                    ],
+                    native_environment,
+                    results,
+                    "rust-wrapper-property-decimal-consumer",
+                )
         elif args.command == "csharp-runtime-test":
             project = "wrappers/csharp/tests/RuntimeTests/RuntimeTests.csproj"
             run(
@@ -991,6 +1141,62 @@ def main():
                 environment,
                 results,
                 "rust-test-harness-build",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "rust-wrapper-runtime-test"],
+                environment,
+                results,
+                "rust-wrapper-runtime-unit",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "rust-wrapper-runtime-consumer-test",
+                ],
+                environment,
+                results,
+                "rust-wrapper-runtime-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "rust-wrapper-property-bool-i64-test",
+                ],
+                environment,
+                results,
+                "rust-wrapper-property-bool-i64-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "rust-wrapper-property-utf8-test",
+                ],
+                environment,
+                results,
+                "rust-wrapper-property-utf8-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "rust-wrapper-property-f64-test",
+                ],
+                environment,
+                results,
+                "rust-wrapper-property-f64-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "rust-wrapper-property-decimal-test",
+                ],
+                environment,
+                results,
+                "rust-wrapper-property-decimal-consumer",
             )
             run(
                 ["cmake", "--preset", "dev"],

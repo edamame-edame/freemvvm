@@ -2576,6 +2576,600 @@
         {"id": "UT-WRAP-CS-COMMAND-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "csharp-command-test"]},
         {"id": "UT-CONSUMER-CS-COMMAND-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "csharp-command-consumer-test"]}
       ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-001",
+      "state": "complete",
+      "scope": "rust-runtime-ffi-context-owned-handle-and-cleanup-foundation",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/**/*.rs",
+        "wrappers/rust/freemvvm-sys/build.rs",
+        "wrappers/rust/freemvvm/**/*.rs",
+        "wrappers/rust/freemvvm/examples/**/*.rs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "CMakeLists.txt",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-004",
+        "UNIT-ABI-005",
+        "UNIT-ABI-006",
+        "UNIT-ABI-007",
+        "UNIT-ABI-018"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.1",
+          "section": "所有型・借用・Drop・panic境界 / 公開API・registry・Future"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Runtime lifecycle / shutdown request / error / handle retain and release"
+        },
+        {
+          "path": ".docs/13_detail_design/build/toolchain-packages.md",
+          "version": "1.1",
+          "section": "Rust crateとnative artifact / 配置と依存方向"
+        }
+      ],
+      "requirements": [
+        "RQ-03-003",
+        "RQ-03-007",
+        "RQ-03-014",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-04-015",
+        "RQ-04-022",
+        "RQ-05-003",
+        "RQ-05-009",
+        "RQ-05-012",
+        "RQ-06-002",
+        "RQ-06-005",
+        "RQ-06-006",
+        "RQ-06-012",
+        "RQ-12-003",
+        "RQ-12-005"
+      ],
+      "cases": [
+        "TC-LIFE-01",
+        "TC-THREAD-01",
+        "TC-ERROR-01",
+        "TC-WRAP-RS-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-RS-RT-001",
+          "command": [
+            ".venv/Scripts/python.exe",
+            "tools/dev.py",
+            "rust-wrapper-runtime-test"
+          ]
+        },
+        {
+          "id": "UT-CONSUMER-RS-RT-001",
+          "command": [
+            ".venv/Scripts/python.exe",
+            "tools/dev.py",
+            "rust-wrapper-runtime-consumer-test"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-PROP-BOOL-I64-001",
+      "state": "complete",
+      "scope": "rust-safe-property-bool-i64-create-get-set-close",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/**/*.rs",
+        "wrappers/rust/freemvvm/**/*.rs",
+        "wrappers/rust/freemvvm/examples/**/*.rs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-WRAP-RS-001",
+        "UNIT-ABI-009",
+        "UNIT-ABI-010",
+        "UNIT-ABI-011"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.2",
+          "section": "改訂案: Property<T>::try_new/get/set/close / 所有型・Runtime context"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "BOOL/I64 Property create/get/set / handle release"
+        }
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-03-003",
+        "RQ-03-007",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-04-022",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "cases": [
+        "TC-LIFE-01",
+        "TC-ERROR-01",
+        "TC-WRAP-RS-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-CONSUMER-RS-PROP-BOOL-I64-001",
+          "command": [
+            ".venv/Scripts/python.exe",
+            "tools/dev.py",
+            "rust-wrapper-property-bool-i64-test"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-PROP-UTF8-001",
+      "state": "complete",
+      "scope": "rust-safe-property-utf8-create-get-set-close",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/**/*.rs",
+        "wrappers/rust/freemvvm/**/*.rs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-WRAP-RS-PROP-BOOL-I64-001",
+        "UNIT-ABI-009",
+        "UNIT-ABI-010",
+        "UNIT-ABI-011"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.2",
+          "section": "PropertyValue initial five types / Property<T>::try_new/get/set/close"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "UTF-8 Property create/get/set / byte length and buffer retry"
+        }
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-03-003",
+        "RQ-03-007",
+        "RQ-04-003",
+        "RQ-04-020",
+        "RQ-04-021",
+        "RQ-04-022",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "cases": [
+        "TC-ABI-REP-01",
+        "TC-LIFE-01",
+        "TC-WRAP-RS-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-RS-PROP-UTF8-001",
+          "command": [
+            ".venv/Scripts/python.exe",
+            "tools/dev.py",
+            "rust-wrapper-runtime-test"
+          ]
+        },
+        {
+          "id": "UT-CONSUMER-RS-PROP-UTF8-001",
+          "command": [
+            ".venv/Scripts/python.exe",
+            "tools/dev.py",
+            "rust-wrapper-property-utf8-test"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-PROP-F64-001",
+      "state": "complete",
+      "scope": "rust-safe-property-f64-create-get-set-close",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/**/*.rs",
+        "wrappers/rust/freemvvm/**/*.rs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-WRAP-RS-PROP-UTF8-001",
+        "UNIT-ABI-009",
+        "UNIT-ABI-010",
+        "UNIT-ABI-011"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.2",
+          "section": "PropertyValue initial five types / Property<T>::try_new/get/set/close"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "F64 Property create/get/set / RQ-02-018 equivalence mapping"
+        }
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-02-018",
+        "RQ-03-003",
+        "RQ-04-002",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "cases": [
+        "TC-ABI-REP-01",
+        "TC-LIFE-01",
+        "TC-WRAP-RS-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-CONSUMER-RS-PROP-F64-001",
+          "command": [
+            ".venv/Scripts/python.exe",
+            "tools/dev.py",
+            "rust-wrapper-property-f64-test"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-PROP-DECIMAL-001",
+      "state": "complete",
+      "scope": "rust-decimal64-value-and-property-create-get-set-close",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/**/*.rs",
+        "wrappers/rust/freemvvm/**/*.rs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-WRAP-RS-PROP-F64-001",
+        "UNIT-ABI-009",
+        "UNIT-ABI-010",
+        "UNIT-ABI-011"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.3",
+          "section": "改訂案: Decimal64 value type / PropertyValue initial five types"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "DECIMAL canonical bits / numeric equality / equivalent setter representation"
+        }
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-02-019",
+        "RQ-03-003",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "cases": [
+        "TC-ABI-REP-01",
+        "TC-LIFE-01",
+        "TC-WRAP-RS-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-RS-DECIMAL-VALUE-001",
+          "command": [
+            ".venv/Scripts/python.exe",
+            "tools/dev.py",
+            "rust-wrapper-runtime-test"
+          ]
+        },
+        {
+          "id": "UT-CONSUMER-RS-PROP-DECIMAL-001",
+          "command": [
+            ".venv/Scripts/python.exe",
+            "tools/dev.py",
+            "rust-wrapper-property-decimal-test"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-SUB-001",
+      "state": "complete",
+      "scope": "rust-property-notification-subscription-callback-cancel-close",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/**/*.rs",
+        "wrappers/rust/freemvvm/**/*.rs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-WRAP-RS-PROP-DECIMAL-001",
+        "UNIT-ABI-013"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.4",
+          "section": "改訂案: Property::subscribe / Subscription::cancel/close / callback panic boundary"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Notification queue and subscription lifetime / cancel / teardown"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property subscription/cancel ABI / callback ownership"
+        }
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-03-003",
+        "RQ-03-007",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-008",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "cases": [
+        "TC-CALLBACK-01",
+        "TC-LIFE-01",
+        "TC-WRAP-RS-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-RS-SUB-001",
+          "command": [
+            ".venv/Scripts/python.exe",
+            "tools/dev.py",
+            "rust-wrapper-runtime-test"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-BIND-001",
+      "state": "complete",
+      "scope": "rust-property-binding-modes-cancel-error-snapshot-subscription",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/src/lib.rs",
+        "wrappers/rust/freemvvm/src/lib.rs",
+        "wrappers/rust/freemvvm/src/property.rs",
+        "wrappers/rust/freemvvm/src/binding.rs",
+        "wrappers/rust/freemvvm/src/runtime.rs",
+        "wrappers/rust/freemvvm/tests/**/*.rs"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "tools/units.yaml"
+      ],
+      "depends_on": [
+        "UNIT-WRAP-RS-SUB-001",
+        "UNIT-ABI-014",
+        "UNIT-ABI-016"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.5",
+          "section": "Property Binding API / ownership and call boundary"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding graph, propagation, error snapshot and registration lifecycle"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Binding create/cancel/error snapshot/subscription ABI"
+        }
+      ],
+      "requirements": [
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-07-001",
+        "RQ-07-002",
+        "RQ-07-003",
+        "RQ-07-004",
+        "RQ-07-005",
+        "RQ-07-006",
+        "RQ-07-007",
+        "RQ-07-010",
+        "RQ-07-011"
+      ],
+      "cases": [
+        "TC-BIND-01",
+        "TC-BIND-INIT-REJECT-01",
+        "TC-BIND-PROPAGATION-REJECT-01",
+        "TC-LIFE-01",
+        "TC-ERROR-01",
+        "TC-WRAP-RS-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-RS-BIND-001",
+          "command": [
+            ".venv/Scripts/python.exe",
+            "tools/dev.py",
+            "rust-wrapper-runtime-test"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-CMD-001",
+      "state": "complete",
+      "scope": "rust-async-command-owner-worker-lease-cancellation-completion",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/src/lib.rs",
+        "wrappers/rust/freemvvm/src/lib.rs",
+        "wrappers/rust/freemvvm/src/handle.rs",
+        "wrappers/rust/freemvvm/src/native_api.rs",
+        "wrappers/rust/freemvvm/src/runtime.rs",
+        "wrappers/rust/freemvvm/src/command.rs",
+        "wrappers/rust/freemvvm/tests/**/*.rs"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "tools/units.yaml"
+      ],
+      "depends_on": [
+        "UNIT-WRAP-RS-BIND-001",
+        "UNIT-CORE-066"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.6",
+          "section": "Async Command safe API / ownership and thread boundary"
+        },
+        {
+          "path": ".docs/13_detail_design/events/commands.md",
+          "version": "1.1",
+          "section": "execute, cancellation, terminal reports, close and shutdown"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Async Command C ABI / runtime_post"
+        }
+      ],
+      "requirements": [
+        "RQ-02-004",
+        "RQ-03-003",
+        "RQ-03-007",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-008",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-06-002",
+        "RQ-06-004",
+        "RQ-06-008",
+        "RQ-06-009",
+        "RQ-06-010",
+        "RQ-06-011"
+      ],
+      "cases": [
+        "TC-CMD-01",
+        "TC-CALLBACK-01",
+        "TC-THREAD-01",
+        "TC-LIFE-01",
+        "TC-ERROR-01",
+        "TC-WRAP-RS-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-RS-CMD-001",
+          "command": [
+            ".venv/Scripts/python.exe",
+            "tools/dev.py",
+            "rust-wrapper-runtime-test"
+          ]
+        }
+      ]
     }
   ]
 }
