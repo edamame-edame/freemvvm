@@ -11,6 +11,18 @@ internal interface INativeApi
 
     uint RuntimeIsUiThread(ulong runtime, out byte isUiThread);
 
+    uint PropertyCreateBool(ulong runtime, byte initial, out ulong property, out ulong error);
+
+    uint PropertyCreateI64(ulong runtime, long initial, out ulong property, out ulong error);
+
+    uint PropertyGetBool(ulong property, out byte value);
+
+    uint PropertyGetI64(ulong property, out long value);
+
+    uint PropertySetBool(ulong property, byte value, out ulong error);
+
+    uint PropertySetI64(ulong property, long value, out ulong error);
+
     uint RuntimeRequestShutdown(ulong runtime, uint mode, out ulong request, out ulong error);
 
     uint ShutdownRequestQuery(ulong request, out uint state, out uint reason, out ulong error);
@@ -47,6 +59,24 @@ internal sealed class NativeRuntimeApi : INativeApi
 
     public uint RuntimeIsUiThread(ulong runtime, out byte isUiThread) =>
         NativeMethods.RuntimeIsUiThread(runtime, out isUiThread);
+
+    public uint PropertyCreateBool(ulong runtime, byte initial, out ulong property, out ulong error) =>
+        NativeMethods.PropertyCreateBool(runtime, initial, out property, out error);
+
+    public uint PropertyCreateI64(ulong runtime, long initial, out ulong property, out ulong error) =>
+        NativeMethods.PropertyCreateI64(runtime, initial, out property, out error);
+
+    public uint PropertyGetBool(ulong property, out byte value) =>
+        NativeMethods.PropertyGetBool(property, out value);
+
+    public uint PropertyGetI64(ulong property, out long value) =>
+        NativeMethods.PropertyGetI64(property, out value);
+
+    public uint PropertySetBool(ulong property, byte value, out ulong error) =>
+        NativeMethods.PropertySetBool(property, value, out error);
+
+    public uint PropertySetI64(ulong property, long value, out ulong error) =>
+        NativeMethods.PropertySetI64(property, value, out error);
 
     public uint RuntimeRequestShutdown(ulong runtime, uint mode, out ulong request, out ulong error) =>
         NativeMethods.RuntimeRequestShutdown(runtime, mode, out request, out error);
@@ -109,6 +139,30 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_runtime_is_ui_thread")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint RuntimeIsUiThread(ulong runtime, out byte isUiThread);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_create_bool")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint PropertyCreateBool(ulong runtime, byte initial, out ulong property, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_create_i64")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint PropertyCreateI64(ulong runtime, long initial, out ulong property, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_get_bool")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint PropertyGetBool(ulong property, out byte value);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_get_i64")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint PropertyGetI64(ulong property, out long value);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_set_bool")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint PropertySetBool(ulong property, byte value, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_set_i64")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint PropertySetI64(ulong property, long value, out ulong error);
 
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_runtime_request_shutdown")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

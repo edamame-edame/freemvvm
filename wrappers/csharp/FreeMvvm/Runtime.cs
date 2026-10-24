@@ -40,6 +40,8 @@ public sealed class UiRuntime : IDisposable
 
     private UiRuntime(TokenOwner owner) => _owner = owner;
 
+    internal TokenOwner Owner => _owner;
+
     public static UiResult<UiRuntime> TryCreate(RuntimeOptions? options = null)
     {
         INativeApi api;
