@@ -4,6 +4,7 @@
 
 #[allow(dead_code)]
 mod binding;
+mod command;
 mod dispatcher;
 mod handle_registry;
 // Runtime-owned UI state and the initial internal Property integration.
@@ -21,6 +22,7 @@ mod value;
 /// Narrow support surface used by the C ABI crate while the Core remains private to wrappers.
 #[doc(hidden)]
 pub mod abi_support {
+    use crate::command::{AsyncCommand, CancelToken, CommandError, CommandSnapshot};
     use crate::dispatcher::{PostErrorKind, PostedWork, UiLoopBridge, WakePriority};
     use crate::handle_registry::HandleToken;
     use crate::handle_registry::registry::{HandleRegistry, RegistryError};
@@ -40,6 +42,7 @@ pub mod abi_support {
     };
     use std::collections::HashMap;
     use std::ffi::c_void;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Condvar, Mutex, OnceLock, Weak};
 
     /// Failure categories needed by the versioned C ABI Runtime creation entrypoint.
@@ -100,6 +103,7 @@ pub mod abi_support {
         WrongType,
         WrongThread,
         Closed,
+        Unsupported,
         ValidationFailed(Option<Arc<ValidationError>>),
         OutOfMemory,
         BufferTooSmall { required: usize },
@@ -114,8 +118,23 @@ pub mod abi_support {
         WrongRuntime,
         WrongThread,
         Closed,
+        Unsupported,
         OutOfMemory,
         ValidationFailed(Option<Arc<ValidationError>>),
+        Internal,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum CommandApiError {
+        InvalidHandle,
+        InvalidArgument,
+        WrongType,
+        WrongRuntime,
+        WrongThread,
+        Closed,
+        NotExecutable,
+        InvalidOperation,
+        OutOfMemory,
         Internal,
     }
 
@@ -347,6 +366,71 @@ pub mod abi_support {
     pub type WakeCallback = unsafe extern "C" fn(*mut c_void, u32);
     pub type DestroyCallback = unsafe extern "C" fn(*mut c_void);
     pub type PostCallback = unsafe extern "C" fn(*mut c_void);
+    pub type CommandStartCallback = unsafe extern "C" fn(*mut c_void, u64, u64, u64) -> u32;
+
+    struct CommandClosure {
+        callback: CommandStartCallback,
+        userdata: usize,
+        destroy: DestroyCallback,
+        armed: AtomicBool,
+    }
+
+    impl Drop for CommandClosure {
+        fn drop(&mut self) {
+            if self.armed.swap(false, Ordering::AcqRel) {
+                // SAFETY: ownership is armed only after command creation succeeds.
+                unsafe { (self.destroy)(self.userdata as *mut c_void) };
+            }
+        }
+    }
+
+    struct CommandHandleEntry {
+        runtime: Arc<RuntimeCore>,
+        command: Arc<AsyncCommand>,
+        state_property: HandleToken,
+        can_execute_property: HandleToken,
+        eligibility_property: Option<HandleToken>,
+        eligibility_identity: Option<crate::handle_registry::registry::ObjectIdentity>,
+        start: Mutex<Option<Arc<CommandClosure>>>,
+        in_start: AtomicBool,
+        owned_properties_released: AtomicBool,
+    }
+
+    static COMMAND_HANDLES: OnceLock<Mutex<HashMap<HandleToken, Arc<CommandHandleEntry>>>> =
+        OnceLock::new();
+    static COMMAND_CANCEL_TOKENS: OnceLock<Mutex<HashMap<HandleToken, CancelToken>>> =
+        OnceLock::new();
+
+    fn command_handles() -> &'static Mutex<HashMap<HandleToken, Arc<CommandHandleEntry>>> {
+        COMMAND_HANDLES.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    fn command_cancel_tokens() -> &'static Mutex<HashMap<HandleToken, CancelToken>> {
+        COMMAND_CANCEL_TOKENS.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    impl Drop for CommandHandleEntry {
+        fn drop(&mut self) {
+            self.start
+                .get_mut()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take();
+            self.release_owned_properties();
+        }
+    }
+
+    impl CommandHandleEntry {
+        fn release_owned_properties(&self) {
+            if self.owned_properties_released.swap(true, Ordering::AcqRel) {
+                return;
+            }
+            let _ = handle_release(self.state_property.into_abi());
+            let _ = handle_release(self.can_execute_property.into_abi());
+            if let Some(eligibility) = self.eligibility_property {
+                let _ = handle_release(eligibility.into_abi());
+            }
+        }
+    }
 
     struct BridgeState {
         armed: bool,
@@ -496,8 +580,499 @@ pub mod abi_support {
         BINDING_HANDLES.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
+    fn command_entry(handle: u64) -> Result<Arc<CommandHandleEntry>, CommandApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(CommandApiError::InvalidHandle)?;
+        command_handles()
+            .lock()
+            .map_err(|_| CommandApiError::Internal)?
+            .get(&token)
+            .cloned()
+            .ok_or(CommandApiError::InvalidHandle)
+    }
+
+    fn map_command_error(error: CommandError) -> CommandApiError {
+        match error {
+            CommandError::Closed => CommandApiError::Closed,
+            CommandError::NotExecutable => CommandApiError::NotExecutable,
+            CommandError::InvalidOperation => CommandApiError::InvalidOperation,
+            CommandError::OperationIdExhausted | CommandError::SynchronizationPoisoned => {
+                CommandApiError::Internal
+            }
+            CommandError::OutOfMemory => CommandApiError::OutOfMemory,
+        }
+    }
+
+    fn map_command_runtime_error(error: RuntimeCoreError) -> CommandApiError {
+        match error {
+            RuntimeCoreError::WrongThread
+            | RuntimeCoreError::Host(crate::runtime::HostRegistrationError::WrongThread) => {
+                CommandApiError::WrongThread
+            }
+            RuntimeCoreError::Closed
+            | RuntimeCoreError::Host(crate::runtime::HostRegistrationError::InvalidState)
+            | RuntimeCoreError::Property(RuntimePropertyError::Closed) => CommandApiError::Closed,
+            RuntimeCoreError::Host(crate::runtime::HostRegistrationError::OutOfMemory)
+            | RuntimeCoreError::Property(RuntimePropertyError::NotificationQueueOutOfMemory) => {
+                CommandApiError::OutOfMemory
+            }
+            RuntimeCoreError::Property(RuntimePropertyError::WrongThread) => {
+                CommandApiError::WrongThread
+            }
+            _ => CommandApiError::Internal,
+        }
+    }
+
+    fn apply_command_snapshot(
+        entry: &CommandHandleEntry,
+        snapshot: &CommandSnapshot,
+    ) -> Result<(), CommandApiError> {
+        let scope = entry
+            .runtime
+            .begin_host_event()
+            .map_err(map_command_runtime_error)?;
+        let update = apply_command_snapshot_in_event(entry, snapshot);
+        let close = entry.runtime.end_host_event(scope);
+        match (update, close) {
+            (Err(error), _) => Err(error),
+            (Ok(()), Err(error)) => Err(map_command_runtime_error(error)),
+            (Ok(()), Ok(_)) => Ok(()),
+        }
+    }
+
+    fn apply_command_snapshot_in_event(
+        entry: &CommandHandleEntry,
+        snapshot: &CommandSnapshot,
+    ) -> Result<(), CommandApiError> {
+        let state = snapshot.state as i64;
+        entry
+            .runtime
+            .apply_command_properties(
+                &property_handles().registry,
+                entry.state_property,
+                entry.can_execute_property,
+                state,
+                snapshot.can_execute,
+            )
+            .map_err(|error| map_command_runtime_error(RuntimeCoreError::Property(error)))
+    }
+
+    fn refresh_command_eligibility(
+        entry: &CommandHandleEntry,
+    ) -> Result<CommandSnapshot, CommandApiError> {
+        if let Some(token) = entry.eligibility_property {
+            let value = entry
+                .runtime
+                .read_property(&property_handles().registry, token)
+                .map_err(|error| match error {
+                    RuntimePropertyError::WrongThread => CommandApiError::WrongThread,
+                    RuntimePropertyError::Closed => CommandApiError::Closed,
+                    RuntimePropertyError::Registry(RegistryError::InvalidToken) => {
+                        CommandApiError::InvalidHandle
+                    }
+                    _ => CommandApiError::Internal,
+                })?;
+            let TypedValue::Bool(eligible) = value else {
+                return Err(CommandApiError::WrongType);
+            };
+            let snapshot = entry
+                .command
+                .set_eligible(eligible)
+                .map_err(map_command_error)?;
+            apply_command_snapshot(entry, &snapshot)?;
+        }
+        entry.command.snapshot().map_err(map_command_error)
+    }
+
+    /// Creates one asynchronous Command and its Core-owned read-only state Properties.
+    pub fn command_create_async(
+        runtime_handle: u64,
+        eligibility_property: u64,
+        callback: CommandStartCallback,
+        userdata: usize,
+        destroy: DestroyCallback,
+    ) -> Result<u64, CommandApiError> {
+        let runtime = resolve_runtime(runtime_handle).map_err(|error| match error {
+            ShutdownApiError::InvalidHandle => CommandApiError::InvalidHandle,
+            ShutdownApiError::WrongThread => CommandApiError::WrongThread,
+            ShutdownApiError::Closed => CommandApiError::Closed,
+            _ => CommandApiError::Internal,
+        })?;
+        if !runtime.is_ui_thread() {
+            return Err(CommandApiError::WrongThread);
+        }
+
+        let handles = property_handles();
+        let (eligibility_token, eligibility_identity, eligible) = if eligibility_property == 0 {
+            (None, None, true)
+        } else {
+            let token = HandleToken::from_abi(eligibility_property)
+                .ok_or(CommandApiError::InvalidHandle)?;
+            let owner = handles
+                .owners
+                .lock()
+                .map_err(|_| CommandApiError::Internal)?
+                .get(&token)
+                .cloned()
+                .ok_or(CommandApiError::InvalidHandle)?;
+            if !Arc::ptr_eq(&owner, &runtime) {
+                return Err(CommandApiError::WrongRuntime);
+            }
+            let identity = handles
+                .registry
+                .validate(token, &PropertyHandleKind::Property, &runtime.identity())
+                .map_err(|error| match error {
+                    RegistryError::InvalidToken => CommandApiError::InvalidHandle,
+                    RegistryError::WrongRuntime => CommandApiError::WrongRuntime,
+                    RegistryError::WrongKind => CommandApiError::WrongType,
+                    _ => CommandApiError::Internal,
+                })?
+                .identity();
+            let kind = runtime
+                .property_kind(&handles.registry, token)
+                .map_err(|_| CommandApiError::WrongType)?;
+            if kind != ValueKind::Bool {
+                return Err(CommandApiError::WrongType);
+            }
+            let TypedValue::Bool(eligible) = runtime
+                .read_property(&handles.registry, token)
+                .map_err(|_| CommandApiError::InvalidHandle)?
+            else {
+                return Err(CommandApiError::WrongType);
+            };
+            let retained =
+                runtime_retain_handle(token.into_abi()).map_err(|error| match error {
+                    RuntimeRetainError::InvalidHandle => CommandApiError::InvalidHandle,
+                    RuntimeRetainError::OutOfMemory => CommandApiError::OutOfMemory,
+                    _ => CommandApiError::Internal,
+                })?;
+            (HandleToken::from_abi(retained), Some(identity), eligible)
+        };
+
+        let state_property = match register_read_only_property(
+            runtime_handle,
+            TypedValue::I64(crate::command::CommandState::Idle as i64),
+        ) {
+            Ok(token) => HandleToken::from_abi(token).ok_or(CommandApiError::Internal)?,
+            Err(error) => {
+                if let Some(token) = eligibility_token {
+                    let _ = handle_release(token.into_abi());
+                }
+                return Err(match error {
+                    ShutdownApiError::OutOfMemory => CommandApiError::OutOfMemory,
+                    ShutdownApiError::WrongThread => CommandApiError::WrongThread,
+                    ShutdownApiError::Closed => CommandApiError::Closed,
+                    _ => CommandApiError::Internal,
+                });
+            }
+        };
+        let can_execute_property =
+            match register_read_only_property(runtime_handle, TypedValue::Bool(eligible)) {
+                Ok(token) => HandleToken::from_abi(token).ok_or(CommandApiError::Internal)?,
+                Err(error) => {
+                    let _ = handle_release(state_property.into_abi());
+                    if let Some(token) = eligibility_token {
+                        let _ = handle_release(token.into_abi());
+                    }
+                    return Err(match error {
+                        ShutdownApiError::OutOfMemory => CommandApiError::OutOfMemory,
+                        ShutdownApiError::WrongThread => CommandApiError::WrongThread,
+                        ShutdownApiError::Closed => CommandApiError::Closed,
+                        _ => CommandApiError::Internal,
+                    });
+                }
+            };
+
+        let command = Arc::new(AsyncCommand::new(eligible));
+        let entry = Arc::new(CommandHandleEntry {
+            runtime: Arc::clone(&runtime),
+            command: Arc::clone(&command),
+            state_property,
+            can_execute_property,
+            eligibility_property: eligibility_token,
+            eligibility_identity,
+            start: Mutex::new(Some(Arc::new(CommandClosure {
+                callback,
+                userdata,
+                destroy,
+                armed: AtomicBool::new(false),
+            }))),
+            in_start: AtomicBool::new(false),
+            owned_properties_released: AtomicBool::new(false),
+        });
+        let mut commands = command_handles()
+            .lock()
+            .map_err(|_| CommandApiError::Internal)?;
+        commands
+            .try_reserve(1)
+            .map_err(|_| CommandApiError::OutOfMemory)?;
+        let token =
+            crate::handle_registry::issue_handle_token().ok_or(CommandApiError::Internal)?;
+        commands.insert(token, Arc::clone(&entry));
+        let shutdown_entry = Arc::clone(&entry);
+        if runtime
+            .track_command_shutdown(move || {
+                let _ = shutdown_entry.command.close();
+                shutdown_entry
+                    .start
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take();
+                shutdown_entry.release_owned_properties();
+            })
+            .is_err()
+        {
+            commands.remove(&token);
+            return Err(CommandApiError::OutOfMemory);
+        }
+        if let Some(start) = entry
+            .start
+            .lock()
+            .map_err(|_| CommandApiError::Internal)?
+            .as_ref()
+        {
+            start.armed.store(true, Ordering::Release);
+        }
+        Ok(token.into_abi())
+    }
+
+    /// Starts an operation and invokes the transferred start closure exactly once.
+    pub fn command_execute(handle: u64) -> Result<u64, CommandApiError> {
+        let entry = command_entry(handle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(CommandApiError::WrongThread);
+        }
+        let scope = entry
+            .runtime
+            .begin_host_event()
+            .map_err(map_command_runtime_error)?;
+        let result = (|| {
+            refresh_command_eligibility(&entry)?;
+            let callback = entry
+                .start
+                .lock()
+                .map_err(|_| CommandApiError::Internal)?
+                .as_ref()
+                .cloned()
+                .ok_or(CommandApiError::Closed)?;
+            entry
+                .runtime
+                .prepare_command_property_update(
+                    &property_handles().registry,
+                    entry.state_property,
+                    entry.can_execute_property,
+                )
+                .map_err(|error| match map_command_property_error(error) {
+                    PropertyApiError::WrongThread => CommandApiError::WrongThread,
+                    PropertyApiError::Closed => CommandApiError::Closed,
+                    PropertyApiError::OutOfMemory => CommandApiError::OutOfMemory,
+                    _ => CommandApiError::Internal,
+                })?;
+            let cancel_handle =
+                crate::handle_registry::issue_handle_token().ok_or(CommandApiError::Internal)?;
+            command_cancel_tokens()
+                .lock()
+                .map_err(|_| CommandApiError::Internal)?
+                .try_reserve(1)
+                .map_err(|_| CommandApiError::OutOfMemory)?;
+
+            if !entry.command.can_execute().map_err(map_command_error)? {
+                return Err(CommandApiError::NotExecutable);
+            }
+            let operation_id = entry
+                .runtime
+                .issue_command_operation_id()
+                .map_err(map_command_error)?;
+            let (_, cancel_token, snapshot) = entry
+                .command
+                .execute_with_id(operation_id)
+                .map_err(map_command_error)?;
+            apply_command_snapshot_in_event(&entry, &snapshot)?;
+            command_cancel_tokens()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(cancel_handle, cancel_token);
+            entry
+                .in_start
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .map_err(|_| CommandApiError::InvalidOperation)?;
+            struct StartGuard<'a>(&'a AtomicBool);
+            impl Drop for StartGuard<'_> {
+                fn drop(&mut self) {
+                    self.0.store(false, Ordering::Release);
+                }
+            }
+            let _guard = StartGuard(&entry.in_start);
+            let callback_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                // SAFETY: callback state is transferred at successful creation and the two handles
+                // are borrowed for this synchronous start invocation only.
+                unsafe {
+                    (callback.callback)(
+                        callback.userdata as *mut c_void,
+                        handle,
+                        operation_id,
+                        cancel_handle.into_abi(),
+                    )
+                }
+            }));
+            command_cancel_tokens()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(&cancel_handle);
+
+            if !matches!(callback_result, Ok(0)) {
+                let failed = entry
+                    .command
+                    .complete_failure(operation_id, 0, 0, b"Command start callback failed")
+                    .map_err(map_command_error)?;
+                apply_command_snapshot_in_event(&entry, &failed)?;
+            }
+            Ok(operation_id)
+        })();
+        let close = entry.runtime.end_host_event(scope);
+        match (result, close) {
+            (Err(error), _) => Err(error),
+            (Ok(_), Err(error)) => Err(map_command_runtime_error(error)),
+            (Ok(operation_id), Ok(_)) => Ok(operation_id),
+        }
+    }
+
+    pub fn command_cancel(handle: u64, operation_id: u64) -> Result<(), CommandApiError> {
+        let entry = command_entry(handle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(CommandApiError::WrongThread);
+        }
+        let snapshot = entry
+            .command
+            .cancel(operation_id)
+            .map_err(map_command_error)?;
+        apply_command_snapshot(&entry, &snapshot)
+    }
+
+    pub fn command_close(handle: u64) -> Result<(), CommandApiError> {
+        let entry = command_entry(handle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(CommandApiError::WrongThread);
+        }
+        if entry.in_start.load(Ordering::Acquire) {
+            return Err(CommandApiError::InvalidOperation);
+        }
+        let snapshot = entry.command.close().map_err(map_command_error)?;
+        apply_command_snapshot(&entry, &snapshot)?;
+        entry
+            .start
+            .lock()
+            .map_err(|_| CommandApiError::Internal)?
+            .take();
+        entry.release_owned_properties();
+        Ok(())
+    }
+
+    pub fn command_state_property(handle: u64) -> Result<u64, CommandApiError> {
+        let entry = command_entry(handle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(CommandApiError::WrongThread);
+        }
+        entry.command.ensure_open().map_err(map_command_error)?;
+        runtime_retain_handle(entry.state_property.into_abi()).map_err(|error| match error {
+            RuntimeRetainError::InvalidHandle => CommandApiError::InvalidHandle,
+            RuntimeRetainError::OutOfMemory => CommandApiError::OutOfMemory,
+            _ => CommandApiError::Internal,
+        })
+    }
+
+    pub fn command_can_execute_property(handle: u64) -> Result<u64, CommandApiError> {
+        let entry = command_entry(handle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(CommandApiError::WrongThread);
+        }
+        entry.command.ensure_open().map_err(map_command_error)?;
+        refresh_command_eligibility(&entry)?;
+        runtime_retain_handle(entry.can_execute_property.into_abi()).map_err(|error| match error {
+            RuntimeRetainError::InvalidHandle => CommandApiError::InvalidHandle,
+            RuntimeRetainError::OutOfMemory => CommandApiError::OutOfMemory,
+            _ => CommandApiError::Internal,
+        })
+    }
+
+    pub fn command_failure_snapshot(handle: u64) -> Result<u64, CommandApiError> {
+        let entry = command_entry(handle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(CommandApiError::WrongThread);
+        }
+        entry.command.ensure_open().map_err(map_command_error)?;
+        let snapshot = entry.command.snapshot().map_err(map_command_error)?;
+        match snapshot.failure {
+            None => Ok(0),
+            Some(failure) => {
+                issue_immutable_error(12, failure.domain, failure.code, &failure.message)
+                    .map_err(|_| CommandApiError::OutOfMemory)
+            }
+        }
+    }
+
+    pub fn command_cancel_token_requested(handle: u64) -> Result<bool, CommandApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(CommandApiError::InvalidHandle)?;
+        let cancel_tokens = command_cancel_tokens()
+            .lock()
+            .map_err(|_| CommandApiError::Internal)?;
+        cancel_tokens
+            .get(&token)
+            .map(CancelToken::is_requested)
+            .ok_or(CommandApiError::InvalidHandle)
+    }
+
+    pub fn command_complete_success(handle: u64, operation_id: u64) -> Result<(), CommandApiError> {
+        let entry = command_entry(handle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(CommandApiError::WrongThread);
+        }
+        let snapshot = entry
+            .command
+            .complete_success(operation_id)
+            .map_err(map_command_error)?;
+        apply_command_snapshot(&entry, &snapshot)
+    }
+
+    pub fn command_complete_failure(
+        handle: u64,
+        operation_id: u64,
+        domain: u32,
+        code: u32,
+        message: &[u8],
+    ) -> Result<(), CommandApiError> {
+        let message_text =
+            std::str::from_utf8(message).map_err(|_| CommandApiError::InvalidArgument)?;
+        let entry = command_entry(handle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(CommandApiError::WrongThread);
+        }
+        let snapshot = entry
+            .command
+            .complete_failure(operation_id, domain, code, message_text.as_bytes())
+            .map_err(map_command_error)?;
+        apply_command_snapshot(&entry, &snapshot)
+    }
+
+    pub fn command_complete_cancelled(
+        handle: u64,
+        operation_id: u64,
+    ) -> Result<(), CommandApiError> {
+        let entry = command_entry(handle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(CommandApiError::WrongThread);
+        }
+        let snapshot = entry
+            .command
+            .complete_cancelled(operation_id)
+            .map_err(map_command_error)?;
+        apply_command_snapshot(&entry, &snapshot)
+    }
+
     fn map_binding_runtime_error(error: RuntimeBindingError) -> BindingApiError {
         match error {
+            RuntimeBindingError::Property(RuntimePropertyError::Unsupported) => {
+                BindingApiError::Unsupported
+            }
             RuntimeBindingError::Property(RuntimePropertyError::WrongThread) => {
                 BindingApiError::WrongThread
             }
@@ -645,6 +1220,56 @@ pub mod abi_support {
                 return Ok(retained.into_abi());
             }
         }
+        {
+            let mut commands = command_handles()
+                .lock()
+                .map_err(|_| RuntimeRetainError::Internal)?;
+            if let Some(entry) = commands.get(&token).cloned() {
+                commands
+                    .try_reserve(1)
+                    .map_err(|_| RuntimeRetainError::OutOfMemory)?;
+                let retained = crate::handle_registry::issue_handle_token()
+                    .ok_or(RuntimeRetainError::Internal)?;
+                commands.insert(retained, entry);
+                return Ok(retained.into_abi());
+            }
+        }
+        {
+            let mut cancel_tokens = command_cancel_tokens()
+                .lock()
+                .map_err(|_| RuntimeRetainError::Internal)?;
+            if let Some(cancel) = cancel_tokens.get(&token).cloned() {
+                cancel_tokens
+                    .try_reserve(1)
+                    .map_err(|_| RuntimeRetainError::OutOfMemory)?;
+                let retained = crate::handle_registry::issue_handle_token()
+                    .ok_or(RuntimeRetainError::Internal)?;
+                cancel_tokens.insert(retained, cancel);
+                return Ok(retained.into_abi());
+            }
+        }
+        {
+            let handles = property_handles();
+            let mut owners = handles
+                .owners
+                .lock()
+                .map_err(|_| RuntimeRetainError::Internal)?;
+            if let Some(runtime) = owners.get(&token).cloned() {
+                owners
+                    .try_reserve(1)
+                    .map_err(|_| RuntimeRetainError::OutOfMemory)?;
+                let retained = handles
+                    .registry
+                    .retain(token)
+                    .map_err(|error| match error {
+                        RegistryError::OutOfMemory => RuntimeRetainError::OutOfMemory,
+                        RegistryError::InvalidToken => RuntimeRetainError::InvalidHandle,
+                        _ => RuntimeRetainError::Internal,
+                    })?;
+                owners.insert(retained, runtime);
+                return Ok(retained.into_abi());
+            }
+        }
         process_runtime_handles()
             .retain(token)
             .map(HandleToken::into_abi)
@@ -769,6 +1394,103 @@ pub mod abi_support {
             .map_err(map_property_registration_error)?;
         owners.insert(token, runtime);
         Ok(token.into_abi())
+    }
+
+    fn register_read_only_property(
+        runtime_handle: u64,
+        initial: TypedValue,
+    ) -> Result<u64, ShutdownApiError> {
+        let runtime = resolve_runtime(runtime_handle)?;
+        let handles = property_handles();
+        let mut owners = handles
+            .owners
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?;
+        owners
+            .try_reserve(1)
+            .map_err(|_| ShutdownApiError::OutOfMemory)?;
+        let token = runtime
+            .register_read_only_property(&handles.registry, initial)
+            .map_err(map_property_registration_error)?;
+        owners.insert(token, runtime);
+        Ok(token.into_abi())
+    }
+
+    pub fn command_state_property_create(runtime: u64) -> Result<u64, ShutdownApiError> {
+        register_read_only_property(
+            runtime,
+            TypedValue::I64(crate::command::CommandState::Idle as i64),
+        )
+    }
+
+    pub fn command_can_execute_property_create(
+        runtime: u64,
+        eligible: bool,
+    ) -> Result<u64, ShutdownApiError> {
+        register_read_only_property(runtime, TypedValue::Bool(eligible))
+    }
+
+    pub fn command_properties_update(
+        runtime_handle: u64,
+        state_property: u64,
+        can_execute_property: u64,
+        state_value: i64,
+        can_execute_value: bool,
+    ) -> Result<(), PropertyApiError> {
+        let runtime = resolve_runtime(runtime_handle).map_err(|error| match error {
+            ShutdownApiError::InvalidHandle => PropertyApiError::InvalidHandle,
+            ShutdownApiError::WrongThread => PropertyApiError::WrongThread,
+            ShutdownApiError::Closed => PropertyApiError::Closed,
+            ShutdownApiError::OutOfMemory => PropertyApiError::OutOfMemory,
+            _ => PropertyApiError::Internal,
+        })?;
+        let state_token =
+            HandleToken::from_abi(state_property).ok_or(PropertyApiError::InvalidHandle)?;
+        let can_execute_token =
+            HandleToken::from_abi(can_execute_property).ok_or(PropertyApiError::InvalidHandle)?;
+        let handles = property_handles();
+        let owners = handles
+            .owners
+            .lock()
+            .map_err(|_| PropertyApiError::Internal)?;
+        if owners
+            .get(&state_token)
+            .is_none_or(|owner| !Arc::ptr_eq(owner, &runtime))
+            || owners
+                .get(&can_execute_token)
+                .is_none_or(|owner| !Arc::ptr_eq(owner, &runtime))
+        {
+            return Err(PropertyApiError::InvalidHandle);
+        }
+        drop(owners);
+        runtime
+            .apply_command_properties_in_host_event(
+                &handles.registry,
+                state_token,
+                can_execute_token,
+                state_value,
+                can_execute_value,
+            )
+            .map_err(|error| match error {
+                RuntimeCoreError::Property(RuntimePropertyError::Unsupported) => {
+                    PropertyApiError::Unsupported
+                }
+                RuntimeCoreError::Property(RuntimePropertyError::WrongThread)
+                | RuntimeCoreError::WrongThread
+                | RuntimeCoreError::Host(crate::runtime::HostRegistrationError::WrongThread) => {
+                    PropertyApiError::WrongThread
+                }
+                RuntimeCoreError::Closed
+                | RuntimeCoreError::Property(RuntimePropertyError::Closed)
+                | RuntimeCoreError::Host(crate::runtime::HostRegistrationError::InvalidState) => {
+                    PropertyApiError::Closed
+                }
+                RuntimeCoreError::Host(crate::runtime::HostRegistrationError::OutOfMemory)
+                | RuntimeCoreError::Property(
+                    RuntimePropertyError::NotificationQueueOutOfMemory,
+                ) => PropertyApiError::OutOfMemory,
+                _ => PropertyApiError::Internal,
+            })
     }
 
     pub fn property_create_bool(runtime: u64, initial: bool) -> Result<u64, ShutdownApiError> {
@@ -1248,6 +1970,7 @@ pub mod abi_support {
                     | RuntimePropertyError::BindingGraph(_)
                     | RuntimePropertyError::BindingValueCopy(_)
                     | RuntimePropertyError::BindingPropagationOutOfMemory
+                    | RuntimePropertyError::Unsupported
                     | RuntimePropertyError::ValidationFailed(_)
                     | RuntimePropertyError::ValidatorFailed
                     | RuntimePropertyError::ValidatorReentrancy
@@ -1268,6 +1991,7 @@ pub mod abi_support {
         match error {
             RuntimePropertyError::WrongThread => PropertyApiError::WrongThread,
             RuntimePropertyError::Closed => PropertyApiError::Closed,
+            RuntimePropertyError::Unsupported => PropertyApiError::Unsupported,
             RuntimePropertyError::Registry(RegistryError::InvalidToken)
             | RuntimePropertyError::Registry(RegistryError::WrongKind)
             | RuntimePropertyError::Registry(RegistryError::WrongRuntime) => {
@@ -1365,6 +2089,107 @@ pub mod abi_support {
         })
     }
 
+    fn command_entries_for_eligibility(
+        runtime: &Arc<RuntimeCore>,
+        identity: crate::handle_registry::registry::ObjectIdentity,
+    ) -> Result<Vec<Arc<CommandHandleEntry>>, PropertyApiError> {
+        let commands = command_handles()
+            .lock()
+            .map_err(|_| PropertyApiError::Internal)?;
+        let mut matching = Vec::new();
+        matching
+            .try_reserve(commands.len())
+            .map_err(|_| PropertyApiError::OutOfMemory)?;
+        for entry in commands.values() {
+            if Arc::ptr_eq(&entry.runtime, runtime)
+                && entry.eligibility_identity == Some(identity)
+                && !matching.iter().any(|previous| Arc::ptr_eq(previous, entry))
+            {
+                matching.push(Arc::clone(entry));
+            }
+        }
+        Ok(matching)
+    }
+
+    fn map_command_property_error(error: RuntimePropertyError) -> PropertyApiError {
+        match error {
+            RuntimePropertyError::WrongThread => PropertyApiError::WrongThread,
+            RuntimePropertyError::Closed => PropertyApiError::Closed,
+            RuntimePropertyError::Unsupported => PropertyApiError::Unsupported,
+            RuntimePropertyError::NotificationQueueOutOfMemory => PropertyApiError::OutOfMemory,
+            RuntimePropertyError::Registry(RegistryError::InvalidToken) => {
+                PropertyApiError::InvalidHandle
+            }
+            _ => PropertyApiError::Internal,
+        }
+    }
+
+    fn restore_command_eligibility(updated: &[(Arc<CommandHandleEntry>, bool)]) {
+        for (entry, eligible) in updated.iter().rev() {
+            if let Ok(snapshot) = entry.command.set_eligible(*eligible) {
+                let _ = apply_command_snapshot_in_event(entry, &snapshot);
+            }
+        }
+    }
+
+    fn prepare_command_eligibility(
+        entries: &[Arc<CommandHandleEntry>],
+    ) -> Result<(), PropertyApiError> {
+        for entry in entries {
+            if entry.command.snapshot().is_err() {
+                continue;
+            }
+            entry
+                .runtime
+                .prepare_command_property_update(
+                    &property_handles().registry,
+                    entry.state_property,
+                    entry.can_execute_property,
+                )
+                .map_err(map_command_property_error)?;
+        }
+        Ok(())
+    }
+
+    fn update_command_eligibility(
+        entries: &[Arc<CommandHandleEntry>],
+        eligible: bool,
+    ) -> Result<Vec<(Arc<CommandHandleEntry>, bool)>, PropertyApiError> {
+        let mut updated = Vec::new();
+        updated
+            .try_reserve(entries.len())
+            .map_err(|_| PropertyApiError::OutOfMemory)?;
+        for entry in entries {
+            let Ok(previous) = entry.command.snapshot() else {
+                continue;
+            };
+            match entry.command.set_eligible(eligible) {
+                Ok(snapshot) => {
+                    if let Err(error) = apply_command_snapshot_in_event(entry, &snapshot) {
+                        restore_command_eligibility(&updated);
+                        return Err(match error {
+                            CommandApiError::WrongThread => PropertyApiError::WrongThread,
+                            CommandApiError::Closed => PropertyApiError::Closed,
+                            CommandApiError::OutOfMemory => PropertyApiError::OutOfMemory,
+                            _ => PropertyApiError::Internal,
+                        });
+                    }
+                    updated.push((Arc::clone(entry), previous.eligible));
+                }
+                Err(CommandError::Closed) => {}
+                Err(error) => {
+                    restore_command_eligibility(&updated);
+                    return Err(match map_command_error(error) {
+                        CommandApiError::OutOfMemory => PropertyApiError::OutOfMemory,
+                        CommandApiError::Closed => PropertyApiError::Closed,
+                        _ => PropertyApiError::Internal,
+                    });
+                }
+            }
+        }
+        Ok(updated)
+    }
+
     fn apply_property_value(handle: u64, candidate: TypedValue) -> Result<(), PropertyApiError> {
         let token = HandleToken::from_abi(handle).ok_or(PropertyApiError::InvalidHandle)?;
         let handles = property_handles();
@@ -1400,7 +2225,80 @@ pub mod abi_support {
     }
 
     pub fn property_set_bool(handle: u64, value: bool) -> Result<(), PropertyApiError> {
-        apply_property_value(handle, TypedValue::Bool(value))
+        let token = HandleToken::from_abi(handle).ok_or(PropertyApiError::InvalidHandle)?;
+        let handles = property_handles();
+        let runtime = handles
+            .owners
+            .lock()
+            .map_err(|_| PropertyApiError::Internal)?
+            .get(&token)
+            .cloned()
+            .ok_or(PropertyApiError::InvalidHandle)?;
+        let identity = handles
+            .registry
+            .validate(token, &PropertyHandleKind::Property, &runtime.identity())
+            .map_err(|error| match error {
+                RegistryError::WrongRuntime | RegistryError::InvalidToken => {
+                    PropertyApiError::InvalidHandle
+                }
+                RegistryError::WrongKind => PropertyApiError::WrongType,
+                _ => PropertyApiError::Internal,
+            })?
+            .identity();
+        let current = runtime
+            .read_property(&handles.registry, token)
+            .map_err(map_command_property_error)?;
+        if !matches!(current, TypedValue::Bool(_)) {
+            return Err(PropertyApiError::WrongType);
+        }
+        let entries = command_entries_for_eligibility(&runtime, identity)?;
+        if entries.is_empty() {
+            return apply_property_value(handle, TypedValue::Bool(value));
+        }
+        let scope = runtime.begin_host_event().map_err(|error| match error {
+            RuntimeCoreError::WrongThread
+            | RuntimeCoreError::Host(crate::runtime::HostRegistrationError::WrongThread) => {
+                PropertyApiError::WrongThread
+            }
+            RuntimeCoreError::Closed
+            | RuntimeCoreError::Host(crate::runtime::HostRegistrationError::InvalidState) => {
+                PropertyApiError::Closed
+            }
+            RuntimeCoreError::Host(crate::runtime::HostRegistrationError::OutOfMemory) => {
+                PropertyApiError::OutOfMemory
+            }
+            _ => PropertyApiError::Internal,
+        })?;
+        if let Err(error) = prepare_command_eligibility(&entries) {
+            let _ = runtime.end_host_event(scope);
+            return Err(error);
+        }
+        if let Err(error) = apply_property_value(handle, TypedValue::Bool(value)) {
+            let _ = runtime.end_host_event(scope);
+            return Err(error);
+        }
+        match update_command_eligibility(&entries, value) {
+            Ok(_) => {}
+            Err(error) => {
+                let _ = runtime.end_host_event(scope);
+                return Err(error);
+            }
+        }
+        let close = runtime.end_host_event(scope).map_err(|error| match error {
+            RuntimeCoreError::WrongThread
+            | RuntimeCoreError::Host(crate::runtime::HostRegistrationError::WrongThread) => {
+                PropertyApiError::WrongThread
+            }
+            RuntimeCoreError::Closed
+            | RuntimeCoreError::Host(crate::runtime::HostRegistrationError::InvalidState) => {
+                PropertyApiError::Closed
+            }
+            RuntimeCoreError::Host(crate::runtime::HostRegistrationError::OutOfMemory) => {
+                PropertyApiError::OutOfMemory
+            }
+            _ => PropertyApiError::Internal,
+        });
+        close.map(|_| ())
     }
 
     pub fn property_set_i64(handle: u64, value: i64) -> Result<(), PropertyApiError> {
@@ -1640,6 +2538,22 @@ pub mod abi_support {
             return Ok(());
         }
         if binding_handles()
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?
+            .remove(&token)
+            .is_some()
+        {
+            return Ok(());
+        }
+        let command = command_handles()
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?
+            .remove(&token);
+        if command.is_some() {
+            drop(command);
+            return Ok(());
+        }
+        if command_cancel_tokens()
             .lock()
             .map_err(|_| ShutdownApiError::Internal)?
             .remove(&token)

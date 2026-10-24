@@ -74,6 +74,28 @@ if(BUILD_TESTING)
       -R "^abi.runtime-smoke$" --output-on-failure
     DEPENDS freemvvm_abi_runtime_smoke_exe
     VERBATIM)
+  add_executable(freemvvm_abi_command_smoke_exe
+    tools/probes/abi_command_smoke.c)
+  target_include_directories(freemvvm_abi_command_smoke_exe PRIVATE
+    crates/c-abi/include)
+  target_link_libraries(freemvvm_abi_command_smoke_exe PRIVATE FreeMvvm::runtime)
+  add_dependencies(freemvvm_abi_command_smoke_exe freemvvm_abi_native_build)
+  set_target_properties(freemvvm_abi_command_smoke_exe PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+  if(WIN32)
+    add_custom_command(TARGET freemvvm_abi_command_smoke_exe POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${FREEMVVM_ABI_RUNTIME}"
+        "$<TARGET_FILE_DIR:freemvvm_abi_command_smoke_exe>"
+      VERBATIM)
+  endif()
+  add_test(NAME abi.command-smoke COMMAND freemvvm_abi_command_smoke_exe)
+  set_tests_properties(abi.command-smoke PROPERTIES LABELS "abi;command")
+  add_custom_target(freemvvm_abi_command_smoke
+    COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${CMAKE_BINARY_DIR}"
+      -R "^abi.command-smoke$" --output-on-failure
+    DEPENDS freemvvm_abi_command_smoke_exe
+    VERBATIM)
   add_executable(freemvvm_abi_cpp_runtime_smoke_exe
     tools/probes/abi_cpp_runtime_smoke.cpp)
   target_include_directories(freemvvm_abi_cpp_runtime_smoke_exe PRIVATE

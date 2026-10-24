@@ -16,6 +16,7 @@ pub(crate) struct PropertyState {
     value: ValueStorage,
     subscribers: Vec<Weak<Subscription>>,
     validator: Option<Arc<PropertyValidator>>,
+    read_only: bool,
 }
 
 /// Synchronous candidate check. Runtime invokes it without holding Core state locks.
@@ -303,7 +304,21 @@ impl PropertyState {
             value: ValueStorage::new(initial),
             subscribers: Vec::new(),
             validator: None,
+            read_only: false,
         }
+    }
+
+    pub(crate) fn new_read_only(initial: TypedValue) -> Self {
+        Self {
+            value: ValueStorage::new(initial),
+            subscribers: Vec::new(),
+            validator: None,
+            read_only: true,
+        }
+    }
+
+    pub(crate) fn is_read_only(&self) -> bool {
+        self.read_only
     }
 
     pub(crate) fn register_validator(

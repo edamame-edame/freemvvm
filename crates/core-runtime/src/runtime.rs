@@ -1,4 +1,5 @@
 use crate::binding::{BindingConnectionId, BindingGraph, BindingGraphError};
+use crate::command::{CommandError, OperationIdIssuer};
 use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission, UiLoopBridge};
 use crate::handle_registry::HandleToken;
 use crate::handle_registry::registry::{
@@ -968,6 +969,7 @@ pub(crate) enum RuntimeObjectRegistrationError {
 pub(crate) enum RuntimePropertyError {
     WrongThread,
     Closed,
+    Unsupported,
     SynchronizationPoisoned,
     Store(UiObjectStoreError),
     Registry(RegistryError),
@@ -1043,6 +1045,7 @@ impl RuntimeIdentity {
 #[allow(dead_code)]
 pub(crate) struct RuntimeCore {
     identity: RuntimeIdentity,
+    command_operation_ids: OperationIdIssuer,
     ui_thread: UiThreadContext,
     cleanup: Arc<RuntimeCleanupQueue>,
     ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
@@ -1215,6 +1218,7 @@ impl RuntimeCore {
 
         Ok(Self {
             identity,
+            command_operation_ids: OperationIdIssuer::new(),
             ui_thread,
             cleanup,
             ui_objects,
@@ -1237,6 +1241,10 @@ impl RuntimeCore {
         self.identity
     }
 
+    pub(crate) fn issue_command_operation_id(&self) -> Result<u64, CommandError> {
+        self.command_operation_ids.issue()
+    }
+
     /// Creates thread-safe ownership metadata bound to this Runtime and its cleanup queue.
     pub(crate) fn new_object_control(
         &self,
@@ -1244,6 +1252,14 @@ impl RuntimeCore {
     ) -> Arc<CoreObjectControl<RuntimeIdentity>> {
         let cleanup_queue: Arc<dyn CleanupQueue> = self.object_cleanup.clone();
         CoreObjectControl::new(self.identity, identity, cleanup_queue)
+    }
+
+    /// Closes one Command and requests cancellation at Runtime shutdown without joining workers.
+    pub(crate) fn track_command_shutdown(
+        &self,
+        on_shutdown: impl Fn() + Send + Sync + 'static,
+    ) -> Result<(), ()> {
+        self.cleanup.track_ui_state(Box::new(on_shutdown))
     }
 
     /// Creates UI state, binds its identity to this Runtime, and registers its owner token.
@@ -1297,6 +1313,17 @@ impl RuntimeCore {
     ) -> Result<HandleToken, RuntimeObjectRegistrationError> {
         self.register_ui_object(registry, PropertyHandleKind::Property, move || {
             PropertyState::new(initial)
+        })
+    }
+
+    /// Registers a Core-owned Property that can be observed but only changed by its owner.
+    pub(crate) fn register_read_only_property(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        initial: TypedValue,
+    ) -> Result<HandleToken, RuntimeObjectRegistrationError> {
+        self.register_ui_object(registry, PropertyHandleKind::Property, move || {
+            PropertyState::new_read_only(initial)
         })
     }
 
@@ -1415,6 +1442,11 @@ impl RuntimeCore {
                     .map_err(RuntimeBindingError::Store)?
                     .downcast_ref::<PropertyState>()
                     .ok_or(RuntimeBindingError::WrongObjectState)?;
+                if state.is_read_only() {
+                    return Err(RuntimeBindingError::Property(
+                        RuntimePropertyError::Unsupported,
+                    ));
+                }
                 state.would_change(&source_value).map_err(|error| {
                     RuntimeBindingError::InitialCopy(crate::value::BindingCopyError::KindMismatch(
                         error,
@@ -2529,6 +2561,9 @@ impl RuntimeCore {
                 .map_err(RuntimePropertyError::Store)?
                 .downcast_ref::<PropertyState>()
                 .ok_or(RuntimePropertyError::WrongObjectState)?;
+            if state.is_read_only() {
+                return Err(RuntimePropertyError::Unsupported);
+            }
             state
                 .would_change(&candidate)
                 .map_err(RuntimePropertyError::ValueKindMismatch)?;
@@ -2581,6 +2616,168 @@ impl RuntimeCore {
             changes.commit_direct_change(identity);
         }
         Ok(outcome)
+    }
+
+    /// Atomically updates a Command's read-only state and can-execute Properties.
+    pub(crate) fn apply_command_properties(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        state_token: HandleToken,
+        can_execute_token: HandleToken,
+        state_value: i64,
+        can_execute_value: bool,
+    ) -> Result<(), RuntimePropertyError> {
+        let state_pin = registry
+            .validate(state_token, &PropertyHandleKind::Property, &self.identity)
+            .map_err(RuntimePropertyError::Registry)?;
+        let can_execute_pin = registry
+            .validate(
+                can_execute_token,
+                &PropertyHandleKind::Property,
+                &self.identity,
+            )
+            .map_err(RuntimePropertyError::Registry)?;
+        self.ensure_property_access_thread()?;
+        if self.validator_active.load(Ordering::Acquire) {
+            return Err(RuntimePropertyError::ValidatorReentrancy);
+        }
+
+        let mut store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let next_state = TypedValue::I64(state_value);
+        let next_can_execute = TypedValue::Bool(can_execute_value);
+        let (state_changed, can_execute_changed) = {
+            let state_property = store
+                .resolve(state_pin.identity())
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_ref::<PropertyState>()
+                .ok_or(RuntimePropertyError::WrongObjectState)?;
+            let can_execute_property = store
+                .resolve(can_execute_pin.identity())
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_ref::<PropertyState>()
+                .ok_or(RuntimePropertyError::WrongObjectState)?;
+            if !state_property.is_read_only() || !can_execute_property.is_read_only() {
+                return Err(RuntimePropertyError::WrongObjectState);
+            }
+            (
+                state_property
+                    .would_change(&next_state)
+                    .map_err(RuntimePropertyError::ValueKindMismatch)?,
+                can_execute_property
+                    .would_change(&next_can_execute)
+                    .map_err(RuntimePropertyError::ValueKindMismatch)?,
+            )
+        };
+        let mut changes = self
+            .property_changes
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        if state_changed {
+            changes
+                .reserve_direct_change(state_pin.identity())
+                .map_err(|_| RuntimePropertyError::NotificationQueueOutOfMemory)?;
+        }
+        if can_execute_changed {
+            changes
+                .reserve_direct_change(can_execute_pin.identity())
+                .map_err(|_| RuntimePropertyError::NotificationQueueOutOfMemory)?;
+        }
+        if state_changed {
+            store
+                .resolve_mut(state_pin.identity())
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_mut::<PropertyState>()
+                .ok_or(RuntimePropertyError::WrongObjectState)?
+                .apply_validated(next_state)
+                .map_err(RuntimePropertyError::ValueKindMismatch)?;
+            changes.commit_direct_change(state_pin.identity());
+        }
+        if can_execute_changed {
+            store
+                .resolve_mut(can_execute_pin.identity())
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_mut::<PropertyState>()
+                .ok_or(RuntimePropertyError::WrongObjectState)?
+                .apply_validated(next_can_execute)
+                .map_err(RuntimePropertyError::ValueKindMismatch)?;
+            changes.commit_direct_change(can_execute_pin.identity());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn prepare_command_property_update(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        state_token: HandleToken,
+        can_execute_token: HandleToken,
+    ) -> Result<(), RuntimePropertyError> {
+        let state_pin = registry
+            .validate(state_token, &PropertyHandleKind::Property, &self.identity)
+            .map_err(RuntimePropertyError::Registry)?;
+        let can_execute_pin = registry
+            .validate(
+                can_execute_token,
+                &PropertyHandleKind::Property,
+                &self.identity,
+            )
+            .map_err(RuntimePropertyError::Registry)?;
+        self.ensure_property_access_thread()?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve(state_pin.identity())
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<PropertyState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        let can_execute = store
+            .resolve(can_execute_pin.identity())
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<PropertyState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        if !state.is_read_only() || !can_execute.is_read_only() {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        let mut changes = self
+            .property_changes
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        changes
+            .reserve_direct_change(state_pin.identity())
+            .map_err(|_| RuntimePropertyError::NotificationQueueOutOfMemory)?;
+        changes
+            .reserve_direct_change(can_execute_pin.identity())
+            .map_err(|_| RuntimePropertyError::NotificationQueueOutOfMemory)
+    }
+
+    pub(crate) fn apply_command_properties_in_host_event(
+        &self,
+        registry: &HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        state_token: HandleToken,
+        can_execute_token: HandleToken,
+        state_value: i64,
+        can_execute_value: bool,
+    ) -> Result<(), RuntimeCoreError> {
+        let scope_id = self.begin_host_event()?;
+        let update = self
+            .apply_command_properties(
+                registry,
+                state_token,
+                can_execute_token,
+                state_value,
+                can_execute_value,
+            )
+            .map_err(RuntimeCoreError::Property);
+        let close = self.end_host_event(scope_id);
+        match (update, close) {
+            (Err(error), _) => Err(error),
+            (Ok(()), Err(error)) => Err(error),
+            (Ok(()), Ok(_)) => Ok(()),
+        }
     }
 
     /// Applies one public Property setter operation within a host event boundary.

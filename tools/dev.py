@@ -116,6 +116,7 @@ def main():
             "doctor",
             "check",
             "abi-smoke",
+            "abi-command-smoke",
             "abi-smoke-cpp",
             "cpp-runtime-test",
             "cpp-property-test",
@@ -147,7 +148,9 @@ def main():
     results = []
     report = {
         "scope": (
-            "cpp-package-integration-test"
+            "abi-command-smoke"
+            if args.command == "abi-command-smoke"
+            else "cpp-package-integration-test"
             if args.command == "cpp-package-test"
             else "cpp-property-unit-test"
             if args.command == "cpp-property-test"
@@ -180,6 +183,8 @@ def main():
             if args.command == "cpp-property-subscription-test"
             else "C++ Property Binding wrapper unit test executed"
             if args.command == "cpp-property-binding-test"
+            else "C ABI asynchronous Command consumer smoke executed"
+            if args.command == "abi-command-smoke"
             else "C++ Runtime and package integration tests executed"
             if args.command == "check"
             else "cpp-runtime unit test executed"
@@ -305,6 +310,26 @@ def main():
                 environment,
                 results,
                 "abi-runtime-smoke",
+            )
+        elif args.command == "abi-command-smoke":
+            run(
+                ["cmake", "--preset", "dev"],
+                environment,
+                results,
+                "cmake-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "--preset",
+                    "dev",
+                    "--target",
+                    "freemvvm_abi_command_smoke",
+                ],
+                environment,
+                results,
+                "abi-command-smoke",
             )
         elif args.command == "abi-smoke-cpp":
             run(
