@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FreeMvvm;
@@ -17,6 +18,8 @@ internal static class Program
         Run(TestCloseWaitsForCallLeaseAndRejectsNewCalls);
         Run(TestDisposeReleaseFailureMovesTokenToRetryTicket);
         Run(TestBoolAndI64PropertyRoundTripAndClose);
+        Run(TestF64PropertyPreservesBitPatterns);
+        Run(TestF64PropertyFailuresAndCloseRetry);
         Run(TestUnsupportedPropertyTypeIsRejectedBeforeNativeCall);
         Run(TestPropertyFailuresPreserveStatusAndValue);
         Run(TestPropertyCreateAndGetterFailuresAndCloseRetry);
@@ -172,6 +175,93 @@ internal static class Program
         Check(runtime.TryClose().Value == UiCloseDisposition.Released, "Runtime should remain usable");
     }
 
+    private static void TestF64PropertyPreservesBitPatterns()
+    {
+        var native = new FakeNativeApi();
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        long[] bitPatterns =
+        [
+            0x3FF4_0000_0000_0000,
+            0x7FF8_0000_0000_0042,
+            0x7FF8_0000_0000_1234,
+            0x7FF0_0000_0000_0000,
+            unchecked((long)0xFFF0_0000_0000_0000),
+            0,
+            long.MinValue,
+        ];
+
+        double initial = BitConverter.Int64BitsToDouble(bitPatterns[0]);
+        UiProperty<double> property = UiProperty<double>.TryCreate(runtime, initial).Value;
+        Check(native.LastCreatedF64Bits == bitPatterns[0], "finite F64 create should preserve the raw bits");
+        Check(BitConverter.DoubleToInt64Bits(property.TryGet().Value) == bitPatterns[0],
+            "finite F64 getter should preserve the raw bits");
+
+        foreach (long bits in bitPatterns.Skip(1))
+        {
+            double value = BitConverter.Int64BitsToDouble(bits);
+            Check(property.TrySet(value).IsSuccess, "F64 setter should accept the value");
+            Check(native.LastSetF64Bits == bits, "F64 setter should forward the raw bits");
+            Check(BitConverter.DoubleToInt64Bits(property.TryGet().Value) == bits,
+                "F64 getter should return the raw bits");
+        }
+
+        Check(property.TryClose().Value == UiCloseDisposition.Released, "F64 property should close");
+        Check(runtime.TryClose().Value == UiCloseDisposition.Released, "Runtime should close after F64 property");
+        Check(native.ReleaseCount(native.F64PropertyHandle) == 1, "F64 token should release once");
+    }
+
+    private static void TestF64PropertyFailuresAndCloseRetry()
+    {
+        var native = new FakeNativeApi
+        {
+            PropertyCreateStatus = 0xF765_4321,
+            PropertyErrorHandle = 0xC000_0000_0000_0006,
+            ErrorStatusValue = 0xF765_4321,
+            ErrorDomainValue = 0xABCD_0004,
+            ErrorCodeValue = 0xFFFF_0005,
+        };
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+
+        UiResult<UiProperty<double>> create = UiProperty<double>.TryCreate(runtime, 1.25);
+        Check(create.IsFailure && create.Error?.RawStatus == 0xF765_4321,
+            "unknown F64 create status should remain raw");
+        Check(create.Error?.Domain == 0xABCD_0004 && create.Error.Code == 0xFFFF_0005,
+            "F64 create error snapshot should preserve domain and code");
+
+        native.PropertyCreateStatus = UiStatus.Ok;
+        native.PropertyErrorHandle = 0;
+        UiProperty<double> property = UiProperty<double>.TryCreate(runtime, 1.25).Value;
+        native.PropertySetStatus = 0xF123_4567;
+        native.PropertyErrorHandle = 0xC000_0000_0000_0007;
+        native.ErrorStatusValue = 0xF123_4567;
+        native.ErrorDomainValue = 0xABCD_0005;
+        native.ErrorCodeValue = 0xFFFF_0006;
+        UiResult<bool> set = property.TrySet(2.5);
+        Check(set.IsFailure && set.Error?.RawStatus == 0xF123_4567,
+            "unknown F64 set status should remain raw");
+        Check(set.Error?.Domain == 0xABCD_0005 && set.Error.Code == 0xFFFF_0006,
+            "F64 set error snapshot should preserve domain and code");
+        Check(BitConverter.DoubleToInt64Bits(property.TryGet().Value) == BitConverter.DoubleToInt64Bits(1.25),
+            "failed F64 setter should leave the stored value unchanged");
+        Check(native.ReleaseCount(native.PropertyErrorHandle) == 1, "F64 set error token should release once");
+
+        native.PropertySetStatus = UiStatus.Ok;
+        native.PropertyErrorHandle = 0;
+        native.PropertyGetStatus = UiStatus.WrongThread;
+        UiResult<double> wrongThread = property.TryGet();
+        Check(wrongThread.IsFailure && wrongThread.Error?.RawStatus == UiStatus.WrongThread,
+            "F64 getter should preserve raw wrong-thread status");
+
+        native.PropertyGetStatus = UiStatus.Ok;
+        native.SetReleaseFailures(native.F64PropertyHandle, 1);
+        UiResult<UiCloseDisposition> firstClose = property.TryClose();
+        Check(firstClose.IsFailure && firstClose.Error?.RawStatus == UiStatus.InternalError,
+            "failed F64 release should be reported");
+        Check(property.TryGet().IsSuccess, "failed explicit F64 close should retain the token");
+        Check(property.TryClose().Value == UiCloseDisposition.Released, "F64 release should be retryable");
+        Check(runtime.TryClose().Value == UiCloseDisposition.Released, "Runtime should close after F64 property");
+    }
+
     private static void TestPropertyFailuresPreserveStatusAndValue()
     {
         var native = new FakeNativeApi
@@ -276,15 +366,16 @@ internal static class Program
         private readonly ConcurrentDictionary<ulong, int> _successfulReleases = new();
         private readonly ConcurrentDictionary<ulong, byte> _boolProperties = new();
         private readonly ConcurrentDictionary<ulong, long> _i64Properties = new();
+        private readonly ConcurrentDictionary<ulong, long> _f64Properties = new();
         private ulong _nextProperty = 300;
 
         internal ulong RuntimeHandle { get; init; } = 101;
         internal ulong RequestHandle { get; init; } = 202;
         internal uint CreateStatus { get; init; }
         internal ulong ErrorHandle { get; init; }
-        internal uint ErrorStatusValue { get; init; } = UiStatus.InternalError;
-        internal uint ErrorDomainValue { get; init; } = 1;
-        internal uint ErrorCodeValue { get; init; } = 1;
+        internal uint ErrorStatusValue { get; set; } = UiStatus.InternalError;
+        internal uint ErrorDomainValue { get; set; } = 1;
+        internal uint ErrorCodeValue { get; set; } = 1;
         internal byte[] ErrorMessageValue { get; init; } = [];
         internal byte IsUiThread { get; init; } = 1;
         internal uint RequestStatus { get; init; } = UiStatus.Ok;
@@ -302,8 +393,11 @@ internal static class Program
         internal byte LastSetBool { get; private set; }
         internal long LastCreatedI64 { get; private set; }
         internal long LastSetI64 { get; private set; }
+        internal long LastCreatedF64Bits { get; private set; }
+        internal long LastSetF64Bits { get; private set; }
         internal ulong BoolPropertyHandle { get; private set; }
         internal ulong I64PropertyHandle { get; private set; }
+        internal ulong F64PropertyHandle { get; private set; }
         internal int PropertyCreateCount { get; private set; }
         internal ulong LastRuntime { get; private set; }
         internal ulong LastRequest { get; private set; }
@@ -352,6 +446,21 @@ internal static class Program
             return PropertyCreateStatus;
         }
 
+        public uint PropertyCreateF64(ulong runtime, double initial, out ulong property, out ulong error)
+        {
+            PropertyCreateCount++;
+            LastCreatedF64Bits = BitConverter.DoubleToInt64Bits(initial);
+            property = PropertyCreateStatus == UiStatus.Ok ? ++_nextProperty : 0;
+            error = PropertyErrorHandle;
+            if (property != 0)
+            {
+                F64PropertyHandle = property;
+                _f64Properties[property] = LastCreatedF64Bits;
+            }
+
+            return PropertyCreateStatus;
+        }
+
         public uint PropertyGetBool(ulong property, out byte value)
         {
             value = MalformedBoolValue ?? (_boolProperties.TryGetValue(property, out byte current) ? current : (byte)0);
@@ -367,6 +476,13 @@ internal static class Program
             }
 
             _i64Properties.TryGetValue(property, out value);
+            return PropertyGetStatus;
+        }
+
+        public uint PropertyGetF64(ulong property, out double value)
+        {
+            _f64Properties.TryGetValue(property, out long bits);
+            value = BitConverter.Int64BitsToDouble(bits);
             return PropertyGetStatus;
         }
 
@@ -389,6 +505,18 @@ internal static class Program
             if (PropertySetStatus == UiStatus.Ok)
             {
                 _i64Properties[property] = value;
+            }
+
+            return PropertySetStatus;
+        }
+
+        public uint PropertySetF64(ulong property, double value, out ulong error)
+        {
+            LastSetF64Bits = BitConverter.DoubleToInt64Bits(value);
+            error = PropertyErrorHandle;
+            if (PropertySetStatus == UiStatus.Ok)
+            {
+                _f64Properties[property] = LastSetF64Bits;
             }
 
             return PropertySetStatus;

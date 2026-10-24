@@ -20,9 +20,10 @@ public sealed class UiProperty<T> : IDisposable
             byte value = (bool)(object)initial! ? (byte)1 : (byte)0;
             return TryCreateCore(
                 runtime.Owner,
-                static (INativeApi api, ulong owner, byte initialValue, long _, out ulong property, out ulong error) =>
+                static (INativeApi api, ulong owner, byte initialValue, long _, double _, out ulong property, out ulong error) =>
                     api.PropertyCreateBool(owner, initialValue, out property, out error),
                 value,
+                0,
                 0);
         }
 
@@ -31,8 +32,21 @@ public sealed class UiProperty<T> : IDisposable
             long value = (long)(object)initial!;
             return TryCreateCore(
                 runtime.Owner,
-                static (INativeApi api, ulong owner, byte _, long initialValue, out ulong property, out ulong error) =>
+                static (INativeApi api, ulong owner, byte _, long initialValue, double _, out ulong property, out ulong error) =>
                     api.PropertyCreateI64(owner, initialValue, out property, out error),
+                0,
+                value,
+                0);
+        }
+
+        if (typeof(T) == typeof(double))
+        {
+            double value = (double)(object)initial!;
+            return TryCreateCore(
+                runtime.Owner,
+                static (INativeApi api, ulong owner, byte _, long _, double initialValue, out ulong property, out ulong error) =>
+                    api.PropertyCreateF64(owner, initialValue, out property, out error),
+                0,
                 0,
                 value);
         }
@@ -75,6 +89,14 @@ public sealed class UiProperty<T> : IDisposable
                     : UiResult<T>.Failure(new UiErrorSnapshot(status));
             }
 
+            if (typeof(T) == typeof(double))
+            {
+                uint status = _owner.Api.PropertyGetF64(lease.Token, out double value);
+                return status == UiStatus.Ok
+                    ? UiResult<T>.Success((T)(object)value)
+                    : UiResult<T>.Failure(new UiErrorSnapshot(status));
+            }
+
             return UiResult<T>.Failure(new UiErrorSnapshot(UiStatus.Unsupported));
         }
         catch
@@ -107,6 +129,11 @@ public sealed class UiProperty<T> : IDisposable
                 long nativeValue = (long)(object)value!;
                 status = _owner.Api.PropertySetI64(lease.Token, nativeValue, out errorToken);
             }
+            else if (typeof(T) == typeof(double))
+            {
+                double nativeValue = (double)(object)value!;
+                status = _owner.Api.PropertySetF64(lease.Token, nativeValue, out errorToken);
+            }
             else
             {
                 return UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.Unsupported));
@@ -130,7 +157,8 @@ public sealed class UiProperty<T> : IDisposable
         TokenOwner runtimeOwner,
         CreateNative createNative,
         byte initialBool,
-        long initialI64)
+        long initialI64,
+        double initialF64)
     {
         var propertyOwner = new TokenOwner(runtimeOwner.Api);
         var error = new PreparedError(runtimeOwner.Api);
@@ -148,7 +176,7 @@ public sealed class UiProperty<T> : IDisposable
         {
             try
             {
-                status = createNative(runtimeOwner.Api, lease.Token, initialBool, initialI64, out property, out errorToken);
+                status = createNative(runtimeOwner.Api, lease.Token, initialBool, initialI64, initialF64, out property, out errorToken);
             }
             catch
             {
@@ -183,6 +211,7 @@ public sealed class UiProperty<T> : IDisposable
         ulong runtime,
         byte initialBool,
         long initialI64,
+        double initialF64,
         out ulong property,
         out ulong error);
 }

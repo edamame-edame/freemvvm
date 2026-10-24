@@ -2182,6 +2182,69 @@
         {"id": "UT-WRAP-CS-PROP-BOOL-I64-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "csharp-property-test"]},
         {"id": "UT-CONSUMER-CS-PROP-BOOL-I64-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "csharp-property-consumer-test"]}
       ]
+    },
+    {
+      "id": "UNIT-WRAP-CS-PROP-F64-001",
+      "state": "in_progress",
+      "scope": "csharp-f64-property-create-get-set-close-and-bit-preservation",
+      "sources": [
+        "wrappers/csharp/FreeMvvm/**/*.cs",
+        "wrappers/csharp/tests/RuntimeTests/**/*.cs",
+        "wrappers/csharp/tests/Consumer/**/*.cs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+        "wrappers/csharp/tests/RuntimeTests/*.csproj",
+        "wrappers/csharp/tests/Consumer/*.csproj",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-CORE-029",
+        "UNIT-ABI-009",
+        "UNIT-ABI-010",
+        "UNIT-ABI-011",
+        "UNIT-ABI-018",
+        "UNIT-WRAP-CS-001",
+        "UNIT-WRAP-CS-PROP-BOOL-I64-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.1",
+          "section": "公開API・call lease・native load / 型の責務と所有"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property値のC ABI / Property生成と通知購読のC ABI"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "F64 equivalence and ValueStorage"
+        }
+      ],
+      "requirements": [
+        "RQ-02-001",
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-02-018",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "cases": ["TC-PROP-01", "TC-ABI-REP-01", "TC-LIFE-01", "TC-THREAD-01", "TC-WRAP-CS-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {"id": "UT-WRAP-CS-PROP-F64-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "csharp-property-test"]},
+        {"id": "UT-CONSUMER-CS-PROP-F64-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "csharp-property-consumer-test"]}
+      ]
     }
   ]
 }
