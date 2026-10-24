@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FreeMvvm;
@@ -20,6 +21,9 @@ internal static class Program
         Run(TestBoolAndI64PropertyRoundTripAndClose);
         Run(TestF64PropertyPreservesBitPatterns);
         Run(TestF64PropertyFailuresAndCloseRetry);
+        Run(TestUtf8PropertyRoundTripAndStrictInput);
+        Run(TestUtf8GetterRetriesAndRejectsInvalidBytes);
+        Run(TestUtf8PropertyFailuresAndCloseRetry);
         Run(TestUnsupportedPropertyTypeIsRejectedBeforeNativeCall);
         Run(TestPropertyFailuresPreserveStatusAndValue);
         Run(TestPropertyCreateAndGetterFailuresAndCloseRetry);
@@ -168,11 +172,115 @@ internal static class Program
         var native = new FakeNativeApi();
         UiRuntime runtime = UiRuntime.TryCreate(native).Value;
 
-        UiResult<UiProperty<string>> unsupported = UiProperty<string>.TryCreate(runtime, "not supported");
+        UiResult<UiProperty<DateTime>> unsupported = UiProperty<DateTime>.TryCreate(runtime, DateTime.UnixEpoch);
         Check(unsupported.IsFailure && unsupported.Error?.RawStatus == UiStatus.Unsupported,
             "unsupported managed property types should return UI_UNSUPPORTED");
         Check(native.PropertyCreateCount == 0, "unsupported type must be rejected before entering the ABI");
         Check(runtime.TryClose().Value == UiCloseDisposition.Released, "Runtime should remain usable");
+    }
+
+    private static void TestUtf8PropertyRoundTripAndStrictInput()
+    {
+        var native = new FakeNativeApi();
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiProperty<string> property = UiProperty<string>.TryCreate(runtime, "初期値").Value;
+        string[] values = [string.Empty, "ASCII", "こんにちは", "UI 🙂", "前\0後"];
+        var strictUtf8 = new UTF8Encoding(false, true);
+
+        foreach (string value in values)
+        {
+            Check(property.TrySet(value).IsSuccess, "valid UTF-16 string should set successfully");
+            byte[] expectedBytes = strictUtf8.GetBytes(value);
+            Check(native.LastSetUtf8.SequenceEqual(expectedBytes),
+                "setter should pass the exact UTF-8 bytes and byte length");
+            Check(property.TryGet().Value == value, "UTF-8 property should round trip the exact string");
+        }
+
+        Check(native.LastCreatedUtf8.SequenceEqual(strictUtf8.GetBytes("初期値")),
+            "create should pass the initial UTF-8 bytes and byte length");
+        int createCount = native.PropertyCreateCount;
+        UiResult<UiProperty<string>> invalidCreate = UiProperty<string>.TryCreate(runtime, "bad\uD800");
+        Check(invalidCreate.IsFailure && invalidCreate.Error?.RawStatus == UiStatus.InvalidArgument,
+            "unpaired surrogate should be rejected as invalid input");
+        Check(native.PropertyCreateCount == createCount, "invalid UTF-16 must not enter the native ABI");
+
+        int setCount = native.PropertySetCount;
+        UiResult<bool> invalidSet = property.TrySet("bad\uDC00");
+        Check(invalidSet.IsFailure && invalidSet.Error?.RawStatus == UiStatus.InvalidArgument,
+            "unpaired low surrogate should be rejected as invalid input");
+        Check(native.PropertySetCount == setCount, "invalid UTF-16 setter must not enter the native ABI");
+        Check(property.TryClose().Value == UiCloseDisposition.Released, "UTF-8 property should close");
+        Check(runtime.TryClose().Value == UiCloseDisposition.Released, "Runtime should close after UTF-8 property");
+    }
+
+    private static void TestUtf8GetterRetriesAndRejectsInvalidBytes()
+    {
+        var native = new FakeNativeApi { GrowUtf8OnCopy = true, Utf8GrowthSuffix = Encoding.UTF8.GetBytes("追加") };
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiProperty<string> property = UiProperty<string>.TryCreate(runtime, "buffer").Value;
+
+        UiResult<string> grown = property.TryGet();
+        Check(grown.IsSuccess && grown.Value == "buffer追加",
+            "getter should re-query and retry when the value grows after size query");
+        Check(native.ShortUtf8BufferWasUntouched,
+            "buffer-too-small response should not expose a partially written buffer");
+
+        native.Utf8GetterOverride = [0xC3, 0x28];
+        UiResult<string> invalidBytes = property.TryGet();
+        Check(invalidBytes.IsFailure && invalidBytes.Error?.RawStatus == UiStatus.InternalError,
+            "invalid ABI UTF-8 should fail without replacement decoding");
+
+        native.Utf8GetterOverride = null;
+        native.PropertyGetStatus = 0xF123_4567;
+        UiResult<string> failedGet = property.TryGet();
+        Check(failedGet.IsFailure && failedGet.Error?.RawStatus == 0xF123_4567,
+            "UTF-8 getter should preserve an unknown raw status");
+        Check(property.TryClose().IsSuccess, "UTF-8 property should close after getter failures");
+        Check(runtime.TryClose().IsSuccess, "Runtime should close after UTF-8 property");
+    }
+
+    private static void TestUtf8PropertyFailuresAndCloseRetry()
+    {
+        var native = new FakeNativeApi
+        {
+            PropertyCreateStatus = 0xF765_4321,
+            PropertyErrorHandle = 0xC000_0000_0000_0008,
+            ErrorStatusValue = 0xF765_4321,
+            ErrorDomainValue = 0xABCD_0006,
+            ErrorCodeValue = 0xFFFF_0007,
+        };
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+
+        UiResult<UiProperty<string>> create = UiProperty<string>.TryCreate(runtime, "失敗");
+        Check(create.IsFailure && create.Error?.RawStatus == 0xF765_4321,
+            "unknown UTF-8 create status should remain raw");
+        Check(create.Error?.Domain == 0xABCD_0006 && create.Error.Code == 0xFFFF_0007,
+            "UTF-8 create error snapshot should preserve domain and code");
+
+        native.PropertyCreateStatus = UiStatus.Ok;
+        native.PropertyErrorHandle = 0;
+        UiProperty<string> property = UiProperty<string>.TryCreate(runtime, "before").Value;
+        native.PropertySetStatus = 0xF123_4567;
+        native.PropertyErrorHandle = 0xC000_0000_0000_0009;
+        native.ErrorStatusValue = 0xF123_4567;
+        native.ErrorDomainValue = 0xABCD_0007;
+        native.ErrorCodeValue = 0xFFFF_0008;
+        UiResult<bool> set = property.TrySet("after");
+        Check(set.IsFailure && set.Error?.RawStatus == 0xF123_4567,
+            "unknown UTF-8 set status should remain raw");
+        Check(set.Error?.Domain == 0xABCD_0007 && set.Error.Code == 0xFFFF_0008,
+            "UTF-8 set error snapshot should preserve domain and code");
+        Check(property.TryGet().Value == "before", "failed UTF-8 set should retain the prior value");
+
+        native.PropertySetStatus = UiStatus.Ok;
+        native.PropertyErrorHandle = 0;
+        native.SetReleaseFailures(native.Utf8PropertyHandle, 1);
+        UiResult<UiCloseDisposition> close = property.TryClose();
+        Check(close.IsFailure && close.Error?.RawStatus == UiStatus.InternalError,
+            "failed UTF-8 release should be reported");
+        Check(property.TryGet().Value == "before", "failed close should retain a usable token for retry");
+        Check(property.TryClose().Value == UiCloseDisposition.Released, "UTF-8 release should be retryable");
+        Check(runtime.TryClose().Value == UiCloseDisposition.Released, "Runtime should close after UTF-8 property");
     }
 
     private static void TestF64PropertyPreservesBitPatterns()
@@ -367,6 +475,7 @@ internal static class Program
         private readonly ConcurrentDictionary<ulong, byte> _boolProperties = new();
         private readonly ConcurrentDictionary<ulong, long> _i64Properties = new();
         private readonly ConcurrentDictionary<ulong, long> _f64Properties = new();
+        private readonly ConcurrentDictionary<ulong, byte[]> _utf8Properties = new();
         private ulong _nextProperty = 300;
 
         internal ulong RuntimeHandle { get; init; } = 101;
@@ -385,6 +494,10 @@ internal static class Program
         internal uint PropertyGetStatus { get; set; } = UiStatus.Ok;
         internal uint PropertySetStatus { get; set; } = UiStatus.Ok;
         internal ulong PropertyErrorHandle { get; set; }
+        internal bool GrowUtf8OnCopy { get; set; }
+        internal byte[] Utf8GrowthSuffix { get; set; } = [];
+        internal byte[]? Utf8GetterOverride { get; set; }
+        internal bool ShortUtf8BufferWasUntouched { get; private set; }
         internal byte? MalformedBoolValue { get; set; }
         internal bool BlockI64Get { get; init; }
         internal ManualResetEventSlim I64GetEntered { get; } = new(false);
@@ -395,10 +508,14 @@ internal static class Program
         internal long LastSetI64 { get; private set; }
         internal long LastCreatedF64Bits { get; private set; }
         internal long LastSetF64Bits { get; private set; }
+        internal byte[] LastCreatedUtf8 { get; private set; } = [];
+        internal byte[] LastSetUtf8 { get; private set; } = [];
         internal ulong BoolPropertyHandle { get; private set; }
         internal ulong I64PropertyHandle { get; private set; }
         internal ulong F64PropertyHandle { get; private set; }
+        internal ulong Utf8PropertyHandle { get; private set; }
         internal int PropertyCreateCount { get; private set; }
+        internal int PropertySetCount { get; private set; }
         internal ulong LastRuntime { get; private set; }
         internal ulong LastRequest { get; private set; }
 
@@ -461,6 +578,21 @@ internal static class Program
             return PropertyCreateStatus;
         }
 
+        public uint PropertyCreateUtf8(ulong runtime, byte[] initial, out ulong property, out ulong error)
+        {
+            PropertyCreateCount++;
+            LastCreatedUtf8 = initial.ToArray();
+            property = PropertyCreateStatus == UiStatus.Ok ? ++_nextProperty : 0;
+            error = PropertyErrorHandle;
+            if (property != 0)
+            {
+                Utf8PropertyHandle = property;
+                _utf8Properties[property] = LastCreatedUtf8;
+            }
+
+            return PropertyCreateStatus;
+        }
+
         public uint PropertyGetBool(ulong property, out byte value)
         {
             value = MalformedBoolValue ?? (_boolProperties.TryGetValue(property, out byte current) ? current : (byte)0);
@@ -484,6 +616,51 @@ internal static class Program
             _f64Properties.TryGetValue(property, out long bits);
             value = BitConverter.Int64BitsToDouble(bits);
             return PropertyGetStatus;
+        }
+
+        public uint PropertyGetUtf8(ulong property, byte[] buffer, ulong capacity, out ulong length)
+        {
+            length = 0;
+            if (PropertyGetStatus != UiStatus.Ok)
+            {
+                return PropertyGetStatus;
+            }
+
+            if (!_utf8Properties.TryGetValue(property, out byte[]? stored))
+            {
+                return UiStatus.InvalidHandle;
+            }
+
+            byte[] value = Utf8GetterOverride ?? stored;
+            if (capacity == 0)
+            {
+                length = (ulong)value.Length;
+                return value.Length == 0 ? UiStatus.Ok : UiStatus.BufferTooSmall;
+            }
+
+            if (GrowUtf8OnCopy)
+            {
+                GrowUtf8OnCopy = false;
+                value = value.Concat(Utf8GrowthSuffix).ToArray();
+                _utf8Properties[property] = value;
+                if (buffer.Length > 0 && buffer.All(static item => item == 0))
+                {
+                    ShortUtf8BufferWasUntouched = true;
+                }
+
+                length = (ulong)value.Length;
+                return UiStatus.BufferTooSmall;
+            }
+
+            if ((ulong)value.Length > capacity)
+            {
+                length = (ulong)value.Length;
+                return UiStatus.BufferTooSmall;
+            }
+
+            value.CopyTo(buffer, 0);
+            length = (ulong)value.Length;
+            return UiStatus.Ok;
         }
 
         public uint PropertySetBool(ulong property, byte value, out ulong error)
@@ -517,6 +694,19 @@ internal static class Program
             if (PropertySetStatus == UiStatus.Ok)
             {
                 _f64Properties[property] = LastSetF64Bits;
+            }
+
+            return PropertySetStatus;
+        }
+
+        public uint PropertySetUtf8(ulong property, byte[] value, out ulong error)
+        {
+            PropertySetCount++;
+            LastSetUtf8 = value.ToArray();
+            error = PropertyErrorHandle;
+            if (PropertySetStatus == UiStatus.Ok)
+            {
+                _utf8Properties[property] = LastSetUtf8;
             }
 
             return PropertySetStatus;

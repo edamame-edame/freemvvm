@@ -17,17 +17,23 @@ internal interface INativeApi
 
     uint PropertyCreateF64(ulong runtime, double initial, out ulong property, out ulong error);
 
+    uint PropertyCreateUtf8(ulong runtime, byte[] initial, out ulong property, out ulong error);
+
     uint PropertyGetBool(ulong property, out byte value);
 
     uint PropertyGetI64(ulong property, out long value);
 
     uint PropertyGetF64(ulong property, out double value);
 
+    uint PropertyGetUtf8(ulong property, byte[] buffer, ulong capacity, out ulong length);
+
     uint PropertySetBool(ulong property, byte value, out ulong error);
 
     uint PropertySetI64(ulong property, long value, out ulong error);
 
     uint PropertySetF64(ulong property, double value, out ulong error);
+
+    uint PropertySetUtf8(ulong property, byte[] value, out ulong error);
 
     uint RuntimeRequestShutdown(ulong runtime, uint mode, out ulong request, out ulong error);
 
@@ -75,6 +81,14 @@ internal sealed class NativeRuntimeApi : INativeApi
     public uint PropertyCreateF64(ulong runtime, double initial, out ulong property, out ulong error) =>
         NativeMethods.PropertyCreateF64(runtime, initial, out property, out error);
 
+    public unsafe uint PropertyCreateUtf8(ulong runtime, byte[] initial, out ulong property, out ulong error)
+    {
+        fixed (byte* bytes = initial)
+        {
+            return NativeMethods.PropertyCreateUtf8(runtime, bytes, (ulong)initial.Length, out property, out error);
+        }
+    }
+
     public uint PropertyGetBool(ulong property, out byte value) =>
         NativeMethods.PropertyGetBool(property, out value);
 
@@ -84,6 +98,14 @@ internal sealed class NativeRuntimeApi : INativeApi
     public uint PropertyGetF64(ulong property, out double value) =>
         NativeMethods.PropertyGetF64(property, out value);
 
+    public unsafe uint PropertyGetUtf8(ulong property, byte[] buffer, ulong capacity, out ulong length)
+    {
+        fixed (byte* bytes = buffer)
+        {
+            return NativeMethods.PropertyGetUtf8(property, bytes, capacity, out length);
+        }
+    }
+
     public uint PropertySetBool(ulong property, byte value, out ulong error) =>
         NativeMethods.PropertySetBool(property, value, out error);
 
@@ -92,6 +114,14 @@ internal sealed class NativeRuntimeApi : INativeApi
 
     public uint PropertySetF64(ulong property, double value, out ulong error) =>
         NativeMethods.PropertySetF64(property, value, out error);
+
+    public unsafe uint PropertySetUtf8(ulong property, byte[] value, out ulong error)
+    {
+        fixed (byte* bytes = value)
+        {
+            return NativeMethods.PropertySetUtf8(property, bytes, (ulong)value.Length, out error);
+        }
+    }
 
     public uint RuntimeRequestShutdown(ulong runtime, uint mode, out ulong request, out ulong error) =>
         NativeMethods.RuntimeRequestShutdown(runtime, mode, out request, out error);
@@ -167,6 +197,10 @@ internal static partial class NativeMethods
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint PropertyCreateF64(ulong runtime, double initial, out ulong property, out ulong error);
 
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_create_utf8")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static unsafe partial uint PropertyCreateUtf8(ulong runtime, byte* initial, ulong byteLength, out ulong property, out ulong error);
+
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_get_bool")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint PropertyGetBool(ulong property, out byte value);
@@ -179,6 +213,10 @@ internal static partial class NativeMethods
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint PropertyGetF64(ulong property, out double value);
 
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_get_utf8")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static unsafe partial uint PropertyGetUtf8(ulong property, byte* buffer, ulong capacity, out ulong length);
+
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_set_bool")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint PropertySetBool(ulong property, byte value, out ulong error);
@@ -190,6 +228,10 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_set_f64")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint PropertySetF64(ulong property, double value, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_set_utf8")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static unsafe partial uint PropertySetUtf8(ulong property, byte* value, ulong byteLength, out ulong error);
 
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_runtime_request_shutdown")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

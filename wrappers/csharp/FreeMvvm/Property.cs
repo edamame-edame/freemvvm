@@ -1,9 +1,11 @@
 using System;
+using System.Text;
 
 namespace FreeMvvm;
 
 public sealed class UiProperty<T> : IDisposable
 {
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly TokenOwner _owner;
 
     private UiProperty(TokenOwner owner) => _owner = owner;
@@ -20,11 +22,12 @@ public sealed class UiProperty<T> : IDisposable
             byte value = (bool)(object)initial! ? (byte)1 : (byte)0;
             return TryCreateCore(
                 runtime.Owner,
-                static (INativeApi api, ulong owner, byte initialValue, long _, double _, out ulong property, out ulong error) =>
+                static (INativeApi api, ulong owner, byte initialValue, long _, double _, byte[]? _, out ulong property, out ulong error) =>
                     api.PropertyCreateBool(owner, initialValue, out property, out error),
                 value,
                 0,
-                0);
+                0,
+                null);
         }
 
         if (typeof(T) == typeof(long))
@@ -32,11 +35,12 @@ public sealed class UiProperty<T> : IDisposable
             long value = (long)(object)initial!;
             return TryCreateCore(
                 runtime.Owner,
-                static (INativeApi api, ulong owner, byte _, long initialValue, double _, out ulong property, out ulong error) =>
+                static (INativeApi api, ulong owner, byte _, long initialValue, double _, byte[]? _, out ulong property, out ulong error) =>
                     api.PropertyCreateI64(owner, initialValue, out property, out error),
                 0,
                 value,
-                0);
+                0,
+                null);
         }
 
         if (typeof(T) == typeof(double))
@@ -44,11 +48,41 @@ public sealed class UiProperty<T> : IDisposable
             double value = (double)(object)initial!;
             return TryCreateCore(
                 runtime.Owner,
-                static (INativeApi api, ulong owner, byte _, long _, double initialValue, out ulong property, out ulong error) =>
+                static (INativeApi api, ulong owner, byte _, long _, double initialValue, byte[]? _, out ulong property, out ulong error) =>
                     api.PropertyCreateF64(owner, initialValue, out property, out error),
                 0,
                 0,
-                value);
+                value,
+                null);
+        }
+
+        if (typeof(T) == typeof(string))
+        {
+            if (initial is not string text)
+            {
+                return UiResult<UiProperty<T>>.Failure(new UiErrorSnapshot(UiStatus.InvalidArgument));
+            }
+
+            try
+            {
+                byte[] bytes = StrictUtf8.GetBytes(text);
+                return TryCreateCore(
+                    runtime.Owner,
+                    static (INativeApi api, ulong owner, byte _, long _, double _, byte[]? initialUtf8, out ulong property, out ulong error) =>
+                        api.PropertyCreateUtf8(owner, initialUtf8!, out property, out error),
+                    0,
+                    0,
+                    0,
+                    bytes);
+            }
+            catch (EncoderFallbackException)
+            {
+                return UiResult<UiProperty<T>>.Failure(new UiErrorSnapshot(UiStatus.InvalidArgument));
+            }
+            catch (OutOfMemoryException)
+            {
+                return UiResult<UiProperty<T>>.Failure(new UiErrorSnapshot(UiStatus.OutOfMemory));
+            }
         }
 
         return UiResult<UiProperty<T>>.Failure(new UiErrorSnapshot(UiStatus.Unsupported));
@@ -97,7 +131,19 @@ public sealed class UiProperty<T> : IDisposable
                     : UiResult<T>.Failure(new UiErrorSnapshot(status));
             }
 
+            if (typeof(T) == typeof(string))
+            {
+                UiResult<string> result = TryGetUtf8(lease.Token);
+                return result.IsSuccess
+                    ? UiResult<T>.Success((T)(object)result.Value)
+                    : UiResult<T>.Failure(result.Error!);
+            }
+
             return UiResult<T>.Failure(new UiErrorSnapshot(UiStatus.Unsupported));
+        }
+        catch (OutOfMemoryException)
+        {
+            return UiResult<T>.Failure(new UiErrorSnapshot(UiStatus.OutOfMemory));
         }
         catch
         {
@@ -107,6 +153,28 @@ public sealed class UiProperty<T> : IDisposable
 
     public UiResult<bool> TrySet(T value)
     {
+        byte[]? utf8Value = null;
+        if (typeof(T) == typeof(string))
+        {
+            if (value is not string text)
+            {
+                return UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InvalidArgument));
+            }
+
+            try
+            {
+                utf8Value = StrictUtf8.GetBytes(text);
+            }
+            catch (EncoderFallbackException)
+            {
+                return UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InvalidArgument));
+            }
+            catch (OutOfMemoryException)
+            {
+                return UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.OutOfMemory));
+            }
+        }
+
         UiResult<CallLease> acquired = _owner.AcquireLease();
         if (acquired.IsFailure)
         {
@@ -134,6 +202,10 @@ public sealed class UiProperty<T> : IDisposable
                 double nativeValue = (double)(object)value!;
                 status = _owner.Api.PropertySetF64(lease.Token, nativeValue, out errorToken);
             }
+            else if (typeof(T) == typeof(string))
+            {
+                status = _owner.Api.PropertySetUtf8(lease.Token, utf8Value!, out errorToken);
+            }
             else
             {
                 return UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.Unsupported));
@@ -158,7 +230,8 @@ public sealed class UiProperty<T> : IDisposable
         CreateNative createNative,
         byte initialBool,
         long initialI64,
-        double initialF64)
+        double initialF64,
+        byte[]? initialUtf8)
     {
         var propertyOwner = new TokenOwner(runtimeOwner.Api);
         var error = new PreparedError(runtimeOwner.Api);
@@ -176,7 +249,7 @@ public sealed class UiProperty<T> : IDisposable
         {
             try
             {
-                status = createNative(runtimeOwner.Api, lease.Token, initialBool, initialI64, initialF64, out property, out errorToken);
+                status = createNative(runtimeOwner.Api, lease.Token, initialBool, initialI64, initialF64, initialUtf8, out property, out errorToken);
             }
             catch
             {
@@ -212,6 +285,74 @@ public sealed class UiProperty<T> : IDisposable
         byte initialBool,
         long initialI64,
         double initialF64,
+        byte[]? initialUtf8,
         out ulong property,
         out ulong error);
+
+    private UiResult<string> TryGetUtf8(ulong token)
+    {
+        while (true)
+        {
+            uint queryStatus = _owner.Api.PropertyGetUtf8(token, Array.Empty<byte>(), 0, out ulong requiredLength);
+            if (queryStatus != UiStatus.Ok && queryStatus != UiStatus.BufferTooSmall)
+            {
+                return UiResult<string>.Failure(new UiErrorSnapshot(queryStatus));
+            }
+
+            if (queryStatus == UiStatus.Ok && requiredLength == 0)
+            {
+                return UiResult<string>.Success(string.Empty);
+            }
+
+            if (requiredLength == 0 || requiredLength > int.MaxValue)
+            {
+                return UiResult<string>.Failure(new UiErrorSnapshot(
+                    requiredLength == 0 ? UiStatus.InternalError : UiStatus.OutOfMemory));
+            }
+
+            byte[] buffer;
+            try
+            {
+                buffer = new byte[(int)requiredLength];
+            }
+            catch (OutOfMemoryException)
+            {
+                return UiResult<string>.Failure(new UiErrorSnapshot(UiStatus.OutOfMemory));
+            }
+
+            uint readStatus = _owner.Api.PropertyGetUtf8(token, buffer, requiredLength, out ulong actualLength);
+            if (readStatus == UiStatus.BufferTooSmall)
+            {
+                if (actualLength <= requiredLength)
+                {
+                    return UiResult<string>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+                }
+
+                continue;
+            }
+
+            if (readStatus != UiStatus.Ok)
+            {
+                return UiResult<string>.Failure(new UiErrorSnapshot(readStatus));
+            }
+
+            if (actualLength > requiredLength)
+            {
+                return UiResult<string>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+            }
+
+            try
+            {
+                return UiResult<string>.Success(StrictUtf8.GetString(buffer, 0, (int)actualLength));
+            }
+            catch (DecoderFallbackException)
+            {
+                return UiResult<string>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+            }
+            catch (OutOfMemoryException)
+            {
+                return UiResult<string>.Failure(new UiErrorSnapshot(UiStatus.OutOfMemory));
+            }
+        }
+    }
 }
