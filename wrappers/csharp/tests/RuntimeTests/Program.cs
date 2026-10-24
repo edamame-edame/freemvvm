@@ -24,6 +24,8 @@ internal static class Program
         Run(TestUtf8PropertyRoundTripAndStrictInput);
         Run(TestUtf8GetterRetriesAndRejectsInvalidBytes);
         Run(TestUtf8PropertyFailuresAndCloseRetry);
+        Run(TestDecimalValuePartsAndExactConversions);
+        Run(TestDecimalPropertyCanonicalBitsAndFailures);
         Run(TestUnsupportedPropertyTypeIsRejectedBeforeNativeCall);
         Run(TestPropertyFailuresPreserveStatusAndValue);
         Run(TestPropertyCreateAndGetterFailuresAndCloseRetry);
@@ -283,6 +285,112 @@ internal static class Program
         Check(runtime.TryClose().Value == UiCloseDisposition.Released, "Runtime should close after UTF-8 property");
     }
 
+    private static void TestDecimalValuePartsAndExactConversions()
+    {
+        const ulong maxCoefficient = (1UL << 58) - 1;
+        UiResult<DecimalValue> maximum = DecimalValue.TryFromParts(true, 31, maxCoefficient);
+        Check(maximum.IsSuccess && maximum.Value.IsNegative && maximum.Value.Scale == 31 &&
+            maximum.Value.Coefficient == maxCoefficient,
+            "DecimalValue parts should preserve sign, maximum scale, and maximum coefficient");
+        Check(DecimalValue.TryFromParts(false, 32, 0).Error?.RawStatus == UiStatus.InvalidArgument,
+            "scale above 31 should fail locally");
+        Check(DecimalValue.TryFromParts(false, 0, maxCoefficient + 1).Error?.RawStatus == UiStatus.InvalidArgument,
+            "coefficient above 58 bits should fail locally");
+
+        decimal negativeZero = new(0, 0, 0, true, 5);
+        DecimalValue negativeZeroValue = DecimalValue.TryFromDecimal(negativeZero).Value;
+        Check(negativeZeroValue.IsNegative && negativeZeroValue.Scale == 5 && negativeZeroValue.Coefficient == 0,
+            "System.Decimal negative zero sign and scale should be preserved when representable");
+
+        ulong shrinkableCoefficient = maxCoefficient * 10;
+        decimal shrinkable = new(
+            unchecked((int)(uint)shrinkableCoefficient),
+            unchecked((int)(uint)(shrinkableCoefficient >> 32)),
+            0,
+            false,
+            1);
+        DecimalValue shrunk = DecimalValue.TryFromDecimal(shrinkable).Value;
+        Check(shrunk.Scale == 0 && shrunk.Coefficient == maxCoefficient,
+            "an oversized coefficient should shrink only by exact trailing-zero removal");
+
+        decimal nonShrinkable = new(0, 1 << 26, 0, false, 1);
+        Check(DecimalValue.TryFromDecimal(nonShrinkable).Error?.RawStatus == UiStatus.InvalidArgument,
+            "an oversized coefficient without a removable decimal zero should fail without rounding");
+
+        DecimalValue exactAtSystemScale = DecimalValue.TryFromParts(false, 31, 1000).Value;
+        UiResult<decimal> converted = exactAtSystemScale.TryToDecimal();
+        Check(converted.IsSuccess && converted.Value == 0.0000000000000000000000000001m,
+            "scale above 28 should convert only when exact trailing-zero reduction is possible");
+        DecimalValue tooFine = DecimalValue.TryFromParts(false, 31, 1).Value;
+        Check(tooFine.TryToDecimal().Error?.RawStatus == UiStatus.InvalidArgument,
+            "a value below System.Decimal precision should fail instead of rounding");
+    }
+
+    private static void TestDecimalPropertyCanonicalBitsAndFailures()
+    {
+        var native = new FakeNativeApi();
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        const ulong maxCoefficient = (1UL << 58) - 1;
+        DecimalValue initial = DecimalValue.TryFromParts(false, 2, 100).Value;
+        UiProperty<DecimalValue> property = UiProperty<DecimalValue>.TryCreate(runtime, initial).Value;
+        Check(native.LastCreatedDecimalBits == ((ulong)2 << 58 | 100),
+            "Decimal Property create should pass canonical bits directly");
+
+        (bool Negative, byte Scale, ulong Coefficient)[] cases =
+        [
+            (false, 0, 0),
+            (true, 31, 0),
+            (false, 2, 100),
+            (true, 0, maxCoefficient),
+        ];
+        foreach (var item in cases)
+        {
+            DecimalValue candidate = DecimalValue.TryFromParts(item.Negative, item.Scale, item.Coefficient).Value;
+            Check(property.TrySet(candidate).IsSuccess, "Decimal Property set should accept valid canonical bits");
+            Check(native.LastSetDecimalBits == candidate.Bits, "Decimal Property setter should not transform canonical bits");
+            DecimalValue actual = property.TryGet().Value;
+            Check(actual.Bits == candidate.Bits, "Decimal Property getter should preserve every canonical bit");
+        }
+
+        native.PropertyCreateStatus = 0xF765_4321;
+        native.PropertyErrorHandle = 0xC000_0000_0000_0008;
+        native.ErrorStatusValue = 0xF765_4321;
+        native.ErrorDomainValue = 0xABCD_0006;
+        native.ErrorCodeValue = 0xFFFF_0007;
+        UiResult<UiProperty<DecimalValue>> failedCreate = UiProperty<DecimalValue>.TryCreate(runtime, initial);
+        Check(failedCreate.IsFailure && failedCreate.Error?.RawStatus == 0xF765_4321 &&
+            failedCreate.Error.Domain == 0xABCD_0006 && failedCreate.Error.Code == 0xFFFF_0007,
+            "Decimal Property create should preserve native error status and snapshot");
+
+        native.PropertyCreateStatus = UiStatus.Ok;
+        native.PropertyErrorHandle = 0;
+        native.PropertySetStatus = 0xF123_4567;
+        native.PropertyErrorHandle = 0xC000_0000_0000_0009;
+        native.ErrorStatusValue = 0xF123_4567;
+        native.ErrorDomainValue = 0xABCD_0007;
+        native.ErrorCodeValue = 0xFFFF_0008;
+        DecimalValue before = property.TryGet().Value;
+        UiResult<bool> failedSet = property.TrySet(DecimalValue.TryFromParts(true, 7, 42).Value);
+        Check(failedSet.IsFailure && failedSet.Error?.RawStatus == 0xF123_4567 &&
+            failedSet.Error.Domain == 0xABCD_0007 && failedSet.Error.Code == 0xFFFF_0008,
+            "Decimal Property set should preserve native error status and snapshot");
+        Check(property.TryGet().Value.Bits == before.Bits, "failed Decimal set should preserve the current bits");
+
+        native.PropertySetStatus = UiStatus.Ok;
+        native.PropertyErrorHandle = 0;
+        native.PropertyGetStatus = 0xE123_4567;
+        Check(property.TryGet().Error?.RawStatus == 0xE123_4567,
+            "Decimal getter should preserve unknown raw status");
+        native.PropertyGetStatus = UiStatus.Ok;
+
+        native.SetReleaseFailures(native.DecimalPropertyHandle, 1);
+        Check(property.TryClose().Error?.RawStatus == UiStatus.InternalError,
+            "failed Decimal Property release should be reported");
+        Check(property.TryGet().IsSuccess, "failed Decimal release should retain an open retryable token");
+        Check(property.TryClose().Value == UiCloseDisposition.Released, "Decimal Property release should retry");
+        Check(runtime.TryClose().Value == UiCloseDisposition.Released, "Runtime should close after Decimal Property");
+    }
+
     private static void TestF64PropertyPreservesBitPatterns()
     {
         var native = new FakeNativeApi();
@@ -475,6 +583,7 @@ internal static class Program
         private readonly ConcurrentDictionary<ulong, byte> _boolProperties = new();
         private readonly ConcurrentDictionary<ulong, long> _i64Properties = new();
         private readonly ConcurrentDictionary<ulong, long> _f64Properties = new();
+        private readonly ConcurrentDictionary<ulong, ulong> _decimalProperties = new();
         private readonly ConcurrentDictionary<ulong, byte[]> _utf8Properties = new();
         private ulong _nextProperty = 300;
 
@@ -508,11 +617,14 @@ internal static class Program
         internal long LastSetI64 { get; private set; }
         internal long LastCreatedF64Bits { get; private set; }
         internal long LastSetF64Bits { get; private set; }
+        internal ulong LastCreatedDecimalBits { get; private set; }
+        internal ulong LastSetDecimalBits { get; private set; }
         internal byte[] LastCreatedUtf8 { get; private set; } = [];
         internal byte[] LastSetUtf8 { get; private set; } = [];
         internal ulong BoolPropertyHandle { get; private set; }
         internal ulong I64PropertyHandle { get; private set; }
         internal ulong F64PropertyHandle { get; private set; }
+        internal ulong DecimalPropertyHandle { get; private set; }
         internal ulong Utf8PropertyHandle { get; private set; }
         internal int PropertyCreateCount { get; private set; }
         internal int PropertySetCount { get; private set; }
@@ -578,6 +690,21 @@ internal static class Program
             return PropertyCreateStatus;
         }
 
+        public uint PropertyCreateDecimal(ulong runtime, ulong initial, out ulong property, out ulong error)
+        {
+            PropertyCreateCount++;
+            LastCreatedDecimalBits = initial;
+            property = PropertyCreateStatus == UiStatus.Ok ? ++_nextProperty : 0;
+            error = PropertyErrorHandle;
+            if (property != 0)
+            {
+                DecimalPropertyHandle = property;
+                _decimalProperties[property] = initial;
+            }
+
+            return PropertyCreateStatus;
+        }
+
         public uint PropertyCreateUtf8(ulong runtime, byte[] initial, out ulong property, out ulong error)
         {
             PropertyCreateCount++;
@@ -615,6 +742,12 @@ internal static class Program
         {
             _f64Properties.TryGetValue(property, out long bits);
             value = BitConverter.Int64BitsToDouble(bits);
+            return PropertyGetStatus;
+        }
+
+        public uint PropertyGetDecimal(ulong property, out ulong value)
+        {
+            _decimalProperties.TryGetValue(property, out value);
             return PropertyGetStatus;
         }
 
@@ -728,6 +861,18 @@ internal static class Program
             reason = RequestReason;
             error = 0;
             return UiStatus.Ok;
+        }
+
+        public uint PropertySetDecimal(ulong property, ulong value, out ulong error)
+        {
+            LastSetDecimalBits = value;
+            error = PropertyErrorHandle;
+            if (PropertySetStatus == UiStatus.Ok)
+            {
+                _decimalProperties[property] = value;
+            }
+
+            return PropertySetStatus;
         }
 
         public uint RuntimeShutdown(ulong runtime, out ulong error)

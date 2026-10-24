@@ -153,20 +153,84 @@ internal static class Program
             return 18;
         }
 
+        const ulong decimalMaxCoefficient = (1UL << 58) - 1;
+        (bool Negative, byte Scale, ulong Coefficient)[] decimalCases =
+        [
+            (false, 0, 0),
+            (true, 31, 0),
+            (false, 2, 100),
+            (true, 0, decimalMaxCoefficient),
+        ];
+        foreach (var item in decimalCases)
+        {
+            DecimalValue expected = DecimalValue.TryFromParts(item.Negative, item.Scale, item.Coefficient).Value;
+            UiResult<UiProperty<DecimalValue>> decimalCreate = UiProperty<DecimalValue>.TryCreate(runtime, expected);
+            if (decimalCreate.IsFailure)
+            {
+                Console.Error.WriteLine($"DECIMAL property creation failed: {decimalCreate.Error?.RawStatus}");
+                return 20;
+            }
+
+            using UiProperty<DecimalValue> decimalProperty = decimalCreate.Value;
+            UiResult<DecimalValue> actual = decimalProperty.TryGet();
+            if (actual.IsFailure || actual.Value.IsNegative != expected.IsNegative ||
+                actual.Value.Scale != expected.Scale || actual.Value.Coefficient != expected.Coefficient)
+            {
+                Console.Error.WriteLine("DECIMAL create/get did not preserve canonical bits through the C ABI.");
+                return 21;
+            }
+
+            DecimalValue changed = DecimalValue.TryFromParts(!item.Negative, item.Scale, item.Coefficient == 0 ? 1 : item.Coefficient - 1).Value;
+            if (decimalProperty.TrySet(changed).IsFailure)
+            {
+                Console.Error.WriteLine("DECIMAL setter failed through the C ABI.");
+                return 22;
+            }
+
+            actual = decimalProperty.TryGet();
+            if (actual.IsFailure || actual.Value.IsNegative != changed.IsNegative ||
+                actual.Value.Scale != changed.Scale || actual.Value.Coefficient != changed.Coefficient)
+            {
+                Console.Error.WriteLine("DECIMAL set/get did not preserve canonical bits through the C ABI.");
+                return 23;
+            }
+
+            if (decimalProperty.TryClose().IsFailure)
+            {
+                Console.Error.WriteLine("DECIMAL property handle could not be closed.");
+                return 24;
+            }
+        }
+
+        UiResult<DecimalValue> fromDecimal = DecimalValue.TryFromDecimal(123.4500m);
+        if (fromDecimal.IsFailure)
+        {
+            Console.Error.WriteLine("System.Decimal value should map exactly to DecimalValue.");
+            return 25;
+        }
+
+        UiResult<decimal> toDecimal = fromDecimal.Value.TryToDecimal();
+        if (toDecimal.IsFailure || toDecimal.Value != 123.4500m ||
+            DecimalValue.TryFromParts(false, 31, 1).Value.TryToDecimal().IsSuccess)
+        {
+            Console.Error.WriteLine("System.Decimal conversions should preserve exact values and reject inexact scale.");
+            return 26;
+        }
+
         UiResult<ShutdownReceipt> request = runtime.RequestShutdown(ShutdownMode.Async);
         if (request.IsSuccess || request.Error?.RawStatus != 10)
         {
             Console.Error.WriteLine($"Expected UI_UNSUPPORTED (10), got success={request.IsSuccess}, status={request.Error?.RawStatus}.");
-            return 19;
+            return 27;
         }
 
         if (runtime.TryClose().IsFailure)
         {
             Console.Error.WriteLine("The Runtime handle could not be closed.");
-            return 20;
+            return 28;
         }
 
-        Console.WriteLine("C# Runtime BOOL/I64/F64/UTF-8 Property C ABI consumer: OK");
+        Console.WriteLine("C# Runtime BOOL/I64/F64/UTF-8/DECIMAL Property C ABI consumer: OK");
         return 0;
     }
 }

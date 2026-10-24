@@ -36,10 +36,10 @@ C# Runtime wrapperとBOOL/I64・F64・UTF-8 Property facadeは実装済み。次
 ## 実施順
 
 1. [x] 利用者がscope、`System.Decimal`との正確な変換規則、失敗結果をレビューし承認した（2026-10-24、「ok，実装を進めて」）。
-2. [ ] 承認された計画を日本語commitで記録し、現在のC#作業ブランチへpushする。
-3. [ ] 実装開始承認後、unit test designと`tools/units.yaml`の依存・要求・試験commandをsource変更前に登録する。
-4. [ ] `DecimalValue`とDECIMAL C ABI interop、およびfake ABI focused testsを実装する。
-5. [ ] 実C ABI consumerとlocal checksを通す。
+2. [x] 承認された計画をcommit `6899039`（「C# Decimal Property wrapper計画を承認記録」）で記録し、現在のC#作業ブランチへpushした。
+3. [x] `UT-WRAP-CS-PROP-DECIMAL-001`/`UT-CONSUMER-CS-PROP-DECIMAL-001` test designと`UNIT-WRAP-CS-PROP-DECIMAL-001` mappingを製品source変更前に登録した。
+4. [x] `DecimalValue`とDECIMAL C ABI interop、およびfake ABI focused testsを実装した。canonical bits・System.Decimal正確変換・範囲境界を検査した。
+5. [x] 実C ABI consumer、`tools/dev.py check`、`tools/dev.py minimum`、文書リンク検査、`git diff --check` がすべて成功した。
 6. [ ] Windows/Linux CI成功後、unit台帳・計画・`.docs/01_memory/`へ結果とrevisionを記録し、日本語でcommit/pushする。
 
 ## レビュー時の決定点
