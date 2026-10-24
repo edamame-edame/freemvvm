@@ -1,9 +1,9 @@
 # 言語ラッパー：C#
 
-- 文書版: 1.3
+- 文書版: 1.4改訂案
 - 文書ロール: detailed-design
 - 更新日: 2026-10-24
-- 状態: 1.3全文承認済み（利用者、2026-10-24）。1.2までの承認履歴を維持。実装・試験状態は別管理
+- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.2/1.3までの承認履歴を維持。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -19,6 +19,7 @@
 | 公開API・call lease・native load | [RQ-03-002](../../11_requirements/RQ-03_language-support.md#rq-03-002)、[RQ-03-006](../../11_requirements/RQ-03_language-support.md#rq-03-006)、[RQ-03-013](../../11_requirements/RQ-03_language-support.md#rq-03-013)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-05-010](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-010)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-12-006](../../11_requirements/RQ-12_build-distribution.md#rq-12-006) |
 | Property notification Subscription・callback failure handler | [RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-008](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 | Property Binding・Binding error snapshot/notification | [RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-07-001](../../11_requirements/RQ-07_binding.md#rq-07-001)、[RQ-07-002](../../11_requirements/RQ-07_binding.md#rq-07-002)、[RQ-07-003](../../11_requirements/RQ-07_binding.md#rq-07-003)、[RQ-07-004](../../11_requirements/RQ-07_binding.md#rq-07-004)、[RQ-07-005](../../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-007](../../11_requirements/RQ-07_binding.md#rq-07-007)、[RQ-07-008](../../11_requirements/RQ-07_binding.md#rq-07-008)、[RQ-07-009](../../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../../11_requirements/RQ-07_binding.md#rq-07-010)、[RQ-07-011](../../11_requirements/RQ-07_binding.md#rq-07-011) |
+| 非同期Command wrapper | [RQ-02-004](../../11_requirements/RQ-02_core-features.md#rq-02-004)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-004](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-004)、[RQ-06-008](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-008)、[RQ-06-009](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-009)、[RQ-06-010](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-010)、[RQ-06-011](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-011)、[RQ-09-006](../../11_requirements/RQ-09_ui-scope.md#rq-09-006) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -447,6 +448,91 @@ facadeはAcquireLease→native call→finallyでlease返却の順。DisposeはOw
 
 CallLeaseはUI thread権限を付与しない。GCHandleの保持と公開handle tokenの所有は別に数える。SafeHandleのpointer前提の既定処理へ64-bit token寿命を委ねない。
 
+## 非同期Command wrapper（1.4改訂案・未承認）
+
+本節は承認済み非同期Command C ABI設計をC#から利用する公開型、所有、workerとUI threadの境界を定める。共通動作の正本は[イベントハンドリング：非同期Command](../events/commands.md)と[共通C ABI](../runtime-objects/abi.md)であり、本節はそれらの状態遷移・status・shutdown保証を変更しない。C ABIの宣言は設計であり、配布headerや実装済みAPIを意味しない。
+
+要求根拠は上記対応表の「非同期Command wrapper」に示す。Commandのstate/can-executeは読取専用Propertyとして公開するが、C#側で結果をcacheしてCore stateの代用にしない。
+
+### 公開型・操作案
+
+| 型 | 責務・保持データ案 | 公開操作案 | 所有・寿命案 |
+| --- | --- | --- | --- |
+| `UiCommand` | Command token owner、Runtime anchor、start delegate root | `TryCreateAsync(runtime, eligibility, start, out command)`、`TryExecute(out operationId)`、`TryCancel(operationId)`、`TryGetStateProperty(out property)`、`TryGetCanExecuteProperty(out property)`、`TryGetFailureSnapshot(out error)`、`TryClose()`、`Dispose()` | 明示closeは新規実行を止め現在workerへcancel要求する。handle release単独ではcloseしない。状態/can-execute Propertyは独立したowned wrapperとして返す |
+| `UiCommandWorker` | 一回のoperation ID、retained Command/cancel token/Runtime参照 | `IsCancellationRequested`、`TryReportSuccess()`、`TryReportFailure(domain, code, message)`、`TryReportCancelled()`、`Dispose()` | start callback中にworker用のowned参照を確立する。完了報告は`runtime_post`でUI threadへ送り、worker leaseはworker終了まで保持する。DisposeはCommandをcancel/closeせずworker参照だけを解放する |
+| start callback root | static trampoline、managed delegateとuserdata root | callback entry / destroy | create成功時だけCoreへ移管し、失敗時はmanaged側が回収。Core destroyはin-flight start callback後に一度だけrootを回収 |
+| Command failure snapshot | 不変のnative `UiErrorSnapshot` | status/domain/code/messageの参照、`Dispose()` | 取得時に新規owned error tokenへ所有権移転し、Commandが次operationでfailureをclearしても取得済snapshotは変化しない |
+
+`eligibility`はnullなら常時実行可能、指定時は同じRuntimeに属するBOOL Propertyとする。`TryExecute`はoperation受付の成否とnonzero operation IDを返し、業務成功を意味しない。実行不可や受付失敗は状態を変えず、新しいworkerを作らない。
+
+start callbackはUI threadで一度だけ呼ばれる。callbackは`UiCommandWorker`をworkerへ引き渡して速やかに戻り、workerはCommand状態・UI objectを直接操作しない。workerが返す成功/失敗/キャンセル結果は`UiCommandWorker`の報告操作でpostされ、UI thread上でC ABI完了関数へ渡る。failure報告のdomain/code/messageはC ABIの入力規則どおりcall中だけ借用し、native側がコピーする。start callbackが同期的にthrowした場合は`CommandStart` failure kindで既存Runtime handlerへ通知し、trampolineはABIを越境させず`UI_INTERNAL_ERROR`を返す。Coreは受付済みoperationをFAILEDとして記録する共通Command契約を適用する。workerの例外はアプリ側で捕捉し、アプリが選んだdomain/code/messageで`TryReportFailure`を呼ぶ。wrapperは例外から業務error codeを自動生成しない。
+
+### クラス関連と実行flow案
+
+```mermaid
+classDiagram
+    direction TB
+    class UiRuntime
+    class UiProperty~T~
+    class UiCommand {
+        TryCreateAsync()
+        TryExecute()
+        TryCancel(operationId)
+        TryGetStateProperty()
+        TryGetCanExecuteProperty()
+        TryGetFailureSnapshot()
+        TryClose()
+        Dispose()
+    }
+    class UiCommandWorker {
+        OperationId
+        IsCancellationRequested
+        TryReportSuccess()
+        TryReportFailure()
+        TryReportCancelled()
+        Dispose()
+    }
+    class UiErrorSnapshot
+    class CallbackRoot
+    UiRuntime o-- UiCommand : Runtime anchor
+    UiCommand ..> UiProperty : eligibility / state / can-execute
+    UiCommand *-- CallbackRoot : start closure root
+    UiCommand ..> UiCommandWorker : start callbackごとに生成
+    UiCommandWorker o-- UiRuntime : Runtime post用参照
+    UiCommandWorker ..> UiCommand : retained native reference
+    UiCommand ..> UiErrorSnapshot : failure snapshot取得
+```
+
+```mermaid
+sequenceDiagram
+    participant App as C# app
+    participant Cmd as UiCommand
+    participant Core as Rust Core / C ABI
+    participant Worker as worker
+    App->>Cmd: TryExecute()
+    Cmd->>Core: command_execute
+    Core->>Core: operation ID発行・RUNNINGへ遷移
+    Core->>Cmd: start trampoline(operation ID, borrowed handles)
+    Cmd->>Core: worker用handleをretain
+    Cmd->>Worker: UiCommandWorkerを引渡し
+    Cmd-->>Core: start callbackから速やかにreturn
+    Worker->>Core: cancel token照会（任意thread）
+    Worker->>Core: runtime_post(terminal report)
+    Core->>Cmd: UI threadでcomplete_* callback
+    Cmd->>Core: command_complete_success/failure/cancelled
+    Core->>Core: ID照合・終端状態を一度だけ確定
+    Worker->>Core: worker参照をrelease
+```
+
+### 失敗・終了境界案
+
+- create成功時だけstart closureの所有権をCoreへ渡す。失敗時はwrapperがcallback rootを回収し、out handleは無効値を返す。
+- `UiCommandWorker`はstart callback内でnative参照をretainしてからcallback外へ移す。retain失敗時はworkerを起動せず、start callbackの失敗契約に従う。
+- cancelはoperation IDを指定してUI threadで呼び、workerの終了を待たない。要求受理状態`CANCELLING`とworkerが報告した`CANCELLED`を区別する。
+- terminal report用closureはpost前に必要なCommand参照・message copyを確保する。post成功時だけclosure所有権がCoreへ移る。post失敗時はwrapperがclosureを破棄しworker所有を維持してstatusを返す。呼出し側は再試行するかworkerをcloseし、保持参照を解放できる。Runtime shutdownでpostが受け付けられない場合、終端状態がUIから観測できる保証はない。
+- Command close/Runtime shutdownは新規実行・UI完了反映を止めるがworkerをjoinしない。遅延/古いoperation IDの報告を現在状態へ反映せず、shutdown後にterminal stateがUIから観測できる保証を加えない。
+- wrapperのstart callback exceptionはC ABIを越境させず、`CommandStart` failure kindで既存handlerへ報告する。未設定handler時の既定診断は既存`Trace.TraceError`規則を適用する。worker例外はアプリ側がdomain/code/messageへ明示変換し、wrapperが未定義の既定codeを追加しない。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -458,3 +544,5 @@ CallLeaseはUI thread権限を付与しない。GCHandleの保持と公開handle
 | 2026-10-24 | 1.2全文 | Property notification SubscriptionとRuntime callback failure handlerの公開surface、cancel/close分離、callback root・handler例外診断を追加。計画 `.docs/20_todo/csharp-property-subscription.md` に基づく。利用者が「ok」と回答し文書全体を承認。実装・試験状態は別管理 |
 | 2026-10-24 | 1.3改訂案 | Property Bindingの公開API、OneTime成功のnull結果、cancel/close分離、Binding error snapshot/通知、所有関係と要求対応を追加。計画 `.docs/20_todo/csharp-property-binding.md` に基づく |
 | 2026-10-24 | 1.3全文 | 利用者の「承認します、実装を進めてください」により文書全体を承認。実装・試験状態は別管理 |
+| 2026-10-24 | 1.4改訂案 | 非同期CommandのC#公開型、class diagram、実行/完了sequence、worker参照とfailure境界を追加。計画 `.docs/20_todo/csharp-async-command.md` に基づく |
+| 2026-10-24 | 1.4全文 | 利用者の「承認します。実装を進めてください」により文書全体を承認。実装・試験状態は別管理 |
