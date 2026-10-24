@@ -1,7 +1,7 @@
 # C# UTF-8 Property wrapper
 
 - 更新日: 2026-10-24
-- 状態: 計画承認済み・実装中
+- 状態: 完了
 - 対象: 既存C# `UiProperty<T>` facadeに`string`を追加し、承認済みのUTF-8・長さ付きbuffer契約に従ってPropertyの作成・取得・設定を行う。
 
 ## 背景と範囲
@@ -41,9 +41,16 @@
 1. [x] 利用者が本計画のscope、strict conversion、getter buffer retry、invalid UTF-16/UTF-8の失敗扱いをレビューし承認した（2026-10-24、「ok，実装してください」）。
 2. [x] 承認された計画をcommit `a0247ef`（「C# UTF-8 Property wrapper計画を承認記録」）で記録し、現在のC#作業ブランチへpushした。
 3. [x] 実装開始承認後、`UT-WRAP-CS-PROP-UTF8-001`/`UT-CONSUMER-CS-PROP-UTF8-001` test designと`UNIT-WRAP-CS-PROP-UTF8-001` mappingをsource変更より先に追加した。
-4. [ ] C# facade/interops、strict UTF-8 conversion、fake ABI focused testsを実装する。
-5. [ ] 実C ABI consumerでUTF-8代表値を検証し、local checksを完了する。
-6. [ ] Windows/Linux CI成功後、unit台帳・計画・`.docs/01_memory/`を更新し、完了実装を日本語でcommit/pushする。
+4. [x] C# facade/interops、strict UTF-8 conversion、fake ABI focused testsを実装し、実装commit `b6bfb3b` を作成・pushした。
+5. [x] 実C ABI consumer、`tools/dev.py check`、`tools/dev.py minimum`、文書リンク検査、`git diff --check` がすべて成功した。
+6. [x] Windows/Linux CI run [40052347620](https://github.com/edamame-edame/freemvvm/actions/runs/40052347620) が両OSで成功。unit台帳と `.docs/01_memory/` に結果を記録し、この完了記録をcommit/pushする。
+
+## 実装・検証結果
+
+- `UiProperty<string>`を既存C ABIへ接続し、strict UTF-8 encode/decode、長さ付きbyte列、buffer不足時の再確保・再試行を実装した。不正なUTF-16入力はnative call前に拒否し、不正UTF-8出力は置換せず失敗する。
+- fake ABI focused testsと別processの実C ABI consumerで、空文字列・ASCII・日本語・補助平面文字・埋め込みNUL、buffer growth、失敗後の状態保持・close retryを確認した。
+- 実装commit: `b6bfb3bc74c63565b73069bf729b460b63e8cf76`。CI: [Development bootstrap #40052347620](https://github.com/edamame-edame/freemvvm/actions/runs/40052347620)（Ubuntu/Windows success）。
+- ローカル検証: `csharp-property-test`、`csharp-property-consumer-test`、`tools/dev.py check`、`tools/dev.py minimum`、`tools/check_docs.py`、`git diff --check` は成功。
 
 ## レビュー時の決定点
 
