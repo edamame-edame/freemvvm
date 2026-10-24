@@ -395,9 +395,10 @@ fn dispose_unexpected_token(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::binding::{BindingDirection, BindingMode};
     use crate::handle::pending_cleanup_count;
     use crate::native_api::NativeApi;
-    use crate::property::Property;
+    use crate::property::{Property, PropertyValue};
     use std::collections::HashMap;
     use std::sync::{Mutex, MutexGuard};
     use std::{cell::Cell, rc::Rc};
@@ -428,6 +429,73 @@ mod tests {
         let dispatch_status = unsafe { freemvvm_sys::ui_abi_1_runtime_dispatch_turn(runtime) };
         assert_eq!(dispatch_status, native_api::OK);
     }
+
+    fn exercise_binding_modes<T>(
+        ui: &UiContext<'_>,
+        runtime: u64,
+        initial: T,
+        target_initial: T,
+        next: T,
+        reverse: T,
+        equal: impl Fn(&T, &T) -> bool,
+    ) where
+        T: PropertyValue + Clone + std::fmt::Debug,
+    {
+        let mut source = Property::try_new(ui, initial.clone()).unwrap();
+        let mut target = Property::try_new(ui, target_initial.clone()).unwrap();
+        let once = source.bind_to(ui, &target, BindingMode::OneTime).unwrap();
+        assert!(once.is_none(), "OneTime must not create a persistent owner");
+        assert!(equal(&target.get(ui).unwrap(), &initial));
+        dispatch_property_event(runtime, || source.set(ui, next.clone()).unwrap());
+        assert!(equal(&target.get(ui).unwrap(), &initial));
+        source.close().unwrap();
+        target.close().unwrap();
+
+        let mut source = Property::try_new(ui, initial.clone()).unwrap();
+        let mut target = Property::try_new(ui, target_initial.clone()).unwrap();
+        let mut one_way = source
+            .bind_to(ui, &target, BindingMode::OneWay)
+            .unwrap()
+            .expect("OneWay creates an owned Binding");
+        assert!(equal(&target.get(ui).unwrap(), &initial));
+        dispatch_property_event(runtime, || target.set(ui, reverse.clone()).unwrap());
+        assert!(equal(&source.get(ui).unwrap(), &initial));
+        dispatch_property_event(runtime, || source.set(ui, next.clone()).unwrap());
+        assert!(equal(&target.get(ui).unwrap(), &next));
+        one_way.close().unwrap();
+        dispatch_property_event(runtime, || source.set(ui, reverse.clone()).unwrap());
+        assert!(equal(&target.get(ui).unwrap(), &reverse));
+        source.close().unwrap();
+        target.close().unwrap();
+
+        let mut source = Property::try_new(ui, initial.clone()).unwrap();
+        let mut target = Property::try_new(ui, target_initial).unwrap();
+        let mut two_way = source
+            .bind_to(ui, &target, BindingMode::TwoWay)
+            .unwrap()
+            .expect("TwoWay creates an owned Binding");
+        assert!(equal(&target.get(ui).unwrap(), &initial));
+        dispatch_property_event(runtime, || source.set(ui, next.clone()).unwrap());
+        assert!(equal(&target.get(ui).unwrap(), &next));
+        dispatch_property_event(runtime, || target.set(ui, reverse.clone()).unwrap());
+        assert!(equal(&source.get(ui).unwrap(), &reverse));
+        two_way.cancel(ui).unwrap();
+        dispatch_property_event(runtime, || target.set(ui, next.clone()).unwrap());
+        assert!(equal(&source.get(ui).unwrap(), &reverse));
+        two_way.close().unwrap();
+        source.close().unwrap();
+        target.close().unwrap();
+    }
+
+    unsafe extern "C" fn reject_negative_i64(
+        _userdata: *mut std::ffi::c_void,
+        candidate: i64,
+        _out_error: *mut u64,
+    ) -> u32 {
+        if candidate < 0 { 11 } else { native_api::OK }
+    }
+
+    unsafe extern "C" fn noop_validator_destroy(_userdata: *mut std::ffi::c_void) {}
 
     #[derive(Default)]
     struct FakeState {
@@ -776,5 +844,178 @@ mod tests {
             property.close().expect("Property teardown succeeds");
         }
         runtime.close().expect("Runtime handle release succeeds");
+    }
+
+    #[test]
+    fn property_binding_modes_work_for_all_supported_types() {
+        let _guard = serialize_registry_test();
+        let mut runtime = UiRuntime::try_create().expect("native Runtime creation succeeds");
+        let runtime_token = runtime.owner.borrow().unwrap().token();
+        // SAFETY: no-op bridge callbacks are valid for the Runtime lifetime.
+        let bridge_status = unsafe {
+            freemvvm_sys::ui_abi_1_runtime_set_ui_loop_bridge(
+                runtime_token,
+                Some(noop_wake),
+                std::ptr::null_mut(),
+                Some(noop_bridge_destroy),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(bridge_status, native_api::OK);
+
+        {
+            let ui = runtime.ui_context().unwrap();
+            exercise_binding_modes(&ui, runtime_token, true, false, false, true, |a, b| a == b);
+            exercise_binding_modes(&ui, runtime_token, 10_i64, 0_i64, 20_i64, 30_i64, |a, b| {
+                a == b
+            });
+            exercise_binding_modes(
+                &ui,
+                runtime_token,
+                String::from("あ\0source"),
+                String::from("target"),
+                String::from("next 🚀"),
+                String::from("reverse"),
+                |a, b| a == b,
+            );
+            exercise_binding_modes(
+                &ui,
+                runtime_token,
+                1.25_f64,
+                0.0_f64,
+                -2.5_f64,
+                4.0_f64,
+                |a, b| a == b,
+            );
+            let initial = crate::decimal::Decimal64::try_from_parts(false, 1, 42).unwrap();
+            let target_initial = crate::decimal::Decimal64::try_from_parts(false, 0, 7).unwrap();
+            let next = crate::decimal::Decimal64::try_from_parts(true, 2, 314).unwrap();
+            let reverse = crate::decimal::Decimal64::try_from_parts(false, 3, 2718).unwrap();
+            exercise_binding_modes(
+                &ui,
+                runtime_token,
+                initial,
+                target_initial,
+                next,
+                reverse,
+                |a, b| a.bits() == b.bits(),
+            );
+        }
+
+        runtime.close().expect("Runtime handle release succeeds");
+    }
+
+    #[test]
+    fn binding_error_snapshot_observes_rejection_and_recovery() {
+        let _guard = serialize_registry_test();
+        let mut runtime = UiRuntime::try_create().expect("native Runtime creation succeeds");
+        let runtime_token = runtime.owner.borrow().unwrap().token();
+        // SAFETY: no-op bridge callbacks are valid for the Runtime lifetime.
+        let bridge_status = unsafe {
+            freemvvm_sys::ui_abi_1_runtime_set_ui_loop_bridge(
+                runtime_token,
+                Some(noop_wake),
+                std::ptr::null_mut(),
+                Some(noop_bridge_destroy),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(bridge_status, native_api::OK);
+
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut target = Property::try_new(&ui, 0_i64).unwrap();
+            let mut validator = 0;
+            // SAFETY: callback has the ABI signature and no userdata; registration is canceled below.
+            let status = unsafe {
+                freemvvm_sys::ui_abi_1_property_validator_register_i64(
+                    target.token_for_call().unwrap(),
+                    Some(reject_negative_i64),
+                    std::ptr::null_mut(),
+                    Some(noop_validator_destroy),
+                    &mut validator,
+                    std::ptr::null_mut(),
+                )
+            };
+            assert_eq!(status, native_api::OK);
+
+            let mut rejected_source = Property::try_new(&ui, -2_i64).unwrap();
+            let initial_error = match rejected_source.bind_to(&ui, &target, BindingMode::OneWay) {
+                Err(error) => error,
+                Ok(_) => panic!("validator-rejected initial Binding unexpectedly succeeded"),
+            };
+            assert_eq!(initial_error.raw_status(), 11);
+            assert_eq!(target.get(&ui).unwrap(), 0);
+            rejected_source.close().unwrap();
+
+            let mut source = Property::try_new(&ui, 4_i64).unwrap();
+
+            let mut binding = source
+                .bind_to(&ui, &target, BindingMode::OneWay)
+                .unwrap()
+                .expect("OneWay creates a persistent Binding");
+            let error_notifications = Rc::new(Cell::new(0));
+            let notification_counter = Rc::clone(&error_notifications);
+            let mut subscription = binding
+                .subscribe_error(&ui, move || {
+                    notification_counter.set(notification_counter.get() + 1)
+                })
+                .unwrap();
+            assert!(binding.error_snapshot(&ui).unwrap().is_none());
+
+            dispatch_property_event(runtime_token, || source.set(&ui, -1).unwrap());
+            assert_eq!(source.get(&ui).unwrap(), -1);
+            assert_eq!(target.get(&ui).unwrap(), 4);
+            let snapshot = binding
+                .error_snapshot(&ui)
+                .unwrap()
+                .expect("rejected propagation produces an error snapshot");
+            assert_eq!(snapshot.error().raw_status(), 11);
+            assert_eq!(snapshot.direction(), BindingDirection::SourceToTarget);
+            assert_eq!(snapshot.rejected_property().get(&ui).unwrap(), 4);
+
+            dispatch_property_event(runtime_token, || source.set(&ui, 8).unwrap());
+            assert_eq!(target.get(&ui).unwrap(), 8);
+            assert!(binding.error_snapshot(&ui).unwrap().is_none());
+            assert_eq!(snapshot.error().raw_status(), 11);
+            assert_eq!(snapshot.rejected_property().get(&ui).unwrap(), 8);
+            assert_eq!(error_notifications.get(), 2);
+
+            subscription.cancel(&ui).unwrap();
+            subscription.close().unwrap();
+            binding.cancel(&ui).unwrap();
+            binding.close().unwrap();
+            // SAFETY: registration is live and the optional error output may be null.
+            let cancel_status = unsafe {
+                freemvvm_sys::ui_abi_1_property_validator_cancel(validator, std::ptr::null_mut())
+            };
+            assert_eq!(cancel_status, native_api::OK);
+            source.close().unwrap();
+            target.close().unwrap();
+        }
+
+        runtime.close().expect("Runtime handle release succeeds");
+    }
+
+    #[test]
+    fn binding_rejects_properties_from_different_runtimes_before_abi_call() {
+        let _guard = serialize_registry_test();
+        let mut source_runtime = UiRuntime::try_create().unwrap();
+        let mut target_runtime = UiRuntime::try_create().unwrap();
+        {
+            let source_ui = source_runtime.ui_context().unwrap();
+            let target_ui = target_runtime.ui_context().unwrap();
+            let mut source = Property::try_new(&source_ui, 1_i64).unwrap();
+            let mut target = Property::try_new(&target_ui, 0_i64).unwrap();
+            let error = match source.bind_to(&source_ui, &target, BindingMode::OneWay) {
+                Err(error) => error,
+                Ok(_) => panic!("cross-Runtime Binding unexpectedly succeeded"),
+            };
+            assert_eq!(error.raw_status(), native_api::WRONG_RUNTIME);
+            source.close().unwrap();
+            target.close().unwrap();
+        }
+        target_runtime.close().unwrap();
+        source_runtime.close().unwrap();
     }
 }

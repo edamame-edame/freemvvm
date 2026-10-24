@@ -123,6 +123,40 @@ unsafe extern "C" {
         out_error: *mut Handle,
     ) -> Status;
     pub fn ui_abi_1_subscription_cancel(subscription: Handle, out_error: *mut Handle) -> Status;
+    pub fn ui_abi_1_property_validator_register_i64(
+        property: Handle,
+        callback: Option<unsafe extern "C" fn(*mut core::ffi::c_void, i64, *mut Handle) -> Status>,
+        userdata: *mut core::ffi::c_void,
+        destroy: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+        out_registration: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_property_validator_cancel(
+        registration: Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_binding_create(
+        source: Handle,
+        target: Handle,
+        mode: u32,
+        out_binding: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_binding_cancel(binding: Handle, out_error: *mut Handle) -> Status;
+    pub fn ui_abi_1_binding_error_snapshot(
+        binding: Handle,
+        out_owned_error: *mut Handle,
+        out_owned_rejected_property: *mut Handle,
+        out_direction: *mut u32,
+    ) -> Status;
+    pub fn ui_abi_1_binding_subscribe_error(
+        binding: Handle,
+        callback: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+        userdata: *mut core::ffi::c_void,
+        destroy: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+        out_subscription: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
     pub fn ui_abi_1_runtime_shutdown(runtime: Handle, out_error: *mut Handle) -> Status;
     pub fn ui_abi_1_runtime_request_shutdown(
         runtime: Handle,

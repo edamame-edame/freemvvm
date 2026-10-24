@@ -33,6 +33,51 @@ impl Subscription {
     where
         F: FnMut() + 'static,
     {
+        Self::register_with(
+            property,
+            api,
+            runtime_token,
+            anchor,
+            identity,
+            callback,
+            false,
+        )
+    }
+
+    pub(crate) fn register_binding_error<F>(
+        binding: u64,
+        api: SharedApi,
+        runtime_token: u64,
+        anchor: Arc<RuntimeAnchor>,
+        identity: Arc<()>,
+        callback: F,
+    ) -> Result<Self, UiError>
+    where
+        F: FnMut() + 'static,
+    {
+        Self::register_with(
+            binding,
+            api,
+            runtime_token,
+            anchor,
+            identity,
+            callback,
+            true,
+        )
+    }
+
+    fn register_with<F>(
+        source: u64,
+        api: SharedApi,
+        runtime_token: u64,
+        anchor: Arc<RuntimeAnchor>,
+        identity: Arc<()>,
+        callback: F,
+        binding_error: bool,
+    ) -> Result<Self, UiError>
+    where
+        F: FnMut() + 'static,
+    {
         let subscription_ticket = TicketReservation::reserve()
             .map_err(|()| UiError::from_status(native_api::OUT_OF_MEMORY))?;
         let error_ticket = TicketReservation::reserve()
@@ -45,14 +90,25 @@ impl Subscription {
         let (status, token, error) = unsafe {
             let mut token = 0;
             let mut error = 0;
-            let status = freemvvm_sys::ui_abi_1_property_subscribe(
-                property,
-                Some(notification_trampoline::<F>),
-                userdata,
-                Some(destroy_trampoline::<F>),
-                &mut token,
-                &mut error,
-            );
+            let status = if binding_error {
+                freemvvm_sys::ui_abi_1_binding_subscribe_error(
+                    source,
+                    Some(notification_trampoline::<F>),
+                    userdata,
+                    Some(destroy_trampoline::<F>),
+                    &mut token,
+                    &mut error,
+                )
+            } else {
+                freemvvm_sys::ui_abi_1_property_subscribe(
+                    source,
+                    Some(notification_trampoline::<F>),
+                    userdata,
+                    Some(destroy_trampoline::<F>),
+                    &mut token,
+                    &mut error,
+                )
+            };
             (status, token, error)
         };
 

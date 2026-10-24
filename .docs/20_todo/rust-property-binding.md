@@ -1,7 +1,7 @@
 # Rust Property Binding wrapper
 
 - 更新日: 2026-10-24
-- 状態: 計画・Rust DD v1.5・test design v0.8を利用者承認済み。実装中
+- 状態: 実装とlocal gates完了。Windows/Linux CI結果待ち
 - 対象ブランチ: `impl-rust/wrappers-runtime-api`（親: `impl-rust/runtime-async-command`）
 - 対象unit: `UNIT-WRAP-RS-BIND-001`（test inventory登録は計画承認後）
 
@@ -23,7 +23,7 @@
 - move-only Binding owner、cancelとclose/Dropの分離、失敗時cleanup保持。
 - Binding error snapshotとerror notification subscription。
 - Runtime/UI-context検証、C ABI異常結果の防御、callback panic境界。
-- fake sys API試験とhost-loop付きnative C ABI integration test。
+- host-loop付きnative C ABI integration testと別crateでの公開API compile test。
 
 対象外: Core/C ABI仕様変更、異種型変換、OBJECT Binding、他wrapper、package artifact取得方法の変更、`tools/dev.py`編集。既存`rust-wrapper-runtime-test`でRust runtime integration testを起動できるため、専用command追加はしない。
 
@@ -32,8 +32,8 @@
 1. 利用者がRust DD v1.5案とtest design v0.8案、unitの分割粒度をレビューする。承認前にsource実装やunit manifestの状態変更をしない。
 2. 承認後、承認結果をDD/test design/todoへ記録し、`tools/units.yaml`に`UNIT-WRAP-RS-BIND-001`をreadyとして追加する。source変更前にtest designとunit mappingを確定する。
 3. Rust `-sys`に既存C ABI Binding関数を追加し、safe crateに`BindingMode`、`BindingDirection`、`Binding<T>`、`BindingError<T>`、`Property::bind_to`を実装する。safe crate内のみでunsafeを使い、`tools/dev.py`は変更しない。
-4. fake APIでtoken ownership、結果shape、Runtime mismatch、close/cancel失敗再試行、snapshot保持、error callback移管・destroyを検証する。
-5. native integration testで全5値型、3 mode、初期コピー/伝播方向、explicit cancel、closeのみの継続、遅延失敗と回復を確認する。
+4. host-loop付きnative C ABI integration testで全5値型、3 mode、初期コピー/伝播方向、Runtime mismatch、explicit cancel、closeのみの継続、遅延失敗と回復、error callback通知・cancelを検証する。別crate integration testで公開APIの可視性と型をcompileする。
+5. compile-fail doctestでBindingがSendでないことを確認し、既存Owned/Subscriptionのcleanup・callbackテストとの境界を点検する。
 6. `cargo fmt`、Clippy、workspace test/build、Rust 1.85 minimum、`tools/dev.py check` / `minimum`、document-link/unit inventory validationを通す。
 7. 変更ファイル一覧、実行結果、CI Windows/Linuxの合格を確認し、実装unitと同一revisionで試験記録を残す。unit完了後に実装・検証結果をcommit/pushする。
 
@@ -51,6 +51,14 @@
 - Rust API名・enum variant・generic bounds・`Result<Option<Binding<T>>, UiError>`の形。
 - C++ wrapper同等にBinding error snapshotとsubscriptionを初回Binding unitへ含める分割。
 - integration testを既存`rust-wrapper-runtime-test` commandへ含める運用（`tools/dev.py`は変更しない）。
+
+## 実施記録
+
+- Rust `-sys` Binding ABI宣言、safe `Binding<T>` / `BindingError<T>` API、`Property::bind_to`を実装。
+- linked C ABI host-loop testで5値型の3 mode、初期検証拒否、遅延拒否と回復、error subscription、Runtime不一致、close/cancel分離を確認。
+- 別crate compile testでpublic APIを確認し、compile-fail doctestで`Binding<T>`の`!Send`を確認。
+- local pass: `cargo test --locked -p freemvvm`、`cargo clippy --workspace --all-targets --locked -- -D warnings`、`tools/dev.py check`、`tools/dev.py minimum`、`tools/check_docs.py`。
+- `tools/dev.py`は変更していない。Windows/Linux CI記録はpush後に追記する。
 
 ## 承認履歴
 

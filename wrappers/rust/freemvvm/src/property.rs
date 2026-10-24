@@ -7,7 +7,7 @@ use crate::subscription::Subscription;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-struct PropertyTag;
+pub(crate) struct PropertyTag;
 
 mod sealed {
     use super::Decimal64;
@@ -371,15 +371,53 @@ impl<T: PropertyValue> Property<T> {
         )
     }
 
+    /// Creates a typed Binding from this Property to `target`.
+    pub fn bind_to(
+        &self,
+        ui: &UiContext<'_>,
+        target: &Property<T>,
+        mode: crate::binding::BindingMode,
+    ) -> Result<Option<crate::binding::Binding<T>>, UiError> {
+        crate::binding::Binding::create(self, target, ui, mode)
+    }
+
     pub fn close(&mut self) -> Result<(), UiError> {
         self.owner.close()
     }
 
-    fn check_context(&self, ui: &UiContext<'_>) -> Result<(), UiError> {
+    pub(crate) fn check_context(&self, ui: &UiContext<'_>) -> Result<(), UiError> {
         if Arc::ptr_eq(&self.identity, &ui.identity()) {
             Ok(())
         } else {
             Err(UiError::from_status(native_api::WRONG_RUNTIME))
+        }
+    }
+
+    pub(crate) fn token_for_call(&self) -> Result<u64, UiError> {
+        Ok(self.owner.borrow()?.token())
+    }
+
+    pub(crate) fn runtime_token(&self) -> u64 {
+        self.owner.runtime_token()
+    }
+
+    pub(crate) fn api(&self) -> &crate::native_api::SharedApi {
+        self.owner.api()
+    }
+
+    pub(crate) fn anchor(&self) -> Option<Arc<RuntimeAnchor>> {
+        self.owner.anchor()
+    }
+
+    pub(crate) fn identity(&self) -> Arc<()> {
+        Arc::clone(&self.identity)
+    }
+
+    pub(crate) fn from_owned(owner: Owned<PropertyTag>, identity: Arc<()>) -> Self {
+        Self {
+            owner,
+            identity,
+            _value: PhantomData,
         }
     }
 }

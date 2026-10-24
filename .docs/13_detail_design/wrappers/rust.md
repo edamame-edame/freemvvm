@@ -448,7 +448,7 @@ impl<T: PropertyValue> BindingError<T> {
 
 `Binding<T>`はmove-onlyのUI-affine ownerとする。`cancel`はUI contextのRuntime identity/threadを検査し接続を明示解除する。`close`/Dropは公開handle参照をreleaseするだけで、接続解除とはしない。release失敗時のtoken保持・Drop cleanup ticket移管は既存`Owned`規則に従う。OneTimeではowner自体を作らない。
 
-`error_snapshot`は現在のBinding固有errorを不変のowned snapshotへ複製する。`BindingError<T>`はnative error ownerと独立retainedされた拒否Property owner、伝播方向を保持し、snapshot破棄は各ownerを独立にreleaseする。`subscribe_error`は既存`Subscription`所有・callback trampolineを再利用し、callback引数にはsnapshotを載せず、callback内で必要に応じて`error_snapshot`を再取得する。登録成功時だけclosure ownershipをCoreへ移す。
+`error_snapshot`は現在のBinding固有errorを不変のowned snapshotへ複製する。`BindingError<T>`は不変の`UiError`値、独立retainedされた拒否Property owner、伝播方向を保持し、snapshot破棄は各ownerを独立にreleaseする。拒否Propertyは値の複製ではなくlive handleなので、後続回復後の`get`はその時点の値を返す。`subscribe_error`は既存`Subscription`所有・callback trampolineを再利用し、callback引数にはsnapshotを載せず、callback内で必要に応じて`error_snapshot`を再取得する。登録成功時だけclosure ownershipをCoreへ移す。
 
 ### 所有関係と呼出し境界
 
