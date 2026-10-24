@@ -2457,6 +2457,7 @@
         "wrappers/rust/freemvvm-sys/src/lib.rs",
         "wrappers/rust/freemvvm/src/lib.rs",
         "wrappers/rust/freemvvm/src/handle.rs",
+        "wrappers/rust/freemvvm/src/native_api.rs",
         "wrappers/rust/freemvvm/src/runtime.rs",
         "wrappers/rust/freemvvm/src/command.rs",
         "wrappers/rust/freemvvm/tests/**/*.rs"

@@ -366,6 +366,39 @@ impl AnyThreadOwned {
             .ok_or_else(|| UiError::from_status(crate::native_api::CLOSED))
     }
 
+    pub(crate) fn try_clone(&self) -> Result<Self, UiError> {
+        let token = self.token()?;
+        let anchor = self
+            .anchor
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| UiError::from_status(crate::native_api::CLOSED))?;
+        let ticket = TicketReservation::reserve()
+            .map_err(|()| UiError::from_status(crate::native_api::OUT_OF_MEMORY))?;
+        let (status, owned) = self.api.handle_retain(token);
+        if status != crate::native_api::OK {
+            if owned != 0 {
+                ticket.defer(PendingToken {
+                    token: owned,
+                    runtime_token: anchor.token(),
+                    api: Arc::clone(&self.api),
+                    anchor: Some(anchor),
+                });
+            }
+            return Err(UiError::from_status(status));
+        }
+        if owned == 0 {
+            ticket.release();
+            return Err(UiError::from_status(crate::native_api::INTERNAL_ERROR));
+        }
+        Ok(Self::from_token(
+            owned,
+            Arc::clone(&self.api),
+            ticket,
+            anchor,
+        ))
+    }
+
     pub(crate) fn api(&self) -> &SharedApi {
         &self.api
     }

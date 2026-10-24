@@ -1,7 +1,7 @@
 # Rust Async Command wrapper
 
 - 更新日: 2026-10-24
-- 状態: 計画・Rust DD v1.6・test design v0.9を利用者承認済み。実装中
+- 状態: Rust DD v1.6とtest design v0.9に基づく実装・local gates完了。Windows/Linux CI待ち
 - 対象ブランチ: `impl-rust/wrappers-runtime-api`（親: `impl-rust/runtime-async-command`）
 - 対象unit: `UNIT-WRAP-RS-CMD-001`（unit台帳登録は計画承認後）
 
@@ -52,6 +52,14 @@
 - `Command::close`にnative closeとpublic token releaseを含めるか、両操作を別メソッドにするか。
 - state Propertyを`Property<i64>`で公開し未知値を保持する案。
 - scopeを1 unitとし、worker lease/cleanupも同じunitへ含める粒度。
+
+## 実施記録
+
+- Rust `-sys`にCommand/CancelToken/Runtime post ABI宣言を追加し、safe crateに`AsyncCommand`、`CommandOperation`、`CancellationToken`、`OperationId`、`CommandState`を実装。
+- `AnyThreadOwned`の独立retainをworker operation leaseに利用。UI-affine ownerは`!Send`を維持し、workerの終端結果は`runtime_post`でUI threadへ渡す。
+- Rust runtime integration tests: 17 passed。別crate public API test: 1 passed。compile-fail doctest: 4 passed。
+- Local gates: `cargo clippy --workspace --all-targets --locked -- -D warnings`、`tools/dev.py check`、Rust 1.85 `tools/dev.py minimum`、document linksとunit manifest JSONがpass。
+- Windows/Linux CI runと完了記録はpush後に追記する。`tools/dev.py`と添付read-only snapshotは変更していない。
 
 ## 承認履歴
 

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 pub(crate) const OK: u32 = freemvvm_sys::OK;
+pub(crate) const INVALID_ARGUMENT: u32 = freemvvm_sys::INVALID_ARGUMENT;
 pub(crate) const WRONG_RUNTIME: u32 = freemvvm_sys::WRONG_RUNTIME;
 pub(crate) const WRONG_THREAD: u32 = freemvvm_sys::WRONG_THREAD;
 pub(crate) const CLOSED: u32 = freemvvm_sys::CLOSED;

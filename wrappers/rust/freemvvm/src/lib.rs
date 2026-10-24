@@ -1,6 +1,7 @@
 //! Safe facade over the shared C ABI.
 
 mod binding;
+mod command;
 mod decimal;
 mod error;
 mod handle;
@@ -10,6 +11,7 @@ mod runtime;
 mod subscription;
 
 pub use binding::{Binding, BindingDirection, BindingError, BindingMode};
+pub use command::{AsyncCommand, CancellationToken, CommandOperation, CommandState, OperationId};
 pub use decimal::Decimal64;
 pub use error::UiError;
 pub use handle::{Borrowed, Owned};

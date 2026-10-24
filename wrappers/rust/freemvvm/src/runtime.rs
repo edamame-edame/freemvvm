@@ -396,6 +396,7 @@ fn dispose_unexpected_token(
 mod tests {
     use super::*;
     use crate::binding::{BindingDirection, BindingMode};
+    use crate::command::{AsyncCommand, CommandOperation, CommandState};
     use crate::handle::pending_cleanup_count;
     use crate::native_api::NativeApi;
     use crate::property::{Property, PropertyValue};
@@ -428,6 +429,22 @@ mod tests {
         // SAFETY: the no-op wake callback has returned; this call models the next host turn.
         let dispatch_status = unsafe { freemvvm_sys::ui_abi_1_runtime_dispatch_turn(runtime) };
         assert_eq!(dispatch_status, native_api::OK);
+    }
+
+    fn install_noop_bridge(runtime: &mut UiRuntime) -> u64 {
+        let token = runtime.owner.borrow().unwrap().token();
+        // SAFETY: callbacks are valid for this Runtime's lifetime and require no userdata.
+        let status = unsafe {
+            freemvvm_sys::ui_abi_1_runtime_set_ui_loop_bridge(
+                token,
+                Some(noop_wake),
+                std::ptr::null_mut(),
+                Some(noop_bridge_destroy),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, native_api::OK);
+        token
     }
 
     fn exercise_binding_modes<T>(
@@ -1017,5 +1034,218 @@ mod tests {
         }
         target_runtime.close().unwrap();
         source_runtime.close().unwrap();
+    }
+
+    #[test]
+    fn async_command_reports_worker_completion_through_ui_post() {
+        let _guard = serialize_registry_test();
+        fn assert_send<T: Send>() {}
+        assert_send::<CommandOperation>();
+
+        let mut runtime = UiRuntime::try_create().unwrap();
+        let runtime_token = install_noop_bridge(&mut runtime);
+        {
+            let ui = runtime.ui_context().unwrap();
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let mut command = AsyncCommand::create(&ui, None, move |operation| {
+                sender.send(operation).unwrap();
+            })
+            .unwrap();
+            let mut state = command.state_property(&ui).unwrap();
+            let mut can_execute = command.can_execute_property(&ui).unwrap();
+
+            let operation_id = command.execute(&ui).unwrap();
+            assert_eq!(state.get(&ui).unwrap(), freemvvm_sys::COMMAND_STATE_RUNNING);
+            assert!(!can_execute.get(&ui).unwrap());
+            let operation = receiver.recv().unwrap();
+            assert_eq!(operation.id(), operation_id);
+
+            let (first_report, duplicate_status) = std::thread::spawn(move || {
+                let first = operation
+                    .report_success()
+                    .map_err(|error| error.raw_status());
+                let duplicate = operation
+                    .report_success()
+                    .expect_err("one operation accepts only one completion report")
+                    .raw_status();
+                (first, duplicate)
+            })
+            .join()
+            .unwrap();
+            assert_eq!(first_report, Ok(()));
+            assert_eq!(duplicate_status, native_api::INVALID_ARGUMENT);
+
+            dispatch_property_event(runtime_token, || {});
+            assert_eq!(
+                CommandState::from_raw(state.get(&ui).unwrap()),
+                CommandState::Succeeded
+            );
+            assert!(can_execute.get(&ui).unwrap());
+            command.close(&ui).unwrap();
+            state.close().unwrap();
+            can_execute.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn async_command_cooperative_cancel_and_failure_snapshot_follow_worker_result() {
+        let _guard = serialize_registry_test();
+        let mut runtime = UiRuntime::try_create().unwrap();
+        let runtime_token = install_noop_bridge(&mut runtime);
+        {
+            let ui = runtime.ui_context().unwrap();
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let mut command = AsyncCommand::create(&ui, None, move |operation| {
+                sender.send(operation).unwrap();
+            })
+            .unwrap();
+            let mut state = command.state_property(&ui).unwrap();
+            let mut can_execute = command.can_execute_property(&ui).unwrap();
+
+            let cancelled_id = command.execute(&ui).unwrap();
+            let cancelled = receiver.recv().unwrap();
+            assert_eq!(cancelled.id(), cancelled_id);
+            command.cancel(&ui, cancelled_id).unwrap();
+            assert_eq!(
+                state.get(&ui).unwrap(),
+                freemvvm_sys::COMMAND_STATE_CANCELLING
+            );
+            let (requested, report) = std::thread::spawn(move || {
+                let requested = cancelled.cancellation().is_cancel_requested().unwrap();
+                (requested, cancelled.report_cancelled())
+            })
+            .join()
+            .unwrap();
+            assert!(requested);
+            report.unwrap();
+            dispatch_property_event(runtime_token, || {});
+            assert_eq!(
+                state.get(&ui).unwrap(),
+                freemvvm_sys::COMMAND_STATE_CANCELLED
+            );
+
+            let failed_id = command.execute(&ui).unwrap();
+            let failed = receiver.recv().unwrap();
+            assert_ne!(failed.id(), cancelled_id);
+            let report = std::thread::spawn(move || {
+                failed.report_failure(0xAABB_CCDD, 0x1020_3040, "worker failed あ🚀")
+            })
+            .join()
+            .unwrap();
+            report.unwrap();
+            dispatch_property_event(runtime_token, || {});
+            assert_eq!(state.get(&ui).unwrap(), freemvvm_sys::COMMAND_STATE_FAILED);
+            assert!(can_execute.get(&ui).unwrap());
+            let failure = command.failure_snapshot(&ui).unwrap().unwrap();
+            assert_eq!(failure.raw_status(), freemvvm_sys::COMMAND_EXECUTION_FAILED);
+            assert_eq!(failure.domain(), Some(0xAABB_CCDD));
+            assert_eq!(failure.code(), Some(0x1020_3040));
+            assert_eq!(failure.message(), Some("worker failed あ🚀"));
+
+            let next_id = command.execute(&ui).unwrap();
+            assert_ne!(next_id, failed_id);
+            assert!(command.failure_snapshot(&ui).unwrap().is_none());
+            let next = receiver.recv().unwrap();
+            next.report_success().unwrap();
+            dispatch_property_event(runtime_token, || {});
+            assert_eq!(
+                state.get(&ui).unwrap(),
+                freemvvm_sys::COMMAND_STATE_SUCCEEDED
+            );
+            assert!(can_execute.get(&ui).unwrap());
+
+            command.close(&ui).unwrap();
+            state.close().unwrap();
+            can_execute.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn async_command_close_does_not_wait_for_worker_or_apply_late_report() {
+        let _guard = serialize_registry_test();
+        let mut runtime = UiRuntime::try_create().unwrap();
+        let runtime_token = install_noop_bridge(&mut runtime);
+        {
+            let ui = runtime.ui_context().unwrap();
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let mut command = AsyncCommand::create(&ui, None, move |operation| {
+                sender.send(operation).unwrap();
+            })
+            .unwrap();
+            let mut state = command.state_property(&ui).unwrap();
+            command.execute(&ui).unwrap();
+            let operation = receiver.recv().unwrap();
+            command.close(&ui).unwrap();
+            let report = std::thread::spawn(move || operation.report_success())
+                .join()
+                .unwrap();
+            report.unwrap();
+            dispatch_property_event(runtime_token, || {});
+            assert_eq!(state.get(&ui).unwrap(), freemvvm_sys::COMMAND_STATE_RUNNING);
+            state.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn async_command_contains_start_callback_panic_as_operation_failure() {
+        let _guard = serialize_registry_test();
+        let mut runtime = UiRuntime::try_create().unwrap();
+        install_noop_bridge(&mut runtime);
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut command = AsyncCommand::create(&ui, None, |_operation| {
+                panic!("start callback panic stays inside the Rust wrapper");
+            })
+            .unwrap();
+            let mut state = command.state_property(&ui).unwrap();
+            let operation = command.execute(&ui).unwrap();
+            assert_ne!(operation.get(), 0);
+            assert_eq!(state.get(&ui).unwrap(), freemvvm_sys::COMMAND_STATE_FAILED);
+            assert_eq!(
+                command.failure_snapshot(&ui).unwrap().unwrap().raw_status(),
+                freemvvm_sys::COMMAND_EXECUTION_FAILED
+            );
+            command.close(&ui).unwrap();
+            state.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn async_command_ineligible_execute_does_not_start_or_change_state() {
+        let _guard = serialize_registry_test();
+        let mut runtime = UiRuntime::try_create().unwrap();
+        let runtime_token = install_noop_bridge(&mut runtime);
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut eligibility = Property::try_new(&ui, false).unwrap();
+            let starts = Rc::new(Cell::new(0));
+            let callback_starts = Rc::clone(&starts);
+            let mut command = AsyncCommand::create(&ui, Some(&eligibility), move |_operation| {
+                callback_starts.set(callback_starts.get() + 1);
+            })
+            .unwrap();
+            let mut state = command.state_property(&ui).unwrap();
+            let mut can_execute = command.can_execute_property(&ui).unwrap();
+            assert!(!can_execute.get(&ui).unwrap());
+            let error = match command.execute(&ui) {
+                Err(error) => error,
+                Ok(_) => panic!("ineligible Command unexpectedly issued an operation"),
+            };
+            assert_eq!(error.raw_status(), native_api::UNSUPPORTED);
+            assert_eq!(starts.get(), 0);
+            assert_eq!(state.get(&ui).unwrap(), freemvvm_sys::COMMAND_STATE_IDLE);
+
+            dispatch_property_event(runtime_token, || eligibility.set(&ui, true).unwrap());
+            assert!(can_execute.get(&ui).unwrap());
+            command.close(&ui).unwrap();
+            state.close().unwrap();
+            can_execute.close().unwrap();
+            eligibility.close().unwrap();
+        }
+        runtime.close().unwrap();
     }
 }

@@ -18,7 +18,15 @@ pub const BUFFER_TOO_SMALL: Status = 7;
 pub const OUT_OF_MEMORY: Status = 8;
 pub const INTERNAL_ERROR: Status = 9;
 pub const UNSUPPORTED: Status = 10;
+pub const COMMAND_EXECUTION_FAILED: Status = 12;
 pub const PENDING: Status = 14;
+
+pub const COMMAND_STATE_IDLE: i64 = 0;
+pub const COMMAND_STATE_RUNNING: i64 = 1;
+pub const COMMAND_STATE_CANCELLING: i64 = 2;
+pub const COMMAND_STATE_SUCCEEDED: i64 = 3;
+pub const COMMAND_STATE_FAILED: i64 = 4;
+pub const COMMAND_STATE_CANCELLED: i64 = 5;
 
 pub const SHUTDOWN_ASYNC: u32 = 0;
 pub const SHUTDOWN_SYNC: u32 = 1;
@@ -155,6 +163,56 @@ unsafe extern "C" {
         userdata: *mut core::ffi::c_void,
         destroy: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
         out_subscription: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_command_create_async(
+        runtime: Handle,
+        eligibility_bool_or_zero: Handle,
+        start: Option<unsafe extern "C" fn(*mut core::ffi::c_void, Handle, u64, Handle) -> Status>,
+        userdata: *mut core::ffi::c_void,
+        destroy: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+        out_command: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_command_execute(
+        command: Handle,
+        out_operation_id: *mut u64,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_command_cancel(
+        command: Handle,
+        operation_id: u64,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_command_close(command: Handle, out_error: *mut Handle) -> Status;
+    pub fn ui_abi_1_command_state_property(
+        command: Handle,
+        out_owned_property: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_command_can_execute_property(
+        command: Handle,
+        out_owned_property: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_command_failure_snapshot(
+        command: Handle,
+        out_owned_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_command_cancel_token_requested(token: Handle, out_yes: *mut Bool) -> Status;
+    pub fn ui_abi_1_command_complete_success(command: Handle, operation_id: u64) -> Status;
+    pub fn ui_abi_1_command_complete_failure_utf8(
+        command: Handle,
+        operation_id: u64,
+        domain: u32,
+        code: u32,
+        message: *const u8,
+        message_byte_length: u64,
+    ) -> Status;
+    pub fn ui_abi_1_command_complete_cancelled(command: Handle, operation_id: u64) -> Status;
+    pub fn ui_abi_1_runtime_post(
+        runtime: Handle,
+        callback: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+        userdata: *mut core::ffi::c_void,
+        destroy: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
         out_error: *mut Handle,
     ) -> Status;
     pub fn ui_abi_1_runtime_shutdown(runtime: Handle, out_error: *mut Handle) -> Status;
