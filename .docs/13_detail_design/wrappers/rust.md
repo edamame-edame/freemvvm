@@ -1,9 +1,9 @@
 # 言語ラッパー：Rust
 
-- 文書版: 1.3
+- 文書版: 1.4
 - 文書ロール: detailed-design
 - 更新日: 2026-10-24
-- 状態: 1.2全文承認済み（利用者、2026-10-24）。1.3全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
+- 状態: 1.3全文承認済み（利用者、2026-10-24）。1.4全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -19,6 +19,7 @@
 | 公開API・registry・Future | [RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-03-007](../../11_requirements/RQ-03_language-support.md#rq-03-007)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-003](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)、[RQ-06-012](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-012)、[RQ-12-005](../../11_requirements/RQ-12_build-distribution.md#rq-12-005) |
 | typed Property生成・利用・終了 | [RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-03-007](../../11_requirements/RQ-03_language-support.md#rq-03-007)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 | Decimal64 valueとProperty mapping | [RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-02-019](../../11_requirements/RQ-02_core-features.md#rq-02-019)、[RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007) |
+| Property Subscription登録・cancel・owner lifetime | [RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-03-007](../../11_requirements/RQ-03_language-support.md#rq-03-007)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-008](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -266,6 +267,7 @@ Rustの`extern "C"`はunwindを許可するABIではないため、Rust panicを
 pub struct Owned<T> { /* token, ticket, anchor, !Send/!Sync marker */ }
 pub struct Borrowed<'a, T> { /* borrowed token, PhantomData<&'a Owned<T>> */ }
 pub struct Decimal64 { /* canonical uint64 bits */ }
+pub struct Subscription { /* token owner + Runtime anchor + !Send/!Sync marker */ }
 impl Decimal64 {
     pub fn try_from_parts(negative: bool, scale: u8, coefficient: u64) -> Result<Self, UiError>;
     pub const fn is_negative(self) -> bool;
@@ -281,6 +283,12 @@ impl<T: PropertyValue> Property<T> {
     pub fn try_new(ui: &UiContext<'_>, initial: T) -> Result<Self, UiError>;
     pub fn get(&self, ui: &UiContext<'_>) -> Result<T, UiError>;
     pub fn set(&self, ui: &UiContext<'_>, value: T) -> Result<(), UiError>;
+    pub fn subscribe<F>(&self, ui: &UiContext<'_>, callback: F) -> Result<Subscription, UiError>
+    where F: FnMut() + 'static;
+    pub fn close(&mut self) -> Result<(), UiError>;
+}
+impl Subscription {
+    pub fn cancel(&mut self, ui: &UiContext<'_>) -> Result<(), UiError>;
     pub fn close(&mut self) -> Result<(), UiError>;
 }
 ```
@@ -288,6 +296,8 @@ impl<T: PropertyValue> Property<T> {
 `Decimal64`はcanonical `uint64_t` representationをprivateに保持するcopyable scalarとする。`try_from_parts`はscaleが0～31、coefficientが0～2^58−1のときだけ成功し、範囲外を`INVALID_ARGUMENT`相当の`UiError`で返す。sign/scale/coefficient accessorを提供し、十進演算・parse/formatは追加しない。異なるscaleや符号付きzeroの数値比較をraw bits比較へ誤って置き換えないため、Rust標準`PartialEq`/`Eq`は本案では実装しない。
 
 PropertyValueは初期五型のsealed traitで、五型は`bool`、`i64`、`String`、`f64`、`Decimal64`とする。DECIMALは`Decimal64`のcanonical bitsをC ABI `uint64_t`へ直接渡す。利用者の任意structでunsafe FFI変換を実装させない。`UiError`はraw status/domain/codeとoptional owned immutable ErrorSnapshotを持つ。cloneがnative retainを伴う型はtry_cloneとし、std::error::Error/sourceは取得済みsnapshotへのborrowで返す。
+
+`Property::subscribe`はUI thread/contextを検証し、初期通知を発生させない。callbackはUI thread上で直列に実行するため`Send`を要求しない。subscribe成功時だけclosure stateをCoreへ移し、失敗時はRust側で回収する。通知中のpanicはC ABI境界で捕捉し、panic hookの診断後も次のsubscriberへ配信を継続する（`panic=abort`ではprocess継続を保証しない）。`Subscription::cancel`はcallback登録を停止し、in-flight callback終了後にclosureを一度だけdestroyする。`Subscription::close`/Dropは公開tokenだけをreleaseし、cancelの代わりにはならない。owner Property teardownとRuntime shutdownのcleanupは通知とBinding伝播DDに従う。
 
 ```mermaid
 flowchart TD
@@ -337,6 +347,7 @@ Rustのstruct/trait/lifetimeとして表し、class図の合成は継承を意�
 | UiContext | Runtime identityとUI呼出しcontext | check_runtime(&self, target) | UI APIの権限を示す。任意threadで作成できる単なるID wrapperにしない |
 | Property<T> | typed property token、Runtime anchor、Runtime identity | try_new(ui, initial); get(ui); set(ui, value); close() | UI-affine owner。close/DropまでRuntimeをanchorし、別RuntimeのUiContextを拒否 |
 | Decimal64 | canonical DECIMAL uint64 bits | try_from_parts(negative, scale, coefficient); is_negative(); scale(); coefficient() | copyable scalar。丸め・演算・parse/formatなし |
+| Subscription | registration token、Runtime anchor、Runtime identity | cancel(ui); close() | UI-affine owner。cancelは登録解除、close/Dropはtoken releaseのみ |
 | PropertyValue | 初期五型のsealedなFFI変換trait | encode(value); decode(native) | 利用者の任意structへunsafe境界の実装を開放しない |
 | CleanupRegistry | Dropから移管されたticket集合と再試行同期 | adopt(ticket); retry_pending() | ticketとanchorを一所有移転で保持。panic中もtokenを失わない |
 | Dispatcher | worker向けpost可能なRuntime shell入口 | post(work) | UI-affine OwnedをSend/Syncへ変更するための型ではない |
@@ -362,6 +373,11 @@ classDiagram
         try_new()
         get()
         set()
+        subscribe()
+        close()
+    }
+    class Subscription {
+        cancel()
         close()
     }
     class Decimal64 {
@@ -387,6 +403,9 @@ classDiagram
     Property ..> UiContext : Runtime/UI検査
     Property ..> PropertyValue : typed変換
     PropertyValue ..> Decimal64 : canonical DECIMAL mapping
+    Property --> Subscription : register
+    Subscription ..> UiContext : cancel context
+    Subscription ..> CleanupRegistry : Drop release retry
     Owned ..> CleanupRegistry : Drop失敗の所有移転
     Dispatcher ..> UiContext : UI側で再検査
 ```
@@ -409,3 +428,5 @@ Property get/setはUiContextとRuntime所属を検査してtyped FFIへ進む。
 | 2026-10-24 | 1.2全文 | 利用者の「OK」によりPropertyの生成・取得・設定・終了APIとRuntime ownership/identityを含む文書全体を承認。実装・試験状態は別管理 |
 | 2026-10-24 | 1.3改訂案 | Rust `Decimal64`のcanonical representation、`try_from_parts`、accessor、PropertyValue mappingを追加提案。1.2全文承認状態を維持し、1.3全文は利用者確認待ち |
 | 2026-10-24 | 1.3全文 | 利用者の「OK」によりRust `Decimal64`の値型/APIとPropertyValue mappingを含む全文を承認。実装・試験状態は別管理 |
+| 2026-10-24 | 1.4改訂案 | Property notification closure、Subscription token ownership、cancel/close分離、callback panic境界を追加提案。1.3全文承認状態を維持し、1.4全文は利用者確認待ち |
+| 2026-10-24 | 1.4全文 | 利用者の「OK」によりRust `Property::subscribe`と`Subscription::cancel/close`、callback ownership/lifetimeを含む文書全体を承認。実装・試験状態は別管理 |
