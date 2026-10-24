@@ -128,6 +128,7 @@ def main():
             "cpp-package-test",
             "rust-wrapper-runtime-test",
             "rust-wrapper-runtime-consumer-test",
+            "rust-wrapper-property-bool-i64-test",
             "format",
             "minimum",
         ],
@@ -156,6 +157,8 @@ def main():
             if args.command == "rust-wrapper-runtime-test"
             else "rust-wrapper-runtime-consumer-test"
             if args.command == "rust-wrapper-runtime-consumer-test"
+            else "rust-wrapper-property-bool-i64-consumer-test"
+            if args.command == "rust-wrapper-property-bool-i64-test"
             else "cpp-package-integration-test"
             if args.command == "cpp-package-test"
             else "cpp-property-unit-test"
@@ -179,6 +182,8 @@ def main():
             if args.command == "rust-wrapper-runtime-test"
             else "Rust Runtime consumer test executed against host C ABI"
             if args.command == "rust-wrapper-runtime-consumer-test"
+            else "Rust BOOL/I64 Property consumer test executed"
+            if args.command == "rust-wrapper-property-bool-i64-test"
             else "cpp package consumer test executed"
             if args.command == "cpp-package-test"
             else "C++ Property BOOL/I64 wrapper unit test executed"
@@ -290,6 +295,7 @@ def main():
         elif args.command in (
             "rust-wrapper-runtime-test",
             "rust-wrapper-runtime-consumer-test",
+            "rust-wrapper-property-bool-i64-test",
         ):
             run(
                 ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
@@ -328,7 +334,7 @@ def main():
                     results,
                     "rust-wrapper-runtime-tests",
                 )
-            else:
+            elif args.command == "rust-wrapper-runtime-consumer-test":
                 run(
                     [
                         "cargo",
@@ -342,6 +348,21 @@ def main():
                     native_environment,
                     results,
                     "rust-wrapper-runtime-consumer",
+                )
+            else:
+                run(
+                    [
+                        "cargo",
+                        "run",
+                        "--locked",
+                        "-p",
+                        "freemvvm",
+                        "--example",
+                        "property_bool_i64_consumer",
+                    ],
+                    native_environment,
+                    results,
+                    "rust-wrapper-property-bool-i64-consumer",
                 )
         elif args.command == "minimum":
             run(
@@ -851,6 +872,16 @@ def main():
                 environment,
                 results,
                 "rust-wrapper-runtime-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "rust-wrapper-property-bool-i64-test",
+                ],
+                environment,
+                results,
+                "rust-wrapper-property-bool-i64-consumer",
             )
             run(
                 ["cmake", "--preset", "dev"],

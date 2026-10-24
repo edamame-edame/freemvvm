@@ -3,10 +3,12 @@
 mod error;
 mod handle;
 mod native_api;
+mod property;
 mod runtime;
 
 pub use error::UiError;
 pub use handle::{Borrowed, Owned};
+pub use property::{Property, PropertyValue};
 pub use runtime::{
     ShutdownMode, ShutdownRequest, ShutdownRequestState, ShutdownSnapshot, UiContext, UiRuntime,
 };

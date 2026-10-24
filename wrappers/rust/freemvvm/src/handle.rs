@@ -225,6 +225,14 @@ impl<T> Owned<T> {
     pub(crate) fn api(&self) -> &SharedApi {
         &self.api
     }
+
+    pub(crate) fn runtime_token(&self) -> u64 {
+        self.runtime_token
+    }
+
+    pub(crate) fn anchor(&self) -> Option<Arc<RuntimeAnchor>> {
+        self.anchor.clone()
+    }
 }
 
 impl<T> Drop for Owned<T> {

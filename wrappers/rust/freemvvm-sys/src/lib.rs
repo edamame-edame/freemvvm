@@ -37,6 +37,30 @@ unsafe extern "C" {
 
     pub fn ui_abi_1_runtime_create(out_runtime: *mut Handle, out_error: *mut Handle) -> Status;
     pub fn ui_abi_1_runtime_is_ui_thread(runtime: Handle, out_yes: *mut Bool) -> Status;
+    pub fn ui_abi_1_property_create_bool(
+        runtime: Handle,
+        initial: Bool,
+        out_property: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_property_create_i64(
+        runtime: Handle,
+        initial: i64,
+        out_property: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_property_get_bool(property: Handle, out_value: *mut Bool) -> Status;
+    pub fn ui_abi_1_property_get_i64(property: Handle, out_value: *mut i64) -> Status;
+    pub fn ui_abi_1_property_set_bool(
+        property: Handle,
+        value: Bool,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_property_set_i64(
+        property: Handle,
+        value: i64,
+        out_error: *mut Handle,
+    ) -> Status;
     pub fn ui_abi_1_runtime_shutdown(runtime: Handle, out_error: *mut Handle) -> Status;
     pub fn ui_abi_1_runtime_request_shutdown(
         runtime: Handle,

@@ -49,6 +49,7 @@ impl UiRuntime {
         Ok(UiContext {
             handle,
             identity: Arc::clone(&self.identity),
+            api: Arc::clone(self.owner.api()),
         })
     }
 
@@ -246,9 +247,34 @@ impl UiRuntime {
 pub struct UiContext<'a> {
     handle: Borrowed<'a, RuntimeTag>,
     identity: Arc<()>,
+    api: SharedApi,
 }
 
 impl UiContext<'_> {
+    pub(crate) fn check_ui_thread(&self) -> Result<(), UiError> {
+        let (status, is_ui_thread) = self.api.runtime_is_ui_thread(self.handle.token());
+        if status != native_api::OK {
+            return Err(UiError::from_status(status));
+        }
+        match is_ui_thread {
+            1 => Ok(()),
+            0 => Err(UiError::from_status(native_api::WRONG_THREAD)),
+            _ => Err(UiError::from_status(native_api::INTERNAL_ERROR)),
+        }
+    }
+
+    pub(crate) fn runtime_token(&self) -> u64 {
+        self.handle.token()
+    }
+
+    pub(crate) fn api(&self) -> &SharedApi {
+        &self.api
+    }
+
+    pub(crate) fn identity(&self) -> Arc<()> {
+        Arc::clone(&self.identity)
+    }
+
     pub fn check_runtime(&self, runtime: &UiRuntime) -> Result<(), UiError> {
         if Arc::ptr_eq(&self.identity, &runtime.identity) {
             Ok(())
