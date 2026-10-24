@@ -1,9 +1,9 @@
 # 言語ラッパー：Rust
 
-- 文書版: 1.4
+- 文書版: 1.5
 - 文書ロール: detailed-design
 - 更新日: 2026-10-24
-- 状態: 1.3全文承認済み（利用者、2026-10-24）。1.4全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
+- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -416,6 +416,77 @@ Property get/setはUiContextとRuntime所属を検査してtyped FFIへ進む。
 
 図のOwned→CleanupRegistryは常時二重所有ではない。UI型の!Send/!Sync制約とDispatcherの移送可能性を分ける。optional Futureは既存request queryの観測だけで、Runtime/executorの新しいschedulerを追加しない。
 
+## Property Binding API案（1.5・レビュー待ち）
+
+本節は承認済みBinding要求とイベントハンドリング設計をRust safe wrapperへ写すAPI案である。レビュー承認までは確定仕様・実装済みAPIとして扱わない。Bindingの方向、初期同期、伝播、循環・重複接続拒否、遅延検証errorと回復は[RQ-07](../../11_requirements/RQ-07_binding.md)および[通知とBinding伝播](../events/notifications-binding.md)を正本とする。
+
+### 公開API案
+
+```rust
+pub enum BindingMode { OneTime, OneWay, TwoWay }
+pub enum BindingDirection { SourceToTarget, TargetToSource }
+
+impl<T: PropertyValue> Property<T> {
+    pub fn bind_to(&self, ui: &UiContext<'_>, target: &Property<T>, mode: BindingMode)
+        -> Result<Option<Binding<T>>, UiError>;
+}
+impl<T: PropertyValue> Binding<T> {
+    pub fn cancel(&mut self, ui: &UiContext<'_>) -> Result<(), UiError>;
+    pub fn error_snapshot(&self, ui: &UiContext<'_>) -> Result<Option<BindingError<T>>, UiError>;
+    pub fn subscribe_error<F>(&self, ui: &UiContext<'_>, callback: F)
+        -> Result<Subscription, UiError> where F: FnMut() + 'static;
+    pub fn close(&mut self) -> Result<(), UiError>;
+}
+impl<T: PropertyValue> BindingError<T> {
+    pub fn error(&self) -> &UiError;
+    pub fn rejected_property(&self) -> &Property<T>;
+    pub fn direction(&self) -> BindingDirection;
+}
+```
+
+`OneTime`は初期コピーだけを行い、成功時は`Ok(None)`を返す。`OneWay`と`TwoWay`は初期同期と接続をatomicに成立させて`Some(Binding<T>)`を返す。失敗時は`Err(UiError)`とし、native error ownershipを通常の`UiError`規則で引き取る。modeの整数値はsafe APIへ露出せず、private mappingでC ABIへ渡す。
+
+`Binding<T>`はmove-onlyのUI-affine ownerとする。`cancel`はUI contextのRuntime identity/threadを検査し接続を明示解除する。`close`/Dropは公開handle参照をreleaseするだけで、接続解除とはしない。release失敗時のtoken保持・Drop cleanup ticket移管は既存`Owned`規則に従う。OneTimeではowner自体を作らない。
+
+`error_snapshot`は現在のBinding固有errorを不変のowned snapshotへ複製する。`BindingError<T>`はnative error ownerと独立retainedされた拒否Property owner、伝播方向を保持し、snapshot破棄は各ownerを独立にreleaseする。`subscribe_error`は既存`Subscription`所有・callback trampolineを再利用し、callback引数にはsnapshotを載せず、callback内で必要に応じて`error_snapshot`を再取得する。登録成功時だけclosure ownershipをCoreへ移す。
+
+### 所有関係と呼出し境界
+
+```mermaid
+classDiagram
+    direction TB
+    Property~T~ ..> UiContext : bind_to context
+    Property~T~ --> Binding~T~ : OneWay / TwoWay returns
+    Binding~T~ --> Property~T~ : native connection retains endpoints
+    Binding~T~ --> BindingError~T~ : error_snapshot
+    BindingError~T~ *-- UiError : owned error snapshot
+    BindingError~T~ *-- Property~T~ : retained rejected endpoint
+    Binding~T~ --> Subscription : subscribe_error
+    Subscription ..> UiContext : cancel context
+```
+
+`bind_to`は両PropertyのRuntime identityを先に比較し、同一RuntimeのUI contextでのみC ABIを呼ぶ。API成功形はmodeと整合するか検査し、想定外のstatus/token/errorの組み合わせでは公開ownerを作らず、予期しないtokenを既存の安全なcleanup経路で処理する。初期同期・graph prepare/commit・遅延伝播の責務をRust側で再実装しない。
+
+```mermaid
+sequenceDiagram
+    participant App as Rust caller
+    participant Safe as freemvvm Property/Binding
+    participant ABI as versioned C ABI
+    participant Core as Runtime Binding registry
+    App->>Safe: source.bind_to(ui, target, mode)
+    Safe->>Safe: check UI thread and Runtime identity
+    Safe->>ABI: binding_create(source, target, mode)
+    ABI->>Core: prepare, initial validate, commit
+    Core-->>ABI: OneTime/no owner or persistent token
+    ABI-->>Safe: status, token, error
+    Safe-->>App: Result<Option<Binding<T>>, UiError>
+    App->>Safe: binding.cancel(ui) or close()
+    Safe->>ABI: cancel or handle release
+    Note over ABI,Core: release alone leaves the Runtime-owned connection active
+```
+
+遅延伝播失敗は元Property setterの成功を取り消さず、Binding error snapshotでのみ観測する。次の有効な伝播によるerror解消とerror subscriber通知の順序はイベントハンドリング設計に従う。Runtime shutdown時のactive connection teardownも同設計へ委譲する。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -430,3 +501,4 @@ Property get/setはUiContextとRuntime所属を検査してtyped FFIへ進む。
 | 2026-10-24 | 1.3全文 | 利用者の「OK」によりRust `Decimal64`の値型/APIとPropertyValue mappingを含む全文を承認。実装・試験状態は別管理 |
 | 2026-10-24 | 1.4改訂案 | Property notification closure、Subscription token ownership、cancel/close分離、callback panic境界を追加提案。1.3全文承認状態を維持し、1.4全文は利用者確認待ち |
 | 2026-10-24 | 1.4全文 | 利用者の「OK」によりRust `Property::subscribe`と`Subscription::cancel/close`、callback ownership/lifetimeを含む文書全体を承認。実装・試験状態は別管理 |
+| 2026-10-24 | 1.5全文 | 利用者の「OK」によりRust Property Bindingの3 mode、所有型、明示cancel、遅延error snapshot/subscription APIを含む全文を承認。実装・試験状態は別管理 |

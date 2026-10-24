@@ -2395,6 +2395,58 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-runtime-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-BIND-001",
+      "state": "ready",
+      "scope": "rust-property-binding-modes-cancel-error-snapshot-subscription",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/src/lib.rs",
+        "wrappers/rust/freemvvm/src/lib.rs",
+        "wrappers/rust/freemvvm/src/property.rs",
+        "wrappers/rust/freemvvm/src/binding.rs",
+        "wrappers/rust/freemvvm/src/runtime.rs"
+      ],
+      "config": [
+        "Cargo.toml", "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "tools/units.yaml"
+      ],
+      "depends_on": ["UNIT-WRAP-RS-SUB-001", "UNIT-ABI-014", "UNIT-ABI-016"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.5",
+          "section": "Property Binding API / ownership and call boundary"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding graph, propagation, error snapshot and registration lifecycle"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Binding create/cancel/error snapshot/subscription ABI"
+        }
+      ],
+      "requirements": [
+        "RQ-05-002", "RQ-05-006", "RQ-05-007", "RQ-05-012", "RQ-06-001",
+        "RQ-07-001", "RQ-07-002", "RQ-07-003", "RQ-07-004", "RQ-07-005",
+        "RQ-07-006", "RQ-07-007", "RQ-07-010", "RQ-07-011"
+      ],
+      "cases": [
+        "TC-BIND-01", "TC-BIND-INIT-REJECT-01", "TC-BIND-PROPAGATION-REJECT-01",
+        "TC-LIFE-01", "TC-ERROR-01", "TC-WRAP-RS-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-RS-BIND-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-runtime-test"]
+        }
+      ]
     }
   ]
 }
