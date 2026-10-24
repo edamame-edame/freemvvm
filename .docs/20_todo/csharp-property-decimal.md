@@ -1,7 +1,7 @@
 # C# Decimal64 Property wrapper
 
 - 更新日: 2026-10-24
-- 状態: 計画承認済み・実装中
+- 状態: 完了
 - 対象: C# `DecimalValue` と `UiProperty<DecimalValue>` を追加し、承認済みのDECIMAL canonical `uint64` ABIを通じて値を作成・取得・設定する。
 
 ## 背景と範囲
@@ -40,7 +40,15 @@ C# Runtime wrapperとBOOL/I64・F64・UTF-8 Property facadeは実装済み。次
 3. [x] `UT-WRAP-CS-PROP-DECIMAL-001`/`UT-CONSUMER-CS-PROP-DECIMAL-001` test designと`UNIT-WRAP-CS-PROP-DECIMAL-001` mappingを製品source変更前に登録した。
 4. [x] `DecimalValue`とDECIMAL C ABI interop、およびfake ABI focused testsを実装した。canonical bits・System.Decimal正確変換・範囲境界を検査した。
 5. [x] 実C ABI consumer、`tools/dev.py check`、`tools/dev.py minimum`、文書リンク検査、`git diff --check` がすべて成功した。
-6. [ ] Windows/Linux CI成功後、unit台帳・計画・`.docs/01_memory/`へ結果とrevisionを記録し、日本語でcommit/pushする。
+6. [x] Windows/Linux CI run [40053093079](https://github.com/edamame-edame/freemvvm/actions/runs/40053093079) が両OSで成功。unit台帳・計画・`.docs/01_memory/`へ結果を記録し、この完了記録をcommit/pushする。
+
+## 実装・検証結果
+
+- `DecimalValue`はcanonical `ulong` bitsを保持し、parts範囲検査と`System.Decimal`とのexact-only変換を提供する。DECIMAL Propertyは既存ABIへbitsを直接渡し、wrapper側の数値同値判定・正規化・cacheを追加しない。
+- fake ABI testsと別process real C ABI consumerで、sign/scale/coefficientの境界、System.Decimalの係数縮約・scale 28境界・変換不能値、Property create/get/set/error/closeを確認した。
+- Coreは数値同値のsetで既存表現を保持するため、consumerは各canonical表現を別Propertyの初期値として検査し、setterでは異なる数値へ変更して検証する。
+- 実装commit: `166a6a00a57b542e9c471979a65bf6a89c3e688c`。CI: [Development bootstrap #40053093079](https://github.com/edamame-edame/freemvvm/actions/runs/40053093079)（Ubuntu/Windows success）。
+- ローカル検証: `csharp-property-test`、`csharp-property-consumer-test`、`tools/dev.py check`、`tools/dev.py minimum`、`tools/check_docs.py`、`git diff --check` は成功。
 
 ## レビュー時の決定点
 
