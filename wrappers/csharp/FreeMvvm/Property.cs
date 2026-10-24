@@ -16,6 +16,13 @@ public sealed class UiProperty<T> : IDisposable
         _callbackHandlers = callbackHandlers;
     }
 
+    internal TokenOwner Owner => _owner;
+
+    internal CallbackHandlerState CallbackHandlers => _callbackHandlers;
+
+    internal static UiProperty<T> FromOwned(TokenOwner owner, CallbackHandlerState callbackHandlers) =>
+        new(owner, callbackHandlers);
+
     public static UiResult<UiProperty<T>> TryCreate(UiRuntime runtime, T initial)
     {
         if (runtime is null)
@@ -350,6 +357,9 @@ public sealed class UiProperty<T> : IDisposable
         subscriptionOwner!.Adopt(subscriptionToken);
         return UiResult<UiSubscription>.Success(subscription!);
     }
+
+    public UiResult<UiBinding<T>?> TryBindTo(UiProperty<T> target, UiBindingMode mode) =>
+        UiBinding<T>.TryCreate(this, target, mode);
 
     public UiResult<UiCloseDisposition> TryClose() => _owner.TryClose();
 

@@ -49,6 +49,14 @@ internal interface INativeApi
 
     uint SubscriptionCancel(ulong subscription, out ulong error);
 
+    uint BindingCreate(ulong source, ulong target, uint mode, out ulong binding, out ulong error);
+
+    uint BindingCancel(ulong binding, out ulong error);
+
+    uint BindingErrorSnapshot(ulong binding, out ulong errorSnapshot, out ulong rejectedProperty, out uint direction);
+
+    uint BindingSubscribeError(ulong binding, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error);
+
     uint RuntimeRequestShutdown(ulong runtime, uint mode, out ulong request, out ulong error);
 
     uint ShutdownRequestQuery(ulong request, out uint state, out uint reason, out ulong error);
@@ -156,6 +164,18 @@ internal sealed class NativeRuntimeApi : INativeApi
 
     public uint SubscriptionCancel(ulong subscription, out ulong error) =>
         NativeMethods.SubscriptionCancel(subscription, out error);
+
+    public uint BindingCreate(ulong source, ulong target, uint mode, out ulong binding, out ulong error) =>
+        NativeMethods.BindingCreate(source, target, mode, out binding, out error);
+
+    public uint BindingCancel(ulong binding, out ulong error) =>
+        NativeMethods.BindingCancel(binding, out error);
+
+    public uint BindingErrorSnapshot(ulong binding, out ulong errorSnapshot, out ulong rejectedProperty, out uint direction) =>
+        NativeMethods.BindingErrorSnapshot(binding, out errorSnapshot, out rejectedProperty, out direction);
+
+    public uint BindingSubscribeError(ulong binding, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error) =>
+        NativeMethods.BindingSubscribeError(binding, callback, userdata, destroy, out subscription, out error);
 
     public uint RuntimeRequestShutdown(ulong runtime, uint mode, out ulong request, out ulong error) =>
         NativeMethods.RuntimeRequestShutdown(runtime, mode, out request, out error);
@@ -296,6 +316,23 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_subscription_cancel")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint SubscriptionCancel(ulong subscription, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_binding_create")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint BindingCreate(ulong source, ulong target, uint mode, out ulong binding, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_binding_cancel")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint BindingCancel(ulong binding, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_binding_error_snapshot")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint BindingErrorSnapshot(ulong binding, out ulong errorSnapshot, out ulong rejectedProperty, out uint direction);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_binding_subscribe_error")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint BindingSubscribeError(
+        ulong binding, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error);
 
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_runtime_request_shutdown")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

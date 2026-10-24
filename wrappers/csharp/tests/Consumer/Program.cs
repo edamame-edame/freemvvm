@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -81,6 +82,12 @@ internal static class Program
         if (notificationResult != 0)
         {
             return notificationResult;
+        }
+
+        int bindingResult = RunBindingConsumer(args[0]);
+        if (bindingResult != 0)
+        {
+            return bindingResult;
         }
 
         long initialNaNBits = 0x7FF8_0000_0000_0042;
@@ -324,6 +331,147 @@ internal static class Program
         }
 
         return 0;
+    }
+
+    private static int RunBindingConsumer(string nativeArtifactPath)
+    {
+        UiResult<UiRuntime> runtimeCreate = UiRuntime.TryCreate(new RuntimeOptions
+        {
+            NativeArtifactPath = nativeArtifactPath,
+        });
+        if (runtimeCreate.IsFailure)
+        {
+            Console.Error.WriteLine($"Binding Runtime creation failed: {runtimeCreate.Error?.RawStatus}");
+            return 40;
+        }
+
+        using UiRuntime runtime = runtimeCreate.Value;
+        if (!InstallTestBridge(runtime))
+        {
+            Console.Error.WriteLine("Could not register the Binding test host bridge.");
+            return 41;
+        }
+
+        if (!VerifyBindingModes(runtime, false, true, true, false,
+                static (owner, value) => UiProperty<bool>.TryCreate(owner, value),
+                static property => property.TryGet(),
+                static (property, value) => property.TrySet(value)))
+        {
+            return 42;
+        }
+
+        if (!VerifyBindingModes(runtime, 1L, 0L, 2L, 3L,
+                static (owner, value) => UiProperty<long>.TryCreate(owner, value),
+                static property => property.TryGet(),
+                static (property, value) => property.TrySet(value)))
+        {
+            return 43;
+        }
+
+        if (!VerifyBindingModes(runtime, 1.5, 0.0, 2.5, 3.5,
+                static (owner, value) => UiProperty<double>.TryCreate(owner, value),
+                static property => property.TryGet(),
+                static (property, value) => property.TrySet(value)))
+        {
+            return 44;
+        }
+
+        DecimalValue decimalOne = DecimalValue.TryFromParts(false, 0, 1).Value;
+        DecimalValue decimalTwo = DecimalValue.TryFromParts(false, 0, 2).Value;
+        DecimalValue decimalThree = DecimalValue.TryFromParts(false, 0, 3).Value;
+        DecimalValue decimalFour = DecimalValue.TryFromParts(false, 0, 4).Value;
+        if (!VerifyBindingModes(runtime, decimalOne, decimalTwo, decimalThree, decimalFour,
+                static (owner, value) => UiProperty<DecimalValue>.TryCreate(owner, value),
+                static property => property.TryGet(),
+                static (property, value) => property.TrySet(value)))
+        {
+            return 45;
+        }
+
+        if (!VerifyBindingModes(runtime, "source", "target", "changed", "reverse",
+                static (owner, value) => UiProperty<string>.TryCreate(owner, value),
+                static property => property.TryGet(),
+                static (property, value) => property.TrySet(value)))
+        {
+            return 46;
+        }
+
+        if (runtime.Shutdown().IsFailure || runtime.TryClose().IsFailure)
+        {
+            Console.Error.WriteLine("Binding Runtime did not shut down and close cleanly.");
+            return 47;
+        }
+
+        Console.WriteLine("C# Property Binding modes and values across the host C ABI: OK");
+        return 0;
+    }
+
+    private static bool VerifyBindingModes<T>(
+        UiRuntime runtime,
+        T sourceInitial,
+        T targetInitial,
+        T forwardValue,
+        T reverseValue,
+        Func<UiRuntime, T, UiResult<UiProperty<T>>> create,
+        Func<UiProperty<T>, UiResult<T>> read,
+        Func<UiProperty<T>, T, UiResult<bool>> write)
+    {
+        UiProperty<T> onceSource = create(runtime, sourceInitial).Value;
+        UiProperty<T> onceTarget = create(runtime, targetInitial).Value;
+        UiResult<UiBinding<T>?> once = onceSource.TryBindTo(onceTarget, UiBindingMode.OneTime);
+        bool onceOk = once.IsSuccess && once.Value is null &&
+            EqualityComparer<T>.Default.Equals(read(onceTarget).Value, sourceInitial);
+        onceSource.Dispose();
+        onceTarget.Dispose();
+        if (!onceOk)
+        {
+            Console.Error.WriteLine($"{typeof(T).Name} OneTime Binding did not copy the source value.");
+            return false;
+        }
+
+        UiProperty<T> oneWaySource = create(runtime, sourceInitial).Value;
+        UiProperty<T> oneWayTarget = create(runtime, targetInitial).Value;
+        UiBinding<T>? oneWay = oneWaySource.TryBindTo(oneWayTarget, UiBindingMode.OneWay).Value;
+        UiResult<bool> oneWaySet = UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        bool oneWayOk = oneWay is not null && RunDispatchTurn(runtime, () => oneWaySet = write(oneWaySource, forwardValue)) &&
+            oneWaySet.IsSuccess && EqualityComparer<T>.Default.Equals(read(oneWayTarget).Value, forwardValue);
+        if (oneWayOk)
+        {
+            // Releasing the public handle must leave the Core-owned connection active.
+            oneWayOk = oneWay!.TryClose().IsSuccess &&
+                RunDispatchTurn(runtime, () => oneWaySet = write(oneWaySource, sourceInitial)) &&
+                oneWaySet.IsSuccess && EqualityComparer<T>.Default.Equals(read(oneWayTarget).Value, sourceInitial);
+        }
+
+        oneWaySource.Dispose();
+        oneWayTarget.Dispose();
+        if (!oneWayOk)
+        {
+            Console.Error.WriteLine($"{typeof(T).Name} OneWay Binding propagation or handle-release lifetime failed.");
+            return false;
+        }
+
+        UiProperty<T> twoWaySource = create(runtime, sourceInitial).Value;
+        UiProperty<T> twoWayTarget = create(runtime, targetInitial).Value;
+        using UiBinding<T> twoWay = twoWaySource.TryBindTo(twoWayTarget, UiBindingMode.TwoWay).Value!;
+        UiResult<bool> twoWaySet = UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        bool twoWayOk = RunDispatchTurn(runtime, () => twoWaySet = write(twoWaySource, forwardValue)) &&
+            twoWaySet.IsSuccess && EqualityComparer<T>.Default.Equals(read(twoWayTarget).Value, forwardValue) &&
+            RunDispatchTurn(runtime, () => twoWaySet = write(twoWayTarget, reverseValue)) &&
+            twoWaySet.IsSuccess && EqualityComparer<T>.Default.Equals(read(twoWaySource).Value, reverseValue) &&
+            twoWay.TryCancel().IsSuccess &&
+            RunDispatchTurn(runtime, () => twoWaySet = write(twoWaySource, sourceInitial)) &&
+            twoWaySet.IsSuccess && EqualityComparer<T>.Default.Equals(read(twoWayTarget).Value, reverseValue) &&
+            twoWay.TryClose().IsSuccess;
+        twoWaySource.Dispose();
+        twoWayTarget.Dispose();
+        if (!twoWayOk)
+        {
+            Console.Error.WriteLine($"{typeof(T).Name} TwoWay propagation or cancellation failed.");
+            return false;
+        }
+
+        return true;
     }
 
     private static bool InstallTestBridge(UiRuntime runtime)
