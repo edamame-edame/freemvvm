@@ -2294,6 +2294,55 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-property-f64-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-PROP-DECIMAL-001",
+      "state": "planned",
+      "scope": "rust-decimal64-value-and-property-create-get-set-close",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/**/*.rs",
+        "wrappers/rust/freemvvm/**/*.rs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": ["UNIT-WRAP-RS-PROP-F64-001", "UNIT-ABI-009", "UNIT-ABI-010", "UNIT-ABI-011"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.3",
+          "section": "改訂案: Decimal64 value type / PropertyValue initial five types"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "DECIMAL canonical bits / numeric equality / equivalent setter representation"
+        }
+      ],
+      "requirements": [
+        "RQ-02-002", "RQ-02-017", "RQ-02-019", "RQ-03-003",
+        "RQ-04-006", "RQ-04-007", "RQ-05-012", "RQ-06-001"
+      ],
+      "cases": ["TC-ABI-REP-01", "TC-LIFE-01", "TC-WRAP-RS-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-RS-DECIMAL-VALUE-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-runtime-test"]
+        },
+        {
+          "id": "UT-CONSUMER-RS-PROP-DECIMAL-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-property-decimal-test"]
+        }
+      ]
     }
   ]
 }
