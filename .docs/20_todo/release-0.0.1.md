@@ -1,7 +1,7 @@
 # 0.0.1 利用可能なUIライブラリを目指す実装・リリース計画
 
 - 計画版: 0.1
-- 状態: 利用者レビュー待ち。実装・計画commit・タグ・公開は未承認
+- 状態: 計画承認済み（利用者、2026-10-24）。release判断・tag・公開は別途
 - 作成日: 2026-10-24
 - 対象: 0.0.0を基点に、利用者アプリから実際にUIを構築・表示・操作できる0.0.1候補を完成させる
 - 要求の正本: [要求仕様索引](../11_requirements/reqirements-specification.md)と各RQ章
@@ -16,7 +16,7 @@
 ## 現状と計画上の境界
 
 - 0.0.0 tagのmainにはC++、C#、Rust wrapperのRuntime/Property/Binding/Async Command基盤がある。Pythonは現在のREADMEと実装状況に従い、未完成の骨格として扱う。
-- [実装unit台帳](../32_unit_test/implementation-test-inventory.md)が参照する`tools/units.yaml`では、現時点で110 unit中55 unitがcomplete、55 unitがready。UI表示・入力を完成させた証拠とは区別する。
+- [実装unit台帳](../32_unit_test/implementation-test-inventory.md)が参照する`tools/units.yaml`は計画作成時点で110 unit（complete 55、ready 55）だった。2026-10-24の基線監査では113 unit（complete 76、ready 37）。UI表示・入力を完成させた証拠とは区別する。
 - UIの現行要求は[UI機能と対象範囲](../11_requirements/RQ-09_ui-scope.md)、Platformは[Platformと組み込みLinux](../11_requirements/RQ-11_platform.md)、配布は[ビルドと配布](../11_requirements/RQ-12_build-distribution.md)、順序は[開発・検証の実施順序](../11_requirements/RQ-14_delivery-sequence.md)に従う。
 - 既存要求や承認済み設計にない外部保証・Control動作・Platform選択を、この計画だけで追加しない。差異が見つかった場合は、要求・設計・試験への影響と変更案を分けてレビューする。
 - 別作業のRust inner WebEngine crate branchは自動的に統合しない。適用要求、既存Platform設計との適合、独立した試験結果を確認してから、0.0.1への採否を別途レビューする。
@@ -95,3 +95,4 @@
 | 日付 | 計画版・範囲 | 状態 | 根拠 |
 | --- | --- | --- | --- |
 | 2026-10-24 | 0.1 / 0.0.1利用可能UIライブラリ計画 | 利用者レビュー待ち | READMEと承認済みRQ/設計/release testを照合して初版作成。承認・実装開始・公開を意味しない |
+| 2026-10-24 | 0.1 / 0.0.1候補の実装計画・version branch運用 | 利用者 | 「0.0.1のブランチとして切ってから進めて」「Aで進めましょう」により計画とA方針を承認。各unitの設計承認、release合格、tag、公開は個別に判断する |

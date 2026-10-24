@@ -1,7 +1,7 @@
 # 0.0.1実装基線と初期UI縦断の着手条件確認
 
 - 計画版: 0.1
-- 状態: 利用者レビュー待ち（計画・記録のcommit前）
+- 状態: 完了（2026-10-24）
 - 作成日: 2026-10-24
 - 対象version branch: `version/0.0.1`
 - 対象: 0.0.1の承認済み要求・設計・試験・実装unit状態を照合し、次の実装unitを特定する
@@ -44,11 +44,27 @@
 - `version/0.0.1`: Tree ownership統合済み。実装branchはこのversion branchからCore APIs childとして分岐する。
 - `release-0.0.1.md`: 状態欄は利用者レビュー待ち。計画の承認履歴には承認記録がない。
 - `ui/controls.md`: 文書冒頭は1.1全文承認済みだが、本文に「案」および後続設計へ送るAPI決定が残るため、文書全体の承認範囲を監査する。
-- `32_unit_test/ui.md`: 冒頭は0.2全文承認済みとする一方、承認履歴は0.2改訂案のレビュー待ちを記載しており、状態を照合する。
+- `32_unit_test/ui.md`: 承認履歴に0.2改訂案のレビュー待ちと後続の0.2全文承認が順に記録されている。状態の不整合ではない。
 - この観測は実装・release gate・OS実行成功を意味しない。
+
+## 監査結果
+
+- RQ-09、RQ-10、RQ-11、RQ-12、RQ-14は各章の現行版が承認済み。初期UI・Platform・配布・開発順序は要求上定義されている。
+- UI controls 1.1、tree-layout 1.2、input-focus 1.1、text-editing 1.1、Platform abstraction/internal-layers 1.1、共通C ABI 1.2は各文書の承認履歴で全文承認を確認した。
+- UI単体test 0.2、Platform build test 0.1、release規約・system scenario、version test規約は承認済み。各承認はtest実装・実行成功の証拠ではない。
+- 実装unit台帳はschema 2、113件（complete 76、ready 37）。内訳はCORE 43/26、ABI 12/7、WRAP 21/2、BUILD 0/1、PKG 0/1（complete/ready）。UI/Platform専用のunit prefixはまだない。UI Tree所有のUNIT-CORE-067～069以外に、Control/Layout/Focus/描画の実装unitは登録されていない。
+- 共通C ABI 1.2はRuntime、Property、Binding、Validation、Command、TextBox値接続、dispatch等を定義するが、Window/Widget/StackPanel/Text/Buttonを生成・接続するC ABI symbol/API表はない。headerと`crates/c-abi`実装にも該当symbolはない。
+- UI Control DDは共通意味論を承認済みとしている一方、公開ABI signature・完全なsymbol一覧をABI設計へ送っている。Platform DDも共通責務とpeer/frame接続を定義するが、各実装unitの境界・検査commandは未登録。
+- `version/0.0.1`はTree ownership統合済み。次のCore/C ABI設計・実装はこのversion branchからCore APIs childとして開始し、WebEngine branchは含めない。
+
+## 次工程候補
+
+次に必要なのは製品コードではなく、初期UIのC ABI契約をDDとして具体化する作業である。最小範囲をWindow・共通Widget/Container・StackPanel・Textの生成、所有、Logical Tree接続とし、RQ-09-001～004/007/008/043/044に結び付ける。合わせてABI feature/table、失敗時出力、Core object/store接続、unit-testの観測条件を明示し、TextBox/Button/input/renderingを含む後続単位との境界を整理する。具体signatureや実装方式は次の計画・設計レビューで提案し、承認前には確定しない。
+
+この候補は本監査の結論であり、実装開始承認ではない。次の作業計画は別文書で具体化し、利用者レビュー後にcommitする。
 
 ## レビュー履歴
 
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
-| 2026-10-24 | 0.1 / 0.0.1実装基線と初期UI縦断の着手条件確認 | 利用者レビュー待ち | commit・実装・公開を意味しない |
+| 2026-10-24 | 0.1 / 0.0.1実装基線と初期UI縦断の着手条件確認 | 利用者承認・実施完了 | 計画は「ok」により承認。監査結果・次工程候補を記録。実装・release・公開を意味しない |
