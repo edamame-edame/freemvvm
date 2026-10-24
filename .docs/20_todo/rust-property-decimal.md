@@ -1,7 +1,7 @@
 # Rust wrapper: DECIMAL Property
 
 - 更新日: 2026-10-24
-- 状態: 計画・DD 1.3承認済み（利用者、2026-10-24）。実装中
+- 状態: 完了（local gates・Rust 1.85・Windows/Linux CI確認済み）
 - 対象ブランチ: `impl-rust/wrappers-runtime-api`
 - 親: [Rust F64 Property](rust-property-f64.md)
 
@@ -38,3 +38,4 @@
 | --- | --- | --- |
 | 2026-10-24 | 計画・DD案 | DECIMAL用Rust公開型が未定義のため`Decimal64` API案と試験範囲を作成。コード変更・commit/push前にDD 1.3と計画を利用者レビューへ出す。 |
 | 2026-10-24 | 計画・DD承認 | 利用者の「OK」によりDD 1.3全文、Rust DECIMAL計画、test designを承認。workspace側`property.rs`を編集して実装を進める。 |
+| 2026-10-24 | 実装・検証完了 | 実装commit `815a8dd`。`tools/dev.py check`、`minimum`、Decimal64 unit tests、DECIMAL consumer成功。Windows/Linux CI run `40082654144` success。計画・DD commit `2e35b6b`。 |

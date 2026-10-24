@@ -6,6 +6,7 @@
 - 更新日: 2026-10-24
 - Rust UTF-8 consumer/focused tests and bootstrap gates passed on Windows/Linux in [CI run 40079200849](https://github.com/edamame-edame/freemvvm/actions/runs/40079200849).
 - Rust F64 Property consumer and bootstrap gates passed on Windows/Linux in [CI run 40081760421](https://github.com/edamame-edame/freemvvm/actions/runs/40081760421).
+- Rust DECIMAL value/Property tests and bootstrap gates passed on Windows/Linux in [CI run 40082654144](https://github.com/edamame-edame/freemvvm/actions/runs/40082654144).
 - Rust F64 Property consumer case: approved by the user on 2026-10-24; execution pending.
 - Rust DECIMAL design/test cases: approved by the user on 2026-10-24; execution pending.
 - Rust DECIMAL value/property cases: version 0.6 proposal, pending DD and plan review.
