@@ -2094,7 +2094,7 @@
     },
     {
       "id": "UNIT-WRAP-RS-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "rust-runtime-ffi-context-owned-handle-and-cleanup-foundation",
       "sources": [
         "wrappers/rust/freemvvm-sys/**/*.rs",

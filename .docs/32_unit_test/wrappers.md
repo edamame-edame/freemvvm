@@ -1,7 +1,7 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 
 - 文書版: 0.2
-- 状態: 0.1全文承認済み（利用者、2026-10-17）。C++ Runtime、Property BOOL/I64/UTF-8/F64/DECIMAL、CMake package consumerは実装済み。0.2でRust Runtimeのfocused fake sys APIとreal C ABI consumer試験設計を追加。DECIMAL Propertyのfocused testとpackage testはrun [39953038033](https://github.com/edamame-edame/freemvvm/actions/runs/39953038033) のWindows/Linux両runnerで成功。F64 Propertyと全bootstrap gatesはrun [39948267794](https://github.com/edamame-edame/freemvvm/actions/runs/39948267794) のWindows/Linux両runnerで成功。UTF-8 Propertyはrun [39872968706](https://github.com/edamame-edame/freemvvm/actions/runs/39872968706)、BOOL/I64はrun [39801053995](https://github.com/edamame-edame/freemvvm/actions/runs/39801053995) のWindows/Linux両runnerで成功。Rust Runtime focused/consumer tests and local gates pass; Windows/Linux CI is pending.接続gapは別管理
+- 状態: 0.1全文承認済み（利用者、2026-10-17）。C++ Runtime、Property BOOL/I64/UTF-8/F64/DECIMAL、CMake package consumerは実装済み。0.2でRust Runtimeのfocused fake sys APIとreal C ABI consumer試験設計を追加。DECIMAL Propertyのfocused testとpackage testはrun [39953038033](https://github.com/edamame-edame/freemvvm/actions/runs/39953038033) のWindows/Linux両runnerで成功。F64 Propertyと全bootstrap gatesはrun [39948267794](https://github.com/edamame-edame/freemvvm/actions/runs/39948267794) のWindows/Linux両runnerで成功。UTF-8 Propertyはrun [39872968706](https://github.com/edamame-edame/freemvvm/actions/runs/39872968706)、BOOL/I64はrun [39801053995](https://github.com/edamame-edame/freemvvm/actions/runs/39801053995) のWindows/Linux両runnerで成功。Rust Runtime focused/consumer tests and local gates pass; Windows/Linux CI run 40077169840 passed.接続gapは別管理
 - 更新日: 2026-10-24
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
@@ -58,11 +58,11 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
 | 2026-10-17 | 0.1全文 | 利用者 | 「OK そろそろスクラッチを開始しましょうか。環境整備から始めてください。」により既存試験案を承認し環境整備を開始。製品test実装・合格を意味しない |
 | 2026-10-24 | 0.2追加 | — | 承認済みRust wrapper DD v1.1とRust Runtime実装計画に基づきfocused fake sys API・real C ABI consumer試験を登録。実行結果は別管理 |
-| 2026-10-24 | 0.2実行記録 | — | Rust Runtime focused 4 tests、compile-fail 2 cases、real C ABI consumer、`tools/dev.py check`、`minimum`がlocal pass。Windows/Linux CIは未確認 |
+| 2026-10-24 | 0.2実行記録 | — | Rust Runtime focused 4 tests、compile-fail 2 cases、real C ABI consumer、`tools/dev.py check`、`minimum`がlocal pass。[Windows/Linux CI run 40077169840](https://github.com/edamame-edame/freemvvm/actions/runs/40077169840) success |
 
 ## 改訂履歴
 
 | 版 | 日付 | 内容・理由 | 作成者 | 承認との対応 |
 | --- | --- | --- | --- | --- |
 | 0.1 | 2026-10-17 | テスト文書作成指示に基づき前提・操作・観測・期待値・後始末を具体化 | Codex | 本版全文のレビュー待ち。未実装・未実行 |
-| 0.2 | 2026-10-24 | Rust Runtimeのfocused fake sys APIとreal C ABI consumer試験設計・local実行記録を追加 | Codex | 利用者承認済みRust Runtime計画に基づく。Windows/Linux CI結果は別管理 |
+| 0.2 | 2026-10-24 | Rust Runtimeのfocused fake sys APIとreal C ABI consumer試験設計・local実行記録を追加 | Codex | 利用者承認済みRust Runtime計画に基づく。Windows/Linux CI run 40077169840 success |

@@ -1,7 +1,7 @@
 # Rust Runtime safe wrapper基盤
 
 - 更新日: 2026-10-24
-- 状態: 実装完了・CI待ち。計画承認・実装開始承認を受領し、focused/consumer tests、local check、minimum checkは成功
+- 状態: 完了。Rust Runtime wrapper実装、local gates、Rust 1.85 minimum、Windows/Linux CIが成功
 - 対象: 共通C ABIのRuntime lifecycle・UI thread context・owned handle基盤をRust `freemvvm-sys` / `freemvvm`から利用する最初のwrapper unit
 - 作業ブランチ: `impl-rust/wrappers-runtime-api`（親: `impl-rust/runtime-async-command`）
 
@@ -41,7 +41,7 @@ Rust用の[`freemvvm-sys`](../../wrappers/rust/freemvvm-sys/src/lib.rs)とsafe [
 4. [x] source変更前にwrapper test design v0.2と`UNIT-WRAP-RS-001` mappingを登録する。
 5. [x] Rust `-sys`宣言、Runtime safe facade、focused tests、real C ABI consumerを実装する。
 6. [x] local gatesとRust 1.85 minimum、focused/consumer testsを通す。
-7. [ ] local gates passを受けて実装unitをcommit/pushし、Windows/Linux CIを実行する。CI結果を追記してunitをcompleteへ更新し、検証記録をcommit/pushする。
+7. [x] Windows/Linux CI run 40077169840が成功。実装commit `8752272`と検証記録commitをpushし、unitをcompleteに更新する。
 
 ## 承認履歴
 
@@ -50,4 +50,4 @@ Rust用の[`freemvvm-sys`](../../wrappers/rust/freemvvm-sys/src/lib.rs)とsafe [
 | 2026-10-24 | 本計画全文 | 利用者 | 「OK」によりRust Runtime safe wrapper unitの範囲・試験境界を承認。実装開始は別途承認 |
 | 2026-10-24 | 実装開始 | 利用者 | 「始めてください」により承認済み計画に基づくRust Runtime wrapper実装を開始 |
 
-計画承認、実装開始承認、検証完了は別々に記録する。計画と実装開始は承認済み。製品sourceとlocal検証は完了し、Windows/Linux CI記録が残る。
+計画承認、実装開始承認、検証完了は別々に記録する。Rust Runtime safe wrapper unitは実装・local検証・Windows/Linux CIを完了し、実装と検証記録をcommit/push済み。

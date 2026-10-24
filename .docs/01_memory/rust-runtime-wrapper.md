@@ -7,4 +7,4 @@
 - Reserve cleanup registry slots before any C ABI call that can return an owned handle. A reserved slot can be changed to Pending without allocating during Drop. Preserve raw status/domain/code and copy valid UTF-8 error messages before releasing an error handle.
 - UI Runtime and borrowed UI context are `!Send`/`!Sync`; shutdown request receipts are thread-independent and keep a retained Runtime anchor so the primary Runtime handle can be released first.
 - `tools/dev.py rust-wrapper-runtime-test` exercises four fake sys cases and compile-fail doctests; `rust-wrapper-runtime-consumer-test` links and runs a separate example against the real C ABI.
-- Local `tools/dev.py check`, `minimum`, focused Runtime tests, and the real C ABI consumer all passed on the first Runtime wrapper revision; Windows/Linux CI is the remaining gate before marking the unit complete.
+- Local `tools/dev.py check`, `minimum`, focused Runtime tests, and the real C ABI consumer passed on implementation commit `8752272`; Windows/Linux CI run 40077169840 also passed.
