@@ -12,6 +12,7 @@ mod sealed {
     impl Sealed for bool {}
     impl Sealed for i64 {}
     impl Sealed for String {}
+    impl Sealed for f64 {}
 }
 
 /// A typed property backed by the shared C ABI.
@@ -95,6 +96,33 @@ impl PropertyValue for i64 {
         // SAFETY: error is writable output storage for this call.
         let status =
             unsafe { freemvvm_sys::ui_abi_1_property_set_i64(property, value, &mut error) };
+        (status, error)
+    }
+}
+
+impl PropertyValue for f64 {
+    fn create(runtime: u64, initial: Self) -> (u32, u64, u64) {
+        let mut property = 0;
+        let mut error = 0;
+        // SAFETY: both outputs point to initialized local storage; f64 maps directly to C double.
+        let status = unsafe {
+            freemvvm_sys::ui_abi_1_property_create_f64(runtime, initial, &mut property, &mut error)
+        };
+        (status, property, error)
+    }
+
+    fn get(property: u64) -> (u32, Self) {
+        let mut value = 0.0;
+        // SAFETY: `value` is writable output storage for this call.
+        let status = unsafe { freemvvm_sys::ui_abi_1_property_get_f64(property, &mut value) };
+        (status, value)
+    }
+
+    fn set(property: u64, value: Self) -> (u32, u64) {
+        let mut error = 0;
+        // SAFETY: error is writable output storage; f64 maps directly to C double.
+        let status =
+            unsafe { freemvvm_sys::ui_abi_1_property_set_f64(property, value, &mut error) };
         (status, error)
     }
 }

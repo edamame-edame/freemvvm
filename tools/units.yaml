@@ -2252,7 +2252,7 @@
     },
     {
       "id": "UNIT-WRAP-RS-PROP-F64-001",
-      "state": "planned",
+      "state": "in_progress",
       "scope": "rust-safe-property-f64-create-get-set-close",
       "sources": [
         "wrappers/rust/freemvvm-sys/**/*.rs",
