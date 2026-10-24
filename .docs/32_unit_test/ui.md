@@ -1,7 +1,7 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
 - 文書版: 0.2
-- 状態: 0.2改訂案レビュー待ち。0.1承認内容を維持し、Tree内部ownerの寿命試験を追加。製品testは未実装・未実行
+- 状態: 0.2全文承認済み（利用者、2026-10-24）。UT-CORE-TREE-OWNER-001実装・実行済み。TreeCoordinator統合UT-TREE-003は未実装
 - 更新日: 2026-10-24
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
@@ -19,7 +19,8 @@ Window、StackPanel、Text、TextBox、Buttonを同Runtimeで構成し、別Runt
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
 | --- | --- | --- | --- |
 | <a id="ut-tree-001"></a>UT-TREE-001 | 子のinsert/remove/moveと別Runtime・二重所属・循環を試す | 成功時だけ所属commit。invalidとpeer準備失敗で旧Treeを保持、親子強参照循環を作らない | [RQ-09-002](../11_requirements/RQ-09_ui-scope.md#rq-09-002)、[RQ-09-003](../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-04-025](../11_requirements/RQ-04_abi-boundary.md#rq-04-025)<br/>[TC-TREE-01](../30_release_test/requirement-test-matrix.md#case-tc-tree-01)、[TC-VERT-01](../30_release_test/requirement-test-matrix.md#case-tc-vert-01)、[TC-TRACE-01](../30_release_test/requirement-test-matrix.md#case-tc-trace-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01) |
-| <a id="ut-tree-003"></a>UT-TREE-003 | Attached childの全public handleを解放し、親からのchildren列挙、detach、owner解放後のcleanupを追う。attach時のcleanup予約失敗も注入 | Attached中はchild stateを保持し、TreeOwnerから新しい独立public handleを発行可能。detach後にpublic/internal ownerが全て0ならcleanupを一度だけ実施。予約失敗時はTree・参照数不変。Runtime shutdown後のowner解放でticketを再発行しない | [RQ-02-007](../11_requirements/RQ-02_core-features.md#rq-02-007)、[RQ-02-013](../11_requirements/RQ-02_core-features.md#rq-02-013)、[RQ-04-025](../11_requirements/RQ-04_abi-boundary.md#rq-04-025)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-003](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-09-003](../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-09-043](../11_requirements/RQ-09_ui-scope.md#rq-09-043)<br/>[TC-TREE-01](../30_release_test/requirement-test-matrix.md#case-tc-tree-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-OWN-01](../30_release_test/requirement-test-matrix.md#case-tc-own-01) |
+| <a id="ut-core-tree-owner-001"></a>UT-CORE-TREE-OWNER-001 | public handleからpinを取得しTreeOwnerを準備する。public参照解放、TreeOwnerからの再発行、detach相当のowner解放、reservation失敗、shutdown後cleanup済みを順に試す | TreeOwner中はstateを保持し、new public tokenは独立して有効。public/internal ownerとpinが全て0の時だけcleanupを一度実行。reservation失敗はcount/token不変。shutdown後のowner解放はticketを再発行しない | [RQ-02-013](../11_requirements/RQ-02_core-features.md#rq-02-013)、[RQ-04-025](../11_requirements/RQ-04_abi-boundary.md#rq-04-025)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-003](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-043](../11_requirements/RQ-09_ui-scope.md#rq-09-043)<br/>[TC-TREE-01](../30_release_test/requirement-test-matrix.md#case-tc-tree-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-OWN-01](../30_release_test/requirement-test-matrix.md#case-tc-own-01) |
+| <a id="ut-tree-003"></a>UT-TREE-003 | TreeCoordinator実装後、Attached childの全public handle解放、親からのchildren列挙、detach、owner解放後cleanupを追う。attach時のcleanup予約失敗も注入 | Attached中はchild stateを保持し、TreeOwnerから新しい独立public handleを発行可能。detach後にpublic/internal ownerが全て0ならcleanupを一度だけ実施。予約失敗時はTree・参照数不変。Runtime shutdown後のowner解放でticketを再発行しない | [RQ-02-007](../11_requirements/RQ-02_core-features.md#rq-02-007)、[RQ-02-013](../11_requirements/RQ-02_core-features.md#rq-02-013)、[RQ-04-025](../11_requirements/RQ-04_abi-boundary.md#rq-04-025)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-003](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-09-003](../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-09-043](../11_requirements/RQ-09_ui-scope.md#rq-09-043)<br/>[TC-TREE-01](../30_release_test/requirement-test-matrix.md#case-tc-tree-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-OWN-01](../30_release_test/requirement-test-matrix.md#case-tc-own-01) |
 | <a id="ut-tree-002"></a>UT-TREE-002 | detach/re-attach時に表示資源生成を失敗させ、後で明示再試行する | Detached構造・確定値・登録を保持。所属だけ成功と公開せず、再試行で正しく接続 | [RQ-09-069](../11_requirements/RQ-09_ui-scope.md#rq-09-069)<br/>[TC-TREE-01](../30_release_test/requirement-test-matrix.md#case-tc-tree-01) |
 | <a id="ut-layout-001"></a>UT-LAYOUT-001 | StackPanelの両orientation、空/複数child、constraint変更を与え、計算途中失敗も注入 | Sizerは下から、Locationerは上から計算。同revisionのboundsを公開し、表現不能時は旧公開配置を保つ | [RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067)<br/>[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01) |
 | <a id="ut-control-001"></a>UT-CONTROL-001 | ButtonのCommandを交換、異Runtime設定、Button破棄後に共有ownerからexecuteする | 失敗交換は旧参照維持。Button破棄だけでCommandをcloseせず、共有ownerの利用を壊さない | [RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-06-010](../11_requirements/RQ-06_threading-dispatch.md#rq-06-010)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-OWN-01](../30_release_test/requirement-test-matrix.md#case-tc-own-01)、[TC-CMD-01](../30_release_test/requirement-test-matrix.md#case-tc-cmd-01)、[TC-TRACE-01](../30_release_test/requirement-test-matrix.md#case-tc-trace-01) |
@@ -57,11 +58,12 @@ active Windowとfocusable/enabledなTextBox二つ、非focusable Containerを用
 | --- | --- | --- | --- |
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
 | 2026-10-17 | 0.1全文 | 利用者 | 「OK そろそろスクラッチを開始しましょうか。環境整備から始めてください。」により既存試験案を承認し環境整備を開始。製品test実装・合格を意味しない |
-| 2026-10-24 | 0.2改訂案 | — | A案に基づきTreeOwner / public handle lifetimeのUT-TREE-003を追加。文書全体レビュー待ち |
+| 2026-10-24 | 0.2改訂案 | — | A案に基づき内部owner primitiveのUT-CORE-TREE-OWNER-001とTree integrationのUT-TREE-003を追加。文書全体レビュー待ち |
+| 2026-10-24 | 0.2全文 | 利用者 | 「ok」によりTree owner寿命試験を含む文書全体を承認。試験の実装・実行は別管理 |
 
 ## 改訂履歴
 
 | 版 | 日付 | 内容・理由 | 作成者 | 承認との対応 |
 | --- | --- | --- | --- | --- |
 | 0.1 | 2026-10-17 | テスト文書作成指示に基づき前提・操作・観測・期待値・後始末を具体化 | Codex | 本版全文のレビュー待ち。未実装・未実行 |
-| 0.2 | 2026-10-24 | CoreObjectControlのTree internal ownerとcleanup reservationの寿命・失敗境界をUT-TREE-003で具体化 | Codex | 文書全体のレビュー待ち。未実装・未実行 |
+| 0.2 | 2026-10-24 | CoreObjectControlのTree internal ownerとcleanup reservationの寿命・失敗境界を具体化 | Codex | 文書全体は承認済み。UT-CORE-TREE-OWNER-001実装中、UT-TREE-003はTreeCoordinator実装待ち |

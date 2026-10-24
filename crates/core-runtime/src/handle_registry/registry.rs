@@ -50,6 +50,7 @@ pub(crate) trait CleanupReservation: Send {
 
 struct Lifecycle {
     public_refs: usize,
+    internal_owners: usize,
     pins: usize,
     ui_state_alive: bool,
     pending_cleanup: Option<Box<dyn CleanupReservation>>,
@@ -77,6 +78,7 @@ impl<R> CoreObjectControl<R> {
             cleanup_queue,
             lifecycle: Mutex::new(Lifecycle {
                 public_refs: 0,
+                internal_owners: 0,
                 pins: 0,
                 ui_state_alive: true,
                 pending_cleanup: None,
@@ -108,21 +110,15 @@ impl<R> CoreObjectControl<R> {
 
     /// Called by Runtime shutdown after it has destroyed this object's UI state.
     pub(crate) fn mark_ui_state_cleaned(&self) {
-        let cleanup = {
+        let obsolete_cleanup = {
             let mut lifecycle = match self.lifecycle.lock() {
                 Ok(lifecycle) => lifecycle,
                 Err(poisoned) => poisoned.into_inner(),
             };
             lifecycle.ui_state_alive = false;
-            if lifecycle.pins == 0 && lifecycle.public_refs == 0 {
-                lifecycle.pending_cleanup.take()
-            } else {
-                None
-            }
+            lifecycle.pending_cleanup.take()
         };
-        if let Some(cleanup) = cleanup {
-            cleanup.activate();
-        }
+        drop(obsolete_cleanup);
     }
 }
 
@@ -169,25 +165,111 @@ impl<R> ValidationPin<R> {
             control: Arc::clone(&self.control),
         })
     }
+
+    pub(crate) fn acquire_tree_owner(&self) -> Result<TreeOwner<R>, RegistryError>
+    where
+        R: Send + Sync + 'static,
+    {
+        let mut lifecycle = self
+            .control
+            .lifecycle
+            .lock()
+            .map_err(|_| RegistryError::SynchronizationPoisoned)?;
+        if !lifecycle.ui_state_alive || lifecycle.pins == 0 {
+            return Err(RegistryError::InvalidToken);
+        }
+
+        let next_internal_owners = lifecycle
+            .internal_owners
+            .checked_add(1)
+            .ok_or(RegistryError::ReferenceCountExhausted)?;
+        let reservation = if lifecycle.internal_owners == 0 && lifecycle.pending_cleanup.is_none() {
+            Some(self.control.reserve_cleanup()?)
+        } else {
+            None
+        };
+        lifecycle.internal_owners = next_internal_owners;
+        if let Some(reservation) = reservation {
+            lifecycle.pending_cleanup = Some(reservation);
+        }
+        Ok(TreeOwner {
+            control: Arc::clone(&self.control),
+        })
+    }
+}
+
+/// A logical-tree ownership reference, distinct from public handles and call pins.
+#[allow(dead_code)]
+pub(crate) struct TreeOwner<R> {
+    control: Arc<CoreObjectControl<R>>,
+}
+
+#[allow(dead_code)]
+impl<R> TreeOwner<R> {
+    pub(crate) fn identity(&self) -> ObjectIdentity {
+        self.control.identity()
+    }
+}
+
+impl<R> Drop for TreeOwner<R> {
+    fn drop(&mut self) {
+        let (activate, discard) = {
+            let mut lifecycle = match self.control.lifecycle.lock() {
+                Ok(lifecycle) => lifecycle,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            lifecycle.internal_owners = match lifecycle.internal_owners.checked_sub(1) {
+                Some(owners) => owners,
+                None => return,
+            };
+
+            if lifecycle.internal_owners == 0 && lifecycle.public_refs > 0 {
+                (None, lifecycle.pending_cleanup.take())
+            } else if lifecycle.internal_owners == 0
+                && lifecycle.public_refs == 0
+                && lifecycle.pins == 0
+            {
+                let cleanup = lifecycle.pending_cleanup.take();
+                if lifecycle.ui_state_alive {
+                    (cleanup, None)
+                } else {
+                    (None, cleanup)
+                }
+            } else {
+                (None, None)
+            }
+        };
+        drop(discard);
+        if let Some(cleanup) = activate {
+            cleanup.activate();
+        }
+    }
 }
 
 impl<R> Drop for ValidationPin<R> {
     fn drop(&mut self) {
-        let mut lifecycle = match self.control.lifecycle.lock() {
-            Ok(lifecycle) => lifecycle,
-            Err(poisoned) => poisoned.into_inner(),
+        let (activate, discard) = {
+            let mut lifecycle = match self.control.lifecycle.lock() {
+                Ok(lifecycle) => lifecycle,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            lifecycle.pins = match lifecycle.pins.checked_sub(1) {
+                Some(pins) => pins,
+                None => return,
+            };
+            if lifecycle.pins == 0 && lifecycle.public_refs == 0 && lifecycle.internal_owners == 0 {
+                let cleanup = lifecycle.pending_cleanup.take();
+                if lifecycle.ui_state_alive {
+                    (cleanup, None)
+                } else {
+                    (None, cleanup)
+                }
+            } else {
+                (None, None)
+            }
         };
-        lifecycle.pins = match lifecycle.pins.checked_sub(1) {
-            Some(pins) => pins,
-            None => return,
-        };
-        let cleanup = if lifecycle.pins == 0 && lifecycle.public_refs == 0 {
-            lifecycle.pending_cleanup.take()
-        } else {
-            None
-        };
-        drop(lifecycle);
-        if let Some(cleanup) = cleanup {
+        drop(discard);
+        if let Some(cleanup) = activate {
             cleanup.activate();
         }
     }
@@ -324,6 +406,34 @@ where
         Ok(token)
     }
 
+    pub(crate) fn register_from_tree_owner(
+        &self,
+        kind: K,
+        runtime_id: R,
+        owner: &TreeOwner<R>,
+    ) -> Result<HandleToken, RegistryError> {
+        if owner.control.runtime_id() != &runtime_id {
+            return Err(RegistryError::WrongRuntime);
+        }
+        let mut lifecycle = self.lock_lifecycle(&owner.control)?;
+        if !lifecycle.ui_state_alive || lifecycle.internal_owners == 0 {
+            return Err(RegistryError::InvalidToken);
+        }
+        let mut entries = self.lock_entries()?;
+        self.reserve_table_slot(&mut entries)?;
+        let token = self.issue_token()?;
+        let next_ref_count = lifecycle
+            .public_refs
+            .checked_add(1)
+            .ok_or(RegistryError::ReferenceCountExhausted)?;
+        entries.insert(
+            token,
+            HandleEntry::new(kind, Some(runtime_id), Arc::clone(&owner.control)),
+        );
+        lifecycle.public_refs = next_ref_count;
+        Ok(token)
+    }
+
     pub(crate) fn validate(
         &self,
         token: HandleToken,
@@ -364,11 +474,12 @@ where
         }
 
         let is_final_public_ref = lifecycle.public_refs == 1;
-        let reservation = if is_final_public_ref && lifecycle.ui_state_alive {
-            Some(control.reserve_cleanup()?)
-        } else {
-            None
-        };
+        let reservation =
+            if is_final_public_ref && lifecycle.internal_owners == 0 && lifecycle.ui_state_alive {
+                Some(control.reserve_cleanup()?)
+            } else {
+                None
+            };
 
         let removed = {
             let mut entries = self.lock_entries()?;
@@ -379,7 +490,7 @@ where
 
         lifecycle.public_refs -= 1;
         let cleanup_accepted = reservation.is_some();
-        let activate_now = if is_final_public_ref {
+        let activate_now = if is_final_public_ref && lifecycle.internal_owners == 0 {
             if lifecycle.pins == 0 {
                 reservation
             } else {
@@ -691,6 +802,168 @@ mod tests {
         drop(replacement_pin);
         registry.release(replacement).expect("release fresh owner");
         assert_eq!(queue.pending_count(), 1);
+    }
+
+    #[test]
+    fn tree_owner_keeps_ui_state_alive_and_can_issue_public_handle() {
+        let queue = FakeQueue::new();
+        let registry = TestRegistry::new();
+        let control = make_control(Arc::clone(&queue), 11, 3);
+        let token = registry
+            .register(7, 11, Arc::clone(&control))
+            .expect("register initial object");
+        let pin = registry.validate(token, &7, &11).expect("active pin");
+        let owner = pin.acquire_tree_owner().expect("acquire tree owner");
+        assert_eq!(owner.identity(), control.identity());
+        drop(pin);
+
+        let result = registry.release(token).expect("release public handle");
+        assert!(!result.cleanup_accepted);
+        assert_eq!(queue.pending_count(), 0);
+        assert!(control.lifecycle.lock().expect("lifecycle").ui_state_alive);
+
+        registry.fail_next_table_reservation();
+        assert_eq!(
+            registry.register_from_tree_owner(7, 11, &owner),
+            Err(RegistryError::OutOfMemory)
+        );
+        {
+            let lifecycle = control.lifecycle.lock().expect("lifecycle");
+            assert_eq!(lifecycle.public_refs, 0);
+            assert_eq!(lifecycle.internal_owners, 1);
+        }
+
+        let replacement = registry
+            .register_from_tree_owner(7, 11, &owner)
+            .expect("tree owner issues a fresh public handle");
+        let replacement_pin = registry
+            .validate(replacement, &7, &11)
+            .expect("fresh public handle is live");
+        drop(replacement_pin);
+        assert!(
+            !registry
+                .release(replacement)
+                .expect("release replacement handle")
+                .cleanup_accepted
+        );
+        assert_eq!(queue.pending_count(), 0);
+
+        drop(owner);
+        assert_eq!(queue.pending_count(), 1);
+        queue.drain_on_ui_thread();
+        assert_eq!(queue.completed().len(), 1);
+    }
+
+    #[test]
+    fn tree_owner_reservation_failure_preserves_public_reference() {
+        let queue = FakeQueue::new();
+        let registry = TestRegistry::new();
+        let control = make_control(Arc::clone(&queue), 11, 3);
+        let token = registry
+            .register(7, 11, Arc::clone(&control))
+            .expect("register object");
+        let pin = registry.validate(token, &7, &11).expect("active pin");
+        queue.fail_next_reservation();
+
+        assert_eq!(
+            pin.acquire_tree_owner().map(|_| ()),
+            Err(RegistryError::CleanupUnavailable)
+        );
+        {
+            let lifecycle = control.lifecycle.lock().expect("lifecycle");
+            assert_eq!(lifecycle.public_refs, 1);
+            assert_eq!(lifecycle.internal_owners, 0);
+        }
+        drop(pin);
+        let still_live = registry
+            .validate(token, &7, &11)
+            .expect("token remains live");
+        drop(still_live);
+        assert!(
+            registry
+                .release(token)
+                .expect("release after failed owner acquisition")
+                .cleanup_accepted
+        );
+        assert_eq!(queue.pending_count(), 1);
+    }
+
+    #[test]
+    fn tree_owner_reservation_follows_last_internal_and_public_owner() {
+        let queue = FakeQueue::new();
+        let registry = TestRegistry::new();
+        let control = make_control(Arc::clone(&queue), 11, 3);
+        let token = registry
+            .register(7, 11, Arc::clone(&control))
+            .expect("register object");
+        let pin = registry.validate(token, &7, &11).expect("active pin");
+        let first_owner = pin.acquire_tree_owner().expect("first tree owner");
+        let second_owner = pin.acquire_tree_owner().expect("second tree owner");
+        drop(pin);
+
+        assert!(
+            !registry
+                .release(token)
+                .expect("release public owner while tree owners remain")
+                .cleanup_accepted
+        );
+        drop(first_owner);
+        assert_eq!(queue.pending_count(), 0);
+        drop(second_owner);
+        assert_eq!(queue.pending_count(), 1);
+        queue.drain_on_ui_thread();
+        assert_eq!(queue.completed().len(), 1);
+
+        let (other_registry, other_control, other_token) =
+            make_registry_and_token(Arc::clone(&queue));
+        let other_pin = other_registry
+            .validate(other_token, &7, &11)
+            .expect("other object pin");
+        let owner = other_pin
+            .acquire_tree_owner()
+            .expect("acquire owner with public reference retained");
+        drop(other_pin);
+        drop(owner);
+        assert_eq!(queue.pending_count(), 0);
+        assert_eq!(
+            other_control
+                .lifecycle
+                .lock()
+                .expect("lifecycle")
+                .internal_owners,
+            0
+        );
+        assert!(
+            other_registry
+                .release(other_token)
+                .expect("final public release reserves after owner drop")
+                .cleanup_accepted
+        );
+        assert_eq!(queue.pending_count(), 1);
+        queue.drain_on_ui_thread();
+        assert_eq!(queue.completed().len(), 2);
+    }
+
+    #[test]
+    fn tree_owner_drop_after_runtime_cleanup_does_not_reschedule_state_cleanup() {
+        let queue = FakeQueue::new();
+        let registry = TestRegistry::new();
+        let control = make_control(Arc::clone(&queue), 11, 3);
+        let token = registry
+            .register(7, 11, Arc::clone(&control))
+            .expect("register object");
+        let pin = registry.validate(token, &7, &11).expect("active pin");
+        let owner = pin.acquire_tree_owner().expect("acquire tree owner");
+        drop(pin);
+
+        control.mark_ui_state_cleaned();
+        registry
+            .release(token)
+            .expect("release closed public handle");
+        drop(owner);
+        assert_eq!(queue.pending_count(), 0);
+        assert_eq!(queue.completed().len(), 0);
+        assert!(!control.lifecycle.lock().expect("lifecycle").ui_state_alive);
     }
 
     #[test]

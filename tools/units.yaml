@@ -3170,6 +3170,35 @@
           ]
         }
       ]
+    },
+    {
+      "id": "UNIT-CORE-067",
+      "state": "complete",
+      "scope": "core-object-control-logical-tree-owner-lifecycle",
+      "sources": ["crates/core-runtime/src/handle_registry/registry.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-003", "UNIT-CORE-034", "UNIT-CORE-036"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.3",
+          "section": "Tree内部ownerとpublic参照の独立管理"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "UI要素の所属と寿命 / ランタイムとの所有境界"
+        }
+      ],
+      "requirements": ["RQ-02-013", "RQ-04-025", "RQ-05-002", "RQ-05-003", "RQ-06-001", "RQ-09-003", "RQ-09-043", "RQ-09-044"],
+      "cases": ["TC-TREE-01", "TC-LIFE-01", "TC-OWN-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-CORE-TREE-OWNER-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "tree_owner_"]
+        }
+      ]
     }
   ]
 }
