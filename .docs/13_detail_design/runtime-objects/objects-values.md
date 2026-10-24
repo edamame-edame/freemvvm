@@ -1,9 +1,9 @@
 # オブジェクト管理：handle・値・error
 
-- 文書版: 1.2
+- 文書版: 1.3
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.2全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-10-24
+- 状態: 1.3改訂案レビュー待ち（A案選択済み）。1.2承認内容を維持し、内部owner連携の追加案をレビュー中。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -25,7 +25,7 @@
 
 ### 範囲
 
-オブジェクト管理：handle・値・errorでは、公開handle tokenがどのobjectと種類を指すかを登録し、API入口で検証する処理を定める。v1.2ではRuntime所属のobjectに限り、thread-safeな所有・call期間pinとUI-thread-confined stateの分離、最後の公開参照からRuntime cleanup queueへのhandoffを具体化する。Runtimeを持たない不変ErrorSnapshotの所有方式は本改訂の対象外とし、既存の不変snapshot契約を変更しない。本書は[ランタイム：実行context・所有・終了](../../12_design/runtime-objects/runtime.md)と[共通ABI：言語非依存境界と互換性](../../12_design/runtime-objects/abi.md)を具体化する。
+オブジェクト管理：handle・値・errorでは、公開handle tokenがどのobjectと種類を指すかを登録し、API入口で検証する処理を定める。v1.2ではRuntime所属objectについてthread-safeな所有・call期間pinとUI-thread-confined stateの分離を、v1.3ではpublic参照とTree internal ownerを区別するcleanup handoffを具体化する。Runtimeを持たない不変ErrorSnapshotの所有方式は本改訂の対象外とし、既存の不変snapshot契約を変更しない。本書は[ランタイム：実行context・所有・終了](../../12_design/runtime-objects/runtime.md)と[共通ABI：言語非依存境界と互換性](../../12_design/runtime-objects/abi.md)を具体化する。
 
 対象要求: [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-04-004](../../11_requirements/RQ-04_abi-boundary.md#rq-04-004)、[RQ-04-005](../../11_requirements/RQ-04_abi-boundary.md#rq-04-005)、[RQ-05-001](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-001)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-06-003](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)。
 
@@ -48,7 +48,7 @@
 | 表の同期区間ではtokenと登録レコードの整合だけを更新し、object破棄、callback、UI操作、ユーザーコードを実行しない。必要な内部参照を登録表外で確保してから同期を解く。 | [RQ-06-003](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)に対応し、競合中の再入やlock保持中の破棄を避ける。 |
 | token番号枯渇時はtokenを発行せず失敗する。登録表の割当失敗時は部分登録を残さない。 | [ランタイム：実行context・所有・終了](../../12_design/runtime-objects/runtime.md)の枯渇時失敗を発行処理に適用する。status/error codeの割当は本書では規定しない。 |
 
-v1.2レビュー案では、登録表中のRuntime object entryはgeneration付き`ObjectIdentity`と`Arc<CoreObjectControl>`を保持する。`CoreObjectControl`はRuntime identity、公開参照数、in-flight pin数、cleanup予約状態を同期管理し、UI object stateそのものを含まない。`CoreObjectControl`はthread-safeな内部ownerだが、これを通してUI stateをworkerから直接読書きすることはできない。
+v1.2承認設計では、登録表中のRuntime object entryはgeneration付き`ObjectIdentity`と`Arc<CoreObjectControl>`を保持する。v1.3案ではこれにinternal owner countを加える。`CoreObjectControl`はRuntime identity、public参照数、internal owner数、in-flight pin数、cleanup予約状態を同期管理し、UI object stateそのものを含まない。`CoreObjectControl`はthread-safeなowner metadataだが、これを通してUI stateをworkerから直接読書きすることはできない。
 
 ### 操作別契約
 
@@ -61,7 +61,7 @@ v1.2レビュー案では、登録表中のRuntime object entryはgeneration付�
 
 ここでいう「公開」はABI呼び出しから観測可能になることを指す。公開tokenの消費とRuntime UI stateの実破棄は別の境界である。成功した最終releaseはRuntime cleanup queueがticketを受理したことを示し、UI stateの破棄完了を待たない。完了観測は[RQ-05-010](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-010)のaccepted/completed区別とRuntimeのcleanup drain規則に従う。
 
-### Runtime objectのthread-safe ownerとUI state分離（v1.2レビュー案）
+### Runtime objectのthread-safe ownerとUI state分離（v1.2承認済み）
 
 この節は利用者が推奨Aを選択したことを受けた設計提案であり、文書版1.2全体の承認までは確定仕様としない。初期対象はRuntime所属objectとする。ErrorSnapshot等Runtime非依存の不変handleの寿命方式は別改訂で扱い、本節の採用によって変更しない。
 
@@ -79,18 +79,37 @@ HandleRegistry mutexはtoken mapだけを保護する。mapからcontrol block�
 
 `retain`はlive tokenとkind/Runtimeを検証し、新token用entryの確保が完了してから、control blockの公開参照数とmap entryをcommitする。準備に失敗した場合、入力tokenと既存の参照数を変更しない。`ValidationPin`取得は同じcontrol blockのlifecycle lock下でlive tokenを再確認し、pin数を増やしてから返す。UI stateへのアクセスは別途UI-thread check後にidentityを解決し、pinを保持したまま行う。
 
-#### 最終releaseとRuntime cleanup handoff
+#### 最終public releaseとRuntime cleanup handoff
 
-最後の公開参照を解放する順序を次に固定する。
+最後のpublic tokenを解放し、かつinternal ownerが存在しない場合の手順を次に固定する。internal ownerの最終解放は後続の「Tree内部owner」節に従う。
 
 1. tokenからcontrol blockを取得してmap lockを解く。control lifecycle lockを取り、同じtokenがまだliveであることをmap lock下で再確認する。control lockが同objectのretain/releaseを直列化する。
-2. これが最後の公開参照で、UI stateが残っている場合、Runtime anchorを保持した`CleanupReservation`をqueueから取得する。queueが予約を受け付けられなければ、map entryと公開参照数を変えずに失敗を返す。
+2. public/internal owner合計で最後のownerとなりUI stateが残っている場合、Runtime anchorを保持した`CleanupReservation`をqueueから取得する。queueが予約を受け付けられなければ、map entryとowner数を変えずに失敗を返す。internal ownerの最初の取得時は将来の最終解放に備えて同様のreservationを先取りする。
 3. 予約取得後にmap entryを除き、公開参照数を減らす。この時点をreleaseの線形化点とし、tokenは再利用しない。reservationは予約済みなので、lock解放後のticket commitは失敗しない。
 4. control/map lockを解いてticketを有効化する。ticketはpinが残っていれば待機し、最後のpinが落ちた後のUI safe pointで`UiObjectStore`からstateを一度だけ破棄する。Runtime host停止中はaccepted ticketをqueue ownerが保持し、Runtime設計のresume/drain規則に従う。
 
-最後の公開参照でないreleaseはcleanup reservationを必要とせず、token entryとその公開参照だけを除く。既にRuntime shutdownでUI stateが破棄されている場合はticketを要求せず、閉じたcontrol shellだけを任意threadから解放できる。RuntimeのClosing中はshutdown設計に従いfinalizer受付を維持し、全ticketの処理後にClosedへ進む。
+internal ownerが残る場合の最終public releaseは、そのownerが予約を保持するため新規reservationを要せず、token entryとpublic参照だけを除く。最終internal ownerの解放時にpublic参照が残っていれば予約を破棄し、後続の最終public releaseに従来手順を適用する。既にRuntime shutdownでUI stateが破棄されている場合はticketを要求せず、閉じたcontrol shellだけを任意threadから解放できる。RuntimeのClosing中はshutdown設計に従いfinalizer受付を維持し、全ticketの処理後にClosedへ進む。
 
 cleanup reservationの確保失敗ではreleaseを受け付けず、tokenをliveに保つ（[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)）。release成功はtoken消費とticket受付を意味し、UI state破棄完了を意味しない（[RQ-05-010](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-010)）。queue lockの保持中にcontrol/registry lockを取り直す経路を設けず、registry lock保持中にRuntime queueを呼ばない。
+
+### Tree内部ownerとpublic参照の独立管理（v1.3改訂案）
+
+この節は利用者が2026-10-24にA案を選択したことに基づく改訂提案であり、本書1.3全文の承認までは確定仕様としない。対象はRuntime所属UI objectの内部所有であり、外部API・公開tokenの意味は変更しない。
+
+`CoreObjectControl`は`public_refs`、`internal_owners`、`pins`を独立して数える。`ValidationPin`は従来どおりcall期間だけ有効であり、Tree所有の代用にしない。`TreeOwner`はUI thread上のLogical parent-child所属一件に対応する専用の線形ownerで、UI stateを直接保持せず、対象controlと`ObjectIdentity`を保持する。親stateがchildの`TreeOwner`を保持し、childからparentへの関係は非所有identityのままとする。
+
+UI stateがaliveである間、`internal_owners`が0から1へ変わる最初の取得時にcleanup reservationを先取りする。予約に失敗した場合はownerを発行せず、呼出し側はTreeを変更しない。既にinternal ownerがあれば追加ownerは同じreservationを共有する。internal ownerが存在する間に最後のpublic tokenがreleaseされてもstateは破棄せず、先取り済みreservationを維持する。public tokenが0でもinternal ownerがliveなら、Tree childを列挙する操作はそのownerを根拠に新しい独立public tokenを発行できる。
+
+cleanup開始条件は`public_refs == 0 && internal_owners == 0 && pins == 0 && ui_state_alive`とする。条件成立時にreservationを一度だけactivateし、UI safe pointでstateを破棄する。internal owner数が0になった時点でpublic_refsが正なら、保持中reservationを破棄し、将来の最終public releaseが従来どおり予約を取得する。public/internal ownerが0でもpinが残ればreservationをpendingとして保持し、最後のpin解放時にactivateする。Runtime shutdownでstore stateを破棄済みなら`ui_state_alive=false`とし、owner解放ではticketを再発行しない。
+
+| 操作 | 成功時 | 失敗時・境界 |
+|---|---|---|
+| `acquire_internal_owner(pin)` | live pinを根拠にinternal ownerを発行し、必要ならcleanup reservationを確保 | count overflow・予約失敗時はcountとTreeを変更しない |
+| public `release` | tokenとpublic refを消費する。internal ownerが残る間はUI stateを保持 | internal ownerが0で最終public refなら従来どおり事前予約後にtokenを消費 |
+| `register_from_internal_owner(owner)` | live internal ownerを検証し、独立public tokenとpublic refを追加 | owner失効・state閉鎖・token/table確保失敗時は既存ownerを変更しない |
+| `TreeOwner`解放 | internal ownerを一つ減らし、複合ownerがすべて0ならreservationをactivate | Drop経路は失敗可能な外部処理を行わず、事前受理済みreservationのみactivate |
+
+lock順は既存の`CoreObjectControl lifecycle → HandleRegistry map`を維持する。reservation取得・activateおよびUI state破棄はregistry map lockを保持したまま呼ばない。Runtime shutdownはUI thread上でTree所属ownerを解放してから残存UI stateを一括破棄し、Closed確定後のowner解放はshell metadataだけを更新する。
 
 ```mermaid
 sequenceDiagram
@@ -103,7 +122,7 @@ sequenceDiagram
     Caller->>Registry: tokenからcontrolをclone
     Registry-->>Caller: Arc<CoreObjectControl>
     Caller->>Control: lifecycle lock / token再確認
-    alt 最後の公開参照かつUI stateあり
+    alt 最後のpublic参照・internal ownerなし・UI stateあり
         Caller->>Queue: CleanupReservationを要求
         alt queue予約失敗
             Queue-->>Caller: failure
@@ -114,7 +133,7 @@ sequenceDiagram
             Queue-->>Caller: release accepted
             Queue->>Store: pin drain後のUI safe pointでdestroy
         end
-    else 最終参照ではない / UI stateなし
+    else 他ownerあり / UI stateなし
         Caller->>Registry: token entryをremove / 参照数をcommit
     end
 ```
@@ -258,9 +277,10 @@ converterは`NumericParser.parse_i64/parse_decimal`と`NumericFormatter.format_*
 | --- | --- | --- | --- |
 | HandleRegistry | process内token発行器、token→HandleEntryの同期付き表 | register(kind, runtime_id, object); validate(token, expected); retain(token); release(token) | 同期区間で登録整合だけを更新。callback・object最終破棄をlock外へ渡す |
 | HandleEntry | kind、optional Runtime identity、object identity、公開参照のlive状態 | matches_kind(kind); matches_runtime(id); consume_reference() | 一token一公開参照。別tokenのlive状態と独立 |
-| CoreObjectControl（v1.2案） | Runtime identity、object identity、public-ref/pin count、cleanup reservation state | retain_public_ref(); release_public_ref(); acquire_pin(); release_pin() | thread-safe owner metadata。UI object stateを直接保持しない |
-| UiObjectStore（v1.2案） | generation付きidentityからUI object stateを引くRuntime arena | resolve_on_ui_thread(identity); destroy_on_ui_thread(identity) | Runtime UI threadのみが保持・操作する |
+| CoreObjectControl（v1.3案） | Runtime identity、object identity、public-ref/internal-owner/pin count、cleanup reservation state | retain_public_ref(); release_public_ref(); acquire_internal_owner(); release_internal_owner(); acquire_pin(); release_pin() | thread-safe owner metadata。UI object stateを直接保持しない |
+| UiObjectStore（v1.2承認済み） | generation付きidentityからUI object stateを引くRuntime arena | resolve_on_ui_thread(identity); destroy_on_ui_thread(identity) | Runtime UI threadのみが保持・操作する |
 | ValidationPin | 検証済みcontrol blockのcall期間内部参照 | control(); release_pin() | API処理が戻るまでcontrolを保持。UI state解決にはUI-thread checkが別途必要 |
+| TreeOwner | Logical parent-child所属一件の内部所有 | identity(); register_public_owner(); release() | parent UI stateが保持する線形owner。public tokenやcall期間pinとは別count |
 | ValueStorage | BOOL/I64/UTF8/F64/DECIMALのtyped保存領域 | prepare(kind, input); equivalent(candidate); commit(candidate); read() | 借用入力の保持分はcopy。比較用正規化と保存表現を分離 |
 | ErrorSnapshot | raw status/domain/code、message、optional immutable cause | read_fields(); copy_message(buffer); retain_cause() | 不変内部ownerでcauseを保持。生成中のself/cycleを作らない |
 | FloatCodec | 有限/NaN/zero/infinity分類と表現可能性検査 | convert_f32_to_f64(value); convert_f64_to_f32(value, mode) | 純粋処理。Propertyや通知の状態を変更しない |
@@ -284,8 +304,14 @@ classDiagram
         borrow_target()
         release_pin()
     }
+    class TreeOwner {
+        identity()
+        register_public_owner()
+        release()
+    }
     class CoreObjectControl {
         retain_public_ref()
+        acquire_internal_owner()
         acquire_pin()
         release_pin()
     }
@@ -309,8 +335,9 @@ classDiagram
     HandleRegistry *-- HandleEntry
     HandleEntry o-- CoreObjectControl : 公開参照の対象
     ValidationPin o-- CoreObjectControl : call期間のみ
+    TreeOwner o-- CoreObjectControl : Logical所属期間
     CoreObjectControl ..> UiObjectStore : identityでUI thread上に解決
-    CoreObjectControl ..> RuntimeCleanupQueue : 最終参照ticket
+    CoreObjectControl ..> RuntimeCleanupQueue : public/internal最終owner ticket
     UiObjectStore *-- UiObjectState : arena slot
     UiObjectState *-- ValueStorage : 値を持つobject
     ErrorSnapshot o-- ErrorSnapshot : 不変cause
@@ -318,7 +345,7 @@ classDiagram
 
 ### 主要な呼出しと失敗境界
 
-API入口はregistryでtoken/live→kind→必要なRuntime所属を検証してValidationPinを取得する。UI stateに触れる操作はRQ-06-001のthread検査後、pinを保持したままRuntimeのUI-thread-only storeからidentityを解決する。releaseは最終参照のcleanup予約を先に確保し、tokenを消費した後、lock外でRuntime queueへticketを渡す。数値変換は局所結果の構築成功後だけoutへ書く。
+API入口はregistryでtoken/live→kind→必要なRuntime所属を検証してValidationPinを取得する。UI stateに触れる操作はRQ-06-001のthread検査後、pinを保持したままRuntimeのUI-thread-only storeからidentityを解決する。releaseは複合ownerが最後となる場合だけcleanup予約を確保し、tokenを消費した後、lock外でRuntime queueへticketを渡す。Treeからpublic tokenを発行する操作はTreeOwnerを根拠に行い、ValidationPinを長期所有へ転用しない。数値変換は局所結果の構築成功後だけoutへ書く。
 
 `CoreObjectControl`、`UiObjectStore`、`CleanupReservation`は本書の内部設計案であり、C ABI公開classではない。release準備の失敗ではtokenを消費せず、pinによる一時保持と利用者の所有権取得を混同しない。NumericParser/NumericFormatterは文字列converterの別責務とし、FloatCodecへ暗黙parseを加えない。
 
@@ -332,3 +359,4 @@ API入口はregistryでtoken/live→kind→必要なRuntime所属を検証して
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
 | 2026-10-17 | 1.2改訂案 | 利用者が推奨案Aを選択したため、Runtime object controlとUI stateの分離、pin、finalizer reservation、shutdown境界を具体化。Runtime非依存ErrorSnapshotの所有方式は変更しない。1.2全文はレビュー待ち |
 | 2026-10-17 | 1.2全文 | 利用者の「ok」により、Runtime-owned objectの所有・pin・最終release、およびErrorSnapshotを対象外とする本版全文を承認。実装・試験合格を意味しない |
+| 2026-10-24 | 1.3改訂案 | A案に基づきpublic/internal ownerを分離し、先取りcleanup reservationとTree owner由来public token発行を追加。全文レビュー待ち |
