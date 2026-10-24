@@ -1,7 +1,7 @@
 # Rust wrapper: Property Subscription
 
 - 更新日: 2026-10-24
-- 状態: 計画/DD 1.4承認済み（利用者、2026-10-24）。実装中
+- 状態: 計画/DD 1.4承認済み（利用者、2026-10-24）。実装済み・ローカル検証済み、CI待ち
 - 対象ブランチ: `impl-rust/wrappers-runtime-api`
 - 親: [Rust DECIMAL Property](rust-property-decimal.md)
 
@@ -45,7 +45,7 @@ CallbackはUI-onlyなので`Send`を要求しない。subscribeは初期通知�
 3. subscribe成功時だけclosure stateをCoreへ移す。失敗時はRust側でdropする。ticketとRuntime anchorはnative owned output受領前に確保する。
 4. Property::subscribeはRuntime identity/UI threadを検査する。Subscription::cancelは明示解除、close/Dropはtoken releaseだけを行う。
 5. callback panicはABIをunwindせず捕捉し、後続subscriberへ配信を継続する。destroy中panicもABIを越えない。
-6. consumerで初期通知なし、値変更通知、same-value無通知、close後もactive、cancel後停止、Property teardown cleanup、callback panic後の継続を確認する。
+6. crate-level integration testでtest host bridgeとlinked native C ABIを使い、初期通知なし、値変更通知、same-value無通知、close後もactive、cancel後停止、Property teardown cleanup、callback panic後の継続を確認する。
 7. unit-test design、manifest、dev command、local full gates、Rust 1.85、Windows/Linux CIを記録する。
 
 ## 完了条件
@@ -61,3 +61,4 @@ CallbackはUI-onlyなので`Send`を要求しない。subscribeは初期通知�
 | --- | --- | --- |
 | 2026-10-24 | 計画・DD案 | Rust Subscription APIとowner lifecycleがDD 1.2に未定義のため、公開API案・test plan・実装境界を作成。DD 1.4と計画の全文レビュー前にsource変更・commit/pushを行わない。 |
 | 2026-10-24 | 計画・DD承認 | 利用者の「OK」によりRust DD 1.4全文、Subscription計画、test designを承認。workspace側`property.rs`を変更して実装する。 |
+| 2026-10-24 | 実装案・ローカル検証 | subscribe/cancel/closeとC ABI host-dispatch integration testを追加。focused runtime tests、clippy、全bootstrap `check`とRust 1.85 `minimum`は成功。Windows/Linux CIは未実行。 |

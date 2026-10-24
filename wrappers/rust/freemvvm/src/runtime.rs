@@ -397,8 +397,10 @@ mod tests {
     use super::*;
     use crate::handle::pending_cleanup_count;
     use crate::native_api::NativeApi;
+    use crate::property::Property;
     use std::collections::HashMap;
     use std::sync::{Mutex, MutexGuard};
+    use std::{cell::Cell, rc::Rc};
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -406,6 +408,25 @@ mod tests {
         TEST_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    unsafe extern "C" fn noop_wake(_userdata: *mut std::ffi::c_void, _priority: u32) {}
+
+    unsafe extern "C" fn noop_bridge_destroy(_userdata: *mut std::ffi::c_void) {}
+
+    fn dispatch_property_event(runtime: u64, action: impl FnOnce()) {
+        let mut scope = 0;
+        // SAFETY: scope is writable and runtime is a live token on this UI thread.
+        let begin_status =
+            unsafe { freemvvm_sys::ui_abi_1_runtime_host_begin_event(runtime, &mut scope) };
+        assert_eq!(begin_status, native_api::OK);
+        action();
+        // SAFETY: scope was returned by begin_event and is ended once on the same UI thread.
+        let end_status = unsafe { freemvvm_sys::ui_abi_1_runtime_host_end_event(runtime, scope) };
+        assert_eq!(end_status, native_api::OK);
+        // SAFETY: the no-op wake callback has returned; this call models the next host turn.
+        let dispatch_status = unsafe { freemvvm_sys::ui_abi_1_runtime_dispatch_turn(runtime) };
+        assert_eq!(dispatch_status, native_api::OK);
     }
 
     #[derive(Default)]
@@ -666,5 +687,94 @@ mod tests {
         assert_eq!(error.code(), Some(0x1020_3040));
         assert_eq!(error.message(), Some("runtime unavailable"));
         assert_eq!(api.release_count(901), 1);
+    }
+
+    #[test]
+    fn property_subscription_separates_close_cancel_and_contains_callback_panic() {
+        let _guard = serialize_registry_test();
+        let mut runtime = UiRuntime::try_create().expect("native Runtime creation succeeds");
+        let runtime_token = runtime
+            .owner
+            .borrow()
+            .expect("Runtime owner is live")
+            .token();
+        // SAFETY: no-op bridge callbacks are valid for the Runtime lifetime and need no userdata.
+        let bridge_status = unsafe {
+            freemvvm_sys::ui_abi_1_runtime_set_ui_loop_bridge(
+                runtime_token,
+                Some(noop_wake),
+                std::ptr::null_mut(),
+                Some(noop_bridge_destroy),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(bridge_status, native_api::OK);
+
+        {
+            let ui = runtime
+                .ui_context()
+                .expect("Runtime UI context is available");
+            let mut property = Property::try_new(&ui, 0_i64).expect("Property creation succeeds");
+            let calls = Rc::new(Cell::new(0));
+            let callback_calls = Rc::clone(&calls);
+            let mut subscription = property
+                .subscribe(&ui, move || callback_calls.set(callback_calls.get() + 1))
+                .expect("subscription registration succeeds");
+            assert_eq!(
+                calls.get(),
+                0,
+                "subscribe does not send an initial notification"
+            );
+
+            dispatch_property_event(runtime_token, || property.set(&ui, 1).unwrap());
+            assert_eq!(calls.get(), 1);
+            dispatch_property_event(runtime_token, || property.set(&ui, 1).unwrap());
+            assert_eq!(calls.get(), 1, "an equal set does not notify");
+
+            subscription
+                .close()
+                .expect("close releases the public handle");
+            dispatch_property_event(runtime_token, || property.set(&ui, 2).unwrap());
+            assert_eq!(calls.get(), 2, "handle release alone does not cancel");
+
+            let mut cancellable = property
+                .subscribe(&ui, || {})
+                .expect("second subscription registration succeeds");
+            cancellable
+                .cancel(&ui)
+                .expect("explicit cancellation succeeds");
+            dispatch_property_event(runtime_token, || property.set(&ui, 3).unwrap());
+            cancellable.close().expect("inactive handle is releasable");
+
+            let mut panicking = property
+                .subscribe(&ui, || panic!("notification panic is contained"))
+                .expect("panicking subscriber registration succeeds");
+            let continued_calls = Rc::new(Cell::new(0));
+            let callback_calls = Rc::clone(&continued_calls);
+            let mut continued = property
+                .subscribe(&ui, move || callback_calls.set(callback_calls.get() + 1))
+                .expect("later subscriber registration succeeds");
+            dispatch_property_event(runtime_token, || property.set(&ui, 4).unwrap());
+            assert_eq!(
+                continued_calls.get(),
+                1,
+                "a callback panic does not stop later subscribers"
+            );
+            panicking
+                .cancel(&ui)
+                .expect("panicking subscription can be canceled");
+            continued
+                .cancel(&ui)
+                .expect("later subscription can be canceled");
+            panicking
+                .close()
+                .expect("panicking subscription handle is releasable");
+            continued
+                .close()
+                .expect("later subscription handle is releasable");
+
+            property.close().expect("Property teardown succeeds");
+        }
+        runtime.close().expect("Runtime handle release succeeds");
     }
 }

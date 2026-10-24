@@ -37,6 +37,16 @@ unsafe extern "C" {
 
     pub fn ui_abi_1_runtime_create(out_runtime: *mut Handle, out_error: *mut Handle) -> Status;
     pub fn ui_abi_1_runtime_is_ui_thread(runtime: Handle, out_yes: *mut Bool) -> Status;
+    pub fn ui_abi_1_runtime_set_ui_loop_bridge(
+        runtime: Handle,
+        callback: Option<unsafe extern "C" fn(*mut core::ffi::c_void, u32)>,
+        userdata: *mut core::ffi::c_void,
+        destroy: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_runtime_host_begin_event(runtime: Handle, out_scope_id: *mut u64) -> Status;
+    pub fn ui_abi_1_runtime_host_end_event(runtime: Handle, scope_id: u64) -> Status;
+    pub fn ui_abi_1_runtime_dispatch_turn(runtime: Handle) -> Status;
     pub fn ui_abi_1_property_create_bool(
         runtime: Handle,
         initial: Bool,
@@ -104,6 +114,15 @@ unsafe extern "C" {
         value_bits: u64,
         out_error: *mut Handle,
     ) -> Status;
+    pub fn ui_abi_1_property_subscribe(
+        property: Handle,
+        callback: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+        userdata: *mut core::ffi::c_void,
+        destroy: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+        out_subscription: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_subscription_cancel(subscription: Handle, out_error: *mut Handle) -> Status;
     pub fn ui_abi_1_runtime_shutdown(runtime: Handle, out_error: *mut Handle) -> Status;
     pub fn ui_abi_1_runtime_request_shutdown(
         runtime: Handle,

@@ -6,6 +6,7 @@ mod handle;
 mod native_api;
 mod property;
 mod runtime;
+mod subscription;
 
 pub use decimal::Decimal64;
 pub use error::UiError;
@@ -14,5 +15,6 @@ pub use property::{Property, PropertyValue};
 pub use runtime::{
     ShutdownMode, ShutdownRequest, ShutdownRequestState, ShutdownSnapshot, UiContext, UiRuntime,
 };
+pub use subscription::Subscription;
 
 pub const STATUS_UNSUPPORTED: u32 = freemvvm_sys::UNSUPPORTED;

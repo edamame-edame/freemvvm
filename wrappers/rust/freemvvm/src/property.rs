@@ -3,6 +3,7 @@ use crate::error::UiError;
 use crate::handle::{Owned, RuntimeAnchor, TicketReservation};
 use crate::native_api;
 use crate::runtime::UiContext;
+use crate::subscription::Subscription;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -347,6 +348,27 @@ impl<T: PropertyValue> Property<T> {
         }
         error_ticket.release();
         Ok(())
+    }
+
+    pub fn subscribe<F>(&self, ui: &UiContext<'_>, callback: F) -> Result<Subscription, UiError>
+    where
+        F: FnMut() + 'static,
+    {
+        self.check_context(ui)?;
+        ui.check_ui_thread()?;
+        let property = self.owner.borrow()?.token();
+        let anchor = self
+            .owner
+            .anchor()
+            .ok_or_else(|| UiError::from_status(native_api::CLOSED))?;
+        Subscription::register(
+            property,
+            Arc::clone(self.owner.api()),
+            self.owner.runtime_token(),
+            anchor,
+            Arc::clone(&self.identity),
+            callback,
+        )
     }
 
     pub fn close(&mut self) -> Result<(), UiError> {

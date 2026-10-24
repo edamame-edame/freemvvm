@@ -2346,7 +2346,7 @@
     },
     {
       "id": "UNIT-WRAP-RS-SUB-001",
-      "state": "planned",
+      "state": "in_progress",
       "scope": "rust-property-notification-subscription-callback-cancel-close",
       "sources": [
         "wrappers/rust/freemvvm-sys/**/*.rs",
@@ -2391,8 +2391,8 @@
       "test_design": ".docs/32_unit_test/wrappers.md",
       "tests": [
         {
-          "id": "UT-CONSUMER-RS-PROPERTY-SUBSCRIPTION-001",
-          "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-property-subscription-test"]
+          "id": "UT-WRAP-RS-SUB-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-runtime-test"]
         }
       ]
     }
