@@ -2425,7 +2425,7 @@
     },
     {
       "id": "UNIT-WRAP-CS-BIND-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "csharp-property-binding-modes-error-snapshot-and-error-subscription",
       "sources": [
         "wrappers/csharp/FreeMvvm/**/*.cs",
