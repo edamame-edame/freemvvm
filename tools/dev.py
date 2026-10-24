@@ -183,7 +183,7 @@ def main():
         "product_tests": (
             "C# Runtime wrapper unit tests executed"
             if args.command == "csharp-runtime-test"
-            else "C# BOOL/I64 Property wrapper unit tests executed"
+            else "C# Property wrapper unit tests executed"
             if args.command == "csharp-property-test"
             else "C# Runtime consumer test executed against the host C ABI"
             if args.command == "csharp-runtime-consumer-test"
