@@ -11,4 +11,5 @@
 - Core UI Treeの内部所有とRuntime UI object store統合はUNIT-CORE-067～069としてversion branchへ統合済み。C ABI Window/Controlとwrapper接続は別unit。
 - `ui/controls.md`と`32_unit_test/ui.md`の承認履歴は全文承認済み。UI Control DDはpublic ABI signatureを別途ABI DDへ送っている。
 - 現行C ABI DD/header/implementationにWindow・Widget・StackPanel・Text・Buttonを生成・接続するsymbol/APIはない。次の計画は初期UI C ABI契約のDD具体化から始め、承認前に実装しない。
+- ABI 1.3とUI test 0.3の作業tree上の内容はレビュー案のみ。初期UI feature候補ID 8はまだ承認・採番済みではなく、header/core/wrapper実装へ転記しない。
 - WebEngine branchは利用者による別途採否判断までversion branchへ統合しない。

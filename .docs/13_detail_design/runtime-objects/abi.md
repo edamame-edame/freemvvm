@@ -1,9 +1,9 @@
 # 共通C ABI：宣言・検査・互換性
 
-- 文書版: 1.2
+- 文書版: 1.3
 - 文書ロール: detailed-design
-- 更新日: 2026-10-19
-- 状態: 1.2全文承認済み（利用者、2026-10-19。Runtime dispatch turn追加を選択）。実装・試験状態は別管理
+- 更新日: 2026-10-24
+- 状態: 1.2全文承認済み（利用者、2026-10-19）。1.3初期UI Control API改訂案全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -577,6 +577,139 @@ ui_status ui_abi_1_text_box_value_property(ui_handle text_box,
 | 外部から異なる値が確定した場合は編集中の値も上書きし、入力状態・理由を初期化する | 入力途中とTwoWay更新の競合 |
 | TextBox破棄時は入力用closureを解除し、別途保持されたPropertyにはTextBoxを保持させない | UI寿命と参照循環 |
 
+### 初期UI ControlのC ABI操作（1.3改訂案）
+
+本節は承認済みControl意味論・Tree ownership・共通ABI規則を公開symbolへ写像する提案である。既存の`ui_abi_1_*` signature、status、所有規則は変更しない。ここに示す宣言とfeature IDはレビュー用で、正式header・実装済みAPIではない。
+
+要求根拠: [RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-002](../../11_requirements/RQ-09_ui-scope.md#rq-09-002)、[RQ-09-003](../../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-09-004](../../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-005](../../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-006](../../11_requirements/RQ-09_ui-scope.md#rq-09-006)、[RQ-09-007](../../11_requirements/RQ-09_ui-scope.md#rq-09-007)、[RQ-09-008](../../11_requirements/RQ-09_ui-scope.md#rq-09-008)、[RQ-09-011](../../11_requirements/RQ-09_ui-scope.md#rq-09-011)、[RQ-09-043](../../11_requirements/RQ-09_ui-scope.md#rq-09-043)、[RQ-09-044](../../11_requirements/RQ-09_ui-scope.md#rq-09-044)、[RQ-09-045](../../11_requirements/RQ-09_ui-scope.md#rq-09-045)、[RQ-09-046](../../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-048](../../11_requirements/RQ-09_ui-scope.md#rq-09-048)、[RQ-09-057](../../11_requirements/RQ-09_ui-scope.md#rq-09-057)、[RQ-09-058](../../11_requirements/RQ-09_ui-scope.md#rq-09-058)、[RQ-09-059](../../11_requirements/RQ-09_ui-scope.md#rq-09-059)、[RQ-09-061](../../11_requirements/RQ-09_ui-scope.md#rq-09-061)、[RQ-09-065](../../11_requirements/RQ-09_ui-scope.md#rq-09-065)、[RQ-09-067](../../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-09-072](../../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-10-003](../../11_requirements/RQ-10_accessibility.md#rq-10-003)、[RQ-14-001](../../11_requirements/RQ-14_delivery-sequence.md#rq-14-001)、[RQ-14-002](../../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-006](../../11_requirements/RQ-14_delivery-sequence.md#rq-14-006)。
+
+#### レビュー用C宣言
+
+`window`、`stack_panel`、`text`、`text_box`、`button`は`ui_handle`で表すopaqueなCore objectとする。`Widget`と`Container`は分類であり、直接生成するhandle種別ではない。TextBoxの生成・Value Property操作は前節の定義を維持し、以下ではその他の初期Control操作と共通method接続を追加提案する。
+
+```c
+typedef void (*ui_window_close_callback)(void *userdata,
+                                         ui_handle borrowed_close_request);
+
+enum {
+  UI_ORIENTATION_VERTICAL = 1,
+  UI_ORIENTATION_HORIZONTAL = 2,
+  UI_ALIGN_START = 1,
+  UI_ALIGN_CENTER = 2,
+  UI_ALIGN_END = 3,
+  UI_ALIGN_STRETCH = 4,
+  UI_CLOSE_ACCEPT = 1,
+  UI_CLOSE_DECLINE = 2
+};
+
+ui_status ui_abi_1_window_create(ui_handle runtime, ui_handle *out_window,
+                                 ui_handle *out_error);
+ui_status ui_abi_1_stack_panel_create(ui_handle runtime,
+                                      ui_handle *out_panel,
+                                      ui_handle *out_error);
+ui_status ui_abi_1_text_create(ui_handle runtime,
+                               const uint8_t *initial_utf8,
+                               uint64_t initial_byte_length,
+                               ui_handle *out_text, ui_handle *out_error);
+ui_status ui_abi_1_button_create(ui_handle runtime,
+                                 const uint8_t *initial_label_utf8,
+                                 uint64_t initial_byte_length,
+                                 ui_handle *out_button, ui_handle *out_error);
+
+ui_status ui_abi_1_widget_is_enabled_property(ui_handle widget,
+                                               ui_handle *out_owned_property);
+ui_status ui_abi_1_widget_accessible_name_property(
+    ui_handle widget, ui_handle *out_owned_property);
+ui_status ui_abi_1_widget_request_focus(ui_handle widget, ui_handle *out_error);
+
+ui_status ui_abi_1_window_content(ui_handle window,
+                                  ui_handle *out_owned_child,
+                                  ui_handle *out_error);
+ui_status ui_abi_1_window_set_content(ui_handle window, ui_handle borrowed_child,
+                                      ui_handle *out_error);
+ui_status ui_abi_1_window_clear_content(ui_handle window,
+                                        ui_handle *out_error);
+ui_status ui_abi_1_window_title_property(ui_handle window,
+                                         ui_handle *out_owned_property);
+ui_status ui_abi_1_window_open(ui_handle window, ui_handle *out_error);
+ui_status ui_abi_1_window_close(ui_handle window, ui_handle *out_error);
+ui_status ui_abi_1_window_close_request_subscribe(
+    ui_handle window, ui_window_close_callback callback, void *userdata,
+    ui_destroy destroy, ui_handle *out_subscription, ui_handle *out_error);
+ui_status ui_abi_1_window_close_request_defer(
+    ui_handle borrowed_request, ui_handle *out_owned_request,
+    ui_handle *out_error);
+ui_status ui_abi_1_window_close_request_resolve(
+    ui_handle request, uint32_t decision, ui_handle *out_error);
+
+ui_status ui_abi_1_container_insert(ui_handle container, ui_handle borrowed_child,
+                                    uint64_t index, ui_handle *out_error);
+ui_status ui_abi_1_container_remove(ui_handle container, ui_handle borrowed_child,
+                                    ui_handle *out_error);
+ui_status ui_abi_1_container_move(ui_handle container, uint64_t from_index,
+                                  uint64_t to_index, ui_handle *out_error);
+ui_status ui_abi_1_container_child_count(ui_handle container,
+                                         uint64_t *out_count);
+ui_status ui_abi_1_container_child_at(ui_handle container, uint64_t index,
+                                      ui_handle *out_owned_child,
+                                      ui_handle *out_error);
+
+ui_status ui_abi_1_stack_panel_orientation(ui_handle panel,
+                                           uint32_t *out_orientation);
+ui_status ui_abi_1_stack_panel_set_orientation(ui_handle panel,
+                                               uint32_t orientation,
+                                               ui_handle *out_error);
+ui_status ui_abi_1_stack_panel_set_child_align(ui_handle panel,
+                                              ui_handle borrowed_child,
+                                              uint32_t align,
+                                              ui_handle *out_error);
+
+ui_status ui_abi_1_text_content_property(ui_handle text,
+                                         ui_handle *out_owned_property);
+ui_status ui_abi_1_button_label_property(ui_handle button,
+                                         ui_handle *out_owned_property);
+ui_status ui_abi_1_button_set_command(ui_handle button,
+                                      ui_handle borrowed_command,
+                                      ui_handle *out_error);
+ui_status ui_abi_1_button_command(ui_handle button,
+                                  ui_handle *out_owned_command,
+                                  ui_handle *out_error);
+```
+
+feature IDは`8`（`core.ui.controls.v1`）を提案する。既存ID 1～7の次候補だが、本改訂の承認までは正式割当ではない。`has_feature(8)`は、このfeatureに含む全symbolと契約が提供される場合に限りtrueとする。一部Controlだけを提供する場合は、別feature定義をレビューする。
+
+#### 生成・所有・失敗の共通契約
+
+- すべての生成操作は稼働中Runtimeを必要とし、そのUI thread上で実行する。成功時はowned tokenを一つ返す。Core objectは初期状態でDetachedとし、生成だけでWindowを開いたりchildを接続したりしない。失敗時は`out_handle = 0`を返し、部分生成object、Property、registration、Tree ownerを残さない。UTF-8入力は呼出し終了前にコピーし、共通のnull/zero-length規則に従う。
+- 初期値は承認済みControl DDに従い、`Widget.IsEnabled = true`、`AccessibleName = ""`、`Text.Content = ""`、`Button.Label = ""`、`StackPanel.Orientation = Vertical`とする。StackPanel child AlignはStretch、Window titleは空UTF-8文字列で開始する。DDがPropertyと定める値は通常のPropertyとして公開する。
+- `*_property`形式の各getterは呼出しごとに、新しいowned tokenを同じCore管理Propertyに対して返す。`window_content`は現在のcontent childの新しいowned tokenを返し、contentが空なら成功とhandle 0を返す。
+- `container_*`はStackPanel等の複数childを持つContainerに適用する。Windowの単一content rootには`window_content`、`window_set_content`、`window_clear_content`だけを使う。`container_insert`のindexは`[0, child_count]`の0始まりとする。`container_move`の`to_index`は移動後の並びにおけるindexとする。入力handleはborrowedで、消費しない。親子関係のcommit時にTree internal ownerを取得する。removeはchildをdetachするが、caller所有handleをreleaseしない。`child_at`は現存するTree ownerに基づく新しいpublic ownerを返す。
+- childが所属できる親は最大一つとする。親子のRuntime不一致、型不正、cycle、範囲外index、UI thread違反、資源準備失敗時は共通statusと任意のerrorを返し、既存Tree、Property、Binding、registrationを変更しない。`window_set_content`は旧rootを原子的に置き換える。成功時に旧rootはDetachedとなり、独立したownerだけが残る。
+- OrientationとAlignは上記enum定数を使う。StackPanelはVerticalで開始し、child Alignの既定値はStretchとする。`set_child_align`が受け付けるのはそのpanelに現在所属しているchildだけである。不正値はLayoutをdirtyにせず、状態を一部変更しない。Layout結果/boundsは書き換え可能なC ABI値として公開せず、Core/Renderer内部で一貫したsnapshotを消費する。
+- `Text.Content`、`TextBox.Value`、`Button.Label`、Window title、`Widget.IsEnabled`、`Widget.AccessibleName`は既存の型付きProperty/Binding APIを再利用し、Control側に値を重複保持しない。Button Command設定は入力をborrowし、同一Runtimeを検査し、commit時に型付き参照を保持する。handle 0で解除できる。Command設定済みならgetterは新しいowned tokenを返し、未設定なら成功とhandle 0を返す。CommandなしのButtonも有効で、activationはno-opとする。
+- `widget_request_focus`はFocusManagerへ委譲する。WidgetがDetached、active Window外、disabled、またはfocusableでない場合は状態を変更しない。既存Focus順序とUI thread規則を適用し、新たなkey bindingやfocus traversalは追加しない。
+
+#### Window peerとclose requestの境界
+
+- `window_open`はPlatform Adapterにpeerの準備・openを依頼する。Platform DDに定めるopen遷移が成功した後に限り成功を返す。失敗してもCore Window、content Tree、title、Propertyは再試行できる状態で維持する。`window_close`はpeerだけを閉じ、後のopenで再利用できるようCore状態を保持する。Runtime shutdownは別操作とする。
+- OS close intentごとにgeneration結合されたCloseRequestを一つ作る。有効なclose subscriberがない場合、またはcallbackが判断せずに戻った場合は、要求済みの既定値Acceptを適用する。callbackが受け取るrequestはborrowedで、その呼出し中だけ有効とする。callback内でAccept/Declineをresolveするか、`close_request_defer`でowned requestを取得して後からresolveできる。未解決requestの最終ownerが失われた場合はDeclineとする。古いgenerationのrequestは拒否し、後から作られたpeerを閉じられない。
+- close-request subscriberは同時に最大一つとする案であり、二つ目の登録は一つ目を置き換えず失敗する。`close_request_resolve`が受け付けるdecisionはAccept/Declineのみで、borrowed requestならcallback実行中、defer済みowned requestならその後にresolveできる。`close_request_defer`の呼出しがcallbackによる明示的なDefer判断となり、resolveもdeferもせずcallbackが戻れば既定Acceptを選択する。resolveはhandleを消費せず、owned requestはcallerが別途releaseする。成功したsubscriptionはcallback userdataを所有し、UI thread上でdestroyを一度だけ呼ぶ。共通callback登録規則に従い、`subscription_cancel`は以降のcallbackを無効化し、releaseはcallerのSubscription tokenを解放する。Runtime shutdownはclose vetoを待ったり参照したりせずpeerを終了する。
+- レビュー判断点はclose-request subscriptionを単一handlerとするか複数handlerとするか、複数ならdecisionの集約・順序をどうするかである。本案は同時判断の曖昧さを避けるため単一handlerを提案する。callbackには既存のowned Subscription/cancel lifecycleを用い、新しい登録種別は追加しない。
+
+#### 初期Control featureのAPI一覧
+
+| 操作群 | 入出力 | thread / commit | 所有と失敗 |
+| --- | --- | --- | --- |
+| 生成 | Runtimeと必要に応じた初期UTF-8 → owned Control | UI、全状態/Propertyの準備後に公開 | 入力handleは消費しない。失敗時はout=0、部分生成なし |
+| 共通Property | borrowed Widget → 新しいowned Property token | UI、同一の基底Property | 独立所有されるProperty tokenはControlより長く存続可能 |
+| Tree | borrowed parent/childとindex → statusまたはowned child snapshot | UI、owner/資源準備後にTreeを原子的commit | child tokenを消費しない。失敗時は旧Tree維持 |
+| StackPanel | Orientation/child Align enum → status | UI、commit後にLayout dirty | 不正enum/別panelのchildなら旧Layout状態を維持 |
+| Window peer | borrowed Window → status | UI、準備/teardown成功時だけpeer状態を変更 | close後もCore object/contentを維持。Runtime shutdownとは独立 |
+| close判断 | borrowed request → 即時decisionまたはdefer済みowned request | UI、判断/resolve時にgeneration検査 | stale requestを拒否。未解決deferred ownerの解放はDecline |
+| Button Command | Buttonとborrowed/nullable Command → statusまたはowned Command getter | UI、同一Runtime検査後に交換 | 入力tokenを消費しない。交換失敗時は旧Command維持 |
+
+本書の共通検査優先順と必須出力の初期化規則を適用する。複数handleを持つ操作は必須output、handle有効性/型、Runtime同一性、UI thread/context、lifecycle、enum/valueの順に検査し、commit前に資源を準備する。任意の`out_error`がprimary statusに代わることはない。
+
 ### 上位判断MVVM UIライブラリ 初期公開値型の上位判断による公開ABI契約の改訂
 
 [オブジェクト管理：値・モデル・更新整合性](../../12_design/runtime-objects/model-values.md)のMVVM UIライブラリ 初期公開値型の上位判断により、公開ABI契約の**初期公開値型の種類数**をBOOL / I64 / UTF8の三種類から、F64と独自8バイトDECIMALを加えた五種類へ改訂する。公開ABI契約が定めた元の三種類の値の受渡しとOBJECT予約、公開ABI契約等の既存の意味論は、変更を明記した範囲以外は維持する。既存の第7・9・13節のC宣言と検証項目は三種類を対象に作成された段階の仕様であり、この改訂だけでF64 / DECIMALの公開ABIが完成したことにはならない。
@@ -833,3 +966,5 @@ ApiInventoryEntryの所管は文書path/版/項目で示す案とし、既存sch
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
 | 2026-10-19 | 1.2全文 | 利用者がhost turnごとのdispatch入口として`runtime_dispatch_turn(runtime)`を選択。既存1.1承認内容を維持してdispatch call contractを追加。実装・試験状態は別管理 |
+| 2026-10-24 | 1.3改訂案 | Window/StackPanel/Text/TextBox/Buttonの生成、Property/Command接続、Logical Tree、Window peer/close request、feature契約を追加提案。1.2承認状態を維持し、1.3全文は利用者レビュー待ち |
+| 2026-10-24 | 1.3全文 | 利用者の「ok」により初期UI Control C ABI契約案全体を承認。実装・試験状態は別管理 |
