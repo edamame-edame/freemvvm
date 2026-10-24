@@ -1,7 +1,7 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 
 - 文書版: 0.2
-- 状態: 0.1全文承認済み（利用者、2026-10-17）。0.2でC# Property Binding試験設計を登録（2026-10-24）。C++ Runtime/Property/Subscription/Binding/package consumer、C# Runtime/Property値型はfocused verification済み。C# Property Subscription（DD 1.2）はfocused fake ABI・real C ABI consumer・local check済み。実装commit `59d4dc9` の[Windows/Linux CI](https://github.com/edamame-edame/freemvvm/actions/runs/40054978936)も成功。Binding試験実行状態は別管理
+- 状態: 0.1全文承認済み（利用者、2026-10-17）。0.2でC# Property Binding試験設計を登録し、fake ABI・real C ABI consumer・local check・[Windows/Linux CI run 40060773110](https://github.com/edamame-edame/freemvvm/actions/runs/40060773110)が成功（2026-10-24）。C++ Runtime/Property/Subscription/Binding/package consumer、C# Runtime/Property値型もfocused verification済み。C# Property Subscription（DD 1.2）は実装commit `59d4dc9` の[Windows/Linux CI](https://github.com/edamame-edame/freemvvm/actions/runs/40054978936)も成功
 - 更新日: 2026-10-24
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
@@ -70,6 +70,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
 | 2026-10-17 | 0.1全文 | 利用者 | 「OK そろそろスクラッチを開始しましょうか。環境整備から始めてください。」により既存試験案を承認し環境整備を開始。製品test実装・合格を意味しない |
 | 2026-10-24 | 0.2追加 | — | 承認済みC# wrapper DD v1.3と実装計画に基づきC# Property Binding試験を登録。試験実装・合格は別途記録 |
+| 2026-10-24 | 0.2実行記録 | — | `UNIT-WRAP-CS-BIND-001`のfocused fake ABI・real C ABI consumer、local check/minimum、Windows/Linux CI run 40060773110が成功 |
 
 ## 改訂履歴
 

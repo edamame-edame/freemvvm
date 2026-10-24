@@ -1,7 +1,7 @@
 # C# Property Binding wrapper
 
 - 更新日: 2026-10-24
-- 状態: 計画・C# wrapper DD v1.3承認済み（利用者、2026-10-24）。実装開始承認済み・進行中
+- 状態: 完了（C# Property Binding実装・試験・Windows/Linux CI成功、2026-10-24）
 - 対象: 同一Runtimeの同型`UiProperty<T>`間にOneTime/OneWay/TwoWay Bindingを作り、所有・明示解除・遅延Binding errorの読み取りと通知をC#から利用する。
 - 作業ブランチ案: `impl-csharp/wrappers-runtime-api`
 
@@ -43,7 +43,7 @@ C# Runtime、BOOL/I64/F64/UTF-8/DECIMAL Property、Property notification Subscri
 3. [x] C# wrapper DD v1.3改訂案にBinding public API、OneTime結果、cancel/close、error snapshot/subscription、所有・失敗・thread規則を具体化し、文書全体の承認を得る（2026-10-24承認）。
 4. [x] DD承認後、test designとunit mappingを登録する。
 5. [x] 利用者から明示的な実装開始指示を受け、C# Binding facadeとfake ABI testsを実装した（2026-10-24）。
-6. [ ] real C ABI consumer、local checks、Windows/Linux CIを通し、実装・検証記録をcommit/pushする（real consumer・local checks成功、CI確認待ち）。
+6. [x] real C ABI consumer、local checks、Windows/Linux CIを通し、実装・検証記録をcommit/pushする（CI run [40060773110](https://github.com/edamame-edame/freemvvm/actions/runs/40060773110)成功）。
 
 計画承認、DD v1.3全文承認、実装開始承認は別々に記録する。本案は上記の日付に順に承認された。
 
@@ -52,7 +52,8 @@ C# Runtime、BOOL/I64/F64/UTF-8/DECIMAL Property、Property notification Subscri
 - 2026-10-24 `csharp-property-test`: pass（全対応値型の3 mode、失敗・所有・snapshot・error callback focused fake ABI tests）。
 - 2026-10-24 `csharp-property-consumer-test`: pass（実C ABI経由で全5値型のOneTime/OneWay/TwoWay初期同期・伝播・cancel/handle-release境界）。
 - 2026-10-24 `tools/dev.py check`: pass。`tools/dev.py minimum`: pass（Rust 1.85.0）。
-- Windows/Linux CI: commit push後に確認する。
+- 2026-10-24 Windows/Linux CI: [run 40060773110](https://github.com/edamame-edame/freemvvm/actions/runs/40060773110) success。
+- 実装commit: `14b98db` (`C# Property Bindingを実装`)。
 
 ## 完了確認条件
 
