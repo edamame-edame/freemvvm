@@ -49,8 +49,21 @@ unsafe extern "C" {
         out_property: *mut Handle,
         out_error: *mut Handle,
     ) -> Status;
+    pub fn ui_abi_1_property_create_utf8(
+        runtime: Handle,
+        bytes: *const u8,
+        byte_length: u64,
+        out_property: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
     pub fn ui_abi_1_property_get_bool(property: Handle, out_value: *mut Bool) -> Status;
     pub fn ui_abi_1_property_get_i64(property: Handle, out_value: *mut i64) -> Status;
+    pub fn ui_abi_1_property_get_utf8(
+        property: Handle,
+        buffer: *mut u8,
+        capacity: u64,
+        out_length: *mut u64,
+    ) -> Status;
     pub fn ui_abi_1_property_set_bool(
         property: Handle,
         value: Bool,
@@ -59,6 +72,12 @@ unsafe extern "C" {
     pub fn ui_abi_1_property_set_i64(
         property: Handle,
         value: i64,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_property_set_utf8(
+        property: Handle,
+        bytes: *const u8,
+        byte_length: u64,
         out_error: *mut Handle,
     ) -> Status;
     pub fn ui_abi_1_runtime_shutdown(runtime: Handle, out_error: *mut Handle) -> Status;
