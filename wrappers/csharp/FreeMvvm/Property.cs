@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace FreeMvvm;
@@ -7,8 +8,13 @@ public sealed class UiProperty<T> : IDisposable
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly TokenOwner _owner;
+    private readonly CallbackHandlerState _callbackHandlers;
 
-    private UiProperty(TokenOwner owner) => _owner = owner;
+    private UiProperty(TokenOwner owner, CallbackHandlerState callbackHandlers)
+    {
+        _owner = owner;
+        _callbackHandlers = callbackHandlers;
+    }
 
     public static UiResult<UiProperty<T>> TryCreate(UiRuntime runtime, T initial)
     {
@@ -22,6 +28,7 @@ public sealed class UiProperty<T> : IDisposable
             byte value = (bool)(object)initial! ? (byte)1 : (byte)0;
             return TryCreateCore(
                 runtime.Owner,
+                runtime.CallbackHandlers,
                 static (INativeApi api, ulong owner, byte initialValue, long _, double _, ulong _, byte[]? _, out ulong property, out ulong error) =>
                     api.PropertyCreateBool(owner, initialValue, out property, out error),
                 value,
@@ -36,6 +43,7 @@ public sealed class UiProperty<T> : IDisposable
             long value = (long)(object)initial!;
             return TryCreateCore(
                 runtime.Owner,
+                runtime.CallbackHandlers,
                 static (INativeApi api, ulong owner, byte _, long initialValue, double _, ulong _, byte[]? _, out ulong property, out ulong error) =>
                     api.PropertyCreateI64(owner, initialValue, out property, out error),
                 0,
@@ -50,6 +58,7 @@ public sealed class UiProperty<T> : IDisposable
             double value = (double)(object)initial!;
             return TryCreateCore(
                 runtime.Owner,
+                runtime.CallbackHandlers,
                 static (INativeApi api, ulong owner, byte _, long _, double initialValue, ulong _, byte[]? _, out ulong property, out ulong error) =>
                     api.PropertyCreateF64(owner, initialValue, out property, out error),
                 0,
@@ -64,6 +73,7 @@ public sealed class UiProperty<T> : IDisposable
             DecimalValue value = (DecimalValue)(object)initial!;
             return TryCreateCore(
                 runtime.Owner,
+                runtime.CallbackHandlers,
                 static (INativeApi api, ulong owner, byte _, long _, double _, ulong initialBits, byte[]? _, out ulong property, out ulong error) =>
                     api.PropertyCreateDecimal(owner, initialBits, out property, out error),
                 0,
@@ -85,6 +95,7 @@ public sealed class UiProperty<T> : IDisposable
                 byte[] bytes = StrictUtf8.GetBytes(text);
                 return TryCreateCore(
                     runtime.Owner,
+                    runtime.CallbackHandlers,
                     static (INativeApi api, ulong owner, byte _, long _, double _, ulong _, byte[]? initialUtf8, out ulong property, out ulong error) =>
                         api.PropertyCreateUtf8(owner, initialUtf8!, out property, out error),
                     0,
@@ -261,12 +272,92 @@ public sealed class UiProperty<T> : IDisposable
             : UiResult<bool>.Failure(error.Capture(status, errorToken));
     }
 
+    public UiResult<UiSubscription> TrySubscribe(Action callback)
+    {
+        if (callback is null)
+        {
+            return UiResult<UiSubscription>.Failure(new UiErrorSnapshot(UiStatus.InvalidArgument));
+        }
+
+        UiResult<CallLease> propertyLeaseResult = _owner.AcquireLease();
+        if (propertyLeaseResult.IsFailure)
+        {
+            return UiResult<UiSubscription>.Failure(propertyLeaseResult.Error!);
+        }
+
+        TokenOwner? subscriptionOwner = null;
+        UiSubscription? subscription = null;
+        GCHandle callbackRoot = default;
+        PreparedError? error = null;
+        try
+        {
+            subscriptionOwner = new TokenOwner(_owner.Api);
+            subscription = new UiSubscription(subscriptionOwner);
+            callbackRoot = GCHandle.Alloc(new PropertyCallbackRoot(callback, _callbackHandlers));
+            error = new PreparedError(_owner.Api);
+        }
+        catch (OutOfMemoryException)
+        {
+            if (callbackRoot.IsAllocated)
+            {
+                callbackRoot.Free();
+            }
+
+            subscriptionOwner?.Dispose();
+            propertyLeaseResult.Value.Dispose();
+            return UiResult<UiSubscription>.Failure(new UiErrorSnapshot(UiStatus.OutOfMemory));
+        }
+
+        uint status;
+        ulong subscriptionToken;
+        ulong errorToken;
+        try
+        {
+            using CallLease propertyLease = propertyLeaseResult.Value;
+            status = _owner.Api.PropertySubscribe(
+                propertyLease.Token,
+                PropertyCallbackEntryPoints.CallbackPointer,
+                GCHandle.ToIntPtr(callbackRoot),
+                PropertyCallbackEntryPoints.DestroyPointer,
+                out subscriptionToken,
+                out errorToken);
+        }
+        catch
+        {
+            callbackRoot.Free();
+            subscriptionOwner.Dispose();
+            return UiResult<UiSubscription>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        }
+
+        if (status != UiStatus.Ok)
+        {
+            callbackRoot.Free();
+            if (subscriptionToken != 0)
+            {
+                subscriptionOwner.Adopt(subscriptionToken);
+            }
+
+            subscriptionOwner.Dispose();
+            return UiResult<UiSubscription>.Failure(error!.Capture(status, errorToken));
+        }
+
+        if (subscriptionToken == 0)
+        {
+            subscriptionOwner.Dispose();
+            return UiResult<UiSubscription>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        }
+
+        subscriptionOwner!.Adopt(subscriptionToken);
+        return UiResult<UiSubscription>.Success(subscription!);
+    }
+
     public UiResult<UiCloseDisposition> TryClose() => _owner.TryClose();
 
     public void Dispose() => _owner.Dispose();
 
     private static UiResult<UiProperty<T>> TryCreateCore(
         TokenOwner runtimeOwner,
+        CallbackHandlerState callbackHandlers,
         CreateNative createNative,
         byte initialBool,
         long initialI64,
@@ -317,7 +408,7 @@ public sealed class UiProperty<T> : IDisposable
         }
 
         propertyOwner.Adopt(property);
-        return UiResult<UiProperty<T>>.Success(new UiProperty<T>(propertyOwner));
+        return UiResult<UiProperty<T>>.Success(new UiProperty<T>(propertyOwner, callbackHandlers));
     }
 
     private delegate uint CreateNative(

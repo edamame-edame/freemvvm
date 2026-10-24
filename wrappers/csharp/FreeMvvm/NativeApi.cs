@@ -11,6 +11,10 @@ internal interface INativeApi
 
     uint RuntimeIsUiThread(ulong runtime, out byte isUiThread);
 
+    uint RuntimeSetUiLoopBridge(ulong runtime, IntPtr wake, IntPtr userdata, IntPtr destroy, out ulong error);
+
+    uint RuntimeDispatchTurn(ulong runtime);
+
     uint PropertyCreateBool(ulong runtime, byte initial, out ulong property, out ulong error);
 
     uint PropertyCreateI64(ulong runtime, long initial, out ulong property, out ulong error);
@@ -40,6 +44,10 @@ internal interface INativeApi
     uint PropertySetDecimal(ulong property, ulong value, out ulong error);
 
     uint PropertySetUtf8(ulong property, byte[] value, out ulong error);
+
+    uint PropertySubscribe(ulong property, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error);
+
+    uint SubscriptionCancel(ulong subscription, out ulong error);
 
     uint RuntimeRequestShutdown(ulong runtime, uint mode, out ulong request, out ulong error);
 
@@ -77,6 +85,11 @@ internal sealed class NativeRuntimeApi : INativeApi
 
     public uint RuntimeIsUiThread(ulong runtime, out byte isUiThread) =>
         NativeMethods.RuntimeIsUiThread(runtime, out isUiThread);
+
+    public uint RuntimeSetUiLoopBridge(ulong runtime, IntPtr wake, IntPtr userdata, IntPtr destroy, out ulong error) =>
+        NativeMethods.RuntimeSetUiLoopBridge(runtime, wake, userdata, destroy, out error);
+
+    public uint RuntimeDispatchTurn(ulong runtime) => NativeMethods.RuntimeDispatchTurn(runtime);
 
     public uint PropertyCreateBool(ulong runtime, byte initial, out ulong property, out ulong error) =>
         NativeMethods.PropertyCreateBool(runtime, initial, out property, out error);
@@ -137,6 +150,12 @@ internal sealed class NativeRuntimeApi : INativeApi
             return NativeMethods.PropertySetUtf8(property, bytes, (ulong)value.Length, out error);
         }
     }
+
+    public uint PropertySubscribe(ulong property, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error) =>
+        NativeMethods.PropertySubscribe(property, callback, userdata, destroy, out subscription, out error);
+
+    public uint SubscriptionCancel(ulong subscription, out ulong error) =>
+        NativeMethods.SubscriptionCancel(subscription, out error);
 
     public uint RuntimeRequestShutdown(ulong runtime, uint mode, out ulong request, out ulong error) =>
         NativeMethods.RuntimeRequestShutdown(runtime, mode, out request, out error);
@@ -200,6 +219,15 @@ internal static partial class NativeMethods
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint RuntimeIsUiThread(ulong runtime, out byte isUiThread);
 
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_runtime_set_ui_loop_bridge")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint RuntimeSetUiLoopBridge(
+        ulong runtime, IntPtr wake, IntPtr userdata, IntPtr destroy, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_runtime_dispatch_turn")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint RuntimeDispatchTurn(ulong runtime);
+
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_create_bool")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint PropertyCreateBool(ulong runtime, byte initial, out ulong property, out ulong error);
@@ -259,6 +287,15 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_set_utf8")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static unsafe partial uint PropertySetUtf8(ulong property, byte* value, ulong byteLength, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_subscribe")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint PropertySubscribe(
+        ulong property, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_subscription_cancel")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint SubscriptionCancel(ulong subscription, out ulong error);
 
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_runtime_request_shutdown")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
