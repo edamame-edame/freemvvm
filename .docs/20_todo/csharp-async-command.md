@@ -1,15 +1,15 @@
 # C# 非同期Command wrapper
 
 - 更新日: 2026-10-24
-- 状態: 計画案・レビュー待ち。計画承認、DD改訂承認、実装開始はそれぞれ別途確認する
+- 状態: 実装進行中。計画・C# wrapper DD v1.4全文は利用者承認済みで、実装開始指示を受領。Rust Core/C ABI前提実装とWindows/Linux CIも完了
 - 対象: 承認済み非同期Command C ABIをC#から利用し、実行可否・実行状態・協調キャンセル・完了/失敗報告を扱うwrapper unit
-- 作業ブランチ: `impl-csharp/wrappers-runtime-api`
+- 作業ブランチ: `impl-csharp/runtime-async-command`（`impl-rust/runtime-async-command`を親とする）
 
 ## 背景と範囲
 
-C# Runtime、全5種Property、notification Subscription、Property Bindingは実装・CI確認済み。共通C ABIとイベントハンドリングDDには非同期Commandの生成、実行、cancel、close、state/can-execute Property、failure snapshot、workerからの完了報告が定義されている。一方、C# wrapper DDはCommandの公開名を列挙するに留まり、C#固有のcallback root、worker ownership、post、dispose/closeと結果表現を実装可能な粒度で定めていない。
+C# Runtime、全5種Property、notification Subscription、Property Bindingは実装・CI確認済み。共通C ABIとイベントハンドリングDDには非同期Commandの生成、実行、cancel、close、state/can-execute Property、failure snapshot、workerからの完了報告が定義されている。Rust Core/C ABIのCommand実装は`UNIT-CORE-066`として完了し、CI run 40072910815もWindows/Linuxで成功した。C# wrapper DD v1.4は公開API、callback root、worker ownership、post、dispose/closeと結果表現を定め、利用者承認済み。
 
-まずC# wrapper DDにCommandの具体API・class/interface・call/data/ownership flowを追加してレビューを受ける。DD承認後に、既存C ABIを使うC# facadeと試験を実装する。Rust Core、C ABI意味論、進捗専用API、package配布、Button/UI integrationは対象外とする。
+既存の承認済みC ABIを使うC# facadeと試験を実装する。Rust Core、C ABI意味論、進捗専用API、package配布、Button/UI integrationは対象外とする。
 
 ## 承認済み根拠
 
@@ -35,11 +35,12 @@ C# Runtime、全5種Property、notification Subscription、Property Bindingは�
 
 ## 実施順と承認境界
 
-1. [ ] 利用者が本計画案のunit範囲・試験境界をレビューする。
-2. [ ] 計画承認後に計画をcommit/pushする。
-3. [ ] C# wrapper DD Command節とクラス図・call/data/ownership flowを改訂案として提示し、文書全体の承認を得る。
-4. [ ] DD承認後、test designとunit mappingを登録する。
-5. [ ] 利用者から明示的な実装開始指示を受け、C# Command facadeとfocused testsを実装する。
-6. [ ] real C ABI consumer、local gates、Windows/Linux CIを通し、検証結果を記録して実装unitをcommit/pushする。
+1. [x] 計画案のunit範囲・試験境界をレビューし、承認済み。
+2. [x] 計画をcommit/push済み。
+3. [x] C# wrapper DD v1.4を改訂し、クラス図・call/data/ownership flowを含めて文書全体の承認済み。
+4. [x] 利用者の実装開始指示を受領。Rust Core/C ABI `UNIT-CORE-066`の実装とWindows/Linux CIが完了。
+5. [x] C# test design v0.3と`UNIT-WRAP-CS-COMMAND-001` mappingを登録。
+6. [x] C# Command facade、fake ABI focused tests、real C ABI consumerを実装。両Command試験はlocal pass。
+7. [ ] `tools/dev.py check`・`minimum`とWindows/Linux CIを通し、結果を記録して実装unitをcommit/pushする。
 
-計画承認、DD全文承認、実装開始承認は別々に記録する。現時点では本計画案だけを作成し、計画commit・DD改訂・製品source変更は行っていない。
+計画承認、DD全文承認、実装開始承認は別々に記録する。計画・DD・実装開始・試験設計登録・C#実装・focused/consumer試験は完了。repository gatesとWindows/Linux CIの最終確認が残る。

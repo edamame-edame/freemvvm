@@ -15,6 +15,8 @@ internal interface INativeApi
 
     uint RuntimeDispatchTurn(ulong runtime);
 
+    uint RuntimePost(ulong runtime, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong error);
+
     uint PropertyCreateBool(ulong runtime, byte initial, out ulong property, out ulong error);
 
     uint PropertyCreateI64(ulong runtime, long initial, out ulong property, out ulong error);
@@ -57,6 +59,30 @@ internal interface INativeApi
 
     uint BindingSubscribeError(ulong binding, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error);
 
+    uint CommandCreateAsync(ulong runtime, ulong eligibility, IntPtr start, IntPtr userdata, IntPtr destroy, out ulong command, out ulong error);
+
+    uint CommandExecute(ulong command, out ulong operationId, out ulong error);
+
+    uint CommandCancel(ulong command, ulong operationId, out ulong error);
+
+    uint CommandClose(ulong command, out ulong error);
+
+    uint CommandStateProperty(ulong command, out ulong property);
+
+    uint CommandCanExecuteProperty(ulong command, out ulong property);
+
+    uint CommandFailureSnapshot(ulong command, out ulong errorSnapshot);
+
+    uint CommandCancelTokenRequested(ulong token, out byte requested);
+
+    uint CommandCompleteSuccess(ulong command, ulong operationId);
+
+    unsafe uint CommandCompleteFailureUtf8(ulong command, ulong operationId, uint domain, uint code, byte* message, ulong length);
+
+    uint CommandCompleteCancelled(ulong command, ulong operationId);
+
+    uint HandleRetain(ulong borrowed, out ulong owned);
+
     uint RuntimeRequestShutdown(ulong runtime, uint mode, out ulong request, out ulong error);
 
     uint ShutdownRequestQuery(ulong request, out uint state, out uint reason, out ulong error);
@@ -98,6 +124,9 @@ internal sealed class NativeRuntimeApi : INativeApi
         NativeMethods.RuntimeSetUiLoopBridge(runtime, wake, userdata, destroy, out error);
 
     public uint RuntimeDispatchTurn(ulong runtime) => NativeMethods.RuntimeDispatchTurn(runtime);
+
+    public uint RuntimePost(ulong runtime, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong error) =>
+        NativeMethods.RuntimePost(runtime, callback, userdata, destroy, out error);
 
     public uint PropertyCreateBool(ulong runtime, byte initial, out ulong property, out ulong error) =>
         NativeMethods.PropertyCreateBool(runtime, initial, out property, out error);
@@ -177,6 +206,34 @@ internal sealed class NativeRuntimeApi : INativeApi
     public uint BindingSubscribeError(ulong binding, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error) =>
         NativeMethods.BindingSubscribeError(binding, callback, userdata, destroy, out subscription, out error);
 
+    public uint CommandCreateAsync(ulong runtime, ulong eligibility, IntPtr start, IntPtr userdata, IntPtr destroy, out ulong command, out ulong error) =>
+        NativeMethods.CommandCreateAsync(runtime, eligibility, start, userdata, destroy, out command, out error);
+
+    public uint CommandExecute(ulong command, out ulong operationId, out ulong error) =>
+        NativeMethods.CommandExecute(command, out operationId, out error);
+
+    public uint CommandCancel(ulong command, ulong operationId, out ulong error) =>
+        NativeMethods.CommandCancel(command, operationId, out error);
+
+    public uint CommandClose(ulong command, out ulong error) => NativeMethods.CommandClose(command, out error);
+
+    public uint CommandStateProperty(ulong command, out ulong property) => NativeMethods.CommandStateProperty(command, out property);
+
+    public uint CommandCanExecuteProperty(ulong command, out ulong property) => NativeMethods.CommandCanExecuteProperty(command, out property);
+
+    public uint CommandFailureSnapshot(ulong command, out ulong errorSnapshot) => NativeMethods.CommandFailureSnapshot(command, out errorSnapshot);
+
+    public uint CommandCancelTokenRequested(ulong token, out byte requested) => NativeMethods.CommandCancelTokenRequested(token, out requested);
+
+    public uint CommandCompleteSuccess(ulong command, ulong operationId) => NativeMethods.CommandCompleteSuccess(command, operationId);
+
+    public unsafe uint CommandCompleteFailureUtf8(ulong command, ulong operationId, uint domain, uint code, byte* message, ulong length) =>
+        NativeMethods.CommandCompleteFailureUtf8(command, operationId, domain, code, message, length);
+
+    public uint CommandCompleteCancelled(ulong command, ulong operationId) => NativeMethods.CommandCompleteCancelled(command, operationId);
+
+    public uint HandleRetain(ulong borrowed, out ulong owned) => NativeMethods.HandleRetain(borrowed, out owned);
+
     public uint RuntimeRequestShutdown(ulong runtime, uint mode, out ulong request, out ulong error) =>
         NativeMethods.RuntimeRequestShutdown(runtime, mode, out request, out error);
 
@@ -247,6 +304,10 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_runtime_dispatch_turn")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint RuntimeDispatchTurn(ulong runtime);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_runtime_post")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint RuntimePost(ulong runtime, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong error);
 
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_property_create_bool")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -334,6 +395,50 @@ internal static partial class NativeMethods
     internal static partial uint BindingSubscribeError(
         ulong binding, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error);
 
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_command_create_async")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint CommandCreateAsync(ulong runtime, ulong eligibility, IntPtr start, IntPtr userdata, IntPtr destroy, out ulong command, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_command_execute")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint CommandExecute(ulong command, out ulong operationId, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_command_cancel")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint CommandCancel(ulong command, ulong operationId, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_command_close")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint CommandClose(ulong command, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_command_state_property")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint CommandStateProperty(ulong command, out ulong property);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_command_can_execute_property")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint CommandCanExecuteProperty(ulong command, out ulong property);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_command_failure_snapshot")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint CommandFailureSnapshot(ulong command, out ulong errorSnapshot);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_command_cancel_token_requested")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint CommandCancelTokenRequested(ulong token, out byte requested);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_command_complete_success")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint CommandCompleteSuccess(ulong command, ulong operationId);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_command_complete_failure_utf8")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static unsafe partial uint CommandCompleteFailureUtf8(ulong command, ulong operationId, uint domain, uint code, byte* message, ulong length);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_command_complete_cancelled")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint CommandCompleteCancelled(ulong command, ulong operationId);
+
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_runtime_request_shutdown")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint RuntimeRequestShutdown(ulong runtime, uint mode, out ulong request, out ulong error);
@@ -349,6 +454,10 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_handle_release")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint HandleRelease(ulong owned);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_handle_retain")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint HandleRetain(ulong borrowed, out ulong owned);
 
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_error_status")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

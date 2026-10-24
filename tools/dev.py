@@ -130,6 +130,8 @@ def main():
             "csharp-runtime-consumer-test",
             "csharp-property-test",
             "csharp-property-consumer-test",
+            "csharp-command-test",
+            "csharp-command-consumer-test",
             "format",
             "minimum",
         ],
@@ -158,6 +160,10 @@ def main():
             if args.command == "csharp-runtime-test"
             else "csharp-property-unit-test"
             if args.command == "csharp-property-test"
+            else "csharp-command-unit-test"
+            if args.command == "csharp-command-test"
+            else "csharp-command-consumer-test"
+            if args.command == "csharp-command-consumer-test"
             else "csharp-runtime-consumer-test"
             if args.command == "csharp-runtime-consumer-test"
             else "csharp-property-consumer-test"
@@ -185,6 +191,10 @@ def main():
             if args.command == "csharp-runtime-test"
             else "C# Property wrapper unit tests executed"
             if args.command == "csharp-property-test"
+            else "C# asynchronous Command wrapper unit tests executed"
+            if args.command == "csharp-command-test"
+            else "C# Command consumer test executed against host C ABI"
+            if args.command == "csharp-command-consumer-test"
             else "C# Runtime consumer test executed against the host C ABI"
             if args.command == "csharp-runtime-consumer-test"
             else "C# Property consumer test executed against host C ABI"
@@ -424,6 +434,70 @@ def main():
                 environment,
                 results,
                 "csharp-property-c-abi-consumer",
+            )
+        elif args.command == "csharp-command-test":
+            project = "wrappers/csharp/tests/RuntimeTests/RuntimeTests.csproj"
+            run(
+                ["dotnet", "restore", project, "--locked-mode"],
+                environment,
+                results,
+                "csharp-command-test-restore",
+            )
+            run(
+                [
+                    "dotnet",
+                    "run",
+                    "--project",
+                    project,
+                    "--configuration",
+                    "Debug",
+                    "--no-restore",
+                ],
+                environment,
+                results,
+                "csharp-command-unit-tests",
+            )
+        elif args.command == "csharp-command-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "csharp-command-consumer-native-build",
+            )
+            project = "wrappers/csharp/tests/Consumer/Consumer.csproj"
+            run(
+                ["dotnet", "restore", project, "--locked-mode"],
+                environment,
+                results,
+                "csharp-command-consumer-restore",
+            )
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = ROOT / "target/debug" / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            run(
+                [
+                    "dotnet",
+                    "run",
+                    "--project",
+                    project,
+                    "--configuration",
+                    "Debug",
+                    "--no-restore",
+                    "--",
+                    str(native_path.resolve()),
+                ],
+                environment,
+                results,
+                "csharp-command-c-abi-consumer",
             )
         elif args.command == "minimum":
             run(
@@ -993,6 +1067,22 @@ def main():
                 environment,
                 results,
                 "csharp-property-consumer",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "csharp-command-test"],
+                environment,
+                results,
+                "csharp-command-unit",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "csharp-command-consumer-test",
+                ],
+                environment,
+                results,
+                "csharp-command-consumer",
             )
             run(
                 [sys.executable, "-m", "pip", "check"],

@@ -2521,6 +2521,61 @@
         {"id": "UT-WRAP-CS-BIND-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "csharp-property-test"]},
         {"id": "UT-CONSUMER-CS-BIND-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "csharp-property-consumer-test"]}
       ]
+    },
+    {
+      "id": "UNIT-WRAP-CS-COMMAND-001",
+      "state": "ready",
+      "scope": "csharp-async-command-worker-cancel-terminal-report-and-lifetime",
+      "sources": [
+        "wrappers/csharp/FreeMvvm/**/*.cs",
+        "wrappers/csharp/tests/RuntimeTests/**/*.cs",
+        "wrappers/csharp/tests/Consumer/**/*.cs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+        "wrappers/csharp/tests/RuntimeTests/*.csproj",
+        "wrappers/csharp/tests/Consumer/*.csproj",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-CORE-066",
+        "UNIT-WRAP-CS-001",
+        "UNIT-WRAP-CS-BIND-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.4",
+          "section": "非同期Command wrapper"
+        },
+        {
+          "path": ".docs/13_detail_design/events/commands.md",
+          "version": "1.1",
+          "section": "Async Command execution, state, cancellation, completion, and ownership"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Async Command C ABI"
+        }
+      ],
+      "requirements": [
+        "RQ-02-004", "RQ-04-006", "RQ-04-007", "RQ-04-022",
+        "RQ-05-002", "RQ-05-006", "RQ-05-007", "RQ-05-009", "RQ-05-012",
+        "RQ-06-001", "RQ-06-004", "RQ-06-008", "RQ-06-009", "RQ-06-010"
+      ],
+      "cases": ["TC-CMD-01", "TC-OWN-01", "TC-THREAD-01", "TC-LIFE-01", "TC-ERROR-01", "TC-WRAP-CS-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {"id": "UT-WRAP-CS-COMMAND-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "csharp-command-test"]},
+        {"id": "UT-CONSUMER-CS-COMMAND-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "csharp-command-consumer-test"]}
+      ]
     }
   ]
 }

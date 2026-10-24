@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using FreeMvvm;
 
 namespace FreeMvvm.Consumer;
@@ -88,6 +90,12 @@ internal static class Program
         if (bindingResult != 0)
         {
             return bindingResult;
+        }
+
+        int commandResult = RunCommandConsumer(args[0]);
+        if (commandResult != 0)
+        {
+            return commandResult;
         }
 
         long initialNaNBits = 0x7FF8_0000_0000_0042;
@@ -472,6 +480,186 @@ internal static class Program
         }
 
         return true;
+    }
+
+    private static int RunCommandConsumer(string nativeArtifactPath)
+    {
+        UiResult<UiRuntime> runtimeCreate = UiRuntime.TryCreate(new RuntimeOptions
+        {
+            NativeArtifactPath = nativeArtifactPath,
+        });
+        if (runtimeCreate.IsFailure)
+        {
+            Console.Error.WriteLine($"Command Runtime creation failed: {runtimeCreate.Error?.RawStatus}");
+            return 50;
+        }
+
+        using UiRuntime runtime = runtimeCreate.Value;
+        if (!InstallTestBridge(runtime))
+        {
+            Console.Error.WriteLine("Could not register the Command test host bridge.");
+            return 51;
+        }
+
+        UiProperty<bool> eligibility = UiProperty<bool>.TryCreate(runtime, false).Value;
+        int startCount = 0;
+        Task? workerTask = null;
+        using var closeWorkerEntered = new ManualResetEventSlim();
+        using var releaseCloseWorker = new ManualResetEventSlim();
+        UiCommand command = UiCommand.TryCreateAsync(runtime, eligibility, worker =>
+        {
+            int operation = Interlocked.Increment(ref startCount);
+            workerTask = Task.Run(() =>
+            {
+                using (worker)
+                {
+                    if (operation == 3)
+                    {
+                        SpinWait.SpinUntil(
+                            () => worker.IsCancellationRequested().Value,
+                            TimeSpan.FromSeconds(5));
+                        worker.TryReportCancelled();
+                    }
+                    else if (operation == 4)
+                    {
+                        closeWorkerEntered.Set();
+                        releaseCloseWorker.Wait();
+                        worker.TryReportCancelled();
+                    }
+                    else
+                    {
+                        Thread.Sleep(15);
+                        if (operation == 1)
+                        {
+                            worker.TryReportSuccess();
+                        }
+                        else
+                        {
+                            worker.TryReportFailure(23, 9, "consumer failure");
+                        }
+                    }
+                }
+            });
+        }).Value;
+
+        UiResult<ulong> disabled = command.TryExecute();
+        if (disabled.IsSuccess || startCount != 0)
+        {
+            Console.Error.WriteLine("Disabled Command must reject execution before starting a worker.");
+            return 52;
+        }
+
+        UiProperty<long> state = command.TryGetStateProperty().Value;
+        UiProperty<bool> canExecute = command.TryGetCanExecuteProperty().Value;
+        if (!RunDispatchTurn(runtime, () => eligibility.TrySet(true)) || !canExecute.TryGet().Value)
+        {
+            Console.Error.WriteLine("Command eligibility did not enable the read-only can-execute property.");
+            return 53;
+        }
+
+        UiResult<ulong> accepted = UiResult<ulong>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        if (!RunDispatchTurn(runtime, () => accepted = command.TryExecute()) || accepted.IsFailure ||
+            !PumpCommandUntil(runtime, workerTask, state, UiCommandState.Succeeded))
+        {
+            Console.Error.WriteLine("Successful Command worker did not complete through the UI dispatch queue.");
+            return 54;
+        }
+
+        UiResult<ulong> failedAccepted = UiResult<ulong>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        if (!RunDispatchTurn(runtime, () => failedAccepted = command.TryExecute()) || failedAccepted.IsFailure ||
+            !PumpCommandUntil(runtime, workerTask, state, UiCommandState.Failed))
+        {
+            Console.Error.WriteLine("Failed Command worker did not publish its terminal state.");
+            return 55;
+        }
+
+        UiErrorSnapshot? failure = command.TryGetFailureSnapshot().Value;
+        if (failure is null || failure.Domain != 23 || failure.Code != 9 || failure.Message != "consumer failure")
+        {
+            failure?.Dispose();
+            Console.Error.WriteLine("Command failure snapshot did not preserve the worker failure.");
+            return 56;
+        }
+
+        failure.Dispose();
+
+        UiResult<ulong> cancelledAccepted = UiResult<ulong>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        if (!RunDispatchTurn(runtime, () => cancelledAccepted = command.TryExecute()) || cancelledAccepted.IsFailure ||
+            !RunDispatchTurn(runtime, () => command.TryCancel(cancelledAccepted.Value)) ||
+            !PumpCommandUntil(runtime, workerTask, state, UiCommandState.Cancelled))
+        {
+            Console.Error.WriteLine("Command cancellation did not reach its distinct terminal state.");
+            return 57;
+        }
+
+        UiResult<ulong> closeAccepted = UiResult<ulong>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        if (!RunDispatchTurn(runtime, () => closeAccepted = command.TryExecute()) || closeAccepted.IsFailure ||
+            !closeWorkerEntered.Wait(TimeSpan.FromSeconds(2)))
+        {
+            Console.Error.WriteLine("Command close test worker did not start.");
+            releaseCloseWorker.Set();
+            return 58;
+        }
+
+        if (command.TryClose().IsFailure)
+        {
+            Console.Error.WriteLine("Command close failed.");
+            releaseCloseWorker.Set();
+            return 59;
+        }
+
+        releaseCloseWorker.Set();
+        if (workerTask is null || !workerTask.Wait(TimeSpan.FromSeconds(2)))
+        {
+            Console.Error.WriteLine("Command close blocked or abandoned its worker.");
+            return 60;
+        }
+
+        RunDispatchTurn(runtime, static () => { });
+        command.Dispose();
+
+        state.Dispose();
+        canExecute.Dispose();
+        eligibility.Dispose();
+        if (runtime.Shutdown().IsFailure || runtime.TryClose().IsFailure)
+        {
+            Console.Error.WriteLine("Command Runtime did not shut down and close cleanly.");
+            return 61;
+        }
+
+        Console.WriteLine("C# async Command terminal results and snapshots across the host C ABI: OK");
+        return 0;
+    }
+
+    private static bool PumpCommandUntil(
+        UiRuntime runtime,
+        Task? workerTask,
+        UiProperty<long> state,
+        UiCommandState expected)
+    {
+        if (workerTask is null)
+        {
+            return false;
+        }
+
+        Stopwatch timeout = Stopwatch.StartNew();
+        while (timeout.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            if (!RunDispatchTurn(runtime, static () => { }))
+            {
+                return false;
+            }
+
+            UiResult<long> current = state.TryGet();
+            if (current.IsSuccess && current.Value == (long)expected)
+            {
+                return workerTask.Wait(TimeSpan.FromSeconds(1));
+            }
+
+            Thread.Sleep(2);
+        }
+
+        return false;
     }
 
     private static bool InstallTestBridge(UiRuntime runtime)

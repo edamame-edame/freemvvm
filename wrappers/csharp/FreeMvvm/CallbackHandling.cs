@@ -8,6 +8,7 @@ public enum UiCallbackFailureKind
 {
     PropertyNotification,
     BindingErrorNotification,
+    CommandStart,
 }
 
 public sealed class UiCallbackFailure

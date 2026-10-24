@@ -33,6 +33,9 @@ internal static class Program
         Run(TestPropertyLeaseProtectsHandleDuringDispose);
         Run(TestPropertySubscriptionAndCallbackFailureHandling);
         Run(TestPropertyBindingModesErrorSnapshotAndSubscription);
+        Run(TestCommandWorkerPostsTerminalResultsAndRetainsSnapshot);
+        Run(TestCommandStartExceptionStaysInsideAbiBoundary);
+        Run(TestCommandCreateFailureKeepsStartRootLocallyOwned);
         return _failures == 0 ? 0 : 1;
     }
 
@@ -928,6 +931,112 @@ internal static class Program
         }
     }
 
+    private static void TestCommandWorkerPostsTerminalResultsAndRetainsSnapshot()
+    {
+        var native = new FakeNativeApi
+        {
+            CommandFailureToken = 1601,
+            ErrorStatusValue = 12,
+            ErrorDomainValue = 7,
+            ErrorCodeValue = 19,
+            ErrorMessageValue = Encoding.UTF8.GetBytes("command failed"),
+        };
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiProperty<bool> eligibility = UiProperty<bool>.TryCreate(runtime, true).Value;
+        UiCommandWorker? worker = null;
+        UiCommand command = UiCommand.TryCreateAsync(runtime, eligibility, current => worker = current).Value;
+        Check(native.LastCommandEligibility == native.BoolPropertyHandle, "Command must pass the eligibility handle to native");
+
+        ulong operationId = command.TryExecute().Value;
+        Check(worker is not null && worker.OperationId == operationId, "Start callback must receive the issued operation ID");
+        Check(command.TryCancel(operationId).Value, "Command cancellation must be accepted");
+        Check(worker!.IsCancellationRequested().Value == false, "The fake cancellation token should initially be clear");
+        native.RuntimePostStatus = UiStatus.OutOfMemory;
+        ulong rejectedPostCommandToken = native.LastRetainedToken + 1;
+        Check(worker.TryReportSuccess().IsFailure, "A rejected Runtime post must remain an observable failure");
+        Check(native.SuccessfulReleaseCount(rejectedPostCommandToken) == 1,
+            "A rejected Runtime post must release its locally retained Command token");
+        native.RuntimePostStatus = UiStatus.Ok;
+        Check(worker.TryReportSuccess().Value, "Terminal success must enqueue a UI post");
+        native.InvokeLastPost();
+        Check(native.CommandCompletionCount == 1 && native.LastCompletionKind == 1, "Success must complete on the UI dispatch callback");
+        worker.Dispose();
+
+        ulong failedOperation = command.TryExecute().Value;
+        Check(worker!.OperationId == failedOperation, "Each accepted execution must get its own worker");
+        Check(worker.TryReportFailure(7, 19, "\uD800").Error?.RawStatus == UiStatus.InvalidArgument,
+            "Invalid UTF-16 failure text must be rejected before allocating a post root");
+        Check(worker.TryReportFailure(7, 19, "command failed").Value, "Failure must enqueue a UI post");
+        native.InvokeLastPost();
+        Check(native.LastCompletionKind == 2 && native.LastFailureDomain == 7 && native.LastFailureCode == 19, "Failure metadata must cross the post intact");
+        Check(Encoding.UTF8.GetString(native.LastFailureMessage) == "command failed", "Failure text must be UTF-8 encoded without replacement");
+
+        UiErrorSnapshot? snapshot = command.TryGetFailureSnapshot().Value;
+        Check(snapshot is not null && snapshot.RawStatus == 12 && snapshot.Domain == 7 && snapshot.Code == 19, "Failure snapshot details must be copied from the owned ABI token");
+        Check(snapshot!.Message == "command failed", "Failure snapshot must preserve its immutable message");
+        snapshot.Dispose();
+        Check(native.SuccessfulReleaseCount(1601) == 1, "Disposing the failure snapshot must release its owned native token");
+        worker.Dispose();
+
+        ulong cancelledOperation = command.TryExecute().Value;
+        Check(worker!.OperationId == cancelledOperation, "Cancellation must be scoped to the current worker operation");
+        Check(worker.TryReportCancelled().Value, "Cancellation terminal result must enqueue a UI post");
+        native.InvokeLastPost();
+        Check(native.LastCompletionKind == 3, "Cancelled completion must remain distinct from cancellation request");
+        worker.Dispose();
+
+        UiProperty<long> state = command.TryGetStateProperty().Value;
+        UiProperty<bool> canExecute = command.TryGetCanExecuteProperty().Value;
+        native.CommandCloseStatus = UiStatus.InternalError;
+        Check(command.TryClose().IsFailure && native.CommandDestroyCount == 0,
+            "A failed Command close must leave the callback root available for retry");
+        native.CommandCloseStatus = UiStatus.Ok;
+        Check(command.TryClose().Value, "Command close must be explicit and independent of handle release");
+        Check(native.CommandDestroyCount == 1, "Command close must destroy the start callback root once");
+        state.Dispose();
+        canExecute.Dispose();
+        command.Dispose();
+        eligibility.Dispose();
+        runtime.Dispose();
+    }
+
+    private static void TestCommandStartExceptionStaysInsideAbiBoundary()
+    {
+        var native = new FakeNativeApi();
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiCallbackFailureKind? observedKind = null;
+        using UiCallbackHandlerRegistration registration = runtime.TrySetCallbackFailureHandler(
+            failure => observedKind = failure.Kind).Value;
+        UiCommand command = UiCommand.TryCreateAsync(
+            runtime,
+            null,
+            _ => throw new InvalidOperationException("start failed")).Value;
+
+        Check(command.TryExecute().IsSuccess, "Accepted execution must remain accepted when its start callback fails");
+        Check(observedKind == UiCallbackFailureKind.CommandStart, "Start exceptions must use the CommandStart handler kind");
+        Check(native.LastStartStatus == UiStatus.InternalError, "Managed exceptions must be translated before crossing the C ABI");
+        Check(native.CommandDestroyCount == 0, "The start root remains owned until explicit close");
+        Check(command.TryClose().IsSuccess && native.CommandDestroyCount == 1, "Closing the command must destroy its callback root once");
+        command.Dispose();
+        runtime.Dispose();
+    }
+
+    private static void TestCommandCreateFailureKeepsStartRootLocallyOwned()
+    {
+        var native = new FakeNativeApi { CommandCreateStatus = UiStatus.OutOfMemory };
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        int startCount = 0;
+        UiResult<UiCommand> created = UiCommand.TryCreateAsync(runtime, null, _ => startCount++);
+
+        Check(created.IsFailure && created.Error?.RawStatus == UiStatus.OutOfMemory,
+            "Command creation failure must preserve its native status");
+        Check(startCount == 0 && native.CommandStartCount == 0,
+            "A rejected create must not invoke or transfer the start callback");
+        Check(native.SuccessfulReleaseCount(1501) == 1 && native.SuccessfulReleaseCount(1502) == 1,
+            "A rejected create must release wrapper and callback Runtime anchors locally");
+        runtime.Dispose();
+    }
+
     private sealed class FakeNativeApi : INativeApi
     {
         private readonly ConcurrentDictionary<ulong, int> _releaseFailures = new();
@@ -940,9 +1049,16 @@ internal static class Program
         private readonly ConcurrentDictionary<ulong, byte[]> _utf8Properties = new();
         private readonly ConcurrentDictionary<ulong, FakeSubscription> _subscriptions = new();
         private readonly ConcurrentDictionary<ulong, byte> _cancelledSubscriptions = new();
+        private readonly ConcurrentDictionary<long, FakePost> _posts = new();
         private ulong _nextProperty = 300;
         private ulong _nextSubscription = 900;
         private ulong _nextBinding = 1200;
+        private ulong _nextRetained = 1500;
+        private long _nextPost;
+        private IntPtr _commandStart;
+        private IntPtr _commandStartUserdata;
+        private IntPtr _commandStartDestroy;
+        private bool _commandRootDestroyed;
 
         internal ulong RuntimeHandle { get; init; } = 101;
         internal ulong RequestHandle { get; init; } = 202;
@@ -965,6 +1081,15 @@ internal static class Program
         internal uint BindingCancelStatus { get; set; } = UiStatus.Ok;
         internal uint BindingErrorSnapshotStatus { get; set; } = UiStatus.Ok;
         internal uint BindingSubscribeErrorStatus { get; set; } = UiStatus.Ok;
+        internal uint CommandCreateStatus { get; set; } = UiStatus.Ok;
+        internal uint CommandExecuteStatus { get; set; } = UiStatus.Ok;
+        internal uint CommandCloseStatus { get; set; } = UiStatus.Ok;
+        internal uint RuntimePostStatus { get; set; } = UiStatus.Ok;
+        internal ulong CommandHandle { get; set; } = 1301;
+        internal ulong CommandCancelToken { get; set; } = 1302;
+        internal ulong CommandOperationErrorToken { get; set; }
+        internal ulong CommandFailureToken { get; set; }
+        internal ulong RuntimePostErrorToken { get; set; }
         internal ulong BindingErrorToken { get; set; }
         internal ulong BindingRejectedPropertyToken { get; set; }
         internal uint BindingDirectionValue { get; set; } = (uint)UiBindingDirection.SourceToTarget;
@@ -1004,6 +1129,20 @@ internal static class Program
         internal uint LastBindingMode { get; private set; }
         internal ulong LastBinding { get; private set; }
         internal int BindingCreateCount { get; private set; }
+        internal int CommandCreateCount { get; private set; }
+        internal int CommandStartCount { get; private set; }
+        internal int CommandDestroyCount { get; private set; }
+        internal int CommandCompletionCount { get; private set; }
+        internal ulong LastCommand { get; private set; }
+        internal ulong LastCommandEligibility { get; private set; }
+        internal ulong LastOperationId { get; private set; }
+        internal uint LastCompletionKind { get; private set; }
+        internal uint LastStartStatus { get; private set; }
+        internal ulong LastRetainedToken { get; private set; }
+        internal uint LastFailureDomain { get; private set; }
+        internal uint LastFailureCode { get; private set; }
+        internal byte[] LastFailureMessage { get; private set; } = [];
+        internal ulong LastPostId => unchecked((ulong)Volatile.Read(ref _nextPost));
 
         public uint RuntimeCreate(out ulong runtime, out ulong error)
         {
@@ -1026,6 +1165,136 @@ internal static class Program
         }
 
         public uint RuntimeDispatchTurn(ulong runtime) => UiStatus.Ok;
+
+        public uint RuntimePost(ulong runtime, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong error)
+        {
+            error = RuntimePostErrorToken;
+            if (RuntimePostStatus == UiStatus.Ok)
+            {
+                long id = Interlocked.Increment(ref _nextPost);
+                _posts[id] = new FakePost(callback, userdata, destroy);
+            }
+
+            return RuntimePostStatus;
+        }
+
+        public uint CommandCreateAsync(
+            ulong runtime, ulong eligibility, IntPtr start, IntPtr userdata, IntPtr destroy,
+            out ulong command, out ulong error)
+        {
+            CommandCreateCount++;
+            LastRuntime = runtime;
+            LastCommandEligibility = eligibility;
+            error = CommandOperationErrorToken;
+            command = CommandCreateStatus == UiStatus.Ok ? CommandHandle : 0;
+            if (command != 0)
+            {
+                _commandStart = start;
+                _commandStartUserdata = userdata;
+                _commandStartDestroy = destroy;
+                _commandRootDestroyed = false;
+            }
+
+            return CommandCreateStatus;
+        }
+
+        public unsafe uint CommandExecute(ulong command, out ulong operationId, out ulong error)
+        {
+            LastCommand = command;
+            operationId = CommandExecuteStatus == UiStatus.Ok ? LastOperationId + 1 : 0;
+            error = CommandOperationErrorToken;
+            if (operationId == 0)
+            {
+                return CommandExecuteStatus == UiStatus.Ok ? UiStatus.InternalError : CommandExecuteStatus;
+            }
+
+            LastOperationId = operationId;
+            CommandStartCount++;
+            LastStartStatus = ((delegate* unmanaged[Cdecl]<IntPtr, ulong, ulong, ulong, uint>)_commandStart)(
+                _commandStartUserdata,
+                command,
+                operationId,
+                CommandCancelToken);
+            return UiStatus.Ok;
+        }
+
+        public uint CommandCancel(ulong command, ulong operationId, out ulong error)
+        {
+            LastCommand = command;
+            LastOperationId = operationId;
+            error = CommandOperationErrorToken;
+            return UiStatus.Ok;
+        }
+
+        public uint CommandClose(ulong command, out ulong error)
+        {
+            LastCommand = command;
+            error = CommandOperationErrorToken;
+            if (CommandCloseStatus == UiStatus.Ok)
+            {
+                DestroyCommandRoot();
+            }
+
+            return CommandCloseStatus;
+        }
+
+        public uint CommandStateProperty(ulong command, out ulong property)
+        {
+            LastCommand = command;
+            property = ++_nextProperty;
+            _i64Properties[property] = (long)UiCommandState.Idle;
+            return UiStatus.Ok;
+        }
+
+        public uint CommandCanExecuteProperty(ulong command, out ulong property)
+        {
+            LastCommand = command;
+            property = ++_nextProperty;
+            _boolProperties[property] = 1;
+            return UiStatus.Ok;
+        }
+
+        public uint CommandFailureSnapshot(ulong command, out ulong errorSnapshot)
+        {
+            LastCommand = command;
+            errorSnapshot = CommandFailureToken;
+            return UiStatus.Ok;
+        }
+
+        public uint CommandCancelTokenRequested(ulong token, out byte requested)
+        {
+            requested = 0;
+            return token == 0 ? UiStatus.InvalidHandle : UiStatus.Ok;
+        }
+
+        public uint CommandCompleteSuccess(ulong command, ulong operationId)
+        {
+            RecordCompletion(command, operationId, 1);
+            return UiStatus.Ok;
+        }
+
+        public unsafe uint CommandCompleteFailureUtf8(
+            ulong command, ulong operationId, uint domain, uint code, byte* message, ulong length)
+        {
+            LastFailureDomain = domain;
+            LastFailureCode = code;
+            LastFailureMessage = length == 0 ? [] : new ReadOnlySpan<byte>(message, checked((int)length)).ToArray();
+            RecordCompletion(command, operationId, 2);
+            return UiStatus.Ok;
+        }
+
+        public uint CommandCompleteCancelled(ulong command, ulong operationId)
+        {
+            RecordCompletion(command, operationId, 3);
+            return UiStatus.Ok;
+        }
+
+        public uint HandleRetain(ulong borrowed, out ulong owned)
+        {
+            owned = borrowed == 0 ? 0 : ++_nextRetained;
+            LastRetainedToken = owned;
+            return borrowed == 0 ? UiStatus.InvalidHandle : UiStatus.Ok;
+        }
 
         public uint PropertyCreateBool(ulong runtime, byte initial, out ulong property, out ulong error)
         {
@@ -1348,6 +1617,36 @@ internal static class Program
             }
         }
 
+        internal unsafe void InvokeLastPost()
+        {
+            long id = Interlocked.Read(ref _nextPost);
+            if (_posts.TryRemove(id, out FakePost post))
+            {
+                ((delegate* unmanaged[Cdecl]<IntPtr, void>)post.Callback)(post.Userdata);
+                ((delegate* unmanaged[Cdecl]<IntPtr, void>)post.Destroy)(post.Userdata);
+            }
+        }
+
+        private unsafe void DestroyCommandRoot()
+        {
+            if (_commandRootDestroyed || _commandStartDestroy == IntPtr.Zero)
+            {
+                return;
+            }
+
+            _commandRootDestroyed = true;
+            CommandDestroyCount++;
+            ((delegate* unmanaged[Cdecl]<IntPtr, void>)_commandStartDestroy)(_commandStartUserdata);
+        }
+
+        private void RecordCompletion(ulong command, ulong operationId, uint kind)
+        {
+            LastCommand = command;
+            LastOperationId = operationId;
+            LastCompletionKind = kind;
+            CommandCompletionCount++;
+        }
+
         public uint RuntimeShutdown(ulong runtime, out ulong error)
         {
             LastRuntime = runtime;
@@ -1426,5 +1725,7 @@ internal static class Program
             values.TryGetValue(token, out int value) ? value : 0;
 
         private sealed record FakeSubscription(IntPtr Callback, IntPtr Userdata, IntPtr Destroy);
+
+        private readonly record struct FakePost(IntPtr Callback, IntPtr Userdata, IntPtr Destroy);
     }
 }

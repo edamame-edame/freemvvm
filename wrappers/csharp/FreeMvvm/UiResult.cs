@@ -1,22 +1,26 @@
 using System;
 using System.Text;
+using System.Threading;
 
 namespace FreeMvvm;
 
-public sealed class UiErrorSnapshot
+public sealed class UiErrorSnapshot : IDisposable
 {
     private readonly byte[]? _messageUtf8;
+    private TokenOwner? _nativeOwner;
 
     internal UiErrorSnapshot(
         uint rawStatus,
         uint? domain = null,
         uint? code = null,
-        byte[]? messageUtf8 = null)
+        byte[]? messageUtf8 = null,
+        TokenOwner? nativeOwner = null)
     {
         RawStatus = rawStatus;
         Domain = domain;
         Code = code;
         _messageUtf8 = messageUtf8 is null ? null : (byte[])messageUtf8.Clone();
+        _nativeOwner = nativeOwner;
     }
 
     public uint RawStatus { get; }
@@ -46,6 +50,8 @@ public sealed class UiErrorSnapshot
             }
         }
     }
+
+    public void Dispose() => Interlocked.Exchange(ref _nativeOwner, null)?.Dispose();
 }
 
 public sealed class UiException : Exception
