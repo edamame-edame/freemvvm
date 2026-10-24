@@ -1,7 +1,7 @@
 # C# F64 Property wrapper
 
 - 更新日: 2026-10-24
-- 状態: 計画承認済み・実装中
+- 状態: 完了（実装commit `a8f80fe`、Windows/Linux CI成功、2026-10-24）
 - 対象: 既存のC# `UiProperty<T>` facadeに`double`を追加し、承認済みRQ-02-018のF64値表現をC#と実C ABIの境界で保つ。
 
 ## 背景と範囲
@@ -38,9 +38,9 @@
 1. [x] 利用者が本計画のscope、F64 bit preservation方針、consumer検証範囲をレビューし承認した（2026-10-24、「ok、実装も進めて」）。
 2. [x] 承認された計画をcommit `ef55b6e`（「C# F64 Property wrapper計画を承認記録」）で記録し、現在のC#作業ブランチへpushした。
 3. [x] 実装開始承認後、`UT-WRAP-CS-PROP-F64-001`/`UT-CONSUMER-CS-PROP-F64-001`のtest designと`UNIT-WRAP-CS-PROP-F64-001` mappingをsource変更より先に追加した。
-4. [ ] C# facade/interopsとfake ABI focused testsへF64経路を追加する。
-5. [ ] 実C ABI consumerで代表F64値を検証し、必要な修正とlocal checksを完了する。
-6. [ ] Windows/Linux CI成功後、unit台帳・計画・`.docs/01_memory/`を更新し、完了実装を日本語でcommit/pushする。
+4. [x] C# facade/interopsとfake ABI focused testsへF64経路を追加した。
+5. [x] 実C ABI consumerでfinite値、NaN payload、正負infinity、signed zeroと同値時の表現保持を検証した。focused/consumer tests、`tools/dev.py check`、`tools/dev.py minimum`、文書リンク検査、`git diff --check`が成功した。
+6. [x] Windows/Linux CI成功後、unit台帳・計画・`.docs/01_memory/`を完了更新し、実装と検証記録を日本語でcommit/pushした。
 
 ## レビュー時の決定点
 
@@ -53,3 +53,10 @@
 | 日付 | 対象 | 承認者 | 結果 |
 | --- | --- | --- | --- |
 | 2026-10-24 | 計画scope・F64 bit preservation方針・consumer検証範囲 | 利用者 | 「ok、実装も進めて」により承認。実装開始も承認 |
+
+## 検証結果
+
+- 実装commit: `a8f80fe`（「C# F64 Property wrapperを実装」）。
+- ローカル: `tools/dev.py csharp-property-test`、`tools/dev.py csharp-property-consumer-test`、Windows `tools/dev.py check`、`tools/dev.py minimum`、文書リンク検査、`git diff --check`が成功。
+- GitHub Actions: [Development bootstrap run 40050770415](https://github.com/edamame-edame/freemvvm/actions/runs/40050770415)でWindows/Linux両job成功。
+- 確認範囲: fake ABIでfinite値、複数quiet NaN payload、正負infinity、正負zeroのbit pattern往復、raw failure/error snapshot、wrong-thread、failed close retry。実C ABI consumerでNaN同士とsigned zero同値set後の格納表現維持を確認。
