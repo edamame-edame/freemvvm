@@ -3,7 +3,7 @@
 - 文書版: 1.3
 - 文書ロール: detailed-design
 - 更新日: 2026-10-24
-- 状態: 1.3改訂案レビュー待ち（A案選択済み）。1.2承認内容を維持し、内部owner連携の追加案をレビュー中。実装・試験状態は別管理
+- 状態: 1.3全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -360,3 +360,4 @@ API入口はregistryでtoken/live→kind→必要なRuntime所属を検証して
 | 2026-10-17 | 1.2改訂案 | 利用者が推奨案Aを選択したため、Runtime object controlとUI stateの分離、pin、finalizer reservation、shutdown境界を具体化。Runtime非依存ErrorSnapshotの所有方式は変更しない。1.2全文はレビュー待ち |
 | 2026-10-17 | 1.2全文 | 利用者の「ok」により、Runtime-owned objectの所有・pin・最終release、およびErrorSnapshotを対象外とする本版全文を承認。実装・試験合格を意味しない |
 | 2026-10-24 | 1.3改訂案 | A案に基づきpublic/internal ownerを分離し、先取りcleanup reservationとTree owner由来public token発行を追加。全文レビュー待ち |
+| 2026-10-24 | 1.3全文 | 利用者の承認により、Tree内部ownerを含む本版全文を承認。実装・試験合格とは区別 |

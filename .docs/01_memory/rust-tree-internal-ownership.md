@@ -13,9 +13,11 @@
 - cleanup reservation activate/dropはregistry map lock外で行う。UI stateにはUI thread上の`ObjectIdentity`経由でアクセスする。
 - `LogicalNode`はUI thread context、弱いparent identity、子ごとの`TreeOwner`を持つ。attachはpeer準備後のcommitで親子リンクを同時に設定し、`detach_all`は親の破棄前に子をDetached化して各subtree内リンクを維持する。
 - Tree mutationとchildren由来public handleの発行はRuntime UI threadでのみ行う。`parent_ancestry`はUI storeから取得したparentを含む祖先snapshotで、child identityを含む場合はcycleとして拒否する。
+- Runtime統合では`RuntimeTreeStore`をRuntimeのidentity別UI tree indexとして保持する。object finalizerは親nodeをindexから外して直接の子のparent identityを先に切り、nodeとTreeOwnerをindex lock解放後にdropする。shutdownではobject storeをclearする前にtree indexをtakeしてownerをdropする。
+- `RuntimeCleanupReservation`が未activateのまま破棄された場合はqueueの`outstanding`を減らす。shutdown drainはqueued ticketを優先し、pending reservationを保持しているtracked UI cleanupも実行してから、残ticket/outstandingをdrainしてClosedにする。tracked cleanupがreservationを解放するため、`outstanding == 0`までtracked cleanupを待つと循環待ちになる。
 
 ## 実装と検証
 
 - 所有制御と予約handoffは `crates/core-runtime/src/handle_registry/registry.rs` の `CoreObjectControl` / `ValidationPin` / `TreeOwner`。
 - focused確認: `cargo test -p freemvvm-core tree_owner_`。
-- `UNIT-CORE-067` はHandleRegistryのowner lifetime primitive。`UNIT-CORE-068` はTreeCoordinatorのLogical attach/commit/detachとchild-owner由来handle発行を扱う。Runtime UI object storeやC ABIへのWindow/Control接続は別unitで実装・確認する。
+- `UNIT-CORE-067` はHandleRegistryのowner lifetime primitive。`UNIT-CORE-068` はTreeCoordinatorのLogical attach/commit/detachとchild-owner由来handle発行、`UNIT-CORE-069` はRuntime UI object storeのTree統合・parent cleanup・Detached subtree維持・shutdown drainを扱う。C ABIへのWindow/Control接続は別unit。
