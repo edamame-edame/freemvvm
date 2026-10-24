@@ -1,7 +1,7 @@
 # Rust Async Command wrapper
 
 - 更新日: 2026-10-24
-- 状態: Rust DD v1.6とtest design v0.9に基づく実装・local gates完了。Windows/Linux CI待ち
+- 状態: 完了。Rust DD v1.6とtest design v0.9に基づく実装、local gates、Windows/Linux CI成功
 - 対象ブランチ: `impl-rust/wrappers-runtime-api`（親: `impl-rust/runtime-async-command`）
 - 対象unit: `UNIT-WRAP-RS-CMD-001`（unit台帳登録は計画承認後）
 
@@ -59,10 +59,11 @@
 - `AnyThreadOwned`の独立retainをworker operation leaseに利用。UI-affine ownerは`!Send`を維持し、workerの終端結果は`runtime_post`でUI threadへ渡す。
 - Rust runtime integration tests: 17 passed。別crate public API test: 1 passed。compile-fail doctest: 4 passed。
 - Local gates: `cargo clippy --workspace --all-targets --locked -- -D warnings`、`tools/dev.py check`、Rust 1.85 `tools/dev.py minimum`、document linksとunit manifest JSONがpass。
-- Windows/Linux CI runと完了記録はpush後に追記する。`tools/dev.py`と添付read-only snapshotは変更していない。
+- Windows/Linux CI run [40089226431](https://github.com/edamame-edame/freemvvm/actions/runs/40089226431) が成功。`tools/dev.py`と添付read-only snapshotは変更していない。
 
 ## 承認履歴
 
 | 日付 | 対象 | 承認者 | 結果 |
 | --- | --- | --- | --- |
 | 2026-10-24 | 計画・Rust DD v1.6・test design v0.9 | 利用者 | 「OK」により承認。実装開始 |
+| 2026-10-24 | UNIT-WRAP-RS-CMD-001 | Codex | local gatesとWindows/Linux CI run 40089226431が成功。unit完了 |

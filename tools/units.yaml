@@ -2451,7 +2451,7 @@
     },
     {
       "id": "UNIT-WRAP-RS-CMD-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "rust-async-command-owner-worker-lease-cancellation-completion",
       "sources": [
         "wrappers/rust/freemvvm-sys/src/lib.rs",
