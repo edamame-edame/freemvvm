@@ -1,7 +1,7 @@
 # Rust wrapper: UTF-8 Property
 
 - 更新日: 2026-10-24
-- 状態: 計画承認済み（利用者、2026-10-24）。実装ローカル検証済み、CI確認中
+- 状態: 完了（local gates・Rust 1.85・Windows/Linux CI確認済み）
 - 対象ブランチ: `impl-rust/wrappers-runtime-api`
 - 親: [Rust BOOL/I64 Property](rust-property-bool-i64.md)
 
@@ -41,3 +41,4 @@
 | --- | --- | --- |
 | 2026-10-24 | 計画・実装案 | Rust Propertyの次unitとしてUTF-8 Stringを選択。`handle.rs`は読み取り専用とし、consumer/focused testsを追加。`tools/dev.py check`、`minimum`、UTF-8 consumerとgetter retry/error testsは成功。commit/push前に計画・実装差分を利用者レビューする。 |
 | 2026-10-24 | 計画承認 | 利用者の「OK」により本計画・consumer test案・実装差分のcommit/pushを承認。添付consumer例を確認し、UTF-8/NUL/empty coverageを含むことを確認。 |
+| 2026-10-24 | 実装・検証完了 | 実装commit `cdf20d3`、Windows/Linux CI run `40079200849` success。local `tools/dev.py check`・`minimum`・UTF-8 consumer・getter retry/error focused testsも成功。計画・試験設計commit `1d0b3a4`。 |
