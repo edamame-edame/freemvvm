@@ -1,7 +1,7 @@
 # C# BOOL/I64 Property wrapper
 
 - 更新日: 2026-10-24
-- 状態: 実装中（計画・API案承認済み、2026-10-24。実装開始承認済み）
+- 状態: 完了（実装commit `0330ed2`、Windows/Linux CI成功、2026-10-24）
 - 対象: 承認済みC# wrapper DD v1.1の`UiProperty<T>`を実装し、BOOL/I64 Propertyの作成・読取・設定・closeを一つの検証可能なunitとして提供する。
 
 ## 背景と範囲
@@ -41,7 +41,7 @@
 3. [x] 実装開始承認後、C# Property focused/consumer試験設計と`UNIT-WRAP-CS-PROP-BOOL-I64-001` mappingをsource変更前に登録した。
 4. [x] Property facadeとfake ABI focused testsを実装した。
 5. [x] 実C ABI consumer roundtripを追加した。Windows local `tools/dev.py check`、Rust `tools/dev.py minimum`、文書・Ruff・diff検査が成功した。
-6. [ ] Windows/Linux CI成功後、unit台帳・計画・`.docs/01_memory/`を完了更新し、日本語commitで実装をcommit/pushする。
+6. [x] Windows/Linux CI成功後、unit台帳・計画・`.docs/01_memory/`を完了更新した。implementation commitと検証記録commitを日本語でcommit/pushした。
 
 ## レビュー時の決定点
 
@@ -55,3 +55,10 @@
 | --- | --- | --- | --- |
 | 2026-10-24 | 計画scope・公開API案 | 利用者 | 「ok」によりBOOL/I64 scopeと`UiProperty<T>.TryCreate`案を承認 |
 | 2026-10-24 | 本計画に沿う実装開始 | 利用者 | 「実装も進めて」により実装を承認 |
+
+## 検証結果
+
+- 実装commit: `0330ed2`（`C# BOOL I64 Property wrapperを実装`）。
+- ローカル: `tools/dev.py csharp-property-test`、`tools/dev.py csharp-property-consumer-test`、Windows `tools/dev.py check`、`tools/dev.py minimum`、`tools/check_docs.py`、Ruff、`git diff --check`が成功。
+- GitHub Actions: [Development bootstrap run 40049830264](https://github.com/edamame-edame/freemvvm/actions/runs/40049830264)でWindows/Linux両job成功。
+- 確認範囲: BOOL 0/1とI64端値の往復、失敗status/error snapshot、未対応型拒否、close retry、active lease中のDispose競合、実C ABI consumer。

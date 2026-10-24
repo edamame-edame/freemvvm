@@ -2125,7 +2125,7 @@
     },
     {
       "id": "UNIT-WRAP-CS-PROP-BOOL-I64-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "csharp-bool-i64-property-create-get-set-close",
       "sources": [
         "wrappers/csharp/FreeMvvm/**/*.cs",

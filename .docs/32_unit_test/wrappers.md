@@ -1,7 +1,7 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 
 - 文書版: 0.1
-- 状態: 0.1全文承認済み（利用者、2026-10-17）。C++ Runtime/Property/Subscription/Binding/package consumer、C# Runtime wrapperはfocused verification済み。C# BOOL/I64 Property試験設計・unit mappingを登録し実装中
+- 状態: 0.1全文承認済み（利用者、2026-10-17）。C++ Runtime/Property/Subscription/Binding/package consumer、C# Runtime wrapper、C# BOOL/I64 Propertyはfocused verification済み
 - 更新日: 2026-10-24
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
