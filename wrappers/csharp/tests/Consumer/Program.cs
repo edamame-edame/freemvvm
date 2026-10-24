@@ -74,20 +74,68 @@ internal static class Program
             return 9;
         }
 
+        long initialNaNBits = 0x7FF8_0000_0000_0042;
+        long otherNaNBits = 0x7FF8_0000_0000_1234;
+        long negativeZeroBits = long.MinValue;
+        UiResult<UiProperty<double>> f64Create = UiProperty<double>.TryCreate(
+            runtime,
+            BitConverter.Int64BitsToDouble(0x3FF4_0000_0000_0000));
+        if (f64Create.IsFailure)
+        {
+            Console.Error.WriteLine($"F64 property creation failed: {f64Create.Error?.RawStatus}");
+            return 10;
+        }
+
+        using UiProperty<double> f64Property = f64Create.Value;
+        if (BitConverter.DoubleToInt64Bits(f64Property.TryGet().Value) != 0x3FF4_0000_0000_0000 ||
+            f64Property.TrySet(double.PositiveInfinity).IsFailure ||
+            !double.IsPositiveInfinity(f64Property.TryGet().Value) ||
+            f64Property.TrySet(double.NegativeInfinity).IsFailure ||
+            !double.IsNegativeInfinity(f64Property.TryGet().Value))
+        {
+            Console.Error.WriteLine("F64 finite/infinity values did not round trip.");
+            return 11;
+        }
+
+        if (f64Property.TrySet(BitConverter.Int64BitsToDouble(initialNaNBits)).IsFailure ||
+            BitConverter.DoubleToInt64Bits(f64Property.TryGet().Value) != initialNaNBits ||
+            f64Property.TrySet(BitConverter.Int64BitsToDouble(otherNaNBits)).IsFailure ||
+            BitConverter.DoubleToInt64Bits(f64Property.TryGet().Value) != initialNaNBits)
+        {
+            Console.Error.WriteLine("F64 NaN payload or same-value storage was not preserved.");
+            return 12;
+        }
+
+        if (f64Property.TrySet(BitConverter.Int64BitsToDouble(negativeZeroBits)).IsFailure ||
+            BitConverter.DoubleToInt64Bits(f64Property.TryGet().Value) != negativeZeroBits ||
+            f64Property.TrySet(0.0).IsFailure ||
+            BitConverter.DoubleToInt64Bits(f64Property.TryGet().Value) != negativeZeroBits)
+        {
+            Console.Error.WriteLine("F64 signed-zero equivalence did not preserve the stored representation.");
+            return 13;
+        }
+
+        UiResult<UiCloseDisposition> f64Close = f64Property.TryClose();
+        if (f64Close.IsFailure || f64Close.Value != UiCloseDisposition.Released)
+        {
+            Console.Error.WriteLine("F64 property handle could not be closed.");
+            return 14;
+        }
+
         UiResult<ShutdownReceipt> request = runtime.RequestShutdown(ShutdownMode.Async);
         if (request.IsSuccess || request.Error?.RawStatus != 10)
         {
             Console.Error.WriteLine($"Expected UI_UNSUPPORTED (10), got success={request.IsSuccess}, status={request.Error?.RawStatus}.");
-            return 10;
+            return 15;
         }
 
         if (runtime.TryClose().IsFailure)
         {
             Console.Error.WriteLine("The Runtime handle could not be closed.");
-            return 11;
+            return 16;
         }
 
-        Console.WriteLine("C# Runtime BOOL/I64 Property C ABI consumer: OK");
+        Console.WriteLine("C# Runtime BOOL/I64/F64 Property C ABI consumer: OK");
         return 0;
     }
 }

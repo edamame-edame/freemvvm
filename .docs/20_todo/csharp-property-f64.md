@@ -36,8 +36,8 @@
 ## 実施順
 
 1. [x] 利用者が本計画のscope、F64 bit preservation方針、consumer検証範囲をレビューし承認した（2026-10-24、「ok、実装も進めて」）。
-2. [ ] 承認された計画を日本語のcommit messageで記録し、現在のC#作業ブランチへpushする。
-3. [ ] 実装開始承認後、wrapper test designとunit mappingをsource変更より先に追加する。
+2. [x] 承認された計画をcommit `ef55b6e`（「C# F64 Property wrapper計画を承認記録」）で記録し、現在のC#作業ブランチへpushした。
+3. [x] 実装開始承認後、`UT-WRAP-CS-PROP-F64-001`/`UT-CONSUMER-CS-PROP-F64-001`のtest designと`UNIT-WRAP-CS-PROP-F64-001` mappingをsource変更より先に追加した。
 4. [ ] C# facade/interopsとfake ABI focused testsへF64経路を追加する。
 5. [ ] 実C ABI consumerで代表F64値を検証し、必要な修正とlocal checksを完了する。
 6. [ ] Windows/Linux CI成功後、unit台帳・計画・`.docs/01_memory/`を更新し、完了実装を日本語でcommit/pushする。
