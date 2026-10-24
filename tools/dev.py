@@ -126,6 +126,8 @@ def main():
             "cpp-property-subscription-test",
             "cpp-property-binding-test",
             "cpp-package-test",
+            "rust-wrapper-runtime-test",
+            "rust-wrapper-runtime-consumer-test",
             "format",
             "minimum",
         ],
@@ -150,6 +152,10 @@ def main():
         "scope": (
             "abi-command-smoke"
             if args.command == "abi-command-smoke"
+            else "rust-wrapper-runtime-unit-test"
+            if args.command == "rust-wrapper-runtime-test"
+            else "rust-wrapper-runtime-consumer-test"
+            if args.command == "rust-wrapper-runtime-consumer-test"
             else "cpp-package-integration-test"
             if args.command == "cpp-package-test"
             else "cpp-property-unit-test"
@@ -169,7 +175,11 @@ def main():
             else "development-bootstrap"
         ),
         "product_tests": (
-            "cpp package consumer test executed"
+            "Rust Runtime safe wrapper unit tests executed"
+            if args.command == "rust-wrapper-runtime-test"
+            else "Rust Runtime consumer test executed against host C ABI"
+            if args.command == "rust-wrapper-runtime-consumer-test"
+            else "cpp package consumer test executed"
             if args.command == "cpp-package-test"
             else "C++ Property BOOL/I64 wrapper unit test executed"
             if args.command == "cpp-property-test"
@@ -277,6 +287,62 @@ def main():
                 results,
                 "python-format",
             )
+        elif args.command in (
+            "rust-wrapper-runtime-test",
+            "rust-wrapper-runtime-consumer-test",
+        ):
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "rust-wrapper-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_dir = target_dir / "debug"
+            native_environment = dict(environment)
+            native_environment["FREEMVVM_NATIVE_LIB_DIR"] = str(native_dir)
+            if os.name == "nt":
+                native_environment["PATH"] = (
+                    str(native_dir) + os.pathsep + native_environment["PATH"]
+                )
+            elif sys.platform == "darwin":
+                native_environment["DYLD_LIBRARY_PATH"] = (
+                    str(native_dir)
+                    + os.pathsep
+                    + native_environment.get("DYLD_LIBRARY_PATH", "")
+                )
+            else:
+                native_environment["LD_LIBRARY_PATH"] = (
+                    str(native_dir)
+                    + os.pathsep
+                    + native_environment.get("LD_LIBRARY_PATH", "")
+                )
+            if args.command == "rust-wrapper-runtime-test":
+                run(
+                    ["cargo", "test", "--locked", "-p", "freemvvm"],
+                    native_environment,
+                    results,
+                    "rust-wrapper-runtime-tests",
+                )
+            else:
+                run(
+                    [
+                        "cargo",
+                        "run",
+                        "--locked",
+                        "-p",
+                        "freemvvm",
+                        "--example",
+                        "runtime_consumer",
+                    ],
+                    native_environment,
+                    results,
+                    "rust-wrapper-runtime-consumer",
+                )
         elif args.command == "minimum":
             run(
                 [
@@ -769,6 +835,22 @@ def main():
                 environment,
                 results,
                 "rust-test-harness-build",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "rust-wrapper-runtime-test"],
+                environment,
+                results,
+                "rust-wrapper-runtime-unit",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "rust-wrapper-runtime-consumer-test",
+                ],
+                environment,
+                results,
+                "rust-wrapper-runtime-consumer",
             )
             run(
                 ["cmake", "--preset", "dev"],

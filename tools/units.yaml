@@ -2091,6 +2091,67 @@
         {"id": "UT-ABI-COMMAND-001", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "command_"]},
         {"id": "UT-ABI-COMMAND-SMOKE-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "abi-command-smoke"]}
       ]
+    },
+    {
+      "id": "UNIT-WRAP-RS-001",
+      "state": "ready",
+      "scope": "rust-runtime-ffi-context-owned-handle-and-cleanup-foundation",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/**/*.rs",
+        "wrappers/rust/freemvvm-sys/build.rs",
+        "wrappers/rust/freemvvm/**/*.rs",
+        "wrappers/rust/freemvvm/examples/**/*.rs",
+        "tools/dev.py"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "CMakeLists.txt",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-004",
+        "UNIT-ABI-005",
+        "UNIT-ABI-006",
+        "UNIT-ABI-007",
+        "UNIT-ABI-018"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.1",
+          "section": "所有型・借用・Drop・panic境界 / 公開API・registry・Future"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Runtime lifecycle / shutdown request / error / handle retain and release"
+        },
+        {
+          "path": ".docs/13_detail_design/build/toolchain-packages.md",
+          "version": "1.1",
+          "section": "Rust crateとnative artifact / 配置と依存方向"
+        }
+      ],
+      "requirements": [
+        "RQ-03-003", "RQ-03-007", "RQ-03-014",
+        "RQ-04-006", "RQ-04-007", "RQ-04-015", "RQ-04-022",
+        "RQ-05-003", "RQ-05-009", "RQ-05-012",
+        "RQ-06-002", "RQ-06-005", "RQ-06-006", "RQ-06-012",
+        "RQ-12-003", "RQ-12-005"
+      ],
+      "cases": ["TC-LIFE-01", "TC-THREAD-01", "TC-ERROR-01", "TC-WRAP-RS-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {"id": "UT-WRAP-RS-RT-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-runtime-test"]},
+        {"id": "UT-CONSUMER-RS-RT-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-runtime-consumer-test"]}
+      ]
     }
   ]
 }

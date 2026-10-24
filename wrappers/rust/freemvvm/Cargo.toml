@@ -1,6 +1,6 @@
 [package]
 name = "freemvvm"
-description = "Safe Rust facade over the shared C ABI; bootstrap skeleton"
+description = "Safe Rust facade over the shared FreeMvvm C ABI"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

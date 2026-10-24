@@ -1,7 +1,7 @@
 # Rust Runtime safe wrapper基盤
 
 - 更新日: 2026-10-24
-- 状態: 計画承認済み（利用者、2026-10-24）。計画commit/push後、実装開始の承認を待つ
+- 状態: 実装完了・CI待ち。計画承認・実装開始承認を受領し、focused/consumer tests、local check、minimum checkは成功
 - 対象: 共通C ABIのRuntime lifecycle・UI thread context・owned handle基盤をRust `freemvvm-sys` / `freemvvm`から利用する最初のwrapper unit
 - 作業ブランチ: `impl-rust/wrappers-runtime-api`（親: `impl-rust/runtime-async-command`）
 
@@ -30,21 +30,24 @@ Rust用の[`freemvvm-sys`](../../wrappers/rust/freemvvm-sys/src/lib.rs)とsafe [
 
 - source変更前に[wrapper test design](../32_unit_test/wrappers.md)へRust Runtime focused case `UT-WRAP-RS-RT-001`と実C ABI consumer case `UT-CONSUMER-RS-RT-001`を登録し、`tools/units.yaml`へ`UNIT-WRAP-RS-001`を追加する。
 - focused testではfake sys APIを使い、create/retain/release status、unknown status/domain/code保持、UI-thread拒否、explicit close retry、Drop release失敗のticket移管、Runtime anchor順序を検証する。compile-fail fixtureでUI-affine ownerが`Send`/`Sync`でないこととBorrowed lifetime制約を確認する。
-- consumer testでは別Rust executableから実C ABIを呼び、Runtime create、UI thread query、shutdown request/query、明示closeを検証する。異なるtargetのnative artifactを使わない。
+- consumer testでは別Rust executableから実C ABIを呼び、Runtime createとUI thread queryを検証する。host bridge未登録時のshutdown requestは`UI_UNSUPPORTED`の拒否として確認し、receiptの状態照会・host unavailable理由はfake sys APIで検証する。異なるtargetのnative artifactを使わない。
 - `cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets --locked -- -D warnings`、workspace build/test、Rust 1.85 minimum、wrapper focused/consumer tests、`tools/dev.py check`、文書リンク・manifest検査を実装と同じrevisionで通す。Windows/Linux CIの結果を本計画・test design・unit台帳・`.docs/01_memory/`へ記録する。
 
 ## 実施順と承認境界
 
 1. [x] 利用者が本計画案のunit範囲・ABIとsafe-wrapperの試験境界を承認する（2026-10-24）。
-2. [ ] 承認済み計画をcommit/pushする。
-3. [ ] 明示的な実装開始指示後、test designとunit mappingをsource変更前に登録する。
-4. [ ] Rust `-sys`宣言、Runtime safe facade、focused tests、real C ABI consumerを実装する。
-5. [ ] local gatesとWindows/Linux CIを通し、結果を記録して実装unitをcommit/pushする。
+2. [x] 承認済み計画をcommit/pushする（`b3ff9d1`）。
+3. [x] 利用者の実装開始指示を受領（2026-10-24）。
+4. [x] source変更前にwrapper test design v0.2と`UNIT-WRAP-RS-001` mappingを登録する。
+5. [x] Rust `-sys`宣言、Runtime safe facade、focused tests、real C ABI consumerを実装する。
+6. [x] local gatesとRust 1.85 minimum、focused/consumer testsを通す。
+7. [ ] local gates passを受けて実装unitをcommit/pushし、Windows/Linux CIを実行する。CI結果を追記してunitをcompleteへ更新し、検証記録をcommit/pushする。
 
 ## 承認履歴
 
 | 日付 | 対象 | 承認者 | 結論 |
 | --- | --- | --- | --- |
 | 2026-10-24 | 本計画全文 | 利用者 | 「OK」によりRust Runtime safe wrapper unitの範囲・試験境界を承認。実装開始は別途承認 |
+| 2026-10-24 | 実装開始 | 利用者 | 「始めてください」により承認済み計画に基づくRust Runtime wrapper実装を開始 |
 
-計画承認、実装開始承認、検証完了は別々に記録する。計画は承認済み。製品source変更は未着手で、実装開始承認を待つ。
+計画承認、実装開始承認、検証完了は別々に記録する。計画と実装開始は承認済み。製品sourceとlocal検証は完了し、Windows/Linux CI記録が残る。
