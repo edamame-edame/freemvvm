@@ -1,3 +1,4 @@
+use crate::decimal::Decimal64;
 use crate::error::UiError;
 use crate::handle::{Owned, RuntimeAnchor, TicketReservation};
 use crate::native_api;
@@ -8,11 +9,14 @@ use std::sync::Arc;
 struct PropertyTag;
 
 mod sealed {
+    use super::Decimal64;
+
     pub trait Sealed {}
     impl Sealed for bool {}
     impl Sealed for i64 {}
     impl Sealed for String {}
     impl Sealed for f64 {}
+    impl Sealed for Decimal64 {}
 }
 
 /// A typed property backed by the shared C ABI.
@@ -123,6 +127,39 @@ impl PropertyValue for f64 {
         // SAFETY: error is writable output storage; f64 maps directly to C double.
         let status =
             unsafe { freemvvm_sys::ui_abi_1_property_set_f64(property, value, &mut error) };
+        (status, error)
+    }
+}
+
+impl PropertyValue for Decimal64 {
+    fn create(runtime: u64, initial: Self) -> (u32, u64, u64) {
+        let mut property = 0;
+        let mut error = 0;
+        // SAFETY: both outputs point to initialized local storage and the value is canonical bits.
+        let status = unsafe {
+            freemvvm_sys::ui_abi_1_property_create_decimal(
+                runtime,
+                initial.bits(),
+                &mut property,
+                &mut error,
+            )
+        };
+        (status, property, error)
+    }
+
+    fn get(property: u64) -> (u32, Self) {
+        let mut bits = 0;
+        // SAFETY: `bits` is writable output storage for this call.
+        let status = unsafe { freemvvm_sys::ui_abi_1_property_get_decimal(property, &mut bits) };
+        (status, Decimal64::from_bits(bits))
+    }
+
+    fn set(property: u64, value: Self) -> (u32, u64) {
+        let mut error = 0;
+        // SAFETY: error is writable output storage and value is canonical bits.
+        let status = unsafe {
+            freemvvm_sys::ui_abi_1_property_set_decimal(property, value.bits(), &mut error)
+        };
         (status, error)
     }
 }

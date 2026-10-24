@@ -131,6 +131,7 @@ def main():
             "rust-wrapper-property-bool-i64-test",
             "rust-wrapper-property-utf8-test",
             "rust-wrapper-property-f64-test",
+            "rust-wrapper-property-decimal-test",
             "format",
             "minimum",
         ],
@@ -165,6 +166,8 @@ def main():
             if args.command == "rust-wrapper-property-utf8-test"
             else "rust-wrapper-property-f64-consumer-test"
             if args.command == "rust-wrapper-property-f64-test"
+            else "rust-wrapper-property-decimal-consumer-test"
+            if args.command == "rust-wrapper-property-decimal-test"
             else "cpp-package-integration-test"
             if args.command == "cpp-package-test"
             else "cpp-property-unit-test"
@@ -194,6 +197,8 @@ def main():
             if args.command == "rust-wrapper-property-utf8-test"
             else "Rust F64 Property consumer test executed"
             if args.command == "rust-wrapper-property-f64-test"
+            else "Rust DECIMAL Property consumer test executed"
+            if args.command == "rust-wrapper-property-decimal-test"
             else "cpp package consumer test executed"
             if args.command == "cpp-package-test"
             else "C++ Property BOOL/I64 wrapper unit test executed"
@@ -308,6 +313,7 @@ def main():
             "rust-wrapper-property-bool-i64-test",
             "rust-wrapper-property-utf8-test",
             "rust-wrapper-property-f64-test",
+            "rust-wrapper-property-decimal-test",
         ):
             run(
                 ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
@@ -391,7 +397,7 @@ def main():
                     results,
                     "rust-wrapper-property-utf8-consumer",
                 )
-            else:
+            elif args.command == "rust-wrapper-property-f64-test":
                 run(
                     [
                         "cargo",
@@ -405,6 +411,21 @@ def main():
                     native_environment,
                     results,
                     "rust-wrapper-property-f64-consumer",
+                )
+            else:
+                run(
+                    [
+                        "cargo",
+                        "run",
+                        "--locked",
+                        "-p",
+                        "freemvvm",
+                        "--example",
+                        "property_decimal_consumer",
+                    ],
+                    native_environment,
+                    results,
+                    "rust-wrapper-property-decimal-consumer",
                 )
         elif args.command == "minimum":
             run(
@@ -944,6 +965,16 @@ def main():
                 environment,
                 results,
                 "rust-wrapper-property-f64-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "rust-wrapper-property-decimal-test",
+                ],
+                environment,
+                results,
+                "rust-wrapper-property-decimal-consumer",
             )
             run(
                 ["cmake", "--preset", "dev"],

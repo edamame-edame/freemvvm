@@ -2297,7 +2297,7 @@
     },
     {
       "id": "UNIT-WRAP-RS-PROP-DECIMAL-001",
-      "state": "planned",
+      "state": "in_progress",
       "scope": "rust-decimal64-value-and-property-create-get-set-close",
       "sources": [
         "wrappers/rust/freemvvm-sys/**/*.rs",

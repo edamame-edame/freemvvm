@@ -1,11 +1,13 @@
 //! Safe facade over the shared C ABI.
 
+mod decimal;
 mod error;
 mod handle;
 mod native_api;
 mod property;
 mod runtime;
 
+pub use decimal::Decimal64;
 pub use error::UiError;
 pub use handle::{Borrowed, Owned};
 pub use property::{Property, PropertyValue};
