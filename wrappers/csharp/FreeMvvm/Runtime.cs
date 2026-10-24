@@ -37,10 +37,17 @@ public readonly record struct ShutdownRequestSnapshot(uint RawState, uint Reason
 public sealed class UiRuntime : IDisposable
 {
     private readonly TokenOwner _owner;
+    private readonly CallbackHandlerState _callbackHandlers;
 
-    private UiRuntime(TokenOwner owner) => _owner = owner;
+    private UiRuntime(TokenOwner owner, CallbackHandlerState callbackHandlers)
+    {
+        _owner = owner;
+        _callbackHandlers = callbackHandlers;
+    }
 
     internal TokenOwner Owner => _owner;
+
+    internal CallbackHandlerState CallbackHandlers => _callbackHandlers;
 
     public static UiResult<UiRuntime> TryCreate(RuntimeOptions? options = null)
     {
@@ -96,6 +103,25 @@ public sealed class UiRuntime : IDisposable
         return result <= 1
             ? UiResult<bool>.Success(result == 1)
             : UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+    }
+
+    public UiResult<UiCallbackHandlerRegistration> TrySetCallbackFailureHandler(
+        Action<UiCallbackFailure> handler)
+    {
+        if (handler is null)
+        {
+            return UiResult<UiCallbackHandlerRegistration>.Failure(
+                new UiErrorSnapshot(UiStatus.InvalidArgument));
+        }
+
+        UiResult<CallLease> acquired = _owner.AcquireLease();
+        if (acquired.IsFailure)
+        {
+            return UiResult<UiCallbackHandlerRegistration>.Failure(acquired.Error!);
+        }
+
+        using CallLease lease = acquired.Value;
+        return _callbackHandlers.TrySet(handler);
     }
 
     public UiResult<ShutdownDisposition> Shutdown()
@@ -187,6 +213,8 @@ public sealed class UiRuntime : IDisposable
     internal static UiResult<UiRuntime> TryCreate(INativeApi api)
     {
         var runtimeOwner = new TokenOwner(api);
+        var callbackHandlers = new CallbackHandlerState();
+        var runtimeFacade = new UiRuntime(runtimeOwner, callbackHandlers);
         var error = new PreparedError(api);
         uint status;
         ulong runtime;
@@ -217,7 +245,7 @@ public sealed class UiRuntime : IDisposable
         }
 
         runtimeOwner.Adopt(runtime);
-        return UiResult<UiRuntime>.Success(new UiRuntime(runtimeOwner));
+        return UiResult<UiRuntime>.Success(runtimeFacade);
     }
 }
 

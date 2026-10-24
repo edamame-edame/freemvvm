@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,6 +31,7 @@ internal static class Program
         Run(TestPropertyFailuresPreserveStatusAndValue);
         Run(TestPropertyCreateAndGetterFailuresAndCloseRetry);
         Run(TestPropertyLeaseProtectsHandleDuringDispose);
+        Run(TestPropertySubscriptionAndCallbackFailureHandling);
         return _failures == 0 ? 0 : 1;
     }
 
@@ -529,6 +531,217 @@ internal static class Program
         Check(runtime.TryClose().Value == UiCloseDisposition.Released, "Runtime should close after property release");
     }
 
+    private static void TestPropertySubscriptionAndCallbackFailureHandling()
+    {
+        var native = new FakeNativeApi();
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiProperty<long> property = UiProperty<long>.TryCreate(runtime, 12).Value;
+        int observedValue = 0;
+        UiSubscription subscription = property.TrySubscribe(() => observedValue = (int)property.TryGet().Value).Value;
+        Check(native.SubscriptionCount == 1, "subscribe should call the native ABI once");
+        Check(observedValue == 0, "subscribe should not issue an initial notification");
+
+        property.TrySet(42);
+        native.InvokeSubscription(native.LastSubscription);
+        Check(observedValue == 42, "notification callback should read the latest property value");
+
+        ulong firstSubscriptionToken = native.LastSubscription;
+        native.SetReleaseFailures(firstSubscriptionToken, 1);
+        Check(subscription.TryClose().IsFailure,
+            "failed subscription handle release should remain retryable");
+        property.TrySet(43);
+        native.InvokeSubscription(firstSubscriptionToken);
+        Check(observedValue == 43, "releasing the subscription handle must not cancel notification delivery");
+        Check(subscription.TryClose().Value == UiCloseDisposition.Released,
+            "subscription handle release should succeed on retry");
+        property.TrySet(44);
+        native.InvokeSubscription(firstSubscriptionToken);
+        Check(observedValue == 44, "successful handle release must leave the active registration intact");
+
+        (WeakReference rootedCapture, UiSubscription rootedSubscription, ulong rootedToken) =
+            SubscribeWithWeakCapture(property, native);
+        CollectGarbage();
+        Check(rootedCapture.IsAlive, "Core-owned callback root should keep its managed capture alive");
+        native.InvokeSubscription(rootedToken);
+        native.DestroySubscription(rootedToken);
+        native.DestroySubscription(rootedToken);
+        CollectGarbage();
+        Check(!rootedCapture.IsAlive, "Core destroy should release the managed callback root exactly once");
+        rootedSubscription.TryClose();
+
+        native.PropertySubscribeStatus = UiStatus.InternalError;
+        WeakReference failedCapture = SubscribeWithFailedWeakCapture(property);
+        native.PropertySubscribeStatus = UiStatus.Ok;
+        CollectGarbage();
+        Check(!failedCapture.IsAlive, "failed registration should release its managed callback root");
+
+        (WeakReference inFlightCapture, UiSubscription inFlightSubscription, ulong inFlightToken,
+            ManualResetEventSlim callbackEntered, ManualResetEventSlim allowCallbackReturn) =
+            SubscribeWithBlockingCapture(property, native);
+        Task invocation = Task.Run(() => native.InvokeSubscription(inFlightToken));
+        Check(callbackEntered.Wait(TimeSpan.FromSeconds(2)), "fake callback should enter before the lifetime check");
+        CollectGarbage();
+        Check(inFlightCapture.IsAlive, "in-flight invocation should keep its callback capture alive");
+        allowCallbackReturn.Set();
+        Check(invocation.Wait(TimeSpan.FromSeconds(2)), "in-flight callback should return");
+        native.DestroySubscription(inFlightToken);
+        inFlightSubscription.TryClose();
+        callbackEntered.Dispose();
+        allowCallbackReturn.Dispose();
+        CollectGarbage();
+        Check(!inFlightCapture.IsAlive, "destroy after callback completion should release its capture");
+
+        int failuresReported = 0;
+        UiCallbackFailure? reported = null;
+        UiCallbackHandlerRegistration firstHandler = runtime.TrySetCallbackFailureHandler(failure =>
+        {
+            reported = failure;
+            failuresReported++;
+        }).Value;
+        UiCallbackHandlerRegistration replacement = runtime.TrySetCallbackFailureHandler(_ => failuresReported += 10).Value;
+        firstHandler.Dispose();
+
+        UiSubscription throwing = property.TrySubscribe(static () => throw new InvalidOperationException("callback")).Value;
+        ulong throwingToken = native.LastSubscription;
+        native.InvokeSubscription(throwingToken);
+        Check(failuresReported == 10, "disposing an old registration must retain its replacement");
+        Check(reported is null, "a replaced handler must not receive later failures");
+
+        int latestHandlerCalls = 0;
+        replacement.Dispose();
+        UiCallbackHandlerRegistration latestHandler = runtime.TrySetCallbackFailureHandler(failure =>
+        {
+            Check(failure.Kind == UiCallbackFailureKind.PropertyNotification,
+                "callback failure should identify the notification kind");
+            Check(failure.Exception is InvalidOperationException,
+                "callback failure should preserve the caught managed exception");
+            latestHandlerCalls++;
+            throw new InvalidOperationException("handler");
+        }).Value;
+
+        var trace = new RecordingTraceListener();
+        Trace.Listeners.Add(trace);
+        try
+        {
+            native.InvokeSubscription(throwingToken);
+            Check(latestHandlerCalls == 1, "the current handler should receive the callback failure");
+            Check(trace.LineCount == 1, "a throwing handler should be reported to Trace exactly once");
+        }
+        finally
+        {
+            Trace.Listeners.Remove(trace);
+        }
+
+        latestHandler.Dispose();
+        trace = new RecordingTraceListener();
+        Trace.Listeners.Add(trace);
+        try
+        {
+            native.InvokeSubscription(throwingToken);
+            Check(trace.LineCount == 1, "an unhandled callback exception should be traced exactly once");
+        }
+        finally
+        {
+            Trace.Listeners.Remove(trace);
+        }
+
+        var throwingTrace = new ThrowingTraceListener();
+        Trace.Listeners.Add(throwingTrace);
+        try
+        {
+            native.InvokeSubscription(throwingToken);
+        }
+        finally
+        {
+            Trace.Listeners.Remove(throwingTrace);
+        }
+
+        throwing.TryCancel();
+        Check(throwing.TryCancel().Value, "repeated cancellation of an inactive subscription should succeed");
+        int beforeCanceledInvoke = latestHandlerCalls;
+        native.InvokeSubscription(throwingToken);
+        Check(latestHandlerCalls == beforeCanceledInvoke, "cancel should prevent new callback starts");
+
+        native.SubscriptionCancelStatus = UiStatus.InternalError;
+        UiSubscription retryable = property.TrySubscribe(static () => { }).Value;
+        ulong retryableToken = native.LastSubscription;
+        UiResult<bool> cancelFailure = retryable.TryCancel();
+        Check(cancelFailure.IsFailure, "native cancel failure should be observable");
+        native.SubscriptionCancelStatus = UiStatus.Ok;
+        Check(retryable.TryCancel().IsSuccess, "failed cancellation should be retryable");
+        retryable.TryClose();
+
+        native.DestroySubscription(firstSubscriptionToken);
+        native.DestroySubscription(throwingToken);
+        native.DestroySubscription(retryableToken);
+
+        runtime.TryClose();
+        property.TryClose();
+    }
+
+    private sealed class RecordingTraceListener : TraceListener
+    {
+        internal int LineCount { get; private set; }
+
+        public override void Write(string? message) { }
+
+        public override void WriteLine(string? message) => LineCount++;
+    }
+
+    private sealed class ThrowingTraceListener : TraceListener
+    {
+        public override void Write(string? message) => throw new InvalidOperationException("trace");
+
+        public override void WriteLine(string? message) => throw new InvalidOperationException("trace");
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (WeakReference Capture, UiSubscription Subscription, ulong Token) SubscribeWithWeakCapture(
+        UiProperty<long> property, FakeNativeApi native)
+    {
+        var capture = new object();
+        var weakCapture = new WeakReference(capture);
+        Action callback = () => GC.KeepAlive(capture);
+        UiSubscription subscription = property.TrySubscribe(callback).Value;
+        return (weakCapture, subscription, native.LastSubscription);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference SubscribeWithFailedWeakCapture(UiProperty<long> property)
+    {
+        var capture = new object();
+        var weakCapture = new WeakReference(capture);
+        Action callback = () => GC.KeepAlive(capture);
+        Check(property.TrySubscribe(callback).IsFailure, "configured native registration failure should be reported");
+        return weakCapture;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (WeakReference Capture, UiSubscription Subscription, ulong Token,
+        ManualResetEventSlim Entered, ManualResetEventSlim AllowReturn) SubscribeWithBlockingCapture(
+        UiProperty<long> property, FakeNativeApi native)
+    {
+        var capture = new object();
+        var weakCapture = new WeakReference(capture);
+        var entered = new ManualResetEventSlim();
+        var allowReturn = new ManualResetEventSlim();
+        Action callback = () =>
+        {
+            entered.Set();
+            allowReturn.Wait(TimeSpan.FromSeconds(5));
+            GC.KeepAlive(capture);
+        };
+        UiSubscription subscription = property.TrySubscribe(callback).Value;
+        return (weakCapture, subscription, native.LastSubscription, entered, allowReturn);
+    }
+
+    private static void CollectGarbage()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+    }
+
     private static void TestPropertyCreateAndGetterFailuresAndCloseRetry()
     {
         var native = new FakeNativeApi
@@ -585,7 +798,10 @@ internal static class Program
         private readonly ConcurrentDictionary<ulong, long> _f64Properties = new();
         private readonly ConcurrentDictionary<ulong, ulong> _decimalProperties = new();
         private readonly ConcurrentDictionary<ulong, byte[]> _utf8Properties = new();
+        private readonly ConcurrentDictionary<ulong, FakeSubscription> _subscriptions = new();
+        private readonly ConcurrentDictionary<ulong, byte> _cancelledSubscriptions = new();
         private ulong _nextProperty = 300;
+        private ulong _nextSubscription = 900;
 
         internal ulong RuntimeHandle { get; init; } = 101;
         internal ulong RequestHandle { get; init; } = 202;
@@ -602,6 +818,8 @@ internal static class Program
         internal uint PropertyCreateStatus { get; set; } = UiStatus.Ok;
         internal uint PropertyGetStatus { get; set; } = UiStatus.Ok;
         internal uint PropertySetStatus { get; set; } = UiStatus.Ok;
+        internal uint PropertySubscribeStatus { get; set; } = UiStatus.Ok;
+        internal uint SubscriptionCancelStatus { get; set; } = UiStatus.Ok;
         internal ulong PropertyErrorHandle { get; set; }
         internal bool GrowUtf8OnCopy { get; set; }
         internal byte[] Utf8GrowthSuffix { get; set; } = [];
@@ -628,6 +846,8 @@ internal static class Program
         internal ulong Utf8PropertyHandle { get; private set; }
         internal int PropertyCreateCount { get; private set; }
         internal int PropertySetCount { get; private set; }
+        internal int SubscriptionCount { get; private set; }
+        internal ulong LastSubscription { get; private set; }
         internal ulong LastRuntime { get; private set; }
         internal ulong LastRequest { get; private set; }
 
@@ -644,6 +864,14 @@ internal static class Program
             isUiThread = IsUiThread;
             return UiStatus.Ok;
         }
+
+        public uint RuntimeSetUiLoopBridge(ulong runtime, IntPtr wake, IntPtr userdata, IntPtr destroy, out ulong error)
+        {
+            error = 0;
+            return UiStatus.Ok;
+        }
+
+        public uint RuntimeDispatchTurn(ulong runtime) => UiStatus.Ok;
 
         public uint PropertyCreateBool(ulong runtime, byte initial, out ulong property, out ulong error)
         {
@@ -875,6 +1103,50 @@ internal static class Program
             return PropertySetStatus;
         }
 
+        public uint PropertySubscribe(
+            ulong property, IntPtr callback, IntPtr userdata, IntPtr destroy,
+            out ulong subscription, out ulong error)
+        {
+            SubscriptionCount++;
+            subscription = PropertySubscribeStatus == UiStatus.Ok ? ++_nextSubscription : 0;
+            LastSubscription = subscription;
+            error = PropertyErrorHandle;
+            if (subscription != 0)
+            {
+                _subscriptions[subscription] = new FakeSubscription(callback, userdata, destroy);
+            }
+
+            return PropertySubscribeStatus;
+        }
+
+        public uint SubscriptionCancel(ulong subscription, out ulong error)
+        {
+            error = PropertyErrorHandle;
+            if (SubscriptionCancelStatus == UiStatus.Ok)
+            {
+                _cancelledSubscriptions[subscription] = 1;
+            }
+
+            return SubscriptionCancelStatus;
+        }
+
+        internal unsafe void InvokeSubscription(ulong subscription)
+        {
+            if (_subscriptions.TryGetValue(subscription, out FakeSubscription? state) &&
+                !_cancelledSubscriptions.ContainsKey(subscription))
+            {
+                ((delegate* unmanaged[Cdecl]<IntPtr, void>)state.Callback)(state.Userdata);
+            }
+        }
+
+        internal unsafe void DestroySubscription(ulong subscription)
+        {
+            if (_subscriptions.TryRemove(subscription, out FakeSubscription? state))
+            {
+                ((delegate* unmanaged[Cdecl]<IntPtr, void>)state.Destroy)(state.Userdata);
+            }
+        }
+
         public uint RuntimeShutdown(ulong runtime, out ulong error)
         {
             LastRuntime = runtime;
@@ -951,5 +1223,7 @@ internal static class Program
 
         private static int Read(ConcurrentDictionary<ulong, int> values, ulong token) =>
             values.TryGetValue(token, out int value) ? value : 0;
+
+        private sealed record FakeSubscription(IntPtr Callback, IntPtr Userdata, IntPtr Destroy);
     }
 }

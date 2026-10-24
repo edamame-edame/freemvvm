@@ -1,9 +1,9 @@
 # 言語ラッパー：C#
 
-- 文書版: 1.1
+- 文書版: 1.2
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-10-24
+- 状態: 1.2全文承認済み（利用者、2026-10-24）。1.1全文の承認履歴を維持。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -17,6 +17,7 @@
 | --- | --- |
 | interop・所有参照・Dispose | [RQ-03-002](../../11_requirements/RQ-03_language-support.md#rq-03-002)、[RQ-03-006](../../11_requirements/RQ-03_language-support.md#rq-03-006)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-023](../../11_requirements/RQ-04_abi-boundary.md#rq-04-023)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-06-006](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-006)、[RQ-12-006](../../11_requirements/RQ-12_build-distribution.md#rq-12-006) |
 | 公開API・call lease・native load | [RQ-03-002](../../11_requirements/RQ-03_language-support.md#rq-03-002)、[RQ-03-006](../../11_requirements/RQ-03_language-support.md#rq-03-006)、[RQ-03-013](../../11_requirements/RQ-03_language-support.md#rq-03-013)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-05-010](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-010)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-12-006](../../11_requirements/RQ-12_build-distribution.md#rq-12-006) |
+| Property notification Subscription・callback failure handler | [RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-008](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -47,7 +48,7 @@ flowchart LR
 |---|---|---|
 | P/Invoke | C ABIの固定幅型・calling convention・statusをmanaged型へ正確に写す | generator/style、最終TFM、API symbol一覧 |
 | Handle | owned/borrowedを識別し、retain/releaseと同時Disposeを安全にする | Core token表現、release failure意味論の変更 |
-| Callback | managed stateをGCからrootし、C ABIのdestroyまで保持する | 機能別callback結果、共通exception diagnostics API |
+| Callback | managed stateをGCからrootし、C ABIのdestroyまで保持する。例外情報はRuntime handlerへ渡し、ABI境界から遮断する | 機能別callback結果、他言語wrapper共通の診断API |
 | Error | status/error snapshotをC#の明示失敗へ変換する | 全code catalog、message localization |
 | Package | MVVM UIライブラリ C# NuGet native assetのRID native asset同梱を前提として参照する | NuGet ID/feed、TFM、load resolver、ARM profile（ビルド・配布：toolchain・profile・package）|
 
@@ -61,7 +62,9 @@ flowchart LR
 | `SafeHandle`は候補として調べるが、`ReleaseHandle`をCore releaseの単純な一回呼出しにしない。release失敗可能性に対して、事前確保済みcleanup ticketをC#側registryへ移管できる場合に限り利用する。代替ownerでも同じno-loss・retry契約を満たす。 | Runtime所有と終了、C++ wrapper。Microsoft契約は`ReleaseHandle`実装が失敗してはならないとしている。今回のC ABI release failureと無条件に一致するとは限らない。 |
 | Persistent callbackは、長期native callback pointerにmanaged delegateの個別instanceを渡してGC任せにしない。固定rootされたstatic trampoline delegate（または将来検証済みのstatic function pointer）を用い、各subscription userdataはmanaged callback stateを指す`GCHandle`相当のstrong rootとする。 | Runtime契約、公開ABI契約、言語境界契約、callback実行規則。Microsoft docsはcall return後もcallbackされるdelegateをcallback終了までrootするよう要求する。 |
 | callback stateのrootを作成後、C API登録/postが成功すればCoreへ所有権を移し、失敗すればC#側でrootを一度だけ解放する。成功closureのCore destroy callbackがin-flight invocation終了後にstateを解放する。 | callback実行規則、UI dispatcher。API登録中に同期callbackが始まる可能性はowner ABI契約を確認する。 |
-| managed callback trampolineはmanaged exceptionをcatchしてABI境界へ伝播させない。C# wrapperでは利用者が設定したRuntime/callback別handlerへ情報を渡せるようにする。handler自身のthrowも境界外へ出さず、callback種別のfailure意味論を変更しない。 | Runtime契約、callback実行規則、C++ wrapper。既定handler、再入制限、diagnosticsは後続API設計へ送る。 |
+| managed callback trampolineはmanaged exceptionをcatchしてABI境界へ伝播させない。C# wrapperでは利用者が設定したRuntime/callback別handlerへ情報を渡せるようにする。handler自身のthrowも境界外へ出さず、callback種別のfailure意味論を変更しない。既定診断はProperty notification callbackについて本書のcallback failure handler節に定める。 | Runtime契約、callback実行規則、C++ wrapper。 |
+| Property notification callbackは初期通知なしの`Action`とし、利用者はcallback中にPropertyの`TryGet()`で最新値を読む。callback登録・cancelはRQ-06-001どおりUI threadから呼ぶ。通知順、coalescing、cancelとin-flight callbackの境界、destroy時機は共通notification DDに委譲する。 | RQ-02-002、RQ-05-002/006/007/008/009、RQ-06-001、共通ABI、イベントハンドリング：通知とBinding伝播。 |
+| `UiSubscription.TryCancel()`はC ABI cancelを呼び、成功後はinactive状態を返す。inactive tokenへの再cancelも成功する。`TryClose()`/`Dispose()`はowned handle referenceだけをreleaseし、subscriptionをcancelしない。release失敗時はtoken ownerが参照を保持して再試行可能にする。 | RQ-05-002/007/012、共通ABI、イベントハンドリング：通知とBinding伝播。 |
 | Statusによる非throw result/try経路を持ち、詳細失敗にはimmutable Error snapshotを保持するtyped C# exceptionを併設できる。unknown `ui_status`/domain/codeはraw数値を保ったgeneric failureとし、message文面で分岐しない。 | 公開ABI契約、共通ABI、値・error境界、C++ wrapper。検証reject等の通常結果は機能API契約に従う。 |
 | Error messageとUTF-8 Property値はlength付きbyte列として扱う。末尾NUL、埋め込みNULの切捨て、変換不能byte列の暗黙replacementを前提にしない。 | 値・error境界、共通ABI。C# `string`との厳密変換/invalid sequence policyは後続API designで決める。 |
 | UI-affine object APIはUI thread専用とし、workerから直接呼ばない。非同期worker更新は`runtime_post`/dispatcherへ値copyとclosure ownershipを渡し、UI threadでsetterを行う。C# wrapperは誤threadを自動dispatchしない。 | Runtime契約、言語境界契約、UI dispatcher。 |
@@ -112,6 +115,48 @@ stateDiagram-v2
 - UI thread上のdestroy callbackはmanaged callback/delegate参照の解放だけを行い、UI APIを呼ばない。finalizerやdelegate target finalizationから追加UI操作を起こさない。
 - 長期native callbackのためdelegateを保持しなければならないこと、およびcall return後もcallbackが続くときの管理が必要なことはMicrosoft P/Invoke callback guidanceと整合する。[Implement callback functions](https://learn.microsoft.com/en-us/dotnet/standard/native-interop/how-to-implement-callback-functions)、[P/Invoke callbacks](https://learn.microsoft.com/en-us/dotnet/standard/native-interop/pinvoke)
 
+### Property notification Subscription（1.2）
+
+以下はC#公開surfaceとwrapper内部処理を定める。C ABIは既存のProperty subscription/cancelを使用し、callback payload、Coreのnotification順序・coalescing・cancel完了条件を変更しない。
+
+```csharp
+// API signature sketch; implementation is in the C# wrapper source.
+UiResult<UiSubscription> UiProperty<T>.TrySubscribe(Action callback);
+UiResult<bool> UiSubscription.TryCancel();
+UiResult<UiCloseDisposition> UiSubscription.TryClose();
+void UiSubscription.Dispose();
+
+UiResult<UiCallbackHandlerRegistration>
+    UiRuntime.TrySetCallbackFailureHandler(Action<UiCallbackFailure> handler);
+void UiCallbackHandlerRegistration.Dispose();
+
+enum UiCallbackFailureKind { PropertyNotification }
+sealed class UiCallbackFailure
+{
+    UiCallbackFailureKind Kind { get; }
+    Exception Exception { get; }
+}
+```
+
+- `TrySubscribe`はPropertyと同じRuntime owner/APIを使い、登録成功時にsubscription handleを返す。通知時に値をpushせず、callbackはProperty facadeをcaptureして`TryGet()`を呼ぶ。登録時の初期callbackは発生しない。
+- callback rootはcallback delegateとProperty facade等のcaptureを保持する。C ABI登録が失敗した場合はmanaged側がrootを解放し、成功した場合はCore destroy callbackがin-flight callback終了後にrootを一度だけ解放する。登録中の同期callback可能性は共通ABIの契約を適用する。
+- `TryCancel`はC ABIのvalid subscription tokenに対するcancelを行い、成功した`UiResult<bool>`の値`true`はsubscriptionがinactiveであることを表す（すでにinactiveでも成功し`true`）。成功後もhandle tokenは保持され、別途`TryClose`または`Dispose`でreleaseする。失敗時はtokenと再試行可能性を保つ。
+- `TryClose`/`Dispose`はhandleのowned referenceだけをreleaseし、cancelを暗黙実行しない。release後もRuntime registration registryがactive subscriptionを所有するため通知は継続する。明示cancelが必要な利用者は`TryCancel`成功後にcloseする。`Dispose`の失敗時cleanupは共通TokenOwner/CleanupTicket契約を使う。
+- callback trampolineは通知例外を捕捉し、Runtimeに現在登録されているfailure handlerのrecordを一度snapshotして通知する。通知例外後の次subscriber継続、Property値の非rollbackは共通notification DDに従う。例外は捕捉したcallback呼出し中だけfailure payloadから参照可能とする。
+
+### C# callback failure handler（1.2）
+
+| 型 | 責務・保持データ | 主要操作 | 所有・寿命 |
+| --- | --- | --- | --- |
+| `UiCallbackFailure` | callback種別と捕捉例外 | `Kind`, `Exception` | handler呼出しの間だけ渡すimmutable snapshot |
+| `CallbackHandlerRecord` | handler delegateと一意なrecord identity | snapshot/invoke | Runtimeごとに現在値を一件保持し、invoke中はsnapshotが強参照 |
+| `UiCallbackHandlerRegistration` | handler設定のregistration identity | `Dispose()` | managed-only owner。disposeは同じrecordがまだactiveの場合だけ解除し、後から設定されたhandlerを消さない |
+
+- `TrySetCallbackFailureHandler`はUI threadに限定しないthread-safeなmanaged設定操作とし、non-null handler用recordを準備してからRuntimeのcurrent recordとatomic交換する。record準備に失敗した場合は以前のhandlerを維持する。null handlerによる解除は公開しない。解除は返されたregistrationをdisposeして行う。
+- handlerをreplaceまたはregistrationをdisposeした時点で、以後に始まるtrampolineは新current recordを参照する。すでにrecordをsnapshotしたhandler invocationは完了まで旧delegateを保持し、継続する。旧registrationのdisposeは旧recordとのidentity比較交換を使い、後任recordがactiveならそれを変更しない。
+- callback例外が起きた時点でhandlerが未登録なら`System.Diagnostics.Trace.TraceError`へ一度記録する。handler自体が例外をthrowした場合も同じ既定診断へ一度記録し、callback種別のfailure意味論やC ABI returnを変更しない。Trace listenerが例外をthrowした場合はその例外もC ABIへ越境させず抑止する。
+- handlerはcallback実行中に同期呼出しされる。callback種別ごとの許可API、thread affinity、再入可能性はRQおよび共通callback実行規則に従う。wrapperはhandler呼出しを別threadへdispatchせず、追加の例外伝播もしない。
+
 ### C# exception/error surface
 
 ```csharp
@@ -123,7 +168,7 @@ T GetValue<T>(Property<T> property);            // convenience path may throw Ui
 - Result surfaceはstatusとoptional Error snapshotを保持する。例外convenience surfaceは同じraw status/domain/code/native Error snapshotを持つ`UiException`へ変換する。
 - error detail handleがない場合も、C ABI statusを維持する。unknown statusやfuture domain/codeをgeneric managed exceptionへ正規化してraw numeric dataを消さない。
 - Validation rejectionやCommand state/failure snapshot等、機能APIが通常の結果として定義する値をすべてexceptionへ変換しない。
-- callback内exceptionはP/Invoke境界へ伝播しない。利用者handlerへcallback種別、Runtime context、例外情報を渡す案とする。handler自身の例外、report先、default handlerは後続API designで決める。
+- callback内exceptionはP/Invoke境界へ伝播しない。Runtimeごとの`UiCallbackFailure` handlerへcallback種別と例外を渡す。handler未登録またはhandler例外時の既定診断は`Trace.TraceError`一回とし、その呼出し自体の例外もABI境界で捕捉する。
 - delegate callback stateのdestroy中やfinalizer中にユーザーhandlerを呼ばない。
 
 ### Runtime・Dispose・thread規則
@@ -134,6 +179,8 @@ T GetValue<T>(Property<T> property);            // convenience path may throw Ui
 | UI API | UI threadでのみ呼ぶ。workerからの直接呼出しはstatus/resultまたはexceptionで誤threadを示す |
 | worker更新 | value snapshotを渡すpost APIへ送る。成功時にcallback state所有権移転、失敗時C#側でcleanup |
 | Subscription/Binding Dispose | Coreのイベントハンドリング：通知とBinding伝播解除・release意味論に従い明示解放 |
+| Property Subscription cancel | `TryCancel`で通知を解除し、成功後に新しいcallbackを開始しない。handle releaseは別に行う |
+| Callback failure handler | Runtime単位のrecordを設定。registration `Dispose`はそのrecordがcurrentの場合だけ解除 |
 | Runtime Shutdown | 明示呼出し。callback中はaccepted/pending、worker同期はloop稼働時に完了待ち |
 | Runtime Dispose | shutdownを暗黙に開始しない。 具体化は言語ラッパー：C#、[ビルド・配布：toolchain・profile・package](../build/toolchain-packages.md)、[共通C ABI：宣言・検査・互換性](../runtime-objects/abi.md)を参照する|
 | finalization | fallback cleanup managerへのownership transferだけを行い、UI-affine Core処理を直接実行しない |
@@ -154,8 +201,10 @@ MVVM UIライブラリ C# NuGet native assetはRID別native assetを`runtimes/{r
 | P/Invoke call中にDispose | in-flight leaseが終わるまでnative tokenをreleaseしない |
 | callback登録失敗 | `GCHandle` rootをC#側が解放。Core destroyを呼ばない |
 | callback登録成功 | state/delegate targetをCore destroyまでroot |
-| callback内exception | catchし、利用者設定handlerへ通知。P/Invokeへ越境しない |
-| handlerがthrow | さらに境界で捕捉し、callback種別のCore stateを破壊しない |
+| callback内exception | catchし、Runtime handlerへ通知。未登録なら`Trace.TraceError`へ一度記録し、P/Invokeへ越境しない |
+| handlerがthrow | handler例外をcatchして`Trace.TraceError`へ一度記録。C ABIへ越境させず、callback種別のCore stateを変更しない |
+| Subscription handle releaseのみ | active registrationはCore Runtime ownerにより維持。通知は継続しcancelしない |
+| 旧handler registrationをclose | 同じrecordがcurrentの場合だけ解除。後から設定されたrecordを保持 |
 | Dispose/native releaseがUI finalizer queue OOMで失敗 | Dispose結果で失敗を返しtoken ownerを保つ。finalizer経路では事前確保ticketへ移管 |
 | cleanup ticketをUI threadで処理 | release再試行。成功時だけticket/tokenを解放 |
 | Runtime shutdown後にpending ticketあり | Runtime所有と終了 Closed shell releaseでdrain後、Runtime ownerを終了 |
@@ -174,7 +223,7 @@ MVVM UIライブラリ C# NuGet native assetはRID別native assetを`runtimes/{r
 | ulong TokenOwnerを採用しSafeHandleをnative tokenの正本にしない。CallLeaseがactive_callsを増減しDisposeと競合するcallを保護。 | 上記の根拠RQ |
 | LibraryImportのsource generation、UnmanagedCallersOnly static trampoline、GCHandle rootを使う。native boolはbyte、長さはulong。 | 上記の根拠RQ |
 | UiResult<T>/UiException/UiErrorSnapshotを提供しTry系とthrow系を同じ内部resultへ接続。Disposeは冪等nonthrowing、TryCloseで失敗を取得可能にする。 | 上記の根拠RQ |
-| handlerはRuntimeごとのimmutable delegate record。Interlocked交換しinvoke前snapshotを強保持。handler例外は診断へ一度だけ。 | 上記の根拠RQ |
+| callback failure handlerはRuntimeごとのimmutable delegate record。Interlocked交換しinvoke前snapshotを強保持。登録未設定・handler例外・Trace listener例外を処理し、ABI越境を防ぐ。 | RQ-05-009、callback実行規則 |
 | native loadは専用interop assemblyのresolverでverified absolute pathだけを解決し、process lifetime保持。single-file publishではassembly locationに依存しない。 | 上記の根拠RQ |
 | interop assemblyとnative libraryをprocess-lifetime rootへ置く。unloadの提供範囲はRQ-03-013を参照する。 | [RQ-03-013](../../11_requirements/RQ-03_language-support.md#rq-03-013) |
 
@@ -207,9 +256,9 @@ resolverはassembly登録時に一度だけ設定し、package assetのselected 
 
 minimumの選定根拠は[.NET releases/support](https://learn.microsoft.com/en-us/dotnet/core/releases-and-support)と[.NET 10 supported OS](https://github.com/dotnet/core/blob/main/release-notes/10.0/supported-os.md)。.NET側のsupportと本ライブラリの検証済みprofileを分ける。
 
-## クラス設計の補足（1.1承認済み）
+## クラス設計の補足（1.2）
 
-既承認1.0の実現規則を支える型・関連・所有・主要操作を整理した。内部型名とメソッドの分担は本改訂で補足する内部設計であり、既存公開APIの署名や外部保証を追加・変更するものではない。この節のクラス構成と追加図は1.1版全文の承認対象であり、実装・試験完了の証明とは区別する。
+既承認1.0/1.1の実現規則を支える型・関連・所有・主要操作を整理する。1.2でProperty Subscriptionとcallback failure handlerの型・操作を追加し、文書全体の承認を得た。実装・試験状態は別管理する。
 
 要求根拠: [RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-05-014](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-014)。
 
@@ -224,6 +273,10 @@ minimumの選定根拠は[.NET releases/support](https://learn.microsoft.com/en-
 | CleanupTicket | 未消費tokenと再試行状態 | Enqueue(); RetryRelease() | finalizer失敗でticketへ移管。tokenをIntPtrの実pointerへ変換しない |
 | CallbackRoot | delegate/GCHandle、native userdataとの対応、in-flight寿命 | Prepare(); TransferOnSuccess(); ReleaseAfterDestroy() | 登録失敗はmanaged側回収。成功後はnative destroyの規則でrootを解放 |
 | UiProperty | typed facadeとTokenOwner | GetValue(); TrySet(value) | UI context検査はCore契約に従う。公開facadeがunsafe pointerを露出しない |
+| UiSubscription | subscription token ownerとProperty notification callback registration | TryCancel(); TryClose(); Dispose() | cancel状態とowned handle寿命を分離。closeだけではnotificationを解除しない |
+| CallbackHandlerRecord | Runtime単位のhandler delegateとrecord identity | Snapshot(); Invoke(failure) | Runtime current recordとin-flight snapshotが別々に強参照する |
+| UiCallbackHandlerRegistration | 設定したhandler record identity | Dispose() | current recordとの一致時のみ解除。別handlerへの置換を消さない |
+| UiCallbackFailure | callback kindとException | Kind; Exception | handler invocationに渡すimmutable payload |
 | NativeLibraryResolver | verified absolute pathと専用interop assemblyへの登録 | ResolveVerifiedPath(); RegisterResolver() | profile/version照合後だけload。呼出し中の早期unloadを許さない |
 
 ### クラスの関連
@@ -253,6 +306,21 @@ classDiagram
         Prepare()
         TransferOnSuccess()
     }
+    class UiSubscription {
+        TryCancel()
+        TryClose()
+    }
+    class CallbackHandlerRecord {
+        Snapshot()
+        Invoke()
+    }
+    class UiCallbackHandlerRegistration {
+        Dispose()
+    }
+    class UiCallbackFailure {
+        Kind
+        Exception
+    }
     class NativeLibraryResolver {
         ResolveVerifiedPath()
         RegisterResolver()
@@ -261,6 +329,11 @@ classDiagram
     CallLease o-- TokenOwner : call期間
     TokenOwner *-- CleanupTicket : 移管前
     CallbackRoot ..> TokenOwner : 所属と呼出し境界
+    UiProperty ..> UiSubscription : subscribe
+    UiSubscription *-- CallbackRoot : Core destroyまで
+    UiRuntime *-- CallbackHandlerRecord : current
+    UiCallbackHandlerRegistration ..> CallbackHandlerRecord : identityで解除
+    CallbackHandlerRecord ..> UiCallbackFailure : handlerへ通知
     TokenOwner ..> NativeLibraryResolver : native code寿命
 ```
 
@@ -278,3 +351,4 @@ CallLeaseはUI thread権限を付与しない。GCHandleの保持と公開handle
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-10-24 | 1.2全文 | Property notification SubscriptionとRuntime callback failure handlerの公開surface、cancel/close分離、callback root・handler例外診断を追加。計画 `.docs/20_todo/csharp-property-subscription.md` に基づく。利用者が「ok」と回答し文書全体を承認。実装・試験状態は別管理 |

@@ -1,4 +1,7 @@
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
 using FreeMvvm;
 
 namespace FreeMvvm.Consumer;
@@ -72,6 +75,12 @@ internal static class Program
         {
             Console.Error.WriteLine("I64 property handle could not be closed.");
             return 9;
+        }
+
+        int notificationResult = RunNotificationConsumer(args[0]);
+        if (notificationResult != 0)
+        {
+            return notificationResult;
         }
 
         long initialNaNBits = 0x7FF8_0000_0000_0042;
@@ -230,7 +239,172 @@ internal static class Program
             return 28;
         }
 
-        Console.WriteLine("C# Runtime BOOL/I64/F64/UTF-8/DECIMAL Property C ABI consumer: OK");
+        Console.WriteLine("C# Runtime BOOL/I64/F64/UTF-8/DECIMAL Property and notification Subscription C ABI consumer: OK");
         return 0;
+    }
+
+    private static int RunNotificationConsumer(string nativeArtifactPath)
+    {
+        UiResult<UiRuntime> runtimeCreate = UiRuntime.TryCreate(new RuntimeOptions
+        {
+            NativeArtifactPath = nativeArtifactPath,
+        });
+        if (runtimeCreate.IsFailure)
+        {
+            Console.Error.WriteLine($"Notification Runtime creation failed: {runtimeCreate.Error?.RawStatus}");
+            return 29;
+        }
+
+        using UiRuntime runtime = runtimeCreate.Value;
+        if (!InstallTestBridge(runtime))
+        {
+            Console.Error.WriteLine("Could not register the C ABI test host bridge.");
+            return 30;
+        }
+
+        UiResult<UiProperty<long>> propertyCreate = UiProperty<long>.TryCreate(runtime, 0);
+        if (propertyCreate.IsFailure)
+        {
+            Console.Error.WriteLine($"Notification property creation failed: {propertyCreate.Error?.RawStatus}");
+            return 31;
+        }
+
+        using UiProperty<long> property = propertyCreate.Value;
+        int callbackCount = 0;
+        long callbackValue = -1;
+        UiSubscription subscription = property.TrySubscribe(() =>
+        {
+            callbackValue = property.TryGet().Value;
+            callbackCount++;
+        }).Value;
+        UiResult<bool> set = UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        if (callbackCount != 0 || !RunDispatchTurn(runtime, () => set = property.TrySet(41)) ||
+            set.IsFailure || callbackCount != 1 || callbackValue != 41)
+        {
+            Console.Error.WriteLine("C# notification callback did not observe the changed property value.");
+            return 32;
+        }
+
+        UiResult<bool> canceledSet = UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        if (!subscription.TryCancel().Value || subscription.TryClose().IsFailure ||
+            !RunDispatchTurn(runtime, () => canceledSet = property.TrySet(42)) ||
+            canceledSet.IsFailure || callbackCount != 1)
+        {
+            Console.Error.WriteLine("C# subscription cancellation did not stop later notification callbacks.");
+            return 33;
+        }
+
+        UiResult<UiProperty<long>> releasedPropertyCreate = UiProperty<long>.TryCreate(runtime, 0);
+        if (releasedPropertyCreate.IsFailure)
+        {
+            Console.Error.WriteLine("Handle-release subscription property creation failed.");
+            return 34;
+        }
+
+        using UiProperty<long> releasedProperty = releasedPropertyCreate.Value;
+        int releasedHandleCallbackCount = 0;
+        UiSubscription releasedSubscription = releasedProperty.TrySubscribe(() =>
+        {
+            _ = releasedProperty.TryGet().Value;
+            releasedHandleCallbackCount++;
+        }).Value;
+        UiResult<bool> releasedSet = UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        if (releasedSubscription.TryClose().IsFailure ||
+            !RunDispatchTurn(runtime, () => releasedSet = releasedProperty.TrySet(1)) ||
+            releasedSet.IsFailure || releasedHandleCallbackCount != 1)
+        {
+            Console.Error.WriteLine("Releasing a subscription handle incorrectly canceled its active callback.");
+            return 35;
+        }
+
+        if (runtime.Shutdown().IsFailure || runtime.TryClose().IsFailure)
+        {
+            Console.Error.WriteLine("Notification Runtime did not shut down and close cleanly.");
+            return 36;
+        }
+
+        return 0;
+    }
+
+    private static bool InstallTestBridge(UiRuntime runtime)
+    {
+        GCHandle root = GCHandle.Alloc(new HostBridgeState());
+        UiResult<CallLease> acquired = runtime.Owner.AcquireLease();
+        if (acquired.IsFailure)
+        {
+            root.Free();
+            return false;
+        }
+
+        using CallLease lease = acquired.Value;
+        uint status = runtime.Owner.Api.RuntimeSetUiLoopBridge(
+            lease.Token,
+            TestBridgeEntryPoints.Wake,
+            GCHandle.ToIntPtr(root),
+            TestBridgeEntryPoints.Destroy,
+            out _);
+        if (status != UiStatus.Ok)
+        {
+            root.Free();
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool RunDispatchTurn(UiRuntime runtime, Action action)
+    {
+        UiResult<CallLease> acquired = runtime.Owner.AcquireLease();
+        if (acquired.IsFailure)
+        {
+            return false;
+        }
+
+        using CallLease lease = acquired.Value;
+        action();
+        return runtime.Owner.Api.RuntimeDispatchTurn(lease.Token) == UiStatus.Ok;
+    }
+
+    private sealed class HostBridgeState
+    {
+        internal int WakeCount;
+    }
+
+    private static unsafe class TestBridgeEntryPoints
+    {
+        internal static IntPtr Wake => (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, uint, void>)&OnWake;
+
+        internal static IntPtr Destroy => (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, void>)&OnDestroy;
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void OnWake(IntPtr userdata, uint priority)
+        {
+            try
+            {
+                if (GCHandle.FromIntPtr(userdata).Target is HostBridgeState state)
+                {
+                    Interlocked.Increment(ref state.WakeCount);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void OnDestroy(IntPtr userdata)
+        {
+            try
+            {
+                GCHandle root = GCHandle.FromIntPtr(userdata);
+                if (root.IsAllocated)
+                {
+                    root.Free();
+                }
+            }
+            catch
+            {
+            }
+        }
     }
 }
