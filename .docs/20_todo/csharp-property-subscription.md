@@ -1,7 +1,7 @@
 # C# Property notification Subscription
 
 - 更新日: 2026-10-24
-- 状態: 実装完了・focused/consumer/local check成功・CI確認待ち
+- 状態: 実装完了・Windows/Linux CI成功（59d4dc9）・検証記録反映中
 - 対象: C# `UiProperty<T>`からnotification Subscriptionを登録し、明示cancel・handle close・managed callback root・callback例外通知を安全に扱う。
 
 ## 背景と範囲
@@ -43,7 +43,8 @@ C# Runtime ownerとBOOL/I64/F64/UTF-8/DECIMAL Property facadeが実装済み。�
 3. [x] 承認済み計画をcommit `a165368`で記録し、現在のC#作業ブランチへpushした。
 4. [x] DD承認後、`UT-WRAP-CS-PROP-SUB-001` / `UT-CONSUMER-CS-PROP-SUB-001`の試験設計と`UNIT-WRAP-CS-PROP-SUB-001` mappingを製品source変更前に登録した。
 5. [x] CallbackFailure/handler、static trampoline/root、Subscription facadeとfake ABI testsを実装した。`tools/dev.py csharp-property-test`成功。
-6. [ ] real C ABI consumer、全体check、minimum toolchain check、文書リンク検査を通過。`tools/units.yaml`、wrapper test design、unit台帳、計画、`.docs/01_memory/`を更新済み。実装commit後のWindows/Linux CI成功を確認してcommit/pushする。
+6. [x] real C ABI consumer、全体check、minimum toolchain check、文書リンク検査を通過。`tools/units.yaml`、wrapper test design、unit台帳、計画、`.docs/01_memory/`を更新した。実装commit `59d4dc9` の [Windows/Linux CI](https://github.com/edamame-edame/freemvvm/actions/runs/40054978936) が両方success。
+7. [ ] CI結果とcommit revisionをこの記録へ反映し、日本語commitでpushする。記録更新commitのCIも成功することを確認する。
 
 ## 承認済みの決定
 
@@ -65,4 +66,6 @@ C# Runtime ownerとBOOL/I64/F64/UTF-8/DECIMAL Property facadeが実装済み。�
 - real C ABI consumer: `.venv/Scripts/python.exe tools/dev.py csharp-property-consumer-test` 成功。
 - repository check: `.venv/Scripts/python.exe tools/dev.py check` 成功。document links、format/lint、Rust build/clippy、C/C++ probes/package、C# focused/consumer、Python package checksを含む。
 - minimum toolchain: `.venv/Scripts/python.exe tools/dev.py minimum` 成功（Rust 1.85.0）。
-- 検証環境: Windows 11、2026-10-24。GitHub Actionsは実装commit push後に確認する。
+- 実装commit: `59d4dc9ec5cec3cf1315aa6e603b7742624aa6ef`（`C# Property通知Subscriptionを実装`）。
+- GitHub Actions: [run 40054978936](https://github.com/edamame-edame/freemvvm/actions/runs/40054978936) がWindows `windows-2022` とLinux `ubuntu-24.04` の両方でsuccess。
+- 検証環境: Windows 11、2026-10-24。

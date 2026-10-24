@@ -1,7 +1,7 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 
 - 文書版: 0.1
-- 状態: 0.1全文承認済み（利用者、2026-10-17）。C++ Runtime/Property/Subscription/Binding/package consumer、C# Runtime/Property値型はfocused verification済み。C# Property Subscription（DD 1.2）はfocused fake ABI・real C ABI consumer・local check済み。実装commit後のCI確認待ち
+- 状態: 0.1全文承認済み（利用者、2026-10-17）。C++ Runtime/Property/Subscription/Binding/package consumer、C# Runtime/Property値型はfocused verification済み。C# Property Subscription（DD 1.2）はfocused fake ABI・real C ABI consumer・local check済み。実装commit `59d4dc9` の[Windows/Linux CI](https://github.com/edamame-edame/freemvvm/actions/runs/40054978936)も成功
 - 更新日: 2026-10-24
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
