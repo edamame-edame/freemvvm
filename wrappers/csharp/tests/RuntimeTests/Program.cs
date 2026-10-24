@@ -32,6 +32,7 @@ internal static class Program
         Run(TestPropertyCreateAndGetterFailuresAndCloseRetry);
         Run(TestPropertyLeaseProtectsHandleDuringDispose);
         Run(TestPropertySubscriptionAndCallbackFailureHandling);
+        Run(TestPropertyBindingModesErrorSnapshotAndSubscription);
         return _failures == 0 ? 0 : 1;
     }
 
@@ -780,6 +781,145 @@ internal static class Program
         Check(runtime.TryClose().Value == UiCloseDisposition.Released, "Runtime should close after property retry");
     }
 
+    private static void TestPropertyBindingModesErrorSnapshotAndSubscription()
+    {
+        var native = new FakeNativeApi();
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiProperty<bool> boolSource = UiProperty<bool>.TryCreate(runtime, true).Value;
+        UiProperty<bool> boolTarget = UiProperty<bool>.TryCreate(runtime, false).Value;
+        UiProperty<long> longSource = UiProperty<long>.TryCreate(runtime, 1).Value;
+        UiProperty<long> longTarget = UiProperty<long>.TryCreate(runtime, 0).Value;
+        UiProperty<double> doubleSource = UiProperty<double>.TryCreate(runtime, 1.5).Value;
+        UiProperty<double> doubleTarget = UiProperty<double>.TryCreate(runtime, 0).Value;
+        UiProperty<DecimalValue> decimalSource = UiProperty<DecimalValue>.TryCreate(
+            runtime, DecimalValue.TryFromParts(false, 0, 15).Value).Value;
+        UiProperty<DecimalValue> decimalTarget = UiProperty<DecimalValue>.TryCreate(
+            runtime, DecimalValue.TryFromParts(false, 0, 0).Value).Value;
+        UiProperty<string> stringSource = UiProperty<string>.TryCreate(runtime, "source").Value;
+        UiProperty<string> stringTarget = UiProperty<string>.TryCreate(runtime, "target").Value;
+
+        VerifyBindingModes(boolSource, boolTarget, native);
+        VerifyBindingModes(longSource, longTarget, native);
+        VerifyBindingModes(doubleSource, doubleTarget, native);
+        VerifyBindingModes(decimalSource, decimalTarget, native);
+        VerifyBindingModes(stringSource, stringTarget, native);
+
+        native.BindingCreateStatus = 0xF123_4567;
+        native.BindingOperationErrorToken = 0xD000_0000_0000_0101;
+        native.ErrorStatusValue = 0xF123_4567;
+        native.ErrorDomainValue = 0xABCD_0102;
+        native.ErrorCodeValue = 0xFFFF_0103;
+        native.ErrorMessageValue = [0x62, 0x69, 0x6E, 0x64];
+        UiResult<UiBinding<long>?> failedCreate = longSource.TryBindTo(longTarget, UiBindingMode.OneWay);
+        Check(failedCreate.IsFailure && failedCreate.Error?.RawStatus == 0xF123_4567,
+            "binding create failure should preserve its raw status");
+        Check(failedCreate.Error?.Domain == 0xABCD_0102 && failedCreate.Error.Code == 0xFFFF_0103,
+            "binding create failure should preserve error detail");
+        Check(native.ReleaseCount(native.BindingOperationErrorToken) == 1,
+            "binding create error token should be released after managed capture");
+        native.BindingCreateStatus = UiStatus.Ok;
+        native.BindingOperationErrorToken = 0;
+
+        UiBinding<long> binding = longSource.TryBindTo(longTarget, UiBindingMode.OneWay).Value!;
+        UiResult<UiBindingError<long>?> noError = binding.TryGetErrorSnapshot();
+        Check(noError.IsSuccess && noError.Value is null,
+            "zero error snapshot outputs should produce a successful null value");
+
+        native.BindingErrorToken = 0xD000_0000_0000_0104;
+        native.BindingRejectedPropertyToken = 0xD000_0000_0000_0105;
+        native.BindingDirectionValue = (uint)UiBindingDirection.TargetToSource;
+        native.ErrorStatusValue = 0xF654_3210;
+        native.ErrorDomainValue = 0xABCD_0106;
+        native.ErrorCodeValue = 0xFFFF_0107;
+        native.ErrorMessageValue = [0x6F, 0x6C, 0x64];
+        UiBindingError<long> snapshot = binding.TryGetErrorSnapshot().Value!;
+        Check(snapshot.Direction == UiBindingDirection.TargetToSource,
+            "error snapshot should preserve propagation direction");
+        Check(snapshot.Error.RawStatus == 0xF654_3210 && snapshot.Error.Domain == 0xABCD_0106 &&
+            snapshot.Error.Code == 0xFFFF_0107 && snapshot.Error.Message == "old",
+            "error snapshot should copy all native error details");
+        native.ErrorMessageValue = [0x6E, 0x65, 0x77];
+        Check(snapshot.Error.Message == "old", "captured error detail should remain immutable");
+        Check(native.ReleaseCount(0xD000_0000_0000_0104) == 1,
+            "native error snapshot token should be released after copying");
+        Check(snapshot.TryClose().Value == UiCloseDisposition.Released,
+            "closing an error snapshot should release its owned rejected Property token");
+        Check(native.ReleaseCount(0xD000_0000_0000_0105) == 1,
+            "rejected Property token should release exactly once");
+        native.BindingErrorToken = 0;
+        native.BindingRejectedPropertyToken = 0;
+
+        UiCallbackFailure? callbackFailure = null;
+        using UiCallbackHandlerRegistration handler = runtime.TrySetCallbackFailureHandler(
+            failure => callbackFailure = failure).Value;
+        int callbackCount = 0;
+        UiSubscription errorSubscription = binding.TrySubscribeError(() =>
+        {
+            callbackCount++;
+            throw new InvalidOperationException("binding callback");
+        }).Value;
+        Check(callbackCount == 0, "binding error registration should not send an initial callback");
+        ulong subscriptionToken = native.LastSubscription;
+        native.InvokeSubscription(subscriptionToken);
+        Check(callbackCount == 1 && callbackFailure?.Kind == UiCallbackFailureKind.BindingErrorNotification,
+            "binding error callback failures should identify their callback kind");
+        Check(errorSubscription.TryClose().Value == UiCloseDisposition.Released,
+            "closing the subscription handle should succeed");
+        native.InvokeSubscription(subscriptionToken);
+        Check(callbackCount == 2, "releasing the error subscription handle should not cancel the registration");
+        native.DestroySubscription(subscriptionToken);
+
+        native.BindingCancelStatus = UiStatus.WrongThread;
+        Check(binding.TryCancel().IsFailure, "failed Binding cancel should be reported");
+        native.BindingCancelStatus = UiStatus.Ok;
+        Check(binding.TryCancel().Value, "Binding cancel should succeed on retry");
+        ulong bindingToken = native.LastBinding;
+        native.SetReleaseFailures(bindingToken, 1);
+        UiResult<UiCloseDisposition> failedBindingClose = binding.TryClose();
+        Check(failedBindingClose.IsFailure && failedBindingClose.Error?.RawStatus == UiStatus.InternalError,
+            "failed Binding handle release should be reported and retained for retry");
+        Check(binding.TryClose().Value == UiCloseDisposition.Released,
+            "Binding handle release should be retryable and separate from cancellation");
+        Check(native.ReleaseCount(bindingToken) == 2 && native.SuccessfulReleaseCount(bindingToken) == 1,
+            "Binding handle should be consumed once after a failed release retry");
+
+        boolSource.Dispose();
+        boolTarget.Dispose();
+        longSource.Dispose();
+        longTarget.Dispose();
+        doubleSource.Dispose();
+        doubleTarget.Dispose();
+        decimalSource.Dispose();
+        decimalTarget.Dispose();
+        stringSource.Dispose();
+        stringTarget.Dispose();
+        Check(runtime.TryClose().IsSuccess, "Runtime should close after Binding tests");
+    }
+
+    private static void VerifyBindingModes<T>(UiProperty<T> source, UiProperty<T> target, FakeNativeApi native)
+    {
+        foreach (UiBindingMode mode in Enum.GetValues<UiBindingMode>())
+        {
+            UiResult<UiBinding<T>?> result = source.TryBindTo(target, mode);
+            Check(result.IsSuccess, $"{typeof(T).Name} {mode} Binding should succeed");
+            Check(native.LastBindingSource != 0 && native.LastBindingTarget != 0 &&
+                native.LastBindingMode == (uint)mode,
+                "Binding should pass the correct source, target, and mode tokens");
+            if (mode == UiBindingMode.OneTime)
+            {
+                Check(result.Value is null, "OneTime success should have no Binding wrapper");
+                continue;
+            }
+
+            UiBinding<T> binding = result.Value!;
+            ulong token = native.LastBinding;
+            Check(binding.TryCancel().IsSuccess, "Binding cancel should succeed");
+            Check(binding.TryClose().Value == UiCloseDisposition.Released,
+                "Binding handle release should be independent from cancel");
+            Check(native.ReleaseCount(token) == 1, "Binding wrapper should own one native Binding token");
+        }
+    }
+
     private static void Check(bool condition, string message)
     {
         if (!condition)
@@ -802,6 +942,7 @@ internal static class Program
         private readonly ConcurrentDictionary<ulong, byte> _cancelledSubscriptions = new();
         private ulong _nextProperty = 300;
         private ulong _nextSubscription = 900;
+        private ulong _nextBinding = 1200;
 
         internal ulong RuntimeHandle { get; init; } = 101;
         internal ulong RequestHandle { get; init; } = 202;
@@ -810,7 +951,7 @@ internal static class Program
         internal uint ErrorStatusValue { get; set; } = UiStatus.InternalError;
         internal uint ErrorDomainValue { get; set; } = 1;
         internal uint ErrorCodeValue { get; set; } = 1;
-        internal byte[] ErrorMessageValue { get; init; } = [];
+        internal byte[] ErrorMessageValue { get; set; } = [];
         internal byte IsUiThread { get; init; } = 1;
         internal uint RequestStatus { get; init; } = UiStatus.Ok;
         internal uint RequestState { get; init; } = (uint)ShutdownRequestState.Completed;
@@ -820,6 +961,14 @@ internal static class Program
         internal uint PropertySetStatus { get; set; } = UiStatus.Ok;
         internal uint PropertySubscribeStatus { get; set; } = UiStatus.Ok;
         internal uint SubscriptionCancelStatus { get; set; } = UiStatus.Ok;
+        internal uint BindingCreateStatus { get; set; } = UiStatus.Ok;
+        internal uint BindingCancelStatus { get; set; } = UiStatus.Ok;
+        internal uint BindingErrorSnapshotStatus { get; set; } = UiStatus.Ok;
+        internal uint BindingSubscribeErrorStatus { get; set; } = UiStatus.Ok;
+        internal ulong BindingErrorToken { get; set; }
+        internal ulong BindingRejectedPropertyToken { get; set; }
+        internal uint BindingDirectionValue { get; set; } = (uint)UiBindingDirection.SourceToTarget;
+        internal ulong BindingOperationErrorToken { get; set; }
         internal ulong PropertyErrorHandle { get; set; }
         internal bool GrowUtf8OnCopy { get; set; }
         internal byte[] Utf8GrowthSuffix { get; set; } = [];
@@ -850,6 +999,11 @@ internal static class Program
         internal ulong LastSubscription { get; private set; }
         internal ulong LastRuntime { get; private set; }
         internal ulong LastRequest { get; private set; }
+        internal ulong LastBindingSource { get; private set; }
+        internal ulong LastBindingTarget { get; private set; }
+        internal uint LastBindingMode { get; private set; }
+        internal ulong LastBinding { get; private set; }
+        internal int BindingCreateCount { get; private set; }
 
         public uint RuntimeCreate(out ulong runtime, out ulong error)
         {
@@ -1128,6 +1282,53 @@ internal static class Program
             }
 
             return SubscriptionCancelStatus;
+        }
+
+        public uint BindingCreate(ulong source, ulong target, uint mode, out ulong binding, out ulong error)
+        {
+            BindingCreateCount++;
+            LastBindingSource = source;
+            LastBindingTarget = target;
+            LastBindingMode = mode;
+            binding = BindingCreateStatus == UiStatus.Ok && mode != (uint)UiBindingMode.OneTime
+                ? ++_nextBinding
+                : 0;
+            LastBinding = binding;
+            error = BindingOperationErrorToken;
+            return BindingCreateStatus;
+        }
+
+        public uint BindingCancel(ulong binding, out ulong error)
+        {
+            LastBinding = binding;
+            error = BindingOperationErrorToken;
+            return BindingCancelStatus;
+        }
+
+        public uint BindingErrorSnapshot(ulong binding, out ulong errorSnapshot, out ulong rejectedProperty, out uint direction)
+        {
+            LastBinding = binding;
+            errorSnapshot = BindingErrorToken;
+            rejectedProperty = BindingRejectedPropertyToken;
+            direction = BindingErrorToken == 0 && BindingRejectedPropertyToken == 0 ? 0 : BindingDirectionValue;
+            return BindingErrorSnapshotStatus;
+        }
+
+        public uint BindingSubscribeError(
+            ulong binding, IntPtr callback, IntPtr userdata, IntPtr destroy,
+            out ulong subscription, out ulong error)
+        {
+            LastBinding = binding;
+            SubscriptionCount++;
+            subscription = BindingSubscribeErrorStatus == UiStatus.Ok ? ++_nextSubscription : 0;
+            LastSubscription = subscription;
+            error = BindingOperationErrorToken;
+            if (subscription != 0)
+            {
+                _subscriptions[subscription] = new FakeSubscription(callback, userdata, destroy);
+            }
+
+            return BindingSubscribeErrorStatus;
         }
 
         internal unsafe void InvokeSubscription(ulong subscription)

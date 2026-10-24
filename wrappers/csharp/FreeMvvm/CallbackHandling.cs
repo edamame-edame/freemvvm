@@ -7,6 +7,7 @@ namespace FreeMvvm;
 public enum UiCallbackFailureKind
 {
     PropertyNotification,
+    BindingErrorNotification,
 }
 
 public sealed class UiCallbackFailure
@@ -80,7 +81,7 @@ internal sealed class CallbackHandlerState
         Interlocked.CompareExchange(ref _current, null, record);
     }
 
-    internal void Report(Exception exception)
+    internal void Report(Exception exception, UiCallbackFailureKind kind = UiCallbackFailureKind.PropertyNotification)
     {
         CallbackHandlerRecord? record = Volatile.Read(ref _current);
         if (record is null)
@@ -91,7 +92,7 @@ internal sealed class CallbackHandlerState
 
         try
         {
-            record.Handler(new UiCallbackFailure(UiCallbackFailureKind.PropertyNotification, exception));
+            record.Handler(new UiCallbackFailure(kind, exception));
         }
         catch (Exception handlerException)
         {
@@ -115,7 +116,10 @@ internal sealed class CallbackHandlerState
     }
 }
 
-internal sealed class PropertyCallbackRoot(Action callback, CallbackHandlerState handlers)
+internal sealed class PropertyCallbackRoot(
+    Action callback,
+    CallbackHandlerState handlers,
+    UiCallbackFailureKind failureKind = UiCallbackFailureKind.PropertyNotification)
 {
     internal void Invoke()
     {
@@ -125,7 +129,7 @@ internal sealed class PropertyCallbackRoot(Action callback, CallbackHandlerState
         }
         catch (Exception exception)
         {
-            handlers.Report(exception);
+            handlers.Report(exception, failureKind);
         }
     }
 }
