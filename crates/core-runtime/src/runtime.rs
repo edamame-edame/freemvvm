@@ -11,6 +11,7 @@ use crate::property::{
     PropertyChangeQueue, PropertyHandleKind, PropertyState, PropertyValidator, Subscription,
     ValidationError, ValidatorResult,
 };
+use crate::ui_tree::{LogicalNode, RuntimeTreeStore, TreeError};
 use crate::value::{
     BindingCopyError, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
 };
@@ -87,6 +88,7 @@ pub(crate) struct RuntimeCleanupQueue {
 struct RuntimeObjectCleanupQueue {
     queue: Arc<RuntimeCleanupQueue>,
     ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
+    ui_tree: Arc<Mutex<RuntimeTreeStore<RuntimeIdentity>>>,
     ui_state_cleared: Arc<AtomicBool>,
     property_changes: Arc<Mutex<PropertyChangeQueue>>,
     property_delivery: Arc<Mutex<Option<VecDeque<PropertyDeliveryItem>>>>,
@@ -108,6 +110,7 @@ impl CleanupQueue for RuntimeObjectCleanupQueue {
         let property_changes = Arc::clone(&self.property_changes);
         let property_delivery = Arc::clone(&self.property_delivery);
         let subscription_owners = Arc::clone(&self.subscription_owners);
+        let ui_tree = Arc::clone(&self.ui_tree);
         let finalizer = Box::new(move || {
             property_changes
                 .lock()
@@ -123,6 +126,18 @@ impl CleanupQueue for RuntimeObjectCleanupQueue {
                 }
             }
             drop(pending_delivery);
+            let tree_node = {
+                let mut tree = ui_tree
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                tree.remove_for_cleanup(identity)
+            };
+            match tree_node {
+                Ok(node) => drop(node),
+                Err(error) => {
+                    debug_assert!(false, "unexpected Logical Tree cleanup failure: {error:?}")
+                }
+            }
             let subscriptions = subscription_owners
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -219,7 +234,7 @@ impl RuntimeCleanupQueue {
                 let mut state = self.lock_state()?;
                 if let Some(ticket) = state.tickets.pop_front() {
                     Some(ShutdownWork::Ticket(ticket))
-                } else if state.outstanding == 0 && !state.tracked_ui_state.is_empty() {
+                } else if !state.tracked_ui_state.is_empty() {
                     Some(ShutdownWork::UiStateCleanup(
                         state.tracked_ui_state.remove(0),
                     ))
@@ -358,6 +373,27 @@ impl CleanupReservation for RuntimeCleanupReservation {
         {
             waker();
         }
+    }
+}
+
+impl Drop for RuntimeCleanupReservation {
+    fn drop(&mut self) {
+        let Some(unused_ticket) = self.ticket.take() else {
+            return;
+        };
+        {
+            let mut state = self
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            match state.outstanding.checked_sub(1) {
+                Some(outstanding) => state.outstanding = outstanding,
+                None => debug_assert!(false, "discarded cleanup reservation was not outstanding"),
+            }
+            self.inner.changed.notify_all();
+        }
+        drop(unused_ticket);
     }
 }
 
@@ -965,6 +1001,17 @@ pub(crate) enum RuntimeObjectRegistrationError {
     Registry(RegistryError),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(dead_code)]
+pub(crate) enum RuntimeTreeError {
+    WrongThread,
+    Closed,
+    SynchronizationPoisoned,
+    Registration(RuntimeObjectRegistrationError),
+    Registry(RegistryError),
+    Tree(TreeError),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum RuntimePropertyError {
     WrongThread,
@@ -1049,6 +1096,7 @@ pub(crate) struct RuntimeCore {
     ui_thread: UiThreadContext,
     cleanup: Arc<RuntimeCleanupQueue>,
     ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
+    ui_tree: Arc<Mutex<RuntimeTreeStore<RuntimeIdentity>>>,
     binding_graph: Arc<Mutex<BindingGraph>>,
     active_bindings: Arc<Mutex<HashMap<BindingConnectionId, RuntimeBindingOwner>>>,
     binding_error_delivery: Arc<Mutex<VecDeque<BindingErrorDeliveryItem>>>,
@@ -1138,6 +1186,7 @@ impl RuntimeCore {
         let ui_thread = UiThreadContext::capture();
         let cleanup = RuntimeCleanupQueue::new_for_ui_thread(ui_thread);
         let ui_objects = Arc::new(Mutex::new(UiObjectStore::new(ui_thread)));
+        let ui_tree = Arc::new(Mutex::new(RuntimeTreeStore::new(ui_thread)));
         let ui_state_cleared = Arc::new(AtomicBool::new(false));
         let property_changes = Arc::new(Mutex::new(PropertyChangeQueue::default()));
         let property_delivery = Arc::new(Mutex::new(None));
@@ -1196,11 +1245,32 @@ impl RuntimeCore {
         let object_cleanup = Arc::new(RuntimeObjectCleanupQueue {
             queue: Arc::clone(&cleanup),
             ui_objects: Arc::clone(&ui_objects),
+            ui_tree: Arc::clone(&ui_tree),
             ui_state_cleared: Arc::clone(&ui_state_cleared),
             property_changes: Arc::clone(&property_changes),
             property_delivery: Arc::clone(&property_delivery),
             subscription_owners: Arc::clone(&subscription_owners),
         });
+        let shutdown_tree = Arc::clone(&ui_tree);
+        cleanup
+            .track_ui_state(Box::new(move || {
+                let nodes = {
+                    let mut tree = shutdown_tree
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    tree.take_all()
+                };
+                match nodes {
+                    Ok(nodes) => drop(nodes),
+                    Err(error) => {
+                        debug_assert!(
+                            false,
+                            "Logical Tree cleanup must run on its UI thread: {error:?}"
+                        );
+                    }
+                }
+            }))
+            .map_err(|()| RuntimeCoreError::CleanupRegistrationFailed)?;
         let shutdown_objects = Arc::clone(&ui_objects);
         let shutdown_cleared = Arc::clone(&ui_state_cleared);
         cleanup
@@ -1222,6 +1292,7 @@ impl RuntimeCore {
             ui_thread,
             cleanup,
             ui_objects,
+            ui_tree,
             binding_graph,
             active_bindings,
             binding_error_delivery,
@@ -1303,6 +1374,140 @@ impl RuntimeCore {
                 Err(RuntimeObjectRegistrationError::Registry(error))
             }
         }
+    }
+
+    /// Registers a UI object and its Logical Tree node as one internal Runtime operation.
+    pub(crate) fn register_tree_ui_object<K, T, F>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        kind: K,
+        is_container: bool,
+        make_state: F,
+    ) -> Result<HandleToken, RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+        T: Any + Send + 'static,
+        F: FnOnce() -> T + Send,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        let token = self
+            .register_ui_object(registry, kind.clone(), make_state)
+            .map_err(RuntimeTreeError::Registration)?;
+        let pin = match registry.validate(token, &kind, &self.identity) {
+            Ok(pin) => pin,
+            Err(error) => {
+                let rollback = registry.release(token);
+                debug_assert!(rollback.is_ok(), "failed to roll back tree object token");
+                return Err(RuntimeTreeError::Registry(error));
+            }
+        };
+        let node = LogicalNode::new(&pin, is_container, self.ui_thread);
+        let result = self
+            .ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)
+            .and_then(|mut tree| tree.insert(node).map_err(RuntimeTreeError::Tree));
+        drop(pin);
+        if let Err(error) = result {
+            let rollback = registry.release(token);
+            debug_assert!(
+                rollback.is_ok(),
+                "failed to roll back tree object registration"
+            );
+            return Err(error);
+        }
+        Ok(token)
+    }
+
+    pub(crate) fn attach_tree_child<K, F>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        child_token: HandleToken,
+        kind: K,
+        prepare_peer: F,
+    ) -> Result<(), RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+        F: FnOnce() -> Result<(), ()>,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let child_pin = registry
+            .validate(child_token, &kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .attach(&parent_pin, &child_pin, prepare_peer)
+            .map_err(RuntimeTreeError::Tree)
+    }
+
+    pub(crate) fn detach_tree_child<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        child_token: HandleToken,
+        kind: K,
+    ) -> Result<(), RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let child_pin = registry
+            .validate(child_token, &kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let detached = self
+            .ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .detach(parent_pin.identity(), child_pin.identity())
+            .map_err(RuntimeTreeError::Tree)?;
+        drop(detached);
+        Ok(())
+    }
+
+    pub(crate) fn tree_child_handle<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        child: ObjectIdentity,
+        kind: K,
+    ) -> Result<HandleToken, RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .child_handle(registry, parent_pin.identity(), child, kind)
+            .map_err(RuntimeTreeError::Tree)
     }
 
     /// Registers a Property with its initial typed value in this Runtime.
@@ -6800,6 +7005,209 @@ mod tests {
                 .expect("failed drop thread record lock"),
             vec![ui_thread]
         );
+    }
+
+    #[test]
+    fn tree_owner_tree_runtime_store_detaches_child_on_parent_cleanup() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<u8, RuntimeIdentity>::new();
+        let drop_count = Arc::new(AtomicUsize::new(0));
+        let drop_threads = Arc::new(Mutex::new(Vec::new()));
+        let parent = runtime
+            .register_tree_ui_object(&registry, 7, true, || ())
+            .expect("register parent node");
+        let child_drop_count = Arc::clone(&drop_count);
+        let child_drop_threads = Arc::clone(&drop_threads);
+        let child = runtime
+            .register_tree_ui_object(&registry, 7, false, move || RuntimeUiStateProbe {
+                drop_count: child_drop_count,
+                drop_threads: child_drop_threads,
+            })
+            .expect("register child node");
+        let child_pin = registry
+            .validate(child, &7, &runtime.identity())
+            .expect("child token is live");
+        let child_identity = child_pin.identity();
+        drop(child_pin);
+
+        runtime
+            .attach_tree_child(&registry, parent, child, 7, || Ok(()))
+            .expect("attach child into Runtime tree");
+        assert!(
+            !registry
+                .release(child)
+                .expect("release child public owner while attached")
+                .cleanup_accepted
+        );
+        let reissued_child = runtime
+            .tree_child_handle(&registry, parent, child_identity, 7)
+            .expect("parent TreeOwner can issue an independent public owner");
+        assert!(
+            !registry
+                .release(reissued_child)
+                .expect("release reissued owner while still attached")
+                .cleanup_accepted
+        );
+        assert_eq!(drop_count.load(Ordering::SeqCst), 0);
+
+        assert!(
+            registry
+                .release(parent)
+                .expect("release final parent owner")
+                .cleanup_accepted
+        );
+        runtime
+            .cleanup
+            .drain_pending()
+            .expect("parent and newly-unowned child finalizers drain");
+        assert_eq!(drop_count.load(Ordering::SeqCst), 1);
+        assert!(matches!(
+            runtime
+                .ui_objects
+                .lock()
+                .expect("UI object store lock")
+                .resolve(child_identity),
+            Err(UiObjectStoreError::InvalidIdentity)
+        ));
+        assert!(
+            runtime
+                .ui_tree
+                .lock()
+                .expect("Logical Tree store lock")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn tree_owner_tree_runtime_parent_cleanup_preserves_detached_subtree() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<u8, RuntimeIdentity>::new();
+        let root = runtime
+            .register_tree_ui_object(&registry, 7, true, || ())
+            .expect("register root container");
+        let middle = runtime
+            .register_tree_ui_object(&registry, 7, true, || ())
+            .expect("register middle container");
+        let leaf = runtime
+            .register_tree_ui_object(&registry, 7, false, || ())
+            .expect("register leaf");
+        let leaf_identity = registry
+            .validate(leaf, &7, &runtime.identity())
+            .expect("leaf is live")
+            .identity();
+
+        runtime
+            .attach_tree_child(&registry, root, middle, 7, || Ok(()))
+            .expect("attach middle to root");
+        runtime
+            .attach_tree_child(&registry, middle, leaf, 7, || Ok(()))
+            .expect("attach leaf to middle");
+        registry.release(root).expect("release root public owner");
+        runtime
+            .cleanup
+            .drain_pending()
+            .expect("root cleanup detaches and preserves live subtree");
+
+        let new_leaf_owner = runtime
+            .tree_child_handle(&registry, middle, leaf_identity, 7)
+            .expect("detached middle retains its child subtree");
+        registry
+            .validate(new_leaf_owner, &7, &runtime.identity())
+            .expect("reissued leaf owner remains valid");
+        registry
+            .release(new_leaf_owner)
+            .expect("release reissued leaf");
+        runtime
+            .detach_tree_child(&registry, middle, leaf, 7)
+            .expect("detach leaf through Runtime tree store");
+        assert!(
+            runtime
+                .tree_child_handle(&registry, middle, leaf_identity, 7)
+                .is_err()
+        );
+        registry.release(leaf).expect("release leaf owner");
+        registry
+            .release(middle)
+            .expect("release detached middle owner");
+        runtime
+            .cleanup
+            .drain_pending()
+            .expect("remaining subtree finalizers drain");
+        assert!(
+            runtime
+                .ui_tree
+                .lock()
+                .expect("Logical Tree store lock")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn tree_owner_tree_runtime_shutdown_drops_tree_owners_before_ui_state() {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let registry = HandleRegistry::<u8, RuntimeIdentity>::new();
+        let drop_count = Arc::new(AtomicUsize::new(0));
+        let drop_threads = Arc::new(Mutex::new(Vec::new()));
+        let root_drop_count = Arc::clone(&drop_count);
+        let root_drop_threads = Arc::clone(&drop_threads);
+        let root = runtime
+            .register_tree_ui_object(&registry, 7, true, move || RuntimeUiStateProbe {
+                drop_count: root_drop_count,
+                drop_threads: root_drop_threads,
+            })
+            .expect("register root");
+        let child_drop_count = Arc::clone(&drop_count);
+        let child_drop_threads = Arc::clone(&drop_threads);
+        let child = runtime
+            .register_tree_ui_object(&registry, 7, false, move || RuntimeUiStateProbe {
+                drop_count: child_drop_count,
+                drop_threads: child_drop_threads,
+            })
+            .expect("register child");
+        let identities = [root, child].map(|token| {
+            registry
+                .validate(token, &7, &runtime.identity())
+                .expect("registered tree object is live")
+                .identity()
+        });
+        runtime
+            .attach_tree_child(&registry, root, child, 7, || Ok(()))
+            .expect("attach before shutdown");
+
+        runtime
+            .cleanup
+            .drain_shutdown()
+            .expect("shutdown drops tree owners before clearing UI state");
+        assert_eq!(runtime.cleanup.state(), RuntimeState::Closed);
+        assert_eq!(drop_count.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            *drop_threads.lock().expect("drop thread record lock"),
+            vec![thread::current().id(); 2]
+        );
+        assert!(
+            runtime
+                .ui_tree
+                .lock()
+                .expect("Logical Tree store lock")
+                .is_empty()
+        );
+        let store = runtime.ui_objects.lock().expect("UI object store lock");
+        for identity in identities {
+            assert!(matches!(
+                store.resolve(identity),
+                Err(UiObjectStoreError::InvalidIdentity)
+            ));
+        }
+        drop(store);
+        for token in [root, child] {
+            assert!(
+                !registry
+                    .release(token)
+                    .expect("release remaining public token after shutdown")
+                    .cleanup_accepted
+            );
+        }
+        assert_eq!(drop_count.load(Ordering::SeqCst), 2);
     }
 
     #[test]

@@ -1,9 +1,9 @@
 # UIクラス：Tree・Layout・Geometry
 
-- 文書版: 1.1
+- 文書版: 1.2
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-10-24
+- 状態: 1.2全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -50,14 +50,14 @@ flowchart LR
 
 | 判断 | 根拠・境界 |
 | --- | --- |
-| Coreが所有寿命を管理する親子所属はLogical Treeに限る。親Containerは各Logical childへの内部強参照を一つ持ち、childはparentを弱い所属情報として持つ。Visual Treeのnode/対応情報はLogical childの寿命を追加で保持せず、その所有者はControlまたはtemplate側の明示的な内部ownerとする。 | MVVM UIライブラリ UI treeの所有・寿命に関する上位判断案、Runtime所有と終了。template由来Visual要素の具体ownerはtemplate設計に残す。 |
+| Coreが所有寿命を管理する親子所属はLogical Treeに限る。親Containerは各Logical childへの内部強参照を一つ持ち、childはparentを弱い所属情報として持つ。実装上の内部強参照は、オブジェクト管理：handle・値・error 1.3案の専用`TreeOwner`で表現し、public参照・call期間pinと別に数える。Visual Treeのnode/対応情報はLogical childの寿命を追加で保持せず、その所有者はControlまたはtemplate側の明示的な内部ownerとする。 | MVVM UIライブラリ UI treeの所有・寿命に関する上位判断案、Runtime所有と終了。template由来Visual要素の具体ownerはtemplate設計に残す。 |
 | 一つのWidgetは同時に最大一つのLogical parentに所属する。親子は同一Runtimeで、parentはContainerでなければならず、self-parent・祖先を子にする操作・既所属childの追加を拒否する。Windowのcontent root一つ、StackPanelの順序付きchildrenを維持する。 | MVVM UIライブラリ UI treeの所有・寿命に関する上位判断案、MVVM UIライブラリ 初期Control契約に関する上位判断案。初期Control以外の子数/cardinalityはControl別設計へ送る。 |
-| 親子構造の変更はUI thread専用とする。追加・削除時は引数、Runtime、parent/child状態、循環を先に検証し、全検証に成功してからLogical Tree、parent所属情報、所有参照を一つのcommitで更新する。失敗時はtree・参照・通知に部分変更を残さない。既所属childの直接移動APIは設けず、明示remove後に新parentへ追加する。 | Runtime契約、MVVM UIライブラリ UI treeの所有・寿命に関する上位判断案、公開ABI契約、ランタイム：実行基盤と終了。公開関数名・引数型とVisual/Platform更新失敗時の詳細statusはABI/Control設計へ送る。 |
-| removeが成功するとparent-child所有参照を解放し、childをDetached rootにする。child以下のLogical subtree内部リンクは維持する。外した子に公開handleがあればsubtreeをCore上で利用可能に保ち、handleがなければ参照グラフに従い通常の最終解放を行う。 | MVVM UIライブラリ UI treeの所有・寿命に関する上位判断案のDetached objectとsubtree切離しを具体化する。解放はUI threadのランタイム：実行基盤と終了 cleanup規則に従う。 |
+| 親子構造の変更はUI thread専用とする。追加時は引数、Runtime、parent/child状態、循環を検証し、childの`ValidationPin`から専用TreeOwnerとcleanup reservationを準備し、全検証・peer/Visual候補準備の成功後にLogical Tree、parent所属情報、ownerを一つのcommitで更新する。準備または予約に失敗した場合は候補TreeOwnerを解放し、Tree・通知に部分変更を残さない。既所属childの直接移動APIは設けず、明示remove後に新parentへ追加する。 | Runtime契約、MVVM UIライブラリ UI treeの所有・寿命に関する上位判断案、公開ABI契約、ランタイム：実行基盤と終了。公開関数名・引数型とVisual/Platform更新失敗時の詳細statusはABI/Control設計へ送る。 |
+| removeが成功するとparentがchildのTreeOwnerを解放し、childをDetached rootにする。child以下のLogical subtree内部リンクは維持する。外した子にpublic handleがあればsubtreeをCore上で利用可能に保ち、handleがなければTreeOwner解放時に予約済みcleanupを一度だけscheduleする。親がchildを列挙して返す場合はlive TreeOwnerを根拠に新しい独立public handleを発行できる。 | MVVM UIライブラリ UI treeの所有・寿命に関する上位判断案のDetached objectとsubtree切離しを具体化する。解放はUI threadのランタイム：実行基盤と終了 cleanup規則に従う。 |
 | Detached WidgetとそのsubtreeはRuntimeがRunningの間、公開handleを通じてCore objectとして有効とする。Propertyの通常API、Binding、Subscriptionはそれぞれのhandle/所有契約に従い使用できる。Detachedであること自体はそれらを自動解除しない。Detached subtreeはWindow/Layout/描画/Input対象ではなく、Platform peerを参照しない。 | MVVM UIライブラリ UI treeの所有・寿命に関する上位判断案、Runtime所有と終了、イベントハンドリング：通知とBinding伝播。APIごとの「Detachedでは不可」となる操作はControl/API設計で列挙する。 |
 | Detached subtreeの再所属は、追加検証を全て通過したときに新parentが所属参照を取得して行う。追加失敗時はDetached状態と既存のProperty値・Binding/Subscription状態を保つ。再所属時のPlatform資源再生成はVisual/Platform側の責務であり、その詳細と失敗復旧はUIクラス：Tree・Layout・Geometryへ送る。 | 具体化は[オブジェクト管理：CollectionとSelection](../runtime-objects/collections.md)、UIクラス：Tree・Layout・Geometry、[UIクラス：Window・基本Control・次段階Control](controls.md)を参照する。 |
-| Parent破棄時は各childとの所属リンクを解除する。子に他の参照があればDetached rootとして残り、その配下のLogical subtreeを維持する。参照が残らない子はランタイム：実行基盤と終了の最終破棄へ進む。treeからのdetachだけを理由にProperty binding/subscriptionを解除せず、対象Property/ownerの通常破棄または明示解除に任せる。 | MVVM UIライブラリ UI treeの所有・寿命に関する上位判断案、Runtime所有と終了。TextBox固有の公開ABI契約契約を一般化しない。 |
-| Runtime shutdownではランタイム：実行基盤と終了の順序に従い、UI thread上でtree所属、Visual/Platform接続、treeに関連するUI-affine stateを閉じてからRuntimeをClosedにする。残存handleは閉じたCore shellとなり、通常のUI APIはUI_CLOSED。shutdown後にDetached objectを再所属させない。 | Runtime所有と終了、MVVM UIライブラリ UI treeの所有・寿命に関する上位判断案。focus/IME/rendererの具体cleanup順はUIクラス：InputとFocusに委ねる。 |
+| Parent破棄時は各childとの所属リンクを解除し、保持中のTreeOwnerを一度ずつ解放する。子にpublic/internal ownerがあればDetached rootとして残り、その配下のLogical subtreeを維持する。複合ownerが残らない子は予約済みcleanupへ進む。treeからのdetachだけを理由にProperty binding/subscriptionを解除せず、対象Property/ownerの通常破棄または明示解除に任せる。 | MVVM UIライブラリ UI treeの所有・寿命に関する上位判断案、Runtime所有と終了。TextBox固有の公開ABI契約契約を一般化しない。 |
+| Runtime shutdownではランタイム：実行基盤と終了の順序に従い、UI thread上でtree所属ownerとVisual/Platform接続を解放し、その後UI stateを閉じてRuntimeをClosedにする。shutdown cleanupによる一括state破棄後のTreeOwner解放はcleanup ticketを再発行しない。残存handleは閉じたCore shellとなり、通常のUI APIはUI_CLOSED。shutdown後にDetached objectを再所属させない。 | Runtime所有と終了、MVVM UIライブラリ UI treeの所有・寿命に関する上位判断案。focus/IME/rendererの具体cleanup順はUIクラス：InputとFocusに委ねる。 |
 
 ### 所属状態と遷移図
 
@@ -91,6 +91,7 @@ stateDiagram-v2
 | child削除 | parentから外し、child rootをDetached化して所属強参照を解放 | 指定childが所属していない／別parentなら状態不変 |
 | Detached child再所属 | 検証後に新parentが所属強参照を取得 | 失敗時はDetachedのまま。値やBinding/Subscriptionを変更しない |
 | parent最終破棄 | child linksを解消し、存続childはDetached化。最後の参照となるchildはランタイム：実行基盤と終了のUI-thread cleanupへ | cleanup中の部分的な外部観測は許さない案。破棄順の細則は要レビュー |
+| public handle解放中のAttached child保持 | TreeOwnerがchild stateを保持。child handleの列挙要求はTreeOwnerを根拠に新しいtokenを発行 | 新token発行失敗時はTreeとownerを維持 |
 | Runtime shutdown | Attached/Detachedを問わずRuntime objectのUI状態・Platform接続を閉じる | ランタイム：実行基盤と終了のshutdown状態遷移を適用し、閉鎖後のUI操作はUI_CLOSED |
 
 この案では、Logical Tree変更のcommitと、Property notification/Binding deliveryを同一のcallback再入処理として混在させない。外部通知の正確なタイミング・順序はイベントハンドリング：通知とBinding伝播の既承認規則に従う。具体化は[オブジェクト管理：CollectionとSelection](../runtime-objects/collections.md)、UIクラス：Tree・Layout・Geometry、[UIクラス：Window・基本Control・次段階Control](controls.md)を参照する。
@@ -100,11 +101,14 @@ stateDiagram-v2
 | 関係 | UIクラス：Tree・Layout・Geometryの扱い |
 |---|---|
 | Logical parent → child | 所属中だけ強い内部参照を一つ持つ |
+| TreeOwner → CoreObjectControl | public ref・call期間pinと独立したinternal ownerを一つ数える。live ownerはchildから新public handleを発行する根拠になる |
 | child → parent | parent identityへの弱い所属情報 |
 | Visual node → Logical Widget | 非所有の対応関係を基本とし、template内部objectにはtemplate ownerを別途明記 |
 | Binding → Property | Runtime所有と終了/イベントハンドリング：通知とBinding伝播どおり独立した強参照関係 |
 | Subscription → Property/callback | Runtime所有と終了/イベントハンドリング：通知とBinding伝播どおり独立した所有・解除契約 |
 | Widget → Property / Command | Widget固有の所有は公開ABI契約およびUIクラス：Window・基本Control・次段階Controlで定義。一般tree linkから推定しない |
+
+TreeOwnerは`CoreObjectControl`の複合owner数に含まれる。internal ownerが存在する間は最後のpublic handleをreleaseしてもchild stateを破棄しない。internal ownerの最初の取得時にcleanup reservationを確保し、public/internal ownerとcall期間pinが全て0になったときだけ一度有効化する。Treeからchild handleを返す場合はlive TreeOwnerを根拠に新しいpublic referenceを発行する。詳細なcount・予約・lock契約は[オブジェクト管理：handle・値・error](../runtime-objects/objects-values.md) 1.3案に従う。
 
 detach時にBinding/Subscriptionを自動解除しない案は、tree membershipをそれらの明示的なlifetime ownerとみなす判断を避けるためである。利用者側がWidgetのPropertyやSubscriptionを保持している間にdetach後も継続利用する場合は、その各公開handle/内部ownerの寿命契約に従う。
 
@@ -248,9 +252,9 @@ flowchart LR
 
 Tree APIは`container_insert(parent,index,child)`、`container_remove(parent,child)`、`container_move(parent,child,index)`。跨parent移動は明示remove/addで、atomic reparentは初期非提供。child入力borrow、parent→child strong、child→parent weak。新規所属にはDetached subtreeをpinし、Visual/peer候補をprepareし、成功時にparent ownerを取得して一commitする。失敗で旧Focusや他親の構造を変更しない。
 
-## クラス設計の補足（1.1承認済み）
+## クラス設計の補足（1.1承認済み・1.2改訂案）
 
-既承認1.0の実現規則を支える型・関連・所有・主要操作を整理した。内部型名とメソッドの分担は本改訂で補足する内部設計であり、既存公開APIの署名や外部保証を追加・変更するものではない。この節のクラス構成と追加図は1.1版全文の承認対象であり、実装・試験完了の証明とは区別する。
+既承認1.0の実現規則を支える型・関連・所有・主要操作を整理した。内部型名とメソッドの分担は本改訂で補足する内部設計であり、既存公開APIの署名や外部保証を追加・変更するものではない。TreeOwner追加部分は1.2全文のレビュー対象であり、承認済み1.1部分の改訂は提案範囲に限る。実装・試験完了の証明とは区別する。
 
 要求根拠: [RQ-09-043](../../11_requirements/RQ-09_ui-scope.md#rq-09-043)、[RQ-09-044](../../11_requirements/RQ-09_ui-scope.md#rq-09-044)、[RQ-09-057](../../11_requirements/RQ-09_ui-scope.md#rq-09-057)、[RQ-09-067](../../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-09-070](../../11_requirements/RQ-09_ui-scope.md#rq-09-070)。
 
@@ -262,6 +266,7 @@ Logical所属のowner、Visual表現、Measure/Arrangeの作業状態を分け�
 | --- | --- | --- | --- |
 | TreeCoordinator | 親子所属変更の検査とcommit手順 | prepare_attach(parent, child); commit_attach(prepared); detach(child) | 候補準備中は旧所属を変更しない。循環/別Runtime/複数親を拒否 |
 | LogicalNode | object identity、parent非所有参照、child所属参照 | children_snapshot(); validate_ancestry(target) | parentがchildを所有。detach後も独立ownerがあればsubtreeを保持 |
+| TreeOwner | child一件のLogical所属とCoreObjectControl internal ownerを結ぶ | identity(); register_public_owner(); release() | parent stateが保持し、所属commit後からdetach/parent破棄まで有効 |
 | VisualNode | Logical Control識別、描画/layout/hit-test用のVisual構成 | map_to_logical(); build_visual_children() | template内部VisualをLogical childとして重複所有しない |
 | LayoutEngine | dirty集合とMeasure/Arrangeの処理順 | invalidate(node, reason); measure(root, available); arrange(root, rect) | UI threadで作業。RendererとInputが別計算したboundsを正本にしない |
 | Sizer | constraintからDesiredSizeを計算する組込み処理 | measure(node, available) | 子から親へ集約。独自利用者callbackの拡張APIをこの補足で設けない |
@@ -278,6 +283,11 @@ classDiagram
     class TreeCoordinator {
         prepare_attach()
         commit_attach()
+    }
+    class TreeOwner {
+        identity()
+        register_public_owner()
+        release()
     }
     class LogicalNode {
         children_snapshot()
@@ -302,7 +312,8 @@ classDiagram
         desired_size()
     }
     TreeCoordinator ..> LogicalNode
-    LogicalNode o-- LogicalNode : child所属owner
+    LogicalNode o-- TreeOwner : child所属owner
+    TreeOwner o-- CoreObjectControl : internal owner count
     VisualNode ..> LogicalNode : identity対応
     LayoutEngine *-- Sizer
     LayoutEngine *-- Locationer
@@ -311,7 +322,7 @@ classDiagram
 
 ### 主要な呼出しと失敗境界
 
-TreeCoordinatorは親子検査→peer/Visual候補準備→所属commitの順に処理し、成功後にLayoutをdirtyにする。LayoutEngineはSizerの子→親集約とLocationerの親→子配置を完了して同revisionの結果を公開する。
+TreeCoordinatorは親子検査→TreeOwner/cleanup予約準備→peer/Visual候補準備→所属commitの順に処理し、成功後にLayoutをdirtyにする。途中失敗では未commitのTreeOwnerを解放して既存Treeを維持する。detach/parent破棄はchild linkの更新とTreeOwner解放をUI threadの一操作として行う。LayoutEngineはSizerの子→親集約とLocationerの親→子配置を完了して同revisionの結果を公開する。
 
 LayoutSnapshotは内部の整合読取り用で、新しい公開snapshot APIや所有保証ではない。LogicalNodeの自己関連は非循環treeだけを許す。子側から親への関連は非所有とする。
 
@@ -323,3 +334,5 @@ LayoutSnapshotは内部の整合読取り用で、新しい公開snapshot APIや
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-10-24 | 1.2改訂案 | A案に基づきLogical childのTreeOwner、attach予約、detach/parent破棄、shutdown順序を明記。全文レビュー待ち |
+| 2026-10-24 | 1.2全文 | 利用者の承認により、TreeOwnerを含む本版全文を承認。実装・試験合格とは区別 |
