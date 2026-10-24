@@ -2524,7 +2524,7 @@
     },
     {
       "id": "UNIT-WRAP-CS-COMMAND-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "csharp-async-command-worker-cancel-terminal-report-and-lifetime",
       "sources": [
         "wrappers/csharp/FreeMvvm/**/*.cs",

@@ -1,7 +1,7 @@
 # C# 非同期Command wrapper
 
 - 更新日: 2026-10-24
-- 状態: 実装進行中。計画・C# wrapper DD v1.4全文は利用者承認済みで、実装開始指示を受領。Rust Core/C ABI前提実装とWindows/Linux CIも完了
+- 状態: 完了。計画・C# wrapper DD v1.4全文は利用者承認済み。C# Command実装・focused/consumer試験・local gates・Windows/Linux CIが成功
 - 対象: 承認済み非同期Command C ABIをC#から利用し、実行可否・実行状態・協調キャンセル・完了/失敗報告を扱うwrapper unit
 - 作業ブランチ: `impl-csharp/runtime-async-command`（`impl-rust/runtime-async-command`を親とする）
 
@@ -41,6 +41,6 @@ C# Runtime、全5種Property、notification Subscription、Property Bindingは�
 4. [x] 利用者の実装開始指示を受領。Rust Core/C ABI `UNIT-CORE-066`の実装とWindows/Linux CIが完了。
 5. [x] C# test design v0.3と`UNIT-WRAP-CS-COMMAND-001` mappingを登録。
 6. [x] C# Command facade、fake ABI focused tests、real C ABI consumerを実装。両Command試験はlocal pass。
-7. [ ] `tools/dev.py check`・`minimum`とWindows/Linux CIを通し、結果を記録して実装unitをcommit/pushする。
+7. [x] `tools/dev.py check`・`minimum`・Windows/Linux CI run 40074886918を通し、結果を記録して実装unitをcommit/pushした。
 
-計画承認、DD全文承認、実装開始承認は別々に記録する。計画・DD・実装開始・試験設計登録・C#実装・focused/consumer試験は完了。repository gatesとWindows/Linux CIの最終確認が残る。
+計画承認、DD全文承認、実装開始承認は別々に記録する。計画・DD・実装開始・試験設計登録・C#実装・focused/consumer試験・repository gates・Windows/Linux CIが完了し、実装unitと検証記録をcommit/push済み。

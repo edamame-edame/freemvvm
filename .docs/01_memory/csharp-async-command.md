@@ -6,4 +6,5 @@
 - `runtime_post` transfers callback-root ownership only when accepted. On post rejection, free the local GCHandle and retained Command reference and permit a retry; after acceptance, only Core's destroy callback frees the root.
 - `UiErrorSnapshot` copies status/domain/code/message for managed reads and can optionally retain the native snapshot token until `Dispose()`. Plain snapshots from ordinary wrapper errors have no native owner.
 - The C# RuntimeTests project is a custom executable harness. Use `tools/dev.py csharp-command-test` and `csharp-command-consumer-test`; the latter builds the host C ABI and validates UI-thread dispatch against the real library.
+- The first complete C# Command unit passed `tools/dev.py check`, `minimum`, and Windows/Linux CI run 40074886918 on commit `fa49bac`.
 - Keep C# wrapper work on a language branch descended from the relevant Core APIs branch; do not derive it from another wrapper-language branch.

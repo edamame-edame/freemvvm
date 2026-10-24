@@ -1,7 +1,7 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 
 - 文書版: 0.3
-- 状態: 0.1全文承認済み（利用者、2026-10-17）。0.2でC# Property Binding試験設計を登録し、fake ABI・real C ABI consumer・local check・[Windows/Linux CI run 40060773110](https://github.com/edamame-edame/freemvvm/actions/runs/40060773110)が成功（2026-10-24）。0.3で承認済みC# wrapper DD v1.4と実装開始指示に基づきC# Command試験設計を追加し、focused fake ABIとreal C ABI consumerのlocal実行がpass。C++ Runtime/Property/Subscription/Binding/package consumer、C# Runtime/Property値型もfocused verification済み。C# Property Subscription（DD 1.2）は実装commit `59d4dc9` の[Windows/Linux CI](https://github.com/edamame-edame/freemvvm/actions/runs/40054978936)も成功
+- 状態: 0.1全文承認済み（利用者、2026-10-17）。0.2でC# Property Binding試験設計を登録し、fake ABI・real C ABI consumer・local check・[Windows/Linux CI run 40060773110](https://github.com/edamame-edame/freemvvm/actions/runs/40060773110)が成功（2026-10-24）。0.3で承認済みC# wrapper DD v1.4と実装開始指示に基づきC# Command試験を登録し、focused fake ABI・real C ABI consumer・local gates・[Windows/Linux CI run 40074886918](https://github.com/edamame-edame/freemvvm/actions/runs/40074886918)が成功。C++ Runtime/Property/Subscription/Binding/package consumer、C# Runtime/Property値型もfocused verification済み。C# Property Subscription（DD 1.2）は実装commit `59d4dc9` の[Windows/Linux CI](https://github.com/edamame-edame/freemvvm/actions/runs/40054978936)も成功
 - 更新日: 2026-10-24
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
@@ -74,7 +74,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-24 | 0.2追加 | — | 承認済みC# wrapper DD v1.3と実装計画に基づきC# Property Binding試験を登録。試験実装・合格は別途記録 |
 | 2026-10-24 | 0.2実行記録 | — | `UNIT-WRAP-CS-BIND-001`のfocused fake ABI・real C ABI consumer、local check/minimum、Windows/Linux CI run 40060773110が成功 |
 | 2026-10-24 | 0.3追加 | — | 承認済みC# wrapper DD v1.4と実装開始指示に基づき`UNIT-WRAP-CS-COMMAND-001`のfocused fake ABI・real C ABI consumer試験を登録。試験実装・実行結果は別管理 |
-| 2026-10-24 | 0.3実行記録 | — | `tools/dev.py csharp-command-test`、`csharp-command-consumer-test`、`check`、`minimum`がlocal pass。Windows/Linux CI結果は未確認 |
+| 2026-10-24 | 0.3実行記録 | — | `tools/dev.py csharp-command-test`、`csharp-command-consumer-test`、`check`、`minimum`と[Windows/Linux CI run 40074886918](https://github.com/edamame-edame/freemvvm/actions/runs/40074886918)がsuccess |
 
 ## 改訂履歴
 
@@ -82,4 +82,4 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | --- | --- | --- | --- | --- |
 | 0.1 | 2026-10-17 | テスト文書作成指示に基づき前提・操作・観測・期待値・後始末を具体化 | Codex | 本版全文のレビュー待ち。未実装・未実行 |
 | 0.2 | 2026-10-24 | C# Property Bindingのfake ABI focused testとreal C ABI consumerの試験設計を追加 | Codex | 利用者承認済みDD v1.3と実装開始指示の範囲。試験実行状態は別管理 |
-| 0.3 | 2026-10-24 | C#非同期Commandのfake ABI focused testとreal C ABI consumerの試験設計、およびlocal実行記録を追加 | Codex | 利用者承認済みDD v1.4と実装開始指示の範囲。CI結果は別途記録 |
+| 0.3 | 2026-10-24 | C#非同期Commandのfake ABI focused testとreal C ABI consumerの試験設計・実行記録を追加 | Codex | 利用者承認済みDD v1.4と実装開始指示の範囲。Windows/Linux CI成功 |
