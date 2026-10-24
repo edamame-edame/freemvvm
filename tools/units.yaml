@@ -962,7 +962,7 @@
     },
     {
       "id": "UNIT-CORE-034",
-      "state": "ready",
+      "state": "complete",
       "scope": "runtime-ui-thread-object-store",
       "sources": ["crates/core-runtime/src/object_store.rs", "crates/core-runtime/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
@@ -980,7 +980,7 @@
     },
     {
       "id": "UNIT-CORE-035",
-      "state": "ready",
+      "state": "complete",
       "scope": "runtime-ui-object-store-clear",
       "sources": ["crates/core-runtime/src/object_store.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
@@ -998,7 +998,7 @@
     },
     {
       "id": "UNIT-CORE-036",
-      "state": "ready",
+      "state": "complete",
       "scope": "runtime-core-ui-state-shutdown-cleanup",
       "sources": ["crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/object_store.rs", "crates/core-runtime/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
