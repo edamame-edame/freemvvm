@@ -62,7 +62,13 @@ use freemvvm_core::abi_support::{
     ui_control_text_content_property as core_ui_control_text_content_property,
     ui_control_window_title_property as core_ui_control_window_title_property,
     validation_error_create as core_validation_error_create,
-    window_clear_content as core_window_clear_content, window_content as core_window_content,
+    widget_request_focus as core_widget_request_focus,
+    window_clear_content as core_window_clear_content, window_close as core_window_close,
+    window_close_request_current as core_window_close_request_current,
+    window_close_request_defer as core_window_close_request_defer,
+    window_close_request_resolve as core_window_close_request_resolve,
+    window_close_request_subscribe as core_window_close_request_subscribe,
+    window_content as core_window_content, window_open as core_window_open,
     window_set_content as core_window_set_content,
 };
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
@@ -88,11 +94,39 @@ const UI_ALIGN_START: u32 = 1;
 const UI_ALIGN_CENTER: u32 = 2;
 const UI_ALIGN_END: u32 = 3;
 const UI_ALIGN_STRETCH: u32 = 4;
+const UI_CLOSE_ACCEPT: u32 = 1;
+const UI_CLOSE_DECLINE: u32 = 2;
 const NUMERIC_NARROW_EXACT: u32 = 0;
 const NUMERIC_NARROW_NEAREST_EVEN: u32 = 1;
 const RUNTIME_VERSION_MAJOR: u32 = 1;
 const RUNTIME_VERSION_MINOR: u32 = 0;
 const RUNTIME_VERSION_PATCH: u32 = 0;
+
+type WindowCloseCallback = unsafe extern "C" fn(*mut c_void, u64);
+
+struct WindowCloseCallbackContext {
+    callback: WindowCloseCallback,
+    userdata: usize,
+    destroy: DestroyCallback,
+}
+
+unsafe extern "C" fn invoke_window_close_callback(context: *mut c_void) {
+    // SAFETY: the pointer is a Box allocated by the registration function and remains owned by
+    // the Core Subscription until its destroy callback runs.
+    let context = unsafe { &*(context as *const WindowCloseCallbackContext) };
+    let request = core_window_close_request_current();
+    if request != 0 {
+        // SAFETY: ownership and callback validity are guaranteed by the C ABI registration.
+        unsafe { (context.callback)(context.userdata as *mut c_void, request) };
+    }
+}
+
+unsafe extern "C" fn destroy_window_close_callback(context: *mut c_void) {
+    // SAFETY: registration transfers this Box to the Core Subscription on success.
+    let context = unsafe { Box::from_raw(context as *mut WindowCloseCallbackContext) };
+    // SAFETY: destroy is invoked once by Subscription cancellation/owner teardown.
+    unsafe { (context.destroy)(context.userdata as *mut c_void) };
+}
 
 fn map_ui_control_error(error: UiControlApiError) -> u32 {
     match error {
@@ -2233,6 +2267,143 @@ ui_control_property_getter!(
     "Button label"
 );
 
+/// Request keyboard focus for an eligible Widget in the active Window.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_widget_request_focus(widget: u64, out_error: *mut u64) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_widget_request_focus(widget)).map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Open a Window through its installed Platform peer.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_open(window: u64, out_error: *mut u64) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_window_open(window)).map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Close a Window peer while retaining its Core state for later reopening.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_close(window: u64, out_error: *mut u64) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_window_close(window)).map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Subscribe to close intents raised for one Window.
+///
+/// A successful registration owns `userdata` until the Subscription is cancelled or its Window
+/// is destroyed. Only one active close-request Subscription is permitted per Window.
+///
+/// # Safety
+/// `out_subscription` must be writable. A non-null `out_error` must be writable. `callback` and
+/// `destroy` must remain valid until `destroy` is called.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_close_request_subscribe(
+    window: u64,
+    callback: Option<WindowCloseCallback>,
+    userdata: *mut c_void,
+    destroy: Option<DestroyCallback>,
+    out_subscription: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_subscription.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_subscription.write(0) };
+    let (Some(callback), Some(destroy)) = (callback, destroy) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    let context = Box::new(WindowCloseCallbackContext {
+        callback,
+        userdata: userdata as usize,
+        destroy,
+    });
+    let raw_context = Box::into_raw(context);
+    let result = catch_ui_control(|| {
+        core_window_close_request_subscribe(
+            window,
+            invoke_window_close_callback,
+            raw_context as usize,
+            destroy_window_close_callback,
+        )
+    });
+    match result {
+        Ok(subscription) => {
+            // SAFETY: required output pointer was checked non-null above.
+            unsafe { out_subscription.write(subscription) };
+            UI_OK
+        }
+        Err(status) => {
+            // Ownership transfers only when Core registration succeeds.
+            // SAFETY: failed registration leaves the context owned by this function.
+            drop(unsafe { Box::from_raw(raw_context) });
+            status
+        }
+    }
+}
+
+/// Promote a callback-scoped borrowed close request to an owned deferred request.
+///
+/// # Safety
+/// `out_owned_request` must be writable. A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_close_request_defer(
+    borrowed_request: u64,
+    out_owned_request: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_owned_request.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_owned_request.write(0) };
+    match catch_ui_control(|| core_window_close_request_defer(borrowed_request)) {
+        Ok(request) => {
+            // SAFETY: required output pointer was checked non-null above.
+            unsafe { out_owned_request.write(request) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Resolve a borrowed-in-callback or owned-deferred close request.
+///
+/// `decision` must be `UI_CLOSE_ACCEPT` or `UI_CLOSE_DECLINE`.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_close_request_resolve(
+    request: u64,
+    decision: u32,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if !matches!(decision, UI_CLOSE_ACCEPT | UI_CLOSE_DECLINE) {
+        return UI_INVALID_ARGUMENT;
+    }
+    catch_ui_control(|| core_window_close_request_resolve(request, decision))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
 /// Return an owned token for Window's current content, or zero if it has none.
 ///
 /// # Safety
@@ -2535,8 +2706,9 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
         return UI_INVALID_ARGUMENT;
     }
 
-    if feature_id == 3 || feature_id == 7 {
-        // Feature 3 is numeric conversion; feature 7 is Runtime post/dispatch.
+    if feature_id == 3 || feature_id == 7 || feature_id == 8 {
+        // Feature 3 is numeric conversion, 7 is Runtime post/dispatch, and 8 is the complete
+        // initial UI Control contract.
         // SAFETY: the caller guarantees that the non-null output points to writable `u8` storage.
         unsafe { out_supported.write(1) };
     }
@@ -2582,8 +2754,11 @@ mod tests {
         ui_abi_1_text_box_create, ui_abi_1_text_box_value_property, ui_abi_1_text_content_property,
         ui_abi_1_text_create, ui_abi_1_validation_error_create,
         ui_abi_1_widget_accessible_name_property, ui_abi_1_widget_is_enabled_property,
-        ui_abi_1_window_clear_content, ui_abi_1_window_content, ui_abi_1_window_create,
-        ui_abi_1_window_set_content, ui_abi_1_window_title_property,
+        ui_abi_1_widget_request_focus, ui_abi_1_window_clear_content, ui_abi_1_window_close,
+        ui_abi_1_window_close_request_defer, ui_abi_1_window_close_request_resolve,
+        ui_abi_1_window_close_request_subscribe, ui_abi_1_window_content,
+        ui_abi_1_window_create, ui_abi_1_window_open, ui_abi_1_window_set_content,
+        ui_abi_1_window_title_property,
     };
     use std::ffi::c_void;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -2730,6 +2905,25 @@ mod tests {
     struct PostProbe {
         callbacks: AtomicUsize,
         destroys: AtomicUsize,
+    }
+
+    #[derive(Default)]
+    struct WindowCloseProbe {
+        callbacks: AtomicUsize,
+        destroys: AtomicUsize,
+    }
+
+    unsafe extern "C" fn window_close_callback(userdata: *mut c_void, request: u64) {
+        // SAFETY: tests keep the probe alive through Subscription cancellation.
+        let probe = unsafe { &*userdata.cast::<WindowCloseProbe>() };
+        assert_ne!(request, 0);
+        probe.callbacks.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn window_close_destroy(userdata: *mut c_void) {
+        // SAFETY: tests keep the probe alive through Subscription cancellation.
+        let probe = unsafe { &*userdata.cast::<WindowCloseProbe>() };
+        probe.destroys.fetch_add(1, Ordering::SeqCst);
     }
 
     #[derive(Default)]
@@ -5446,6 +5640,73 @@ mod tests {
                 .iter()
                 .all(|handle| *handle != 0)
         );
+        let close_probe = WindowCloseProbe::default();
+        let mut close_subscription = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_close_request_subscribe(
+                    window,
+                    Some(window_close_callback),
+                    (&close_probe as *const WindowCloseProbe).cast_mut().cast(),
+                    Some(window_close_destroy),
+                    &mut close_subscription,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut duplicate_subscription = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_close_request_subscribe(
+                    window,
+                    Some(window_close_callback),
+                    (&close_probe as *const WindowCloseProbe).cast_mut().cast(),
+                    Some(window_close_destroy),
+                    &mut duplicate_subscription,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(duplicate_subscription, 0);
+        assert_eq!(close_probe.destroys.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            unsafe { ui_abi_1_subscription_cancel(close_subscription, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(close_probe.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(ui_abi_1_handle_release(close_subscription), UI_OK);
+        assert_eq!(
+            unsafe { ui_abi_1_window_open(window, std::ptr::null_mut()) },
+            UI_UNSUPPORTED
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_window_close(window, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_widget_request_focus(text_box, std::ptr::null_mut()) },
+            UI_INVALID_ARGUMENT
+        );
+        let mut deferred_request = u64::MAX;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_close_request_defer(
+                    0,
+                    &mut deferred_request,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_HANDLE
+        );
+        assert_eq!(deferred_request, 0);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_close_request_resolve(0, 99, std::ptr::null_mut())
+            },
+            UI_INVALID_ARGUMENT
+        );
         let mut unassigned_command = u64::MAX;
         assert_eq!(
             unsafe {
@@ -5654,7 +5915,7 @@ mod tests {
 
     #[test]
     fn has_feature_reports_only_complete_public_contracts() {
-        for feature_id in [1, 2, 4, 5, 6, 8] {
+        for feature_id in [1, 2, 4, 5, 6] {
             let mut supported = 1;
             // SAFETY: `supported` is valid writable storage for the output value.
             let status = unsafe { ui_abi_1_has_feature(feature_id, &mut supported) };
@@ -5673,6 +5934,12 @@ mod tests {
         let status = unsafe { ui_abi_1_has_feature(7, &mut post_dispatch_supported) };
         assert_eq!(status, UI_OK);
         assert_eq!(post_dispatch_supported, 1);
+
+        let mut controls_supported = 0;
+        // SAFETY: the output points to writable storage.
+        let status = unsafe { ui_abi_1_has_feature(8, &mut controls_supported) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(controls_supported, 1);
 
         let mut unknown_supported = 1;
         // SAFETY: `unknown_supported` is valid writable storage for the output value.

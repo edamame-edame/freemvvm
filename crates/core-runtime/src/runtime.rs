@@ -4212,11 +4212,21 @@ impl RuntimeCore {
             .ui_objects
             .lock()
             .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
-        let property = store
+        let owner_is_property = store
             .resolve_mut(identity)
             .map_err(RuntimePropertyError::Store)?
             .downcast_mut::<PropertyState>()
-            .ok_or(RuntimePropertyError::WrongObjectState)?;
+            .is_some();
+        if !owner_is_property {
+            let is_window = store
+                .resolve(identity)
+                .ok()
+                .and_then(|object| object.downcast_ref::<UiControlState>())
+                .is_some_and(|state| state.kind == UiControlKind::Window);
+            if !is_window {
+                return Err(RuntimePropertyError::WrongObjectState);
+            }
+        }
 
         let mut owners = self
             .subscription_owners
@@ -4226,6 +4236,13 @@ impl RuntimeCore {
             .values()
             .flatten()
             .any(|owner| Arc::ptr_eq(owner, subscription))
+        {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        if !owner_is_property
+            && owners
+                .get(&identity)
+                .is_some_and(|bucket| !bucket.is_empty())
         {
             return Err(RuntimePropertyError::WrongObjectState);
         }
@@ -4245,9 +4262,15 @@ impl RuntimeCore {
                 .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
             new_bucket = Some(bucket);
         }
-        property
-            .add_subscription(subscription)
-            .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
+        if owner_is_property {
+            store
+                .resolve_mut(identity)
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_mut::<PropertyState>()
+                .ok_or(RuntimePropertyError::WrongObjectState)?
+                .add_subscription(subscription)
+                .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
+        }
         let owner = Arc::clone(subscription);
         if let Some(bucket) = owners.get_mut(&identity) {
             bucket.push(owner);
@@ -4256,6 +4279,33 @@ impl RuntimeCore {
             owners.insert(identity, bucket);
         }
         Ok(())
+    }
+
+    pub(crate) fn snapshot_window_close_subscription(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<Option<Arc<Subscription>>, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let is_window = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?
+            .resolve(identity)
+            .ok()
+            .and_then(|object| object.downcast_ref::<UiControlState>())
+            .is_some_and(|state| state.kind == UiControlKind::Window);
+        if !is_window {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        let owners = self
+            .subscription_owners
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        Ok(owners
+            .get(&identity)
+            .and_then(|bucket| bucket.first())
+            .filter(|subscription| subscription.is_active())
+            .cloned())
     }
 
     /// Pins the Property's active subscriptions in registration order.

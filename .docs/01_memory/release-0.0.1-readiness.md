@@ -16,4 +16,5 @@
 - UNIT-CORE-071ではWindowの単一contentとStackPanelの順序付きchildrenを既存Logical Treeへ接続し、child_at/content getterでTreeOwnerから独立public handleを再発行する。UI Control token表には再発行tokenのRuntime/kind/identityも登録しないと、後続getter・retain/releaseが解決できない。TreeOwnerのreleaseはtree mutex解放後に行い、旧subtree cleanupをlock内で実行しない。
 - UNIT-CORE-072ではLayout dirtyを変更箇所からLogical Treeの全祖先へ伝播する。Window peer/callbackはRuntime状態mutexを解放してから呼び、shutdown時もObjectStoreからstateを移譲して外部peer closeをlock外で実施する。
 - UNIT-ABI-020ではButtonがCommand entryのArcを保持し、public token解放後もgetterで独立tokenを再発行できる。交換時の旧Arc dropはObjectStore mutex解放後に行い、別Runtime Commandは状態変更前に拒否する。Windows SDKが不足する開発端末でも、MinGW CMakeでC/C++ ABI header probeとruntime smokeを検証できる。
+- UNIT-ABI-021ではWindow close subscriptionを既存Subscription cancel/release lifecycleへ接続する。callback中borrowed requestからdeferでowned tokenを発行し、最後の未解決owner releaseをDeclineにする。詳細は[Window close-requestの実装メモ](abi-window-close-request.md)。
 - WebEngine branchは利用者による別途採否判断までversion branchへ統合しない。

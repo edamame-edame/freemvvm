@@ -9,6 +9,11 @@ static void smoke_wake(void *userdata, uint32_t priority) {
 
 static void smoke_destroy(void *userdata) { (void)userdata; }
 
+static void smoke_close_request(void *userdata, ui_handle borrowed_request) {
+  (void)userdata;
+  (void)borrowed_request;
+}
+
 int main(void) {
   uint32_t major = 0;
   uint32_t minor = 0;
@@ -50,6 +55,24 @@ int main(void) {
       ui_abi_1_container_insert(panel, button, 1, 0) != UI_OK) {
     fputs("UI Control creation/property/Tree operation failed\n", stderr);
     return 9;
+  }
+  ui_bool controls_supported = 0;
+  if (ui_abi_1_has_feature(8, &controls_supported) != UI_OK ||
+      controls_supported != 1 ||
+      ui_abi_1_window_open(window, 0) != UI_UNSUPPORTED ||
+      ui_abi_1_window_close(window, 0) != UI_OK) {
+    fputs("Window lifecycle/feature query failed\n", stderr);
+    return 13;
+  }
+  ui_handle close_subscription = 0;
+  if (ui_abi_1_window_close_request_subscribe(
+          window, smoke_close_request, 0, smoke_destroy,
+          &close_subscription, 0) != UI_OK ||
+      close_subscription == 0 ||
+      ui_abi_1_subscription_cancel(close_subscription, 0) != UI_OK ||
+      ui_abi_1_handle_release(close_subscription) != UI_OK) {
+    fputs("Window close-request subscription lifecycle failed\n", stderr);
+    return 14;
   }
   uint64_t child_count = 0;
   uint32_t orientation = 0;

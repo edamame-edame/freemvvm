@@ -3464,14 +3464,18 @@
     },
     {
       "id": "UNIT-ABI-021",
-      "state": "planned",
+      "state": "complete",
       "scope": "c-abi-focus-window-peer-close-request-and-feature-advertisement",
       "sources": [
         "crates/c-abi/include/freemvvm/abi.h",
         "crates/c-abi/src/lib.rs",
         "crates/core-runtime/src/lib.rs",
         "crates/core-runtime/src/runtime.rs",
+        "crates/core-runtime/src/ui_controls.rs",
         "crates/core-runtime/src/ui_window.rs",
+        "tools/probes/abi_header_c.c",
+        "tools/probes/abi_header_cpp.cpp",
+        "tools/probes/abi_runtime_smoke.c",
         "tools/probes/abi_cpp_runtime_smoke.cpp"
       ],
       "config": ["Cargo.toml", "Cargo.lock", "CMakeLists.txt", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
@@ -3500,6 +3504,10 @@
         {
           "id": "UT-WINDOW-ABI-001",
           "command": ["cargo", "test", "-p", "freemvvm-c-abi", "controls_abi"]
+        },
+        {
+          "id": "UT-WINDOW-ABI-CORE-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "close_subscription_defers_resolves_and_declines_when_last_owner_is_released"]
         }
       ]
     }

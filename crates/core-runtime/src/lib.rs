@@ -54,7 +54,7 @@ pub mod abi_support {
     };
     use std::collections::HashMap;
     use std::ffi::c_void;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Condvar, Mutex, OnceLock, Weak};
 
     /// Failure categories needed by the versioned C ABI Runtime creation entrypoint.
@@ -179,6 +179,31 @@ pub mod abi_support {
 
     thread_local! {
         static VALIDATOR_CALLBACK_ACTIVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        static CURRENT_WINDOW_CLOSE_REQUEST: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    }
+
+    struct CloseRequestState {
+        callback_active: AtomicBool,
+        owned_handles: AtomicUsize,
+        release_requested: AtomicBool,
+        resolved: AtomicBool,
+        decision: Mutex<Option<CloseDecision>>,
+    }
+
+    struct CloseRequestHandleEntry {
+        runtime: Arc<RuntimeCore>,
+        identity: ObjectIdentity,
+        request: u64,
+        generation: u64,
+        state: Arc<CloseRequestState>,
+        owned: bool,
+    }
+
+    static CLOSE_REQUEST_HANDLES: OnceLock<Mutex<HashMap<HandleToken, CloseRequestHandleEntry>>> =
+        OnceLock::new();
+
+    fn close_request_handles() -> &'static Mutex<HashMap<HandleToken, CloseRequestHandleEntry>> {
+        CLOSE_REQUEST_HANDLES.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
     struct ValidatorCallbackScope;
@@ -586,6 +611,7 @@ pub mod abi_support {
     enum SubscriptionOwner {
         Property(crate::handle_registry::registry::ObjectIdentity),
         Binding(crate::binding::BindingConnectionId),
+        Window(ObjectIdentity),
     }
 
     struct BindingHandleEntry {
@@ -1201,6 +1227,43 @@ pub mod abi_support {
     /// Creates an independent owner token for an existing Runtime handle.
     pub fn runtime_retain_handle(handle: u64) -> Result<u64, RuntimeRetainError> {
         let token = HandleToken::from_abi(handle).ok_or(RuntimeRetainError::InvalidHandle)?;
+        {
+            let mut requests = close_request_handles()
+                .lock()
+                .map_err(|_| RuntimeRetainError::Internal)?;
+            if let Some((runtime, identity, request, generation, state, owned)) =
+                requests.get(&token).map(|entry| {
+                    (
+                        Arc::clone(&entry.runtime),
+                        entry.identity,
+                        entry.request,
+                        entry.generation,
+                        Arc::clone(&entry.state),
+                        entry.owned,
+                    )
+                })
+            {
+                if !owned {
+                    return Err(RuntimeRetainError::InvalidHandle);
+                }
+                requests
+                    .try_reserve(1)
+                    .map_err(|_| RuntimeRetainError::OutOfMemory)?;
+                let retained = crate::handle_registry::issue_handle_token()
+                    .ok_or(RuntimeRetainError::Internal)?;
+                let entry = CloseRequestHandleEntry {
+                    runtime,
+                    identity,
+                    request,
+                    generation,
+                    state: Arc::clone(&state),
+                    owned: true,
+                };
+                state.owned_handles.fetch_add(1, Ordering::AcqRel);
+                requests.insert(retained, entry);
+                return Ok(retained.into_abi());
+            }
+        }
         {
             let mut errors = error_handles()
                 .lock()
@@ -2203,7 +2266,256 @@ pub mod abi_support {
             .map_err(map_window_lifecycle_error)
     }
 
+    /// Dispatches a native close intent through the Window's active close subscription.
+    pub fn window_close_intent_subscribed(
+        window: u64,
+    ) -> Result<Option<(u64, u64)>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let subscription = runtime
+            .snapshot_window_close_subscription(identity)
+            .map_err(map_ui_control_property_error)?;
+        let Some(subscription) = subscription else {
+            return runtime
+                .window_close_intent(identity, None)
+                .map_err(map_window_lifecycle_error);
+        };
+        let callback_runtime = Arc::clone(&runtime);
+        runtime
+            .window_close_intent(
+                identity,
+                Some(Box::new(move |request, generation| {
+                    let state = Arc::new(CloseRequestState {
+                        callback_active: AtomicBool::new(true),
+                        owned_handles: AtomicUsize::new(0),
+                        release_requested: AtomicBool::new(false),
+                        resolved: AtomicBool::new(false),
+                        decision: Mutex::new(None),
+                    });
+                    let borrowed_token = crate::handle_registry::issue_handle_token();
+                    let Some(borrowed_token) = borrowed_token else {
+                        return CloseDecision::Accept;
+                    };
+                    let entry = CloseRequestHandleEntry {
+                        runtime: Arc::clone(&callback_runtime),
+                        identity,
+                        request,
+                        generation,
+                        state: Arc::clone(&state),
+                        owned: false,
+                    };
+                    let inserted = close_request_handles()
+                        .lock()
+                        .map(|mut handles| {
+                            if handles.try_reserve(1).is_err() {
+                                false
+                            } else {
+                                handles.insert(borrowed_token, entry);
+                                true
+                            }
+                        })
+                        .unwrap_or(false);
+                    if !inserted {
+                        return CloseDecision::Accept;
+                    }
+                    CURRENT_WINDOW_CLOSE_REQUEST
+                        .with(|current| current.set(borrowed_token.into_abi()));
+                    let _ = subscription.invoke();
+                    CURRENT_WINDOW_CLOSE_REQUEST.with(|current| current.set(0));
+                    state.callback_active.store(false, Ordering::Release);
+                    if let Ok(mut handles) = close_request_handles().lock() {
+                        handles.remove(&borrowed_token);
+                    }
+                    if state.release_requested.load(Ordering::Acquire) {
+                        CloseDecision::Decline
+                    } else {
+                        let decision = state
+                            .decision
+                            .lock()
+                            .map(|decision| decision.unwrap_or(CloseDecision::Accept))
+                            .unwrap_or(CloseDecision::Decline);
+                        if decision != CloseDecision::Defer {
+                            state.resolved.store(true, Ordering::Release);
+                        }
+                        decision
+                    }
+                })),
+            )
+            .map_err(map_window_lifecycle_error)
+    }
+
+    /// Registers the Window's single close-request callback using the shared Subscription owner.
+    pub fn window_close_request_subscribe(
+        window: u64,
+        callback: PostCallback,
+        userdata: usize,
+        destroy: DestroyCallback,
+    ) -> Result<u64, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let mut subscriptions = subscription_handles()
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        subscriptions
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        let token =
+            crate::handle_registry::issue_handle_token().ok_or(UiControlApiError::Internal)?;
+        // SAFETY: the ABI caller transfers callback/userdata/destroy ownership on success.
+        let subscription =
+            Arc::new(unsafe { Subscription::new(callback, userdata as *mut c_void, destroy) });
+        runtime
+            .register_subscription_owner(identity, &subscription)
+            .map_err(map_ui_control_property_error)?;
+        subscriptions.insert(
+            token,
+            Arc::new(SubscriptionHandleEntry {
+                runtime,
+                owner: SubscriptionOwner::Window(identity),
+                subscription,
+            }),
+        );
+        Ok(token.into_abi())
+    }
+
+    /// Returns the borrowed request handle currently passed to a close callback, or zero.
+    pub fn window_close_request_current() -> u64 {
+        CURRENT_WINDOW_CLOSE_REQUEST.with(std::cell::Cell::get)
+    }
+
+    /// Explicitly defers the borrowed request received by the active close callback.
+    pub fn window_close_request_defer(request: u64) -> Result<u64, UiControlApiError> {
+        let token = HandleToken::from_abi(request).ok_or(UiControlApiError::InvalidHandle)?;
+        let mut handles = close_request_handles()
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        let entry = handles
+            .get(&token)
+            .map(|entry| CloseRequestHandleEntry {
+                runtime: Arc::clone(&entry.runtime),
+                identity: entry.identity,
+                request: entry.request,
+                generation: entry.generation,
+                state: Arc::clone(&entry.state),
+                owned: entry.owned,
+            })
+            .ok_or(UiControlApiError::InvalidHandle)?;
+        if entry.owned
+            || !entry.state.callback_active.load(Ordering::Acquire)
+            || entry.state.resolved.load(Ordering::Acquire)
+            || CURRENT_WINDOW_CLOSE_REQUEST.with(std::cell::Cell::get) != request
+        {
+            return Err(UiControlApiError::InvalidHandle);
+        }
+        if !entry.runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        handles
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        let owned_token =
+            crate::handle_registry::issue_handle_token().ok_or(UiControlApiError::Internal)?;
+        let mut decision = entry
+            .state
+            .decision
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        entry.state.owned_handles.fetch_add(1, Ordering::AcqRel);
+        *decision = Some(CloseDecision::Defer);
+        drop(decision);
+        let owned = CloseRequestHandleEntry {
+            runtime: entry.runtime,
+            identity: entry.identity,
+            request: entry.request,
+            generation: entry.generation,
+            state: entry.state,
+            owned: true,
+        };
+        handles.insert(owned_token, owned);
+        Ok(owned_token.into_abi())
+    }
+
+    /// Resolves an active borrowed request or a previously deferred owned request.
     pub fn window_close_request_resolve(
+        request: u64,
+        decision: u32,
+    ) -> Result<(), UiControlApiError> {
+        let decision = match decision {
+            1 => CloseDecision::Accept,
+            2 => CloseDecision::Decline,
+            _ => return Err(UiControlApiError::InvalidArgument),
+        };
+        let token = HandleToken::from_abi(request).ok_or(UiControlApiError::InvalidHandle)?;
+        let entry = close_request_handles()
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?
+            .get(&token)
+            .map(|entry| CloseRequestHandleEntry {
+                runtime: Arc::clone(&entry.runtime),
+                identity: entry.identity,
+                request: entry.request,
+                generation: entry.generation,
+                state: Arc::clone(&entry.state),
+                owned: entry.owned,
+            })
+            .ok_or(UiControlApiError::InvalidHandle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        if entry.state.callback_active.load(Ordering::Acquire) {
+            if entry.state.resolved.load(Ordering::Acquire) {
+                return Err(UiControlApiError::InvalidArgument);
+            }
+            *entry
+                .state
+                .decision
+                .lock()
+                .map_err(|_| UiControlApiError::Internal)? = Some(decision);
+            entry.state.resolved.store(true, Ordering::Release);
+            return Ok(());
+        }
+        if !entry.owned || entry.state.resolved.load(Ordering::Acquire) {
+            return Err(UiControlApiError::InvalidHandle);
+        }
+        entry
+            .runtime
+            .window_close_resolve(entry.identity, entry.request, entry.generation, decision)
+            .map_err(map_window_lifecycle_error)?;
+        entry.state.resolved.store(true, Ordering::Release);
+        Ok(())
+    }
+
+    fn window_close_request_release_token(token: HandleToken) -> Result<bool, ShutdownApiError> {
+        let mut handles = close_request_handles()
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?;
+        let Some(entry) = handles.get(&token) else {
+            return Ok(false);
+        };
+        if !entry.owned {
+            return Err(ShutdownApiError::InvalidHandle);
+        }
+        let entry = handles.remove(&token).ok_or(ShutdownApiError::Internal)?;
+        drop(handles);
+        let remaining = entry.state.owned_handles.fetch_sub(1, Ordering::AcqRel) - 1;
+        if remaining == 0 && !entry.state.resolved.load(Ordering::Acquire) {
+            if entry.state.callback_active.load(Ordering::Acquire) {
+                entry.state.release_requested.store(true, Ordering::Release);
+                *entry
+                    .state
+                    .decision
+                    .lock()
+                    .map_err(|_| ShutdownApiError::Internal)? = Some(CloseDecision::Decline);
+            } else {
+                let _ = entry.runtime.window_close_request_release(
+                    entry.identity,
+                    entry.request,
+                    entry.generation,
+                );
+            }
+        }
+        Ok(true)
+    }
+
+    pub fn window_close_request_resolve_by_ids(
         window: u64,
         request: u64,
         generation: u64,
@@ -2215,7 +2527,7 @@ pub mod abi_support {
             .map_err(map_window_lifecycle_error)
     }
 
-    pub fn window_close_request_release(
+    pub fn window_close_request_release_by_ids(
         window: u64,
         request: u64,
         generation: u64,
@@ -2663,6 +2975,12 @@ pub mod abi_support {
                             }
                             _ => PropertyApiError::Internal,
                         })?;
+                }
+                SubscriptionOwner::Window(identity) => {
+                    entry
+                        .runtime
+                        .cancel_subscription_owner(identity, &entry.subscription)
+                        .map_err(map_property_read_error)?;
                 }
             }
         }
@@ -3443,6 +3761,9 @@ pub mod abi_support {
 
     pub fn handle_release(handle: u64) -> Result<(), ShutdownApiError> {
         let token = HandleToken::from_abi(handle).ok_or(ShutdownApiError::InvalidHandle)?;
+        if window_close_request_release_token(token)? {
+            return Ok(());
+        }
         if error_handles()
             .lock()
             .map_err(|_| ShutdownApiError::Internal)?

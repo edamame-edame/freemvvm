@@ -11,6 +11,11 @@ void SmokeWake(void* userdata, uint32_t priority) {
 
 void SmokeDestroy(void* userdata) { (void)userdata; }
 
+void SmokeCloseRequest(void* userdata, ui_handle borrowed_request) {
+  (void)userdata;
+  (void)borrowed_request;
+}
+
 }  // namespace
 
 int main() {
@@ -33,6 +38,33 @@ int main() {
     std::fputs("UI loop bridge registration failed\n", stderr);
     (void)ui_abi_1_handle_release(runtime);
     return 3;
+  }
+
+  ui_handle window = 0;
+  ui_bool controls_supported = 0;
+  if (ui_abi_1_has_feature(8, &controls_supported) != UI_OK ||
+      controls_supported != 1 ||
+      ui_abi_1_window_create(runtime, &window, nullptr) != UI_OK ||
+      window == 0 || ui_abi_1_window_open(window, nullptr) != UI_UNSUPPORTED ||
+      ui_abi_1_window_close(window, nullptr) != UI_OK) {
+    std::fputs("Window lifecycle/feature query failed\n", stderr);
+    (void)ui_abi_1_handle_release(window);
+    (void)ui_abi_1_handle_release(runtime);
+    return 9;
+  }
+  ui_handle close_subscription = 0;
+  if (ui_abi_1_window_close_request_subscribe(
+          window, SmokeCloseRequest, nullptr, SmokeDestroy,
+          &close_subscription, nullptr) != UI_OK ||
+      close_subscription == 0 ||
+      ui_abi_1_subscription_cancel(close_subscription, nullptr) != UI_OK ||
+      ui_abi_1_handle_release(close_subscription) != UI_OK ||
+      ui_abi_1_handle_release(window) != UI_OK) {
+    std::fputs("Window close-request subscription lifecycle failed\n", stderr);
+    (void)ui_abi_1_handle_release(close_subscription);
+    (void)ui_abi_1_handle_release(window);
+    (void)ui_abi_1_handle_release(runtime);
+    return 10;
   }
 
   uint64_t host_scope = 0;

@@ -26,6 +26,8 @@ typedef ui_status (*ui_command_start_callback)(void *userdata,
                                                ui_handle borrowed_command,
                                                uint64_t operation_id,
                                                ui_handle borrowed_cancel_token);
+typedef void (*ui_window_close_callback)(void *userdata,
+                                         ui_handle borrowed_close_request);
 
 enum {
   UI_OK = 0,
@@ -72,7 +74,9 @@ enum {
   UI_ALIGN_START = 1,
   UI_ALIGN_CENTER = 2,
   UI_ALIGN_END = 3,
-  UI_ALIGN_STRETCH = 4
+  UI_ALIGN_STRETCH = 4,
+  UI_CLOSE_ACCEPT = 1,
+  UI_CLOSE_DECLINE = 2
 };
 
 ui_status ui_abi_1_runtime_create(ui_handle *out_runtime, ui_handle *out_error);
@@ -232,6 +236,7 @@ ui_status ui_abi_1_widget_is_enabled_property(
     ui_handle widget, ui_handle *out_owned_property);
 ui_status ui_abi_1_widget_accessible_name_property(
     ui_handle widget, ui_handle *out_owned_property);
+ui_status ui_abi_1_widget_request_focus(ui_handle widget, ui_handle *out_error);
 ui_status ui_abi_1_window_content(ui_handle window,
                                   ui_handle *out_owned_child,
                                   ui_handle *out_error);
@@ -242,6 +247,17 @@ ui_status ui_abi_1_window_clear_content(ui_handle window,
                                         ui_handle *out_error);
 ui_status ui_abi_1_window_title_property(ui_handle window,
                                          ui_handle *out_owned_property);
+ui_status ui_abi_1_window_open(ui_handle window, ui_handle *out_error);
+ui_status ui_abi_1_window_close(ui_handle window, ui_handle *out_error);
+ui_status ui_abi_1_window_close_request_subscribe(
+    ui_handle window, ui_window_close_callback callback, void *userdata,
+    ui_destroy_callback destroy, ui_handle *out_subscription,
+    ui_handle *out_error);
+ui_status ui_abi_1_window_close_request_defer(
+    ui_handle borrowed_request, ui_handle *out_owned_request,
+    ui_handle *out_error);
+ui_status ui_abi_1_window_close_request_resolve(
+    ui_handle request, uint32_t decision, ui_handle *out_error);
 ui_status ui_abi_1_container_insert(ui_handle container,
                                     ui_handle borrowed_child, uint64_t index,
                                     ui_handle *out_error);

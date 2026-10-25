@@ -102,8 +102,10 @@ mod tests {
         ui_control_is_enabled_property, ui_control_layout_clean, ui_control_layout_dirty,
         ui_control_text_box_value_property, ui_control_text_content_property,
         ui_control_window_title_property, widget_has_focus, widget_request_focus,
-        window_clear_content, window_close_intent, window_content, window_install_test_peer,
-        window_open, window_platform_activation, window_set_content, window_set_content_with_peer,
+        window_clear_content, window_close, window_close_intent, window_close_intent_subscribed,
+        window_close_request_current, window_close_request_defer, window_close_request_resolve,
+        window_close_request_subscribe, window_content, window_install_test_peer, window_open,
+        window_platform_activation, window_set_content, window_set_content_with_peer,
     };
     use crate::ui_window::CloseDecision;
     use std::ffi::c_void;
@@ -125,6 +127,38 @@ mod tests {
     }
 
     unsafe extern "C" fn noop_wake(_: *mut c_void, _: u32) {}
+
+    #[derive(Default)]
+    struct CloseRequestProbe {
+        requests: std::sync::Mutex<Vec<u64>>,
+        destroys: AtomicUsize,
+        action: std::sync::atomic::AtomicUsize,
+    }
+
+    unsafe extern "C" fn defer_close_request(userdata: *mut c_void) {
+        // SAFETY: the owning test keeps this probe alive through subscription cancellation.
+        let probe = unsafe { &*userdata.cast::<CloseRequestProbe>() };
+        let borrowed = window_close_request_current();
+        match probe.action.load(Ordering::SeqCst) {
+            0 => {
+                let owned = window_close_request_defer(borrowed).expect("defer close request");
+                probe
+                    .requests
+                    .lock()
+                    .expect("request list lock")
+                    .push(owned);
+            }
+            1 => window_close_request_resolve(borrowed, 2).expect("decline borrowed request"),
+            _ => {}
+        }
+    }
+
+    unsafe extern "C" fn destroy_close_probe(userdata: *mut c_void) {
+        // SAFETY: the owning test keeps this probe alive through subscription cancellation.
+        unsafe { &*userdata.cast::<CloseRequestProbe>() }
+            .destroys
+            .fetch_add(1, Ordering::SeqCst);
+    }
 
     #[test]
     fn text_control_exposes_shared_default_and_initial_properties() {
@@ -486,5 +520,72 @@ mod tests {
         handle_release(runtime).expect("release Runtime");
         assert_eq!(peer.0.load(Ordering::Relaxed), 1);
         assert!(peer.1.load(Ordering::Relaxed) >= 1);
+    }
+
+    #[test]
+    fn close_subscription_defers_resolves_and_declines_when_last_owner_is_released() {
+        let runtime = runtime_create_handle().expect("create Runtime");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        window_install_test_peer(window, peer.clone()).expect("install fake peer");
+        window_open(window).expect("open Window");
+
+        let probe = CloseRequestProbe::default();
+        let subscription = window_close_request_subscribe(
+            window,
+            defer_close_request,
+            (&probe as *const CloseRequestProbe) as usize,
+            destroy_close_probe,
+        )
+        .expect("register close callback");
+        assert_eq!(
+            window_close_request_subscribe(
+                window,
+                defer_close_request,
+                (&probe as *const CloseRequestProbe) as usize,
+                destroy_close_probe,
+            ),
+            Err(UiControlApiError::InvalidArgument)
+        );
+
+        assert_eq!(window_close_intent_subscribed(window), Ok(Some((1, 1))));
+        let first = probe.requests.lock().expect("request list lock")[0];
+        let first_clone =
+            crate::abi_support::runtime_retain_handle(first).expect("retain deferred request");
+        assert_eq!(peer.1.load(Ordering::Relaxed), 0);
+        handle_release(first).expect("release one request owner");
+        window_close_request_resolve(first_clone, 1).expect("resolve deferred request");
+        assert_eq!(peer.1.load(Ordering::Relaxed), 1);
+        handle_release(first_clone).expect("release resolved request");
+
+        window_open(window).expect("reopen Window");
+        assert_eq!(window_close_intent_subscribed(window), Ok(Some((2, 2))));
+        let second = probe.requests.lock().expect("request list lock")[1];
+        let second_clone = crate::abi_support::runtime_retain_handle(second)
+            .expect("retain second deferred request");
+        handle_release(second).expect("release unresolved request as Decline");
+        assert_eq!(peer.1.load(Ordering::SeqCst), 1);
+        handle_release(second_clone).expect("last owner declines unresolved request");
+        assert_eq!(peer.1.load(Ordering::SeqCst), 1);
+        window_close(window).expect("close Window after declined intent");
+        assert_eq!(peer.1.load(Ordering::SeqCst), 2);
+
+        window_open(window).expect("reopen Window for immediate Decline");
+        probe.action.store(1, Ordering::SeqCst);
+        assert_eq!(window_close_intent_subscribed(window), Ok(None));
+        assert_eq!(peer.1.load(Ordering::SeqCst), 2);
+        assert_eq!(window_open(window), Ok(3));
+
+        probe.action.store(2, Ordering::SeqCst);
+        assert_eq!(window_close_intent_subscribed(window), Ok(None));
+        assert_eq!(peer.1.load(Ordering::SeqCst), 3);
+
+        crate::abi_support::subscription_cancel(subscription).expect("cancel subscription");
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+        handle_release(subscription).expect("release subscription token");
+        handle_release(window).expect("release Window");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(runtime).expect("release Runtime");
     }
 }
