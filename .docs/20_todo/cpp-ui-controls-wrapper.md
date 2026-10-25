@@ -1,7 +1,7 @@
 # C++ UI Control wrapper
 
 - 計画版: 0.2
-- 状態: 利用者承認済み計画。UNIT-WRAP-CPP-009実装とWindows local gates完了。実装commit/Windows・Ubuntu CI確認待ち
+- 状態: UNIT-WRAP-CPP-009完了。実装commit `14b5d45`をpush済み。Windows/Ubuntu CI run `40183464855` success
 - 作成日: 2026-10-25
 - 対象: 0.0.1初期UI Control Core/C ABIをC++17から構成・操作するwrapper
 - branch案: `impl-cpp/ui-controls-wrapper`
@@ -57,8 +57,8 @@ C++ wrapperにはRuntime、Property、Binding、Subscriptionの実装がある�
 8. [x] 承認済みDDに基づくAsync Command/UI Controlのfocused fake-ABI/consumer caseとunit mappingをtest正本・`tools/units.yaml`へ登録し、test文書0.4全文の利用者承認を得た。
 9. [x] C++ Async Command wrapperを独立unitとして実装・commit/pushした（`47623f0`, Linux用標準ヘッダー修正`4c987a6`）。focused fake-ABI、relocated package consumer、repository `check`はWindows local pass。Windows/Ubuntu CI run [`40182098140`](https://github.com/edamame-edame/freemvvm/actions/runs/40182098140) success。
 10. [x] C++ Window/Widget/Container/StackPanel/Text/TextBox/Button facadeを独立unitで実装し、ButtonとAsync Commandの接続を含めた。
-11. [x] focused fake ABI test、実C ABI relocated package consumer、既存C++ package integration、`tools/dev.py check`、`tools/dev.py minimum`、`git diff --check`をWindows localで実行し成功した。実装revisionのWindows/Linux CI確認は次工程。
-12. [ ] commit SHAとWindows/Ubuntu CI証跡を本計画、test design、unit state、`.docs/01_memory/`へ記録する。OS peer/package/release完了とは区別する。
+11. [x] focused fake ABI test、実C ABI relocated package consumer、既存C++ package integration、`tools/dev.py check`、`tools/dev.py minimum`、`git diff --check`をWindows localで実行し成功した。実装revisionのWindows/Ubuntu CIも成功した。
+12. [x] 実装commit `14b5d45`とWindows/Ubuntu CI run [`40183464855`](https://github.com/edamame-edame/freemvvm/actions/runs/40183464855)を本計画、test design、unit state、`.docs/01_memory/`に記録した。OS peer/package/release完了とは区別する。
 
 ## 完了条件案
 
@@ -75,4 +75,4 @@ C++ wrapperにはRuntime、Property、Binding、Subscriptionの実装がある�
 | 2026-10-25 | 0.1 / C++ UI Control wrapper | 利用者承認 | 計画commit `ac3e7af`を`impl-cpp/ui-controls-wrapper`へpush。preflightでCommand wrapper未実装を確認したため、下記0.2改訂案で依存・unit順を修正 |
 | 2026-10-25 | 0.2 / C++ Async Command + UI Control wrapper | 利用者承認 | Async CommandをButton接続の先行unitとして追加。計画commit `4a2b598` push済み。C++ DD v1.4全文も承認済み。 |
 | 2026-10-25 | UNIT-WRAP-CPP-008 / Async Command | 完了 | commits `47623f0`, `4c987a6`を`impl-cpp/ui-controls-wrapper`へpush。Windows/Ubuntu CI run `40182098140` success。 |
-| 2026-10-25 | UNIT-WRAP-CPP-009 / UI Controls | local実装完了・CI待ち | fake ABI focused test、relocated package consumer、`check`、`minimum`がWindows local pass。実装commitとWindows/Ubuntu CIの結果を確認後にunitをcompleteへ更新する。 |
+| 2026-10-25 | UNIT-WRAP-CPP-009 / UI Controls | 完了 | `14b5d45`を`impl-cpp/ui-controls-wrapper`へpush。fake ABI focused test、relocated package consumer、`check`、`minimum`がWindows local passし、Windows/Ubuntu CI run [`40183464855`](https://github.com/edamame-edame/freemvvm/actions/runs/40183464855) success。 |

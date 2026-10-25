@@ -2094,7 +2094,7 @@
     },
     {
       "id": "UNIT-WRAP-CPP-009",
-      "state": "planned",
+      "state": "complete",
       "scope": "cpp-initial-ui-controls-tree-focus-and-window-close-request-wrapper",
       "sources": [
         "wrappers/cpp/include/freemvvm/ui_controls.hpp",
