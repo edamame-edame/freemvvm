@@ -1,9 +1,9 @@
 # 言語ラッパー：Python
 
-- 文書版: 1.8
+- 文書版: 1.9
 - 文書ロール: detailed-design
 - 更新日: 2026-10-26
-- 状態: 1.8全文承認済み（利用者、「ok」、2026-10-26）。実装・試験状態は別管理
+- 状態: 1.9全文承認済み（利用者、「ok」、2026-10-26）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -892,6 +892,92 @@ sequenceDiagram
 
 Core/C ABIの変更、内蔵executor/thread pool、`asyncio` Task統合、専用progress値/Property、worker例外からdomain/codeを自動生成するpolicy、Property/Binding/Control以外のMVVM facade、Command completion callback/Subscriptionは含めない。`post(callback, *args)`をAsyncCommandOperationの最小UI dispatch surfaceに限定し、callback例外を既存Runtime handlerの`Post`種別へ分類する。
 
+## Python UI Controls / Tree / Focus公開API（1.9改訂案）
+
+本改訂は承認済みRQ-09とUI Controls/Tree/Focus DDをPython facadeへ写す。Core/C ABI変更、Window peer open/close・close-request、OS rendering/input、TextBox editing/selection/caret APIは含めない。WindowはCore Controlとして生成しcontent/titleを扱えるが、現在のC ABI `window_open` は`UI_UNSUPPORTED`であり、このunitで表示可能とは扱わない。Focus要求は既存C ABIへ委譲し、active Windowに属する有効Controlでない等の拒否を`UiError`として伝える。
+
+要求根拠: [RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-002](../../11_requirements/RQ-09_ui-scope.md#rq-09-002)、[RQ-09-003](../../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-09-004](../../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-005](../../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-006](../../11_requirements/RQ-09_ui-scope.md#rq-09-006)、[RQ-09-007](../../11_requirements/RQ-09_ui-scope.md#rq-09-007)、[RQ-09-009](../../11_requirements/RQ-09_ui-scope.md#rq-09-009)、[RQ-09-043](../../11_requirements/RQ-09_ui-scope.md#rq-09-043)、[RQ-09-044](../../11_requirements/RQ-09_ui-scope.md#rq-09-044)、[RQ-09-045](../../11_requirements/RQ-09_ui-scope.md#rq-09-045)、[RQ-09-046](../../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-047](../../11_requirements/RQ-09_ui-scope.md#rq-09-047)、[RQ-09-048](../../11_requirements/RQ-09_ui-scope.md#rq-09-048)、[RQ-09-049](../../11_requirements/RQ-09_ui-scope.md#rq-09-049)、[RQ-09-059](../../11_requirements/RQ-09_ui-scope.md#rq-09-059)、[RQ-09-067](../../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-09-070](../../11_requirements/RQ-09_ui-scope.md#rq-09-070)。
+
+### 公開型と操作案
+
+| 型 | 生成・操作 | C ABI対応 | 所有・thread |
+| --- | --- | --- | --- |
+| `Widget` | 共通抽象view。`is_enabled`、`accessible_name`はBOOL/UTF-8 `Property`を返す。`request_focus()`を提供 | `widget_is_enabled_property`、`widget_accessible_name_property`、`widget_request_focus` | 各Widgetは一owned tokenとRuntime anchorを持つ。Propertyごとに独立owned token。操作はRuntime UI thread専用 |
+| `Container` | 共通抽象view。`child_count`、`child_at(index)`、`insert(child, index)`、`remove(child)`、`move(from_index, to_index)` | `container_child_count/child_at/insert/remove/move` | child getterは独立owned tokenを返す。親子操作でPython ownerのtokenは消費しない |
+| `Window` | `create(runtime)`、`content` getter、`set_content(widget)`、`clear_content()`、`title` Property | `window_create/content/set_content/clear_content/title_property` | 空contentは`None`。open/close/close-requestは別のWindow unit |
+| `StackPanel` | `create(runtime)`、`orientation` getter/setter、`set_child_align(child, alignment)`とContainer操作 | `stack_panel_create/orientation/set_orientation/set_child_align` | `Orientation.VERTICAL/HORIZONTAL`、`Alignment.START/CENTER/END/STRETCH`をABI定数へ写像 |
+| `Text` | `create(runtime, content="")`、`content` UTF-8 Property | `text_create`、`text_content_property` | Propertyの既存型検査・所有規則に従う |
+| `TextBox` | `create(runtime, value="")`、`value` UTF-8 Property | `text_box_create`、`text_box_value_property` | selection/caret/editing snapshot/IMEはABI入口がないため本改訂では公開しない |
+| `Button` | `create(runtime, label="")`、`label` UTF-8 Property、`set_command(command_or_none)`、`command` getter | `button_create/label_property/set_command/command` | `AsyncCommand`または`None`のみ。同Runtime確認をnative call前に行う。getterは独立owned tokenからAsyncCommandを構成 |
+
+具象型constructorは隠し、`create`が既存Runtime/Property/AsyncCommandと同じcleanup ticket・owner cell・Runtime anchor規則でownerを構築する。`Widget`/`Container`は直接生成しない。`close()`は当該wrapper tokenだけをreleaseし、Runtime shutdownやButton Command closeを代行しない。失敗時はtoken/ticket/anchorを保持し再試行可能とする。
+
+### C ABI mapping・型判定・エラー境界
+
+現行ABIにはWidget concrete kind queryがない。このため`Window.content`と`Container.child_at()`は型固有操作を持たない共通`Widget` viewを返し、Text等へ推測castしない。型固有Property/Commandを利用するアプリは作成時の具象ownerを保持する。Tree snapshotから型付きfacadeを再構成する機能はABI kind queryなしに実装しない。
+
+入力ownerは同Runtime cellであることを検査後、borrowed tokenとして渡す。`set_command(None)`だけがゼロhandleを渡す。out-owned tokenが異常なstatus/zeroの組合せで返った場合、既存ownerと同じunexpected-token cleanupを行う。status/error変換とUI thread検査は共通helperを使う。
+
+```mermaid
+classDiagram
+    direction TB
+    class Widget {
+        is_enabled
+        accessible_name
+        request_focus()
+        close()
+    }
+    class Container {
+        child_count
+        child_at(index)
+        insert(child,index)
+        remove(child)
+        move(from,to)
+    }
+    class Window {
+        create(runtime)
+        content
+        set_content(widget)
+        title
+    }
+    class StackPanel {
+        create(runtime)
+        orientation
+        set_child_align(child,alignment)
+    }
+    class Text {
+        create(runtime,content)
+        content
+    }
+    class TextBox {
+        create(runtime,value)
+        value
+    }
+    class Button {
+        create(runtime,label)
+        label
+        set_command(command)
+    }
+    Widget <|-- Container
+    Container <|-- Window
+    Container <|-- StackPanel
+    Widget <|-- Text
+    Widget <|-- TextBox
+    Widget <|-- Button
+    Button o--> AsyncCommand : Core association
+    Widget ..> Property : owned facade
+```
+
+### 主要call flowと制約
+
+作成はRuntime UI thread確認→cleanup ticket/Runtime anchor準備→C ABI create→owned token検査→typed wrapper構築の順。Tree変更はRuntime同一性・facade種別・indexを検査後borrowed handleでABIを一度呼ぶ。content/child getterはC ABIのowned tokenを共通Widget viewへ移し、zero tokenは`None`とする。Button Command setterはAsyncCommandをcall期間pinし、native成功後にCore associationを更新する。
+
+`request_focus()`はwrapper独自Focus状態を持たずABIへ委譲する。Attached・active Window・focusable・enabled条件等を満たさない要求はABIの拒否を`UiError`で表す。Tab traversal/keybindingは提供しない。layout・表示・hit-testはCore/Platform所管でありPython側で計算しない。
+
+### 1.9範囲外・実装前提
+
+Window peer open/close・close-request、成功するFocus遷移のPlatform統合確認、TextBox editing/selection/caret/IME、Widget concrete kind query、visibility、直接Click callback、keybinding、rendering、OS peer、Core/C ABI変更は含めない。fake ABI試験では入力検査・owner cleanup・status mappingを検査し、real C ABI consumerではControl creation/property/tree/StackPanel/Button associationを確認する。Platform実装なしにFocus成功を証明したと扱わない。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -914,3 +1000,5 @@ Core/C ABIの変更、内蔵executor/thread pool、`asyncio` Task統合、専用
 | 2026-10-26 | 1.7全文 | 利用者の「ok」により、Binding公開型/API、OneTime結果、owner/releaseとcancelの分離、error snapshot polling/所有、ABI失敗境界を含む文書全体を承認。実装・試験設計・試験合格は別管理 |
 | 2026-10-26 | 1.8改訂案 | Python AsyncCommand/CommandOperationの公開API、worker lease、runtime_post、callback root、例外・close境界を提案。文書全体レビュー待ち |
 | 2026-10-26 | 1.8全文 | 利用者の「ok」によりAsyncCommand/CommandOperationの公開API、worker lease、post/終端報告、callback root、例外・close境界を含む文書全体を承認。試験設計・実装開始は別承認 |
+| 2026-10-26 | 1.9改訂案 | 承認済みRQ-09とUI DD・現行C ABIに基づくPython Controls/Tree/Focus facade案を追加。Window peerとTextBox edit API等の未提供ABI範囲を明示。文書全体レビュー待ち |
+| 2026-10-26 | 1.9全文 | 利用者の「ok」によりPython UI Controls/Tree/Focus facade案と未提供ABI範囲を含む文書全体を承認。試験設計・実装・試験合格は別管理 |
