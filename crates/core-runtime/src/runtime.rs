@@ -3,14 +3,15 @@ use crate::command::{CommandError, OperationIdIssuer};
 use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission, UiLoopBridge};
 use crate::handle_registry::HandleToken;
 use crate::handle_registry::registry::{
-    CleanupQueue, CleanupReservation, CoreObjectControl, HandleRegistry, ObjectIdentity,
-    RegistryError, ValidationPin,
+    CleanupQueue, CleanupReservation, CoreObjectControl, HandleRegistry, InternalOwner,
+    ObjectIdentity, RegistryError, ValidationPin,
 };
 use crate::object_store::{UiObjectStore, UiObjectStoreError};
 use crate::property::{
     PropertyChangeQueue, PropertyHandleKind, PropertyState, PropertyValidator, Subscription,
     ValidationError, ValidatorResult,
 };
+use crate::ui_controls::{UiControlProperty, UiControlState};
 use crate::ui_tree::{LogicalNode, RuntimeTreeStore, TreeError};
 use crate::value::{
     BindingCopyError, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
@@ -1530,6 +1531,32 @@ impl RuntimeCore {
         self.register_ui_object(registry, PropertyHandleKind::Property, move || {
             PropertyState::new_read_only(initial)
         })
+    }
+
+    /// Returns an independent internal owner for a Property attached to one Core Control.
+    pub(crate) fn ui_control_property_owner(
+        &self,
+        identity: ObjectIdentity,
+        property: UiControlProperty,
+    ) -> Result<InternalOwner<RuntimeIdentity>, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<UiControlState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        if !state.kind.supports_property(property) {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        state
+            .property_owner(property)
+            .ok_or(RuntimePropertyError::WrongObjectState)?
+            .try_clone()
+            .map_err(RuntimePropertyError::Registry)
     }
 
     /// Installs the single synchronous validator for a Property without validating its current value.

@@ -15,6 +15,7 @@ mod property;
 pub use property::ValidationError;
 mod runtime;
 mod runtime_handles;
+mod ui_controls;
 // Typed value semantics back the internal Property state; ABI validation remains a later unit.
 mod ui_tree;
 #[allow(dead_code)]
@@ -26,7 +27,7 @@ pub mod abi_support {
     use crate::command::{AsyncCommand, CancelToken, CommandError, CommandSnapshot};
     use crate::dispatcher::{PostErrorKind, PostedWork, UiLoopBridge, WakePriority};
     use crate::handle_registry::HandleToken;
-    use crate::handle_registry::registry::{HandleRegistry, RegistryError};
+    use crate::handle_registry::registry::{HandleRegistry, InternalOwner, RegistryError};
     use crate::object_store::UiObjectStoreError;
     use crate::property::{
         PropertyHandleKind, PropertyValidator, Subscription, SubscriptionCallback, ValidationError,
@@ -34,10 +35,14 @@ pub mod abi_support {
     };
     use crate::runtime::{
         RuntimeBindingError, RuntimeCore, RuntimeCoreError, RuntimeIdentity,
-        RuntimeObjectRegistrationError, RuntimePropertyError, ShutdownCompletionState,
-        ShutdownRequest, ShutdownRequestMode, ShutdownRequestOutcome,
+        RuntimeObjectRegistrationError, RuntimePropertyError, RuntimeTreeError,
+        ShutdownCompletionState, ShutdownRequest, ShutdownRequestMode, ShutdownRequestOutcome,
     };
     use crate::runtime_handles::{RuntimeHandleError, process_runtime_handles};
+    use crate::ui_controls::{
+        UiControlKind, UiControlProperty, UiControlPropertyOwner, UiControlState,
+    };
+    use crate::ui_tree::TreeError;
     use crate::value::{
         DecimalValue, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind,
     };
@@ -135,6 +140,19 @@ pub mod abi_support {
         Closed,
         NotExecutable,
         InvalidOperation,
+        OutOfMemory,
+        Internal,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum UiControlApiError {
+        InvalidHandle,
+        InvalidArgument,
+        WrongType,
+        WrongRuntime,
+        WrongThread,
+        Closed,
+        Unsupported,
         OutOfMemory,
         Internal,
     }
@@ -541,6 +559,16 @@ pub mod abi_support {
         owners: Mutex<HashMap<HandleToken, Arc<RuntimeCore>>>,
     }
 
+    struct UiControlHandleEntry {
+        runtime: Arc<RuntimeCore>,
+        kind: UiControlKind,
+    }
+
+    struct UiControlHandles {
+        registry: HandleRegistry<UiControlKind, RuntimeIdentity>,
+        owners: Mutex<HashMap<HandleToken, UiControlHandleEntry>>,
+    }
+
     struct SubscriptionHandleEntry {
         runtime: Arc<RuntimeCore>,
         owner: SubscriptionOwner,
@@ -559,6 +587,7 @@ pub mod abi_support {
     }
 
     static PROPERTY_HANDLES: OnceLock<PropertyHandles> = OnceLock::new();
+    static UI_CONTROL_HANDLES: OnceLock<UiControlHandles> = OnceLock::new();
     static SUBSCRIPTION_HANDLES: OnceLock<
         Mutex<HashMap<HandleToken, Arc<SubscriptionHandleEntry>>>,
     > = OnceLock::new();
@@ -567,6 +596,13 @@ pub mod abi_support {
 
     fn property_handles() -> &'static PropertyHandles {
         PROPERTY_HANDLES.get_or_init(|| PropertyHandles {
+            registry: HandleRegistry::new(),
+            owners: Mutex::new(HashMap::new()),
+        })
+    }
+
+    fn ui_control_handles() -> &'static UiControlHandles {
+        UI_CONTROL_HANDLES.get_or_init(|| UiControlHandles {
             registry: HandleRegistry::new(),
             owners: Mutex::new(HashMap::new()),
         })
@@ -1271,6 +1307,31 @@ pub mod abi_support {
                 return Ok(retained.into_abi());
             }
         }
+        {
+            let handles = ui_control_handles();
+            let mut owners = handles
+                .owners
+                .lock()
+                .map_err(|_| RuntimeRetainError::Internal)?;
+            if let Some((runtime, kind)) = owners
+                .get(&token)
+                .map(|entry| (Arc::clone(&entry.runtime), entry.kind))
+            {
+                owners
+                    .try_reserve(1)
+                    .map_err(|_| RuntimeRetainError::OutOfMemory)?;
+                let retained = handles
+                    .registry
+                    .retain(token)
+                    .map_err(|error| match error {
+                        RegistryError::OutOfMemory => RuntimeRetainError::OutOfMemory,
+                        RegistryError::InvalidToken => RuntimeRetainError::InvalidHandle,
+                        _ => RuntimeRetainError::Internal,
+                    })?;
+                owners.insert(retained, UiControlHandleEntry { runtime, kind });
+                return Ok(retained.into_abi());
+            }
+        }
         process_runtime_handles()
             .retain(token)
             .map(HandleToken::into_abi)
@@ -1415,6 +1476,296 @@ pub mod abi_support {
             .map_err(map_property_registration_error)?;
         owners.insert(token, runtime);
         Ok(token.into_abi())
+    }
+
+    fn map_ui_control_registry_error(error: RegistryError) -> UiControlApiError {
+        match error {
+            RegistryError::InvalidToken => UiControlApiError::InvalidHandle,
+            RegistryError::WrongKind => UiControlApiError::WrongType,
+            RegistryError::WrongRuntime => UiControlApiError::WrongRuntime,
+            RegistryError::OutOfMemory => UiControlApiError::OutOfMemory,
+            RegistryError::TokenExhausted
+            | RegistryError::CleanupUnavailable
+            | RegistryError::SynchronizationPoisoned
+            | RegistryError::ReferenceCountExhausted => UiControlApiError::Internal,
+        }
+    }
+
+    fn map_ui_control_registration_error(
+        error: RuntimeObjectRegistrationError,
+    ) -> UiControlApiError {
+        match error {
+            RuntimeObjectRegistrationError::WrongThread => UiControlApiError::WrongThread,
+            RuntimeObjectRegistrationError::Closed => UiControlApiError::Closed,
+            RuntimeObjectRegistrationError::Store(UiObjectStoreError::OutOfMemory)
+            | RuntimeObjectRegistrationError::Registry(RegistryError::OutOfMemory) => {
+                UiControlApiError::OutOfMemory
+            }
+            RuntimeObjectRegistrationError::Registry(error) => map_ui_control_registry_error(error),
+            RuntimeObjectRegistrationError::SynchronizationPoisoned
+            | RuntimeObjectRegistrationError::Store(_) => UiControlApiError::Internal,
+        }
+    }
+
+    fn map_ui_control_tree_error(error: RuntimeTreeError) -> UiControlApiError {
+        match error {
+            RuntimeTreeError::WrongThread => UiControlApiError::WrongThread,
+            RuntimeTreeError::Closed => UiControlApiError::Closed,
+            RuntimeTreeError::Registry(error) => map_ui_control_registry_error(error),
+            RuntimeTreeError::Registration(error) => map_ui_control_registration_error(error),
+            RuntimeTreeError::Tree(TreeError::WrongThread) => UiControlApiError::WrongThread,
+            RuntimeTreeError::Tree(TreeError::AllocationFailed) => UiControlApiError::OutOfMemory,
+            RuntimeTreeError::SynchronizationPoisoned | RuntimeTreeError::Tree(_) => {
+                UiControlApiError::Internal
+            }
+        }
+    }
+
+    fn map_ui_control_runtime_error(error: ShutdownApiError) -> UiControlApiError {
+        match error {
+            ShutdownApiError::InvalidHandle => UiControlApiError::InvalidHandle,
+            ShutdownApiError::InvalidArgument => UiControlApiError::InvalidArgument,
+            ShutdownApiError::WrongThread => UiControlApiError::WrongThread,
+            ShutdownApiError::Closed => UiControlApiError::Closed,
+            ShutdownApiError::Unsupported | ShutdownApiError::HostUnavailable { .. } => {
+                UiControlApiError::Unsupported
+            }
+            ShutdownApiError::OutOfMemory => UiControlApiError::OutOfMemory,
+            ShutdownApiError::Internal => UiControlApiError::Internal,
+        }
+    }
+
+    fn register_internal_control_property(
+        runtime: &Arc<RuntimeCore>,
+        initial: TypedValue,
+    ) -> Result<InternalOwner<RuntimeIdentity>, UiControlApiError> {
+        let handles = property_handles();
+        let token = {
+            let mut owners = handles
+                .owners
+                .lock()
+                .map_err(|_| UiControlApiError::Internal)?;
+            owners
+                .try_reserve(1)
+                .map_err(|_| UiControlApiError::OutOfMemory)?;
+            let token = runtime
+                .register_property(&handles.registry, initial)
+                .map_err(map_ui_control_registration_error)?;
+            owners.insert(token, Arc::clone(runtime));
+            token
+        };
+
+        let owner = (|| {
+            let pin = handles
+                .registry
+                .validate(token, &PropertyHandleKind::Property, &runtime.identity())
+                .map_err(map_ui_control_registry_error)?;
+            pin.acquire_internal_owner()
+                .map_err(map_ui_control_registry_error)
+        })();
+        let released = property_release(token).map_err(map_ui_control_runtime_error)?;
+        if !released {
+            return Err(UiControlApiError::Internal);
+        }
+        owner
+    }
+
+    fn empty_utf8_value() -> Result<TypedValue, UiControlApiError> {
+        OwnedUtf8::copy_from_bytes(b"")
+            .map(TypedValue::Utf8)
+            .map_err(|error| match error {
+                OwnedUtf8Error::InvalidUtf8 => UiControlApiError::InvalidArgument,
+                OwnedUtf8Error::OutOfMemory => UiControlApiError::OutOfMemory,
+            })
+    }
+
+    fn input_utf8_value(bytes: &[u8]) -> Result<TypedValue, UiControlApiError> {
+        OwnedUtf8::copy_from_bytes(bytes)
+            .map(TypedValue::Utf8)
+            .map_err(|error| match error {
+                OwnedUtf8Error::InvalidUtf8 => UiControlApiError::InvalidArgument,
+                OwnedUtf8Error::OutOfMemory => UiControlApiError::OutOfMemory,
+            })
+    }
+
+    fn create_ui_control(
+        runtime_handle: u64,
+        kind: UiControlKind,
+        initial_text: Option<&[u8]>,
+    ) -> Result<u64, UiControlApiError> {
+        let runtime = resolve_runtime(runtime_handle).map_err(map_ui_control_runtime_error)?;
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        let initial_text = match kind {
+            UiControlKind::Text | UiControlKind::TextBox | UiControlKind::Button => {
+                Some(input_utf8_value(initial_text.unwrap_or_default())?)
+            }
+            UiControlKind::Window | UiControlKind::StackPanel if initial_text.is_none() => None,
+            UiControlKind::Window | UiControlKind::StackPanel => {
+                return Err(UiControlApiError::InvalidArgument);
+            }
+        };
+
+        let controls = ui_control_handles();
+        let mut entries = controls
+            .owners
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        entries
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+
+        let mut properties = Vec::new();
+        let property_count = match kind {
+            UiControlKind::Window => 3,
+            UiControlKind::StackPanel => 2,
+            UiControlKind::Text | UiControlKind::TextBox | UiControlKind::Button => 3,
+        };
+        properties
+            .try_reserve_exact(property_count)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        properties.push(UiControlPropertyOwner {
+            property: UiControlProperty::IsEnabled,
+            owner: register_internal_control_property(&runtime, TypedValue::Bool(true))?,
+        });
+        properties.push(UiControlPropertyOwner {
+            property: UiControlProperty::AccessibleName,
+            owner: register_internal_control_property(&runtime, empty_utf8_value()?)?,
+        });
+        let text_property = match kind {
+            UiControlKind::Window => Some((UiControlProperty::WindowTitle, empty_utf8_value()?)),
+            UiControlKind::Text => Some((
+                UiControlProperty::TextContent,
+                initial_text.expect("Text requires initialized UTF-8 content"),
+            )),
+            UiControlKind::TextBox => Some((
+                UiControlProperty::TextBoxValue,
+                initial_text.expect("TextBox requires initialized UTF-8 value"),
+            )),
+            UiControlKind::Button => Some((
+                UiControlProperty::ButtonLabel,
+                initial_text.expect("Button requires initialized UTF-8 label"),
+            )),
+            UiControlKind::StackPanel => None,
+        };
+        if let Some((property, value)) = text_property {
+            properties.push(UiControlPropertyOwner {
+                property,
+                owner: register_internal_control_property(&runtime, value)?,
+            });
+        }
+
+        let token = runtime
+            .register_tree_ui_object::<_, UiControlState, _>(
+                &controls.registry,
+                kind,
+                kind.is_container(),
+                move || UiControlState::new(kind, properties),
+            )
+            .map_err(map_ui_control_tree_error)?;
+        entries.insert(token, UiControlHandleEntry { runtime, kind });
+        Ok(token.into_abi())
+    }
+
+    fn ui_control_property(
+        control: u64,
+        property: UiControlProperty,
+    ) -> Result<u64, UiControlApiError> {
+        let token = HandleToken::from_abi(control).ok_or(UiControlApiError::InvalidHandle)?;
+        let controls = ui_control_handles();
+        let (runtime, kind) = {
+            let entries = controls
+                .owners
+                .lock()
+                .map_err(|_| UiControlApiError::Internal)?;
+            let entry = entries
+                .get(&token)
+                .ok_or(UiControlApiError::InvalidHandle)?;
+            (Arc::clone(&entry.runtime), entry.kind)
+        };
+        if !kind.supports_property(property) {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        let pin = controls
+            .registry
+            .validate(token, &kind, &runtime.identity())
+            .map_err(map_ui_control_registry_error)?;
+        let owner = runtime
+            .ui_control_property_owner(pin.identity(), property)
+            .map_err(|error| match error {
+                RuntimePropertyError::WrongThread => UiControlApiError::WrongThread,
+                RuntimePropertyError::Closed => UiControlApiError::Closed,
+                RuntimePropertyError::Store(UiObjectStoreError::OutOfMemory) => {
+                    UiControlApiError::OutOfMemory
+                }
+                RuntimePropertyError::Registry(error) => map_ui_control_registry_error(error),
+                _ => UiControlApiError::Internal,
+            })?;
+        let properties = property_handles();
+        let mut property_owners = properties
+            .owners
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        property_owners
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        let property_token = properties
+            .registry
+            .register_from_internal_owner(PropertyHandleKind::Property, runtime.identity(), &owner)
+            .map_err(map_ui_control_registry_error)?;
+        property_owners.insert(property_token, runtime);
+        Ok(property_token.into_abi())
+    }
+
+    pub fn ui_control_create_window(runtime: u64) -> Result<u64, UiControlApiError> {
+        create_ui_control(runtime, UiControlKind::Window, None)
+    }
+
+    pub fn ui_control_create_stack_panel(runtime: u64) -> Result<u64, UiControlApiError> {
+        create_ui_control(runtime, UiControlKind::StackPanel, None)
+    }
+
+    pub fn ui_control_create_text(runtime: u64, content: &[u8]) -> Result<u64, UiControlApiError> {
+        create_ui_control(runtime, UiControlKind::Text, Some(content))
+    }
+
+    pub fn ui_control_create_text_box(
+        runtime: u64,
+        value: &[u8],
+    ) -> Result<u64, UiControlApiError> {
+        create_ui_control(runtime, UiControlKind::TextBox, Some(value))
+    }
+
+    pub fn ui_control_create_button(runtime: u64, label: &[u8]) -> Result<u64, UiControlApiError> {
+        create_ui_control(runtime, UiControlKind::Button, Some(label))
+    }
+
+    pub fn ui_control_is_enabled_property(control: u64) -> Result<u64, UiControlApiError> {
+        ui_control_property(control, UiControlProperty::IsEnabled)
+    }
+
+    pub fn ui_control_accessible_name_property(control: u64) -> Result<u64, UiControlApiError> {
+        ui_control_property(control, UiControlProperty::AccessibleName)
+    }
+
+    pub fn ui_control_window_title_property(control: u64) -> Result<u64, UiControlApiError> {
+        ui_control_property(control, UiControlProperty::WindowTitle)
+    }
+
+    pub fn ui_control_text_content_property(control: u64) -> Result<u64, UiControlApiError> {
+        ui_control_property(control, UiControlProperty::TextContent)
+    }
+
+    pub fn ui_control_text_box_value_property(control: u64) -> Result<u64, UiControlApiError> {
+        ui_control_property(control, UiControlProperty::TextBoxValue)
+    }
+
+    pub fn ui_control_button_label_property(control: u64) -> Result<u64, UiControlApiError> {
+        ui_control_property(control, UiControlProperty::ButtonLabel)
     }
 
     pub fn command_state_property_create(runtime: u64) -> Result<u64, ShutdownApiError> {
@@ -2351,6 +2702,32 @@ pub mod abi_support {
         Ok(true)
     }
 
+    fn ui_control_release(token: HandleToken) -> Result<bool, ShutdownApiError> {
+        let handles = ui_control_handles();
+        if !handles
+            .owners
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?
+            .contains_key(&token)
+        {
+            return Ok(false);
+        }
+        handles
+            .registry
+            .release(token)
+            .map_err(map_registry_error)?;
+        let entry = handles
+            .owners
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&token);
+        if entry.is_none() {
+            return Err(ShutdownApiError::Internal);
+        }
+        drop(entry);
+        Ok(true)
+    }
+
     pub fn runtime_set_ui_loop_bridge(
         handle: u64,
         wake: WakeCallback,
@@ -2563,6 +2940,9 @@ pub mod abi_support {
             return Ok(());
         }
         if property_release(token)? {
+            return Ok(());
+        }
+        if ui_control_release(token)? {
             return Ok(());
         }
         process_runtime_handles()

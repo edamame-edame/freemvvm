@@ -12,4 +12,5 @@
 - `ui/controls.md`と`32_unit_test/ui.md`の承認履歴は全文承認済み。UI Control DDはpublic ABI signatureを別途ABI DDへ送っている。
 - 現行C ABI DD/header/implementationにWindow・Widget・StackPanel・Text・Buttonを生成・接続するsymbol/APIはない。次の計画は初期UI C ABI契約のDD具体化から始め、承認前に実装しない。
 - ABI 1.3とUI test 0.3は2026-10-24に全文承認され、`f6b6adc`で`version/0.0.1`へcommit/push済み。feature ID 8も設計承認済みだが、実装はwrapperへ広げず`impl-rust/core-ui-controls-c-abi`のCore APIs単位で進める。
+- UNIT-CORE-070は初期Control objectごとに型付きstateを持ち、共通Property registryのPropertyをInternalOwnerで保持する。新しいopaque handle registryを足した場合、共通retain/release経路にも登録する。4件のCore focused tests、workspace Clippy、fmtを通過。
 - WebEngine branchは利用者による別途採否判断までversion branchへ統合しない。
