@@ -3573,7 +3573,7 @@
     },
     {
       "id": "UNIT-WRAP-PY-PROP-BOOL-I64-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "python-bool-i64-property-create-get-set-close",
       "sources": [
         "wrappers/python/src/freemvvm/**/*.py",

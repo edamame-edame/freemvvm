@@ -1,7 +1,7 @@
 # Python BOOL/I64 Property wrapper
 
 - 計画版: 0.1
-- 状態: 実装完了・Windows local gates成功。実装commit/pushとWindows/Linux CI確認待ち
+- 状態: 完了（実装・Windows local gates・Windows/Linux CI成功、2026-10-25）
 - 作成日: 2026-10-25
 - 対象: Runtime wrapperを基礎に、PythonからBOOLとsigned I64のPropertyをcreate/get/set/closeできる最初の値Property unit
 - 作業branch案: `impl-python/runtime-wrapper`を継続する。現在のPython Runtime実装に依存し、Core/API変更や他言語wrapper差分は含まない。
@@ -51,7 +51,7 @@ API配置・例外class・unsupported typeの返し方・UI thread enforcement�
 3. [x] Python wrapper DD v1.3全文にBOOL/I64 Property API・class/ownership/call flow/error/type mappingを提案し、利用者の「ok」（2026-10-25）で文書全体の承認を得た。実装・試験合格は別管理。
 4. [x] wrapper unit-test文書0.5全文の利用者承認（2026-10-25、「ok」）を得た。`UNIT-WRAP-PY-PROP-BOOL-I64-001`を`tools/units.yaml`へ`ready`で登録した。試験実装・実行は未着手。
 5. [x] 利用者の実装開始指示後、Python BOOL/I64 Property facade、ctypes ABI bindings、focused tests、real C ABI consumer、専用dev commandsを同じ実装unitへ追加した。承認済み契約から外れる未決事項なし。
-6. [ ] Windows local focused tests/check/minimum/document-link validationが成功。日本語commit/push後、Windows/Linux CIを同じ実装SHAで確認し、unit/plan/test/memoryへ最終記録する。
+6. [x] Windows local gatesとWindows/Linux CIが実装SHA `387eab6b9219a82693883b06ee8ef2da5fdf1fdd` で成功。unit/plan/test/memoryへ結果を記録する。
 
 ## 完了条件案
 

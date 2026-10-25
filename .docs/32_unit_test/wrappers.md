@@ -1,6 +1,6 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 - 文書版: 0.5
-- 状態: 0.5全文承認済み（利用者、「ok」、2026-10-25）。Python BOOL/I64 PropertyはWindows local試験成功、CI確認待ち。
+- 状態: 0.5全文承認済み（利用者、「ok」、2026-10-25）。Python BOOL/I64 PropertyはWindows local試験およびWindows/Linux CI成功。
 - 更新日: 2026-10-25
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
@@ -86,7 +86,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | --- | --- | --- | --- |
 | 2026-10-25 | 0.5改訂案 | — | Python BOOL/I64 Property testsを追加。文書全体の利用者レビュー待ち。未承認・未実行 |
 | 2026-10-25 | 0.5全文 | 利用者 | 「ok」によりPython BOOL/I64 Propertyのfake ABI/real C ABI consumer試験設計を含む文書全体を承認。実装・実行結果は別管理 |
-| 2026-10-25 | 0.5実行記録 | — | `python-property-bool-i64-test` 7件、real C ABI consumer、`tools/dev.py check`、`minimum`、document-link validationがWindows local success。実装commit後のWindows/Linux CI確認待ち |
+| 2026-10-25 | 0.5実行記録 | — | 実装SHA `387eab6b9219a82693883b06ee8ef2da5fdf1fdd`で`python-property-bool-i64-test` 7件、real C ABI consumer、`tools/dev.py check`、`minimum`、document-link validationがWindows local success。[Windows/Linux CI run 40197894655](https://github.com/edamame-edame/freemvvm/actions/runs/40197894655) success |
 | 2026-10-24 | 0.2追加 | — | 承認済みRust wrapper DD v1.1とRust Runtime実装計画に基づきfocused fake sys API・real C ABI consumer試験を登録。実行結果は別管理 |
 | 2026-10-24 | 0.2実行記録 | — | Rust Runtime focused 4 tests、compile-fail 2 cases、real C ABI consumer、`tools/dev.py check`、`minimum`がlocal pass。[Windows/Linux CI run 40077169840](https://github.com/edamame-edame/freemvvm/actions/runs/40077169840) success |
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
@@ -110,4 +110,4 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 0.3 | 2026-10-24 | C#非同期Commandのfake ABI focused testとreal C ABI consumerの試験設計・実行記録を追加 | Codex | 利用者承認済みDD v1.4と実装開始指示の範囲。Windows/Linux CI成功 |
 | 0.4 | 2026-10-25 | Python Runtime facadeのfake ABI focused testと実C ABI consumer smokeの試験設計を追加 | Codex | 利用者の「ok」により全文承認。実装・実行は別管理 |
 | 0.5 | 2026-10-25 | Python BOOL/I64 Property facadeのfake ABI focused testと実C ABI consumer roundtrip試験設計を追加 | Codex | 利用者の「ok」により全文承認。実装・実行結果は別管理 |
-| 0.5実行記録 | 2026-10-25 | Python BOOL/I64 Propertyのfocused fake ABI 7件、実C ABI consumer、全体check/minimumと文書リンク検証のWindows local結果を追記 | Codex | CIは実装commit後に確認 |
+| 0.5実行記録 | 2026-10-25 | Python BOOL/I64 Propertyのfocused fake ABI 7件、実C ABI consumer、全体check/minimumと文書リンク検証のWindows local結果およびWindows/Linux CI結果を追記 | Codex | 実装SHA `387eab6b`、CI run 40197894655 success |
