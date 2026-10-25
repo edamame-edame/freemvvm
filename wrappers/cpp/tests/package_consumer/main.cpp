@@ -1,6 +1,7 @@
 #include <freemvvm/command.hpp>
 #include <freemvvm/property.hpp>
 #include <freemvvm/runtime.hpp>
+#include <freemvvm/ui_controls.hpp>
 
 #include <cmath>
 #include <cstdint>
@@ -211,6 +212,55 @@ int main() {
       !text.close().has_value() || !ratio.close().has_value() ||
       !ratio_target.close().has_value() || !decimal.close().has_value() ||
       !decimal_target.close().has_value()) return 22;
+
+  auto window_result = freemvvm::Window::create(runtime);
+  auto panel_result = freemvvm::StackPanel::create(runtime);
+  auto label_result = freemvvm::Text::create(runtime, "label");
+  auto input_result = freemvvm::TextBox::create(runtime, "value");
+  auto button_result = freemvvm::Button::create(runtime, "submit");
+  if (!window_result.has_value() || !panel_result.has_value() ||
+      !label_result.has_value() || !input_result.has_value() ||
+      !button_result.has_value()) return 54;
+  auto window = std::move(*window_result.value());
+  auto panel = std::move(*panel_result.value());
+  auto label = std::move(*label_result.value());
+  auto input = std::move(*input_result.value());
+  auto button = std::move(*button_result.value());
+  if (!window.set_content(panel).has_value() ||
+      !panel.insert(label, 0).has_value() ||
+      !panel.insert(input, 1).has_value() ||
+      !panel.insert(button, 2).has_value()) return 55;
+  auto label_property_result = label.content_property();
+  auto value_property_result = input.value_property();
+  auto button_label_result = button.label_property();
+  auto action_result = freemvvm::Command::create_async(
+      runtime, nullptr,
+      [](freemvvm::CommandWorker) -> freemvvm::Result<void> {
+        return freemvvm::Result<void>::success();
+      });
+  if (!label_property_result.has_value() || !value_property_result.has_value() ||
+      !button_label_result.has_value() || !action_result.has_value()) return 56;
+  auto label_property = std::move(*label_property_result.value());
+  auto value_property = std::move(*value_property_result.value());
+  auto button_label = std::move(*button_label_result.value());
+  auto action = std::move(*action_result.value());
+  if (!button.set_command(action).has_value()) return 58;
+  auto assigned_action_result = button.command();
+  if (!assigned_action_result.has_value() ||
+      !assigned_action_result.value()->has_value()) return 59;
+  auto assigned_action =
+      std::move(**assigned_action_result.value());
+  if (!assigned_action.release().has_value() ||
+      !button.clear_command().has_value()) return 60;
+  auto cleared_action_result = button.command();
+  if (!cleared_action_result.has_value() ||
+      cleared_action_result.value()->has_value()) return 61;
+  if (!label_property.close().has_value() ||
+      !value_property.close().has_value() || !button_label.close().has_value() ||
+      !action.close().has_value() ||
+      !window.close().has_value() || !panel.close().has_value() ||
+      !label.close().has_value() || !input.close().has_value() ||
+      !button.close().has_value()) return 57;
 
   return runtime.close().has_value() ? 0 : 23;
 }

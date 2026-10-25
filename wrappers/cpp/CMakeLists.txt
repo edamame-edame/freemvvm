@@ -1,7 +1,7 @@
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-add_library(freemvvm_cpp STATIC src/runtime.cpp src/command.cpp)
+add_library(freemvvm_cpp STATIC src/runtime.cpp src/command.cpp src/ui_controls.cpp)
 add_library(FreeMvvm::cpp ALIAS freemvvm_cpp)
 set_target_properties(freemvvm_cpp PROPERTIES EXPORT_NAME cpp)
 target_compile_features(freemvvm_cpp PUBLIC cxx_std_17)

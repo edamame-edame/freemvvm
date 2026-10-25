@@ -97,6 +97,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-24 | 0.3実行記録 | — | `tools/dev.py csharp-command-test`、`csharp-command-consumer-test`、`check`、`minimum`と[Windows/Linux CI run 40074886918](https://github.com/edamame-edame/freemvvm/actions/runs/40074886918)がsuccess |
 | 2026-10-25 | 0.4改訂案 | — | 承認済みC++ wrapper DD v1.4に基づきCommand/worker、Control、Window close-requestのfocused fake ABIとrelocated package consumer案を追加。直後に利用者承認 |
 | 2026-10-25 | 0.4実行記録 | 利用者 / Codex | C++ Command/worker focused fake ABIとrelocated package consumerを利用者承認後に実装。`cpp-command-test`、`cpp-package-test`、`check`がWindows local passし、unit `UNIT-WRAP-CPP-008`のWindows/Ubuntu CI run [40182098140](https://github.com/edamame-edame/freemvvm/actions/runs/40182098140)も成功。UI Control casesは未着手 |
+| 2026-10-25 | 0.4実行記録 | 利用者 / Codex | `UNIT-WRAP-CPP-009`のUI Control/Window close-request fake ABI試験、relocated CMake package consumer、`tools/dev.py check`、`minimum`がWindows local pass。UI Control focused caseは`cpp-controls-test`も再実行してpass。実装revisionのWindows/Ubuntu CIは確認待ち |
 
 ## 改訂履歴
 

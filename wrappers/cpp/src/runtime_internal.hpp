@@ -75,6 +75,47 @@ struct AbiApi final {
   ui_status (*command_complete_cancelled)(ui_handle, std::uint64_t);
   ui_status (*runtime_post)(ui_handle, ui_callback, void*,
                             ui_destroy_callback, ui_handle*);
+  ui_status (*window_create)(ui_handle, ui_handle*, ui_handle*);
+  ui_status (*stack_panel_create)(ui_handle, ui_handle*, ui_handle*);
+  ui_status (*text_create)(ui_handle, const std::uint8_t*, std::uint64_t,
+                           ui_handle*, ui_handle*);
+  ui_status (*text_box_create)(ui_handle, const std::uint8_t*, std::uint64_t,
+                               ui_handle*, ui_handle*);
+  ui_status (*button_create)(ui_handle, const std::uint8_t*, std::uint64_t,
+                             ui_handle*, ui_handle*);
+  ui_status (*widget_is_enabled_property)(ui_handle, ui_handle*);
+  ui_status (*widget_accessible_name_property)(ui_handle, ui_handle*);
+  ui_status (*widget_request_focus)(ui_handle, ui_handle*);
+  ui_status (*window_content)(ui_handle, ui_handle*, ui_handle*);
+  ui_status (*window_set_content)(ui_handle, ui_handle, ui_handle*);
+  ui_status (*window_clear_content)(ui_handle, ui_handle*);
+  ui_status (*window_title_property)(ui_handle, ui_handle*);
+  ui_status (*window_open)(ui_handle, ui_handle*);
+  ui_status (*window_close)(ui_handle, ui_handle*);
+  ui_status (*window_close_request_subscribe)(
+      ui_handle, ui_window_close_callback, void*, ui_destroy_callback,
+      ui_handle*, ui_handle*);
+  ui_status (*window_close_request_defer)(ui_handle, ui_handle*, ui_handle*);
+  ui_status (*window_close_request_resolve)(ui_handle, std::uint32_t,
+                                            ui_handle*);
+  ui_status (*container_insert)(ui_handle, ui_handle, std::uint64_t,
+                                ui_handle*);
+  ui_status (*container_remove)(ui_handle, ui_handle, ui_handle*);
+  ui_status (*container_move)(ui_handle, std::uint64_t, std::uint64_t,
+                              ui_handle*);
+  ui_status (*container_child_count)(ui_handle, std::uint64_t*);
+  ui_status (*container_child_at)(ui_handle, std::uint64_t, ui_handle*,
+                                  ui_handle*);
+  ui_status (*stack_panel_orientation)(ui_handle, std::uint32_t*);
+  ui_status (*stack_panel_set_orientation)(ui_handle, std::uint32_t,
+                                           ui_handle*);
+  ui_status (*stack_panel_set_child_align)(ui_handle, ui_handle,
+                                           std::uint32_t, ui_handle*);
+  ui_status (*text_content_property)(ui_handle, ui_handle*);
+  ui_status (*text_box_value_property)(ui_handle, ui_handle*);
+  ui_status (*button_label_property)(ui_handle, ui_handle*);
+  ui_status (*button_set_command)(ui_handle, ui_handle, ui_handle*);
+  ui_status (*button_command)(ui_handle, ui_handle*, ui_handle*);
 };
 
 struct CallbackHandlerRecord final {

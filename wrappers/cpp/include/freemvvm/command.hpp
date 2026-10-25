@@ -85,6 +85,7 @@ class Command final {
 
  private:
   friend class CommandWorker;
+  friend class Button;
   friend struct detail::RuntimeTestAccess;
   static std::uint32_t start_trampoline(void* userdata,
                                         std::uint64_t borrowed_command,

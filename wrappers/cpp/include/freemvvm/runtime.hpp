@@ -15,6 +15,12 @@ class UiError;
 class HandlerRegistration;
 class Command;
 class CommandWorker;
+class Widget;
+class Window;
+class StackPanel;
+class Text;
+class TextBox;
+class Button;
 template <typename T>
 class Property;
 
@@ -119,6 +125,7 @@ enum class CallbackKind {
   kPropertyNotification,
   kBindingErrorNotification,
   kCommandStart,
+  kWindowCloseRequest,
 };
 
 struct CallbackFailure final {
@@ -227,6 +234,12 @@ class Runtime final {
   friend class Property;
   friend class Command;
   friend class CommandWorker;
+  friend class Widget;
+  friend class Window;
+  friend class StackPanel;
+  friend class Text;
+  friend class TextBox;
+  friend class Button;
   friend struct detail::RuntimeTestAccess;
   Runtime(std::uint64_t token,
           std::shared_ptr<detail::RuntimeCleanupState> state,

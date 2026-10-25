@@ -293,6 +293,28 @@ if(BUILD_TESTING)
       -R "^wrapper\\.cpp\\.command$" --output-on-failure
     DEPENDS freemvvm_cpp_command_tests_exe
     VERBATIM)
+  add_executable(freemvvm_cpp_ui_control_tests_exe
+    wrappers/cpp/tests/ui_control_tests.cpp)
+  target_include_directories(freemvvm_cpp_ui_control_tests_exe PRIVATE
+    wrappers/cpp/src crates/c-abi/include)
+  target_link_libraries(freemvvm_cpp_ui_control_tests_exe PRIVATE freemvvm_cpp)
+  add_dependencies(freemvvm_cpp_ui_control_tests_exe freemvvm_abi_native_build)
+  if(WIN32)
+    add_custom_command(TARGET freemvvm_cpp_ui_control_tests_exe POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${FREEMVVM_ABI_RUNTIME}"
+        "$<TARGET_FILE_DIR:freemvvm_cpp_ui_control_tests_exe>"
+      VERBATIM)
+  endif()
+  add_test(NAME wrapper.cpp.ui-controls
+    COMMAND freemvvm_cpp_ui_control_tests_exe)
+  set_tests_properties(wrapper.cpp.ui-controls PROPERTIES
+    LABELS "wrapper;unit;ui")
+  add_custom_target(freemvvm_cpp_ui_control_tests
+    COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${CMAKE_BINARY_DIR}"
+      -R "^wrapper\\.cpp\\.ui-controls$" --output-on-failure
+    DEPENDS freemvvm_cpp_ui_control_tests_exe
+    VERBATIM)
   if(MSVC)
     target_compile_options(freemvvm_cpp_environment_probe PRIVATE /Zc:__cplusplus)
   endif()

@@ -1,7 +1,7 @@
 # C++ UI Control wrapper
 
 - 計画版: 0.2
-- 状態: 利用者承認済み。計画commit `4a2b598`をpush済み。C++ wrapper DD v1.4全文承認済み。実装未着手
+- 状態: 利用者承認済み計画。UNIT-WRAP-CPP-009実装とWindows local gates完了。実装commit/Windows・Ubuntu CI確認待ち
 - 作成日: 2026-10-25
 - 対象: 0.0.1初期UI Control Core/C ABIをC++17から構成・操作するwrapper
 - branch案: `impl-cpp/ui-controls-wrapper`
@@ -27,7 +27,7 @@ C++ wrapperにはRuntime、Property、Binding、Subscriptionの実装がある�
 - Detailed design: [C++ wrapper](../13_detail_design/wrappers/cpp.md) v1.3、[共通C ABI](../13_detail_design/runtime-objects/abi.md) v1.3、[Async Command](../13_detail_design/events/commands.md)、[UI Controls](../13_detail_design/ui/controls.md) v1.1、[UI Tree/Layout](../13_detail_design/ui/tree-layout.md)、[Input/Focus](../13_detail_design/ui/input-focus.md)。C++ Async CommandとUI公開APIをDD v1.4案として具体化し、文書全体の利用者承認後に実装する。
 - Coding rule: [C++ coding rule](../00_rule/coding_rule_C++.md)。現行ruleはGoogle C++ Style Guideの全面適用を指定する。
 - Test: [wrapper test design](../32_unit_test/wrappers.md)、[unit-test strategy](../32_unit_test/unit-test-strategy.md)、[UI test design](../32_unit_test/ui.md)。C++向けfocused/consumer caseとunit mappingは、承認済みC++ DDと既承認test契約を照合し、source変更前に登録する。
-- Prior implementation notes: [C++ Runtime wrapper](cpp-wrapper-runtime-api.md)、[C++ Binding wrapper](cpp-binding-wrapper.md)、[C++ Property wrapper](cpp-property-wrapper.md)。既存owner、cleanup supervisor、Result、callback handlerの契約を再利用し、別のcleanup経路を重複実装しない。実装開始前に各文書、source、unit manifestの差を照合し、実装済み範囲とunit stateを正しく記録する。
+- Prior implementation notes: [C++ Runtime wrapper](cpp-wrapper-runtime-api.md)、[C++ Binding wrapper](cpp-binding-wrapper.md)、[C++ Property wrapper](cpp-property-wrapper.md)、[C++ UI Control wrapper](../01_memory/cpp-ui-controls-wrapper.md)。既存owner、cleanup supervisor、Result、callback handlerの契約を再利用し、別のcleanup経路を重複実装しない。実装開始前に各文書、source、unit manifestの差を照合し、実装済み範囲とunit stateを正しく記録する。
 
 ## 対象範囲案
 
@@ -56,9 +56,9 @@ C++ wrapperにはRuntime、Property、Binding、Subscriptionの実装がある�
 7. [x] C++ wrapper DD v1.4全文を利用者が承認した（2026-10-25）。要求および承認済みC ABIとの整合を確認し、実装可能な境界を確定した。
 8. [x] 承認済みDDに基づくAsync Command/UI Controlのfocused fake-ABI/consumer caseとunit mappingをtest正本・`tools/units.yaml`へ登録し、test文書0.4全文の利用者承認を得た。
 9. [x] C++ Async Command wrapperを独立unitとして実装・commit/pushした（`47623f0`, Linux用標準ヘッダー修正`4c987a6`）。focused fake-ABI、relocated package consumer、repository `check`はWindows local pass。Windows/Ubuntu CI run [`40182098140`](https://github.com/edamame-edame/freemvvm/actions/runs/40182098140) success。
-10. [ ] C++ Window/Widget/Container/StackPanel/Text/TextBox/Button facadeを独立unitで実装・検証・commitし、ButtonとAsync Commandの接続を含める。
-11. [ ] fake ABI focused tests、実C ABI consumer、既存C++ package consumer、`tools/dev.py check`、`tools/dev.py minimum`、文書/manifest/diff checksを実行する。各実装SHAに対するWindows/Linux CIを確認し、失敗時は修正後の新SHAで確認する。
-12. [ ] 実装revision/CI証跡を計画、test design、unit state、`.docs/01_memory/`に記録する。OS peer/package/release完了とは区別する。
+10. [x] C++ Window/Widget/Container/StackPanel/Text/TextBox/Button facadeを独立unitで実装し、ButtonとAsync Commandの接続を含めた。
+11. [x] focused fake ABI test、実C ABI relocated package consumer、既存C++ package integration、`tools/dev.py check`、`tools/dev.py minimum`、`git diff --check`をWindows localで実行し成功した。実装revisionのWindows/Linux CI確認は次工程。
+12. [ ] commit SHAとWindows/Ubuntu CI証跡を本計画、test design、unit state、`.docs/01_memory/`へ記録する。OS peer/package/release完了とは区別する。
 
 ## 完了条件案
 
@@ -75,3 +75,4 @@ C++ wrapperにはRuntime、Property、Binding、Subscriptionの実装がある�
 | 2026-10-25 | 0.1 / C++ UI Control wrapper | 利用者承認 | 計画commit `ac3e7af`を`impl-cpp/ui-controls-wrapper`へpush。preflightでCommand wrapper未実装を確認したため、下記0.2改訂案で依存・unit順を修正 |
 | 2026-10-25 | 0.2 / C++ Async Command + UI Control wrapper | 利用者承認 | Async CommandをButton接続の先行unitとして追加。計画commit `4a2b598` push済み。C++ DD v1.4全文も承認済み。 |
 | 2026-10-25 | UNIT-WRAP-CPP-008 / Async Command | 完了 | commits `47623f0`, `4c987a6`を`impl-cpp/ui-controls-wrapper`へpush。Windows/Ubuntu CI run `40182098140` success。 |
+| 2026-10-25 | UNIT-WRAP-CPP-009 / UI Controls | local実装完了・CI待ち | fake ABI focused test、relocated package consumer、`check`、`minimum`がWindows local pass。実装commitとWindows/Ubuntu CIの結果を確認後にunitをcompleteへ更新する。 |

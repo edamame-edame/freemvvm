@@ -51,6 +51,12 @@ class Property final {
   template <typename U>
   friend class BindingError;
   friend class Command;
+  friend class Widget;
+  friend class Window;
+  friend class StackPanel;
+  friend class Text;
+  friend class TextBox;
+  friend class Button;
   Property(std::uint64_t token,
            std::shared_ptr<detail::RuntimeCleanupState> state,
            detail::PendingNode* cleanup_node) noexcept;

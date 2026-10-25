@@ -126,6 +126,7 @@ def main():
             "cpp-property-subscription-test",
             "cpp-property-binding-test",
             "cpp-command-test",
+            "cpp-controls-test",
             "cpp-package-test",
             "rust-wrapper-runtime-test",
             "rust-wrapper-runtime-consumer-test",
@@ -1019,6 +1020,39 @@ def main():
                 environment,
                 results,
                 "cpp-command-test",
+            )
+        elif args.command == "cpp-controls-test":
+            run(
+                ["cmake", "--preset", "dev"],
+                environment,
+                results,
+                "cmake-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "--preset",
+                    "dev",
+                    "--target",
+                    "freemvvm_cpp_ui_control_tests_exe",
+                ],
+                environment,
+                results,
+                "cpp-controls-test-build",
+            )
+            run(
+                [
+                    "ctest",
+                    "--test-dir",
+                    "out/cmake/dev",
+                    "-R",
+                    "^wrapper\\.cpp\\.ui-controls$",
+                    "--output-on-failure",
+                ],
+                environment,
+                results,
+                "cpp-controls-test",
             )
         elif args.command == "cpp-package-test":
             run(

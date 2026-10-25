@@ -2100,7 +2100,6 @@
         "wrappers/cpp/include/freemvvm/ui_controls.hpp",
         "wrappers/cpp/src/ui_controls.cpp",
         "wrappers/cpp/tests/ui_control_tests.cpp",
-        "wrappers/cpp/tests/window_close_tests.cpp",
         "wrappers/cpp/tests/package_consumer/main.cpp",
         "tools/dev.py"
       ],
