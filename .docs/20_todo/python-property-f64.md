@@ -1,7 +1,7 @@
 # Python F64 Property wrapper
 
 - 計画版: 0.1
-- 状態: 計画案。利用者レビュー待ち。DD改訂・試験設計・実装は未承認
+- 状態: 計画承認済み。DD v1.5・試験設計 v0.7 承認済み。unit登録済み。実装開始待ち
 - 作成日: 2026-10-25
 - 対象: Python `Property` facadeへbuilt-in `float`のF64 create/get/setを追加する独立unit
 - 作業branch案: `impl-python/runtime-wrapper`を継続。Python Runtime、BOOL/I64、UTF-8 Propertyを基盤とし、Core/C ABIや他言語wrapperは変更しない
@@ -33,8 +33,8 @@
 1. [x] Python UTF-8 Property unit完了、作業branch、要求/上位設計/C ABI現状を確認した。
 2. [x] 本計画0.1のscope・順序について利用者の「ok」による承認を得た（2026-10-25）。
 3. [x] 要求承認履歴とPython/ABI/value設計の範囲を再確認し、Python DD v1.5へF64 API・型境界・binary64・error/ownership flowを提案した。利用者の「ok」によりDD全文が承認された（2026-10-25）。
-4. [ ] DD承認後、wrapper unit-test design 0.7へfocused fake API・real C ABI consumer casesを提案する。試験設計全文を提示して承認を得てからunitを登録する。
-5. [ ] Implementation unit `UNIT-WRAP-PY-PROP-F64-001`を依存関係付きで登録する。実装開始は別判断とする。
+4. [x] DD承認後、wrapper unit-test design 0.7へfocused fake API・real C ABI consumer casesを提案し、利用者の「ok」により試験設計全文の承認を得た（2026-10-25）。
+5. [x] Implementation unit `UNIT-WRAP-PY-PROP-F64-001`を依存関係付きで`tools/units.yaml`へ登録した。実装開始は別判断とする。
 6. [ ] 実装開始指示後、ctypes bindings、Property facade、focused fake tests、独立C ABI consumer、`tools/dev.py` command/check gatesを実装する。
 7. [ ] Windows local focused tests/consumer/check/minimum/document validationと、実装SHAに対するWindows/Linux CIを確認し、plan/test/memory/unit台帳を完了記録して日本語でcommit/pushする。
 
@@ -52,3 +52,4 @@
 | 2026-10-25 | 計画0.1 / Python F64 Property wrapper | — | 次unit提案。利用者レビュー待ち。DD改訂・試験設計・実装の承認を含まない |
 | 2026-10-25 | 計画0.1全文 | 利用者 | 「ok」によりscope・順序を承認。DD改訂・試験設計・実装開始は別承認 |
 | 2026-10-25 | Python wrapper DD v1.5全文 | 利用者 | 「ok」によりF64 Property API・型境界・Core委譲・error/ownership flowを含む全文を承認。試験設計・実装は別承認 |
+| 2026-10-25 | Python wrapper試験設計 v0.7全文 | 利用者 | 「ok」によりfake API / real C ABI consumerのF64 Property試験設計を含む全文を承認。unit登録を実施。実装開始は別承認 |

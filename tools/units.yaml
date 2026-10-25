@@ -3623,6 +3623,72 @@
       ]
     },
     {
+      "id": "UNIT-WRAP-PY-PROP-F64-001",
+      "state": "ready",
+      "scope": "python-f64-property-create-get-set-close",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-CORE-029",
+        "UNIT-ABI-009",
+        "UNIT-ABI-010",
+        "UNIT-ABI-011",
+        "UNIT-ABI-018",
+        "UNIT-WRAP-PY-PROP-BOOL-I64-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.5",
+          "section": "F64 Property公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "F64 Property create/get/set"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.3",
+          "section": "F64 equivalence and ValueStorage"
+        }
+      ],
+      "requirements": [
+        "RQ-02-001",
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-02-018",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "cases": ["TC-PROP-01", "TC-ABI-REP-01", "TC-LIFE-01", "TC-THREAD-01", "TC-ERROR-01", "TC-WRAP-PY-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-PROP-F64-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-f64-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-PROP-F64-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-f64-consumer-test"]
+        }
+      ]
+    },
+    {
       "id": "UNIT-WRAP-PY-PROP-UTF8-001",
       "state": "complete",
       "scope": "python-utf8-property-create-get-set-close-strict-buffer-mapping",
