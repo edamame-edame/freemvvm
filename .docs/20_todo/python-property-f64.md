@@ -31,7 +31,7 @@
 ## 実施順と承認境界
 
 1. [x] Python UTF-8 Property unit完了、作業branch、要求/上位設計/C ABI現状を確認した。
-2. [ ] 本計画0.1のscope・順序について利用者のレビュー・承認を得る。承認前に計画をcommit/pushしない。
+2. [x] 本計画0.1のscope・順序について利用者の「ok」による承認を得た（2026-10-25）。
 3. [ ] 要求承認履歴とPython/ABI/value設計の範囲を再確認し、Python DD v1.5へF64 API・型境界・binary64・error/ownership flowを提案する。DD全文を提示して承認を得る。
 4. [ ] DD承認後、wrapper unit-test design 0.7へfocused fake API・real C ABI consumer casesを提案する。試験設計全文を提示して承認を得てからunitを登録する。
 5. [ ] Implementation unit `UNIT-WRAP-PY-PROP-F64-001`を依存関係付きで登録する。実装開始は別判断とする。
@@ -50,3 +50,4 @@
 | 日付 | 対象 | 承認者 | 結論 |
 | --- | --- | --- | --- |
 | 2026-10-25 | 計画0.1 / Python F64 Property wrapper | — | 次unit提案。利用者レビュー待ち。DD改訂・試験設計・実装の承認を含まない |
+| 2026-10-25 | 計画0.1全文 | 利用者 | 「ok」によりscope・順序を承認。DD改訂・試験設計・実装開始は別承認 |
