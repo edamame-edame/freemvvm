@@ -3819,7 +3819,7 @@
     },
     {
       "id": "UNIT-WRAP-PY-BINDING-001",
-      "state": "planned",
+      "state": "complete",
       "scope": "python-property-binding-modes-cancel-error-snapshot-lifecycle",
       "sources": [
         "wrappers/python/src/freemvvm/**/*.py",

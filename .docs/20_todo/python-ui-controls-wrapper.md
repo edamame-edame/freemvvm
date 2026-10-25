@@ -53,7 +53,7 @@ Python consumerが承認済みCore/C ABIのProperty・Binding・AsyncCommand・�
    - `UNIT-WRAP-PY-COMMAND-001`: 非同期Command callback root・execute/cancel/completion/state・例外/close lifecycle。
    - `UNIT-WRAP-PY-CONTROLS-001`: Window/StackPanel/Text/TextBox/Button facade、Property/Binding/Command mapping、Tree、StackPanel設定、Focus要求。Window peer open/close callbackを含めない。
    - `UNIT-WRAP-PY-WINDOW-001`: Window peer open/closeとclose-request callback/defer/resolveのowner/root lifecycle。Controls unitに依存させる。
-9. [ ] `impl-python/runtime-wrapper`だけでunitを一つずつ実装する。各unitのlocal gatesとそのcommit SHAのWindows/Linux CI成功後に日本語commit/pushし、completeにする。Bindingは実装・focused/consumer test・local `check`/`minimum`まで成功し、CI確認待ち。
+9. [ ] `impl-python/runtime-wrapper`だけでunitを一つずつ実装する。各unitのlocal gatesとそのcommit SHAのWindows/Linux CI成功後に日本語commit/pushし、completeにする。Binding unitは実装・focused/consumer test・local `check`/`minimum`およびWindows/Linux CIまで完了（SHA `d5cfc1f3`、run 40212415054）。Command以降は未着手。
 10. [ ] 全unit完了後、`tools/dev.py check`、`minimum`、Python focused/consumer tests、document links、unit manifest、`git diff --check`を検証し、最終CI SHAと結果を計画・試験記録・memoryへ反映する。
 
 ## 完了条件

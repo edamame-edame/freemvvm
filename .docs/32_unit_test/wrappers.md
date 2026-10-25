@@ -1,6 +1,6 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 - 文書版: 0.9
-- 状態: 0.9全文承認済み（利用者、「ok」、2026-10-26）。Python Binding試験設計を含む。試験実装・実行状態は別管理。
+- 状態: 0.9全文承認済み（利用者、「ok」、2026-10-26）。Python Binding試験設計・実装・Windows/Linux実行完了。
 - 更新日: 2026-10-26
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
@@ -94,7 +94,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | --- | --- | --- | --- |
 | 2026-10-26 | 0.9改訂案 | — | 承認済みPython wrapper DD v1.7に基づくBinding fake ABI / real C ABI consumer試験設計を追加。文書全体レビュー待ち。試験登録・実装・実行は未承認・未実施 |
 | 2026-10-26 | 0.9全文 | 利用者 | 「ok」によりPython Binding fake ABI / real C ABI consumer試験設計を含む文書全体を承認。実装unit登録・試験実装・実行結果は別管理 |
-| 2026-10-26 | 0.9実行記録 | — | Python Binding fake ABI 29件、別process実C ABI consumer、Windows local `tools/dev.py check`と`minimum`がsuccess。Windows/Linux CIは実装commit後に確認 |
+| 2026-10-26 | 0.9実行記録 | — | Python Binding fake ABI 29件、別process実C ABI consumer、Windows local `tools/dev.py check`と`minimum`がsuccess。実装SHA `d5cfc1f344992a671e02bfc62b25a78d7bfb22bd`の[Windows/Linux CI run 40212415054](https://github.com/edamame-edame/freemvvm/actions/runs/40212415054) success |
 | 2026-10-25 | 0.5改訂案 | — | Python BOOL/I64 Property testsを追加。文書全体の利用者レビュー待ち。未承認・未実行 |
 | 2026-10-25 | 0.5全文 | 利用者 | 「ok」によりPython BOOL/I64 Propertyのfake ABI/real C ABI consumer試験設計を含む文書全体を承認。実装・実行結果は別管理 |
 | 2026-10-25 | 0.5実行記録 | — | 実装SHA `387eab6b9219a82693883b06ee8ef2da5fdf1fdd`で`python-property-bool-i64-test` 7件、real C ABI consumer、`tools/dev.py check`、`minimum`、document-link validationがWindows local success。[Windows/Linux CI run 40197894655](https://github.com/edamame-edame/freemvvm/actions/runs/40197894655) success |
