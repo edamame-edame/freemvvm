@@ -1,9 +1,9 @@
 # 言語ラッパー：Python
 
-- 文書版: 1.5
+- 文書版: 1.6
 - 文書ロール: detailed-design
 - 更新日: 2026-10-25
-- 状態: 1.5全文承認済み（利用者、「ok」、2026-10-25）。実装・試験状態は別管理
+- 状態: 1.6全文承認済み（利用者、「ok」、2026-10-25）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -19,6 +19,7 @@
 | 公開API・cleanup・handler寿命 | [RQ-03-004](../../11_requirements/RQ-03_language-support.md#rq-03-004)、[RQ-03-008](../../11_requirements/RQ-03_language-support.md#rq-03-008)、[RQ-03-009](../../11_requirements/RQ-03_language-support.md#rq-03-009)、[RQ-03-010](../../11_requirements/RQ-03_language-support.md#rq-03-010)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-03-015](../../11_requirements/RQ-03_language-support.md#rq-03-015)、[RQ-03-016](../../11_requirements/RQ-03_language-support.md#rq-03-016)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-05-014](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-014)、[RQ-06-003](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-003) |
 | BOOL/I64 Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 | F64 Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-02-018](../../11_requirements/RQ-02_core-features.md#rq-02-018)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
+| DECIMAL Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-02-019](../../11_requirements/RQ-02_core-features.md#rq-02-019)、[RQ-02-020](../../11_requirements/RQ-02_core-features.md#rq-02-020)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 | UTF-8 Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-04-003](../../11_requirements/RQ-04_abi-boundary.md#rq-04-003)、[RQ-04-020](../../11_requirements/RQ-04_abi-boundary.md#rq-04-020)、[RQ-04-021](../../11_requirements/RQ-04_abi-boundary.md#rq-04-021)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
@@ -658,6 +659,76 @@ sequenceDiagram
 
 1.4時点のUTF-8改訂はPython wrapper単体のUTF-8 Property facadeに限る。Unicode normalization、locale conversion、F64/DECIMAL、Subscription、Binding、TextBox表示編集、package loader/配布経路はそれぞれの設計・unitで扱う。
 
+## DECIMAL Property公開API（1.6改訂案）
+
+本節は承認済みRQ-02-017/019/020と共通C ABIのDECIMAL PropertyをPythonから利用する実現案である。BOOL/I64/F64/UTF-8 Propertyの公開API、owner/call lease、error snapshot、明示close契約を維持する。Core/C ABIの数値範囲・数値同値判定・同値時の格納表現維持・通知抑制をwrapperへ複製しない。本節を含む1.6文書全体は利用者承認済み（2026-10-25）。Python境界規則の承認は実装・試験合格を意味しない。
+
+### 公開APIと型mapping
+
+| 型/API | 1.6提案の責務・契約 |
+|---|---|
+| `Property.create(runtime, initial)` | `type(initial) is decimal.Decimal`の場合にDECIMAL Propertyを作成する。built-in `decimal.Decimal`の正確な型だけを受け付け、`bool`/`int`/`float`/`str`、Decimal subclass等からの暗黙変換は行わない。createは既存Property契約どおりUI threadで実行する。 |
+| `property.get()` | C ABIの`uint64_t` bitsを取得し、sign/scale/coefficientをPython `decimal.Decimal` tuple constructorへ直接写す。decimal context依存演算をせず、格納scaleと負のzero signを保持して返す。 |
+| `property.set(value)` | built-in `decimal.Decimal`だけを受け付ける。有限値を丸めずbitsへ変換し、正確に表現できなければnative call前に拒否する。成功時もwrapper value cacheを更新しない。 |
+| `property.close()` / `try_close()`、context manager | 既存Propertyのtoken release・retry・Runtime非shutdown契約を適用する。 |
+
+公開値型は標準ライブラリの`decimal.Decimal`とし、専用wrapper型を追加しない。`Decimal.as_tuple()`のsign/digits/exponentを使い、global/local decimal context、算術演算、`quantize`、文字列parse、binary float経由の変換を使わない。NaN/InfinityはDECIMAL finite rangeに含まれないため拒否する。型違いは`TypeError`、非有限値は`ValueError`、有限でも正確に範囲内へ写せない値は`OverflowError`とする案である。
+
+### Exact bits mappingと範囲変換
+
+DECIMAL bitsはC ABIの`uint64_t`値として扱い、byte order依存のpack/unpackはしない。encodingはbit 63をsign、bits 58..62をscale、bits 0..57をcoefficientとする。getterは`sign = (bits >> 63) & 1`、`scale = (bits >> 58) & 0x1f`、`coefficient = bits & ((1 << 58) - 1)`で分解する。coefficientの十進digitsを作り、`Decimal((sign, digits, -scale))`で構築する。decimal contextや算術には依存しない。
+
+setter/createは有限Decimal tupleを次の規則で正確に写す。
+
+1. 先頭zero digitsを除く（全digitsがzeroなら係数0として扱い、exponentに関係なく`10**exponent`を構築しない）。exponentが非負ならscale 0の係数候補とする。digits長とexponentから候補桁数を先に計算し、18桁超または18桁で`288230376151711743`より大きい候補を拒否する。上限内と確認した後にだけ係数整数と`10**exponent`を構築する。
+2. exponentが負ならscale候補を`-exponent`とする。
+3. 係数0はsignを保つ。scaleが0..31内ならそのscaleを保ち、範囲外ならscale 0で表す。
+4. 非zero係数は、scaleと係数がそれぞれ`0..31`、`0..2^58−1`内なら元の表現を保つ。
+5. そのまま範囲外の場合に限り、scaleが正で係数末尾に10がある間、それを取り除いて係数を10で割りscaleを1減らす。範囲内に入れば同じ数値を厳密に表現できる。丸め・切捨て・量子化はしない。縮約後も範囲外なら拒否する。
+
+上限判定はDecimal tuple digitsの長さ・lexicographic比較を使い、範囲内と分かるまで巨大なPython整数を生成しない。`_decimal_to_bits(value: Decimal) -> int`と`_decimal_from_bits(bits: int) -> Decimal`をprivate conversion helperとして分離する。入力Decimalのscaleを可能な限り保存し、ABI範囲に入らない場合に限って10の因子を厳密に縮約する。例: `Decimal("1.00")`はscale 2を保つ。`Decimal("1E-32")`は拒否し、`Decimal("10E-32")`は`1E-31`へ厳密縮約する。sign/scaleの異なるzeroはCore上数値同値だが、getterは現在格納されているbitsのsign/scaleをそのままPython値へ写す。この入力表現変換案は1.6全文レビュー対象である。
+
+### ABI mapping・失敗境界
+
+| Python側 | C ABI側 | 1.6提案の失敗扱い |
+|---|---|---|
+| Decimal create | `property_create_decimal(runtime, uint64_t initial_bits, out_property, out_error)` | Python側でtype/finite/rangeを検査し、canonical `uint64_t`を渡す。native create failureは既存Property error snapshotと部分token cleanupを使う。 |
+| Decimal get | `property_get_decimal(property, uint64_t *out_bits)` | 成功bitsを分解して`Decimal`へ変換する。native failureはraw statusを既存`UiError`へ写す。 |
+| Decimal set | `property_set_decimal(property, uint64_t bits, out_error)` | bits変換後に呼び出し、native failureは既存error snapshotを保持する。failed set時もwrapperにshadow valueやrollbackを追加しない。 |
+| DECIMAL equality | CoreのRQ-02-019/020契約 | wrapperは`Decimal.__eq__`やbits比較で短絡しない。全setter callをCoreへ渡し、Validator適用、同値時のstored representation維持、通知抑制はCoreに委譲する。 |
+
+private ctypes adapterはcreate/set引数とget出力を`ctypes.c_uint64`で宣言する。private `NativeApi` protocolにはcreate `(status, token, error)`、get `(status, bits)`、set `(status, error)`を追加する。公開facadeはraw ctypes objectやbitsを露出しない。既存C ABI関数が未実装/未配布ならその事実を別途記録し、本DD記載だけで利用可能と扱わない。
+
+### owner、thread、errorの継承
+
+DECIMAL Propertyは既存Propertyと同じRuntime anchor、Property owner cell、call lease、UI-thread check、明示close/retryを使用する。Decimal to bits変換はnative call前に完了させ、native call/user callback中にwrapper lockを保持しない。Property値をwrapperへcacheせず、Core getterを正本とする。setterはRQ-02-020に基づき同値でもnative setterを呼び、Python側ではValidatorや通知状態を推測しない。
+
+入力の型・有限性・正確な範囲変換に失敗した場合はnative callを行わない。create/setのnative failureは既存Property契約の`UiError`とerror snapshot、getter failureはraw status保持の`UiError`を使う。DECIMAL固有の新たなCore error codeや通知・Binding・TextBox・parse/format APIは追加しない。
+
+### sequence flow
+
+```mermaid
+sequenceDiagram
+    participant App as Python consumer
+    participant P as Property facade / owner cell
+    participant R as Runtime / UiContext
+    participant ABI as C ABI / Core
+    App->>P: Property.create(runtime, Decimal)
+    P->>P: exact type / finite / exact range mapping
+    P->>R: Runtime lease + UI-thread check
+    P->>ABI: property_create_decimal(uint64 bits)
+    ABI-->>P: Property token + status/error
+    P-->>App: Property
+    App->>P: get() / set(Decimal)
+    P->>P: acquire Runtime/Property leases; map bits
+    P->>ABI: property_get_decimal / property_set_decimal
+    ABI-->>P: uint64 bits / status/error
+    P->>P: construct Decimal tuple without context arithmetic
+    P-->>App: Decimal / None / UiError
+```
+
+1.6改訂案はPython DECIMAL Property mappingに限定する。DECIMAL arithmetic API、任意precision、文字列parse/format、locale、TextBox edit/display precision、Binding converter、Subscription、Validator登録、C ABI/Core変更、package loader/配布変更は対象外とする。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -675,3 +746,4 @@ sequenceDiagram
 | 2026-10-25 | 1.5改訂案 | Python built-in `float`からF64 C ABIへ直接写すAPI、型境界、RQ-02-018のCore委譲、error/ownership flowを追加。文書全体レビュー待ち |
 | 2026-10-25 | 1.5全文 | 利用者の「ok」によりF64 Property API・型境界・Core委譲・error/ownership flowを含む文書全体を承認。実装・試験結果は別管理 |
 | 2026-10-25 | 1.5全文 | 利用者の「ok」によりPython F64 Property API、型境界、RQ-02-018のCore委譲、error/ownership flowを含む全文を承認。試験設計・実装・試験合格は別管理 |
+| 2026-10-25 | 1.6全文 | 利用者の「ok」によりPython `decimal.Decimal`からDECIMAL C ABIへの厳密bits mapping、scale/係数範囲変換、error/ownership flowを含む全文を承認。実装・試験設計・試験合格は別管理 |

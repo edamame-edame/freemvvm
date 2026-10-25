@@ -34,7 +34,7 @@
 
 1. [x] Python F64 unit完了後のbranch/worktree、要求、承認済みBD/DD、C ABI関数とCore/ABI DECIMAL unit完了状態を確認した。
 2. [x] 本計画0.1のscope・順序について利用者の承認を得た（2026-10-25）。承認後に計画をcommitし、DD提案へ進む。
-3. [ ] 要求・既存DECIMAL設計・C#/Rust境界を照合し、Python wrapper DD v1.6へ公開Decimal型、厳密範囲写像、canonical表現、失敗型、ownership/call flowを提案して文書全体の承認を得る。
+3. [x] 要求・既存DECIMAL設計・C#/Rust境界を照合し、Python wrapper DD v1.6へ公開Decimal型、厳密範囲写像、bits表現、失敗型、ownership/call flowを提案。利用者が文書全体を承認（2026-10-25）。
 4. [ ] DD承認後、wrapper試験設計をv0.8へ改訂し、focused fake APIとreal C ABI consumerの試験ケースを提案して文書全体の承認を得る。
 5. [ ] 承認済み設計・試験に基づき`UNIT-WRAP-PY-PROP-DECIMAL-001`を依存関係・要求・case・command付きで`tools/units.yaml`に登録する。登録後に実装開始を別途確認する。
 6. [ ] 実装開始指示後、Python canonical Decimal mapping、facade create/get/set、focused fake tests、独立C ABI consumer、`tools/dev.py` command/check gatesを実装する。
