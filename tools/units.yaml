@@ -2579,7 +2579,7 @@
     },
     {
       "id": "UNIT-WRAP-CS-CONTROLS-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "csharp-ui-control-creation-properties-tree-layout-focus-and-command-facade",
       "sources": [
         "wrappers/csharp/FreeMvvm/**/*.cs",
@@ -2623,7 +2623,7 @@
     },
     {
       "id": "UNIT-WRAP-CS-WINDOW-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "csharp-window-peer-open-close-and-close-request-callback-lifecycle",
       "sources": [
         "wrappers/csharp/FreeMvvm/**/*.cs",

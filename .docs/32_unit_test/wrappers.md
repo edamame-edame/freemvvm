@@ -1,7 +1,7 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 
 - 文書版: 0.4改訂案
-- 状態: 0.3全文承認済み（利用者、2026-10-24）。0.4で承認済みC# wrapper DD v1.5に基づくUI Control/Window focused・consumer試験設計とunit mappingを追加。Controls/Windowはlocal試験済み。最新共有revisionのCI確認待ち
+- 状態: 0.3全文承認済み（利用者、2026-10-24）。0.4で承認済みC# wrapper DD v1.5に基づくUI Control/Window focused・consumer試験設計とunit mappingを追加。Controls/Windowのlocal試験と最終revisionのWindows/Linux CIが完了
 - 更新日: 2026-10-25
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
@@ -97,6 +97,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-25 | 0.4実行記録 | — | `UNIT-WRAP-CS-CONTROLS-001`のfake ABI focused testと実C ABI consumerがlocal pass。`tools/dev.py csharp-controls-test` / `csharp-controls-consumer-test`。Window unitは未実装 |
 | 2026-10-25 | 0.4実行記録 | — | Controls初回実装commit `8d8ca6c` のWindows/Linux CI run `40168746235`がsuccess。後続Window実装に伴うerror-ticket前確保変更を含む最新revisionで再確認予定 |
 | 2026-10-25 | 0.4実行記録 | — | `UNIT-WRAP-CS-WINDOW-001`のfake ABI focused testと実C ABI consumerがlocal pass。`tools/dev.py csharp-window-test` / `csharp-window-consumer-test`。実装revisionのCI待ち |
+| 2026-10-25 | 0.4実行記録 | — | 最終実装commit `b9e2cec` のWindows/Linux CI run `40169273591`がsuccess。`UNIT-WRAP-CS-CONTROLS-001` と `UNIT-WRAP-CS-WINDOW-001` をcompleteへ更新 |
 
 ## 改訂履歴
 
