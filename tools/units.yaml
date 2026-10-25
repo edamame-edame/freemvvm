@@ -3621,6 +3621,57 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-bool-i64-consumer-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-WRAP-PY-PROP-UTF8-001",
+      "state": "ready",
+      "scope": "python-utf8-property-create-get-set-close-strict-buffer-mapping",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": ["UNIT-WRAP-PY-PROP-BOOL-I64-001", "UNIT-ABI-009", "UNIT-ABI-010", "UNIT-ABI-011"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.4",
+          "section": "UTF-8 Property公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "UTF-8 Property create/get/set / byte length and buffer retry"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.3",
+          "section": "UTF-8 and buffer ownership rules"
+        }
+      ],
+      "requirements": ["RQ-02-001", "RQ-02-002", "RQ-02-017", "RQ-04-003", "RQ-04-020", "RQ-04-021", "RQ-05-012", "RQ-06-001"],
+      "cases": ["TC-PROP-01", "TC-ABI-REP-01", "TC-LIFE-01", "TC-THREAD-01", "TC-ERROR-01", "TC-WRAP-PY-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-PROP-UTF8-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-utf8-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-PROP-UTF8-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-utf8-consumer-test"]
+        }
+      ]
     }
   ]
 }
