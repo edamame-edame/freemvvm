@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import IntEnum
 import queue
 import threading
@@ -316,6 +317,97 @@ def _dispose_unexpected(
         _CleanupManager.enqueue(release_ticket)
 
 
+_DECIMAL_MAX_COEFFICIENT = (1 << 58) - 1
+_DECIMAL_MAX_COEFFICIENT_DIGITS = tuple(
+    int(digit) for digit in str(_DECIMAL_MAX_COEFFICIENT)
+)
+_DECIMAL_MAX_SCALE = 31
+_UINT64_MAX = (1 << 64) - 1
+
+
+def _decimal_digits_exceed_max(
+    digits: tuple[int, ...], start: int, end: int
+) -> bool:
+    length = end - start
+    if length > len(_DECIMAL_MAX_COEFFICIENT_DIGITS):
+        return True
+    if length < len(_DECIMAL_MAX_COEFFICIENT_DIGITS):
+        return False
+    return digits[start:end] > _DECIMAL_MAX_COEFFICIENT_DIGITS
+
+
+def _decimal_to_bits(value: Decimal) -> int:
+    """Map a finite built-in Decimal to the exact DECIMAL ABI encoding."""
+    if type(value) is not Decimal:
+        raise TypeError("DECIMAL Property values must be built-in Decimal")
+
+    sign, digits, exponent = value.as_tuple()
+    if not isinstance(exponent, int):
+        raise ValueError("DECIMAL Property values must be finite")
+
+    start = 0
+    while start < len(digits) and digits[start] == 0:
+        start += 1
+    if start == len(digits):
+        scale = -exponent if exponent < 0 else 0
+        if scale > _DECIMAL_MAX_SCALE:
+            scale = 0
+        return (sign << 63) | (scale << 58)
+
+    if exponent >= 0:
+        significant_length = len(digits) - start
+        candidate_length = significant_length + exponent
+        max_digits = len(_DECIMAL_MAX_COEFFICIENT_DIGITS)
+        if candidate_length > max_digits:
+            raise OverflowError("Decimal value exceeds DECIMAL Property range")
+        if candidate_length == max_digits:
+            padded_digits = digits[start:] + (0,) * exponent
+            if padded_digits > _DECIMAL_MAX_COEFFICIENT_DIGITS:
+                raise OverflowError(
+                    "Decimal value exceeds DECIMAL Property range"
+                )
+        coefficient = int("".join(str(digit) for digit in digits[start:]))
+        if exponent:
+            coefficient *= 10**exponent
+        scale = 0
+    else:
+        scale = -exponent
+        end = len(digits)
+        while (
+            scale > 0
+            and (
+                scale > _DECIMAL_MAX_SCALE
+                or _decimal_digits_exceed_max(digits, start, end)
+            )
+            and digits[end - 1] == 0
+        ):
+            end -= 1
+            scale -= 1
+
+        if scale > _DECIMAL_MAX_SCALE or _decimal_digits_exceed_max(
+            digits, start, end
+        ):
+            raise OverflowError("Decimal value exceeds DECIMAL Property range")
+        coefficient = int("".join(str(digit) for digit in digits[start:end]))
+
+    return (sign << 63) | (scale << 58) | coefficient
+
+
+def _decimal_from_bits(bits: int) -> Decimal:
+    """Construct a Decimal tuple without context-sensitive arithmetic."""
+    if type(bits) is not int or not 0 <= bits <= _UINT64_MAX:
+        raise ValueError("DECIMAL ABI returned an invalid uint64 value")
+    sign = (bits >> 63) & 1
+    scale = (bits >> 58) & 0x1F
+    coefficient = bits & _DECIMAL_MAX_COEFFICIENT
+    digits = (
+        tuple(int(digit) for digit in str(coefficient))
+        if coefficient
+        else (0,)
+    )
+    return Decimal((sign, digits, -scale))
+
+
 @final
 class Runtime:
     """Own a Runtime token; close does not shut down the Runtime."""
@@ -526,7 +618,7 @@ class UiContext:
 
 @final
 class Property:
-    """Owns a BOOL, signed-I64, F64, or UTF-8 Property token."""
+    """Owns a BOOL, signed-I64, F64, DECIMAL, or UTF-8 Property token."""
 
     __slots__ = (
         "_cell",
@@ -540,6 +632,7 @@ class Property:
     _I64 = 2
     _UTF8 = 3
     _F64 = 4
+    _DECIMAL = 6
     _I64_MIN = -(1 << 63)
     _I64_MAX = (1 << 63) - 1
 
@@ -550,7 +643,7 @@ class Property:
 
     @classmethod
     def create(
-        cls, runtime: Runtime, initial: bool | int | float | str
+        cls, runtime: Runtime, initial: bool | int | float | Decimal | str
     ) -> Property:
         if not isinstance(runtime, Runtime):
             raise TypeError("runtime must be a freemvvm.Runtime")
@@ -568,13 +661,16 @@ class Property:
         elif type(initial) is float:
             kind = cls._F64
             native_initial = initial
+        elif type(initial) is Decimal:
+            kind = cls._DECIMAL
+            native_initial = _decimal_to_bits(initial)
         elif type(initial) is str:
             kind = cls._UTF8
             native_initial = initial.encode("utf-8", errors="strict")
         else:
             raise TypeError(
                 "Property initial value must be built-in bool, int, float, "
-                "or str"
+                "Decimal, or str"
             )
 
         _CleanupManager.retry_pending()
@@ -593,6 +689,10 @@ class Property:
                 )
             elif kind == cls._F64:
                 status, token, error = api.property_create_f64(
+                    runtime_token, native_initial
+                )
+            elif kind == cls._DECIMAL:
+                status, token, error = api.property_create_decimal(
                     runtime_token, native_initial
                 )
             else:
@@ -639,7 +739,7 @@ class Property:
             with self._cell.lease() as property_token:
                 yield api, property_token
 
-    def get(self) -> bool | int | float | str:
+    def get(self) -> bool | int | float | Decimal | str:
         with self._ui_call() as (api, token):
             if self._kind == self._BOOL:
                 status, value = api.property_get_bool(token)
@@ -647,6 +747,8 @@ class Property:
                 status, value = api.property_get_i64(token)
             elif self._kind == self._F64:
                 status, value = api.property_get_f64(token)
+            elif self._kind == self._DECIMAL:
+                status, value = api.property_get_decimal(token)
             else:
                 status, length = api.property_get_utf8(token, None)
                 if status not in (_native.OK, _native.BUFFER_TOO_SMALL):
@@ -690,9 +792,14 @@ class Property:
             if value not in (0, 1):
                 raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
             return bool(value)
+        if self._kind == self._DECIMAL:
+            try:
+                return _decimal_from_bits(value)
+            except ValueError as error:
+                raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR)) from error
         return value
 
-    def set(self, value: bool | int | float | str) -> None:
+    def set(self, value: bool | int | float | Decimal | str) -> None:
         if self._kind == self._BOOL:
             if type(value) is not bool:
                 raise TypeError("BOOL Property values must be built-in bool")
@@ -709,6 +816,12 @@ class Property:
             if type(value) is not float:
                 raise TypeError("F64 Property values must be built-in float")
             native_value = value
+        elif self._kind == self._DECIMAL:
+            if type(value) is not Decimal:
+                raise TypeError(
+                    "DECIMAL Property values must be built-in Decimal"
+                )
+            native_value = _decimal_to_bits(value)
         else:
             if type(value) is not str:
                 raise TypeError("UTF-8 Property values must be built-in str")
@@ -725,6 +838,8 @@ class Property:
                 status, error = api.property_set_i64(token, native_value)
             elif self._kind == self._F64:
                 status, error = api.property_set_f64(token, native_value)
+            elif self._kind == self._DECIMAL:
+                status, error = api.property_set_decimal(token, native_value)
             else:
                 status, error = api.property_set_utf8(token, native_value)
         _check_result(api, status, error, error_ticket)

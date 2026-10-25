@@ -1,7 +1,7 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 - 文書版: 0.8
-- 状態: 0.8全文承認済み（利用者、「ok」、2026-10-25）。`UNIT-WRAP-PY-PROP-DECIMAL-001`をplanned登録。試験実装・実行は別管理。
-- 更新日: 2026-10-25
+- 状態: 0.8全文承認済み（利用者、「ok」、2026-10-25）。Python DECIMAL Property fake API 37件、real C ABI consumer、Windows全体check/minimum成功。Windows/Linux CI確認待ち。
+- 更新日: 2026-10-26
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
 
@@ -103,6 +103,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-25 | 0.7実行記録 | — | Python F64 fake API 16件、別processの実C ABI consumer、およびWindows local `tools/dev.py check` / `minimum` success。実装SHA `1c38de364c1824793db53f758cebf7e160463865`に対する[Windows/Linux CI run 40202740672](https://github.com/edamame-edame/freemvvm/actions/runs/40202740672) success |
 | 2026-10-25 | 0.8改訂案 | — | 承認済みPython wrapper DD v1.6に基づきDECIMAL Property fake API/real C ABI consumer試験案を追加。文書全体レビュー待ち。試験登録・実装・実行は未承認・未実施 |
 | 2026-10-25 | 0.8全文 | 利用者 | 「ok」によりPython DECIMAL Propertyのfake API/real C ABI consumer試験設計を含む文書全体を承認。試験実装・実行結果は別管理 |
+| 2026-10-26 | 0.8実行記録 | — | Python DECIMAL Property fake API 37件、独立real C ABI consumer、Windows `tools/dev.py check`（39 gates）と`minimum`成功。CIは実装commit後に確認 |
 | 2026-10-24 | 0.2追加 | — | 承認済みRust wrapper DD v1.1とRust Runtime実装計画に基づきfocused fake sys API・real C ABI consumer試験を登録。実行結果は別管理 |
 | 2026-10-24 | 0.2実行記録 | — | Rust Runtime focused 4 tests、compile-fail 2 cases、real C ABI consumer、`tools/dev.py check`、`minimum`がlocal pass。[Windows/Linux CI run 40077169840](https://github.com/edamame-edame/freemvvm/actions/runs/40077169840) success |
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
@@ -131,3 +132,4 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 0.7 | 2026-10-25 | Python F64 Propertyのfake ABIとreal C ABI consumer試験設計を追加 | Codex | 利用者の「ok」により文書全体を承認。試験実装・実行結果は別管理 |
 | 0.7実行記録 | 2026-10-25 | fake API focused 16件、real C ABI consumer、Windows local check/minimumおよびWindows/Linux CIの結果を追記 | Codex | 実装SHA `1c38de36`、CI run 40202740672 success |
 | 0.8 | 2026-10-25 | Python DECIMAL Propertyのfake API mapping/failure/lifecycle casesとreal C ABI consumer試験設計を追加 | Codex | 利用者の「ok」により文書全体を承認。試験実装・実行状態は別管理 |
+| 0.8実行記録 | 2026-10-26 | Python DECIMAL Property fake API 37件、real C ABI consumer、Windows local全体check/minimum成功を追記 | Codex | Windows/Linux CIはcommit後に確認 |

@@ -3741,7 +3741,7 @@
     },
     {
       "id": "UNIT-WRAP-PY-PROP-DECIMAL-001",
-      "state": "planned",
+      "state": "ready",
       "scope": "python-decimal-property-exact-bits-mapping-create-get-set-close",
       "sources": [
         "wrappers/python/src/freemvvm/**/*.py",
