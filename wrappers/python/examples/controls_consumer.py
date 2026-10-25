@@ -90,6 +90,7 @@ def main() -> None:
     panel = StackPanel.create(runtime)
     title = Text.create(runtime, "FreeMvvm")
     entry = TextBox.create(runtime, "入力")
+    secondary_entry = TextBox.create(runtime)
     button = Button.create(runtime, "実行")
     command = AsyncCommand.create(runtime, lambda _operation: None)
     try:
@@ -98,7 +99,8 @@ def main() -> None:
         panel.insert(title, 0)
         panel.insert(entry, 1)
         panel.insert(button, 2)
-        assert panel.child_count == 3
+        panel.insert(secondary_entry, 3)
+        assert panel.child_count == 4
         panel.set_child_align(button, Alignment.CENTER)
         window.set_content(panel)
         content_view = window.content
@@ -107,23 +109,27 @@ def main() -> None:
         first_child = panel.child_at(0)
         assert isinstance(first_child, freemvvm.Widget)
         first_child.close()
-        panel.move(2, 1)
+        panel.move(3, 1)
+        assert panel.child_count == 4
+        panel.remove(secondary_entry)
         assert panel.child_count == 3
-        panel.remove(entry)
-        assert panel.child_count == 2
-        panel.insert(entry, 1)
-        assert panel.child_count == 3
+        panel.insert(secondary_entry, 1)
+        assert panel.child_count == 4
 
         window_title = window.title
         title_content = title.content
         entry_value = entry.value
+        secondary_value = secondary_entry.value
         button_label = button.label
         enabled = button.is_enabled
         accessible_name = button.accessible_name
-        binding = Binding.create(
+        one_way = Binding.create(
             title_content, entry_value, BindingMode.ONE_WAY
         )
-        assert binding is not None
+        two_way = Binding.create(
+            entry_value, secondary_value, BindingMode.TWO_WAY
+        )
+        assert one_way is not None and two_way is not None
         try:
             _dispatch_event(
                 library,
@@ -139,6 +145,14 @@ def main() -> None:
             assert window.title.get() == "サンプル"
             assert title.content.get() == "FreeMvvm controls"
             assert entry.value.get() == "FreeMvvm controls"
+            assert secondary_entry.value.get() == "FreeMvvm controls"
+            _dispatch_event(
+                library,
+                runtime._cell.token,
+                lambda: entry_value.set("consumer"),
+            )
+            assert entry.value.get() == "consumer"
+            assert secondary_entry.value.get() == "consumer"
             assert button.label.get() == "実行する"
 
             button.set_command(command)
@@ -148,11 +162,13 @@ def main() -> None:
             button.set_command(None)
             assert button.command is None
         finally:
-            binding.close()
+            two_way.close()
+            one_way.close()
             accessible_name.close()
             enabled.close()
             button_label.close()
             entry_value.close()
+            secondary_value.close()
             title_content.close()
             window_title.close()
 
@@ -170,7 +186,14 @@ def main() -> None:
     finally:
         # Release the Button's strong Command reference before closing the
         # command.  The Control owners are then released child-first.
-        for owner in (button, entry, title, panel, window):
+        for owner in (
+            button,
+            entry,
+            secondary_entry,
+            title,
+            panel,
+            window,
+        ):
             try:
                 owner.close()
             except freemvvm.UiError:
