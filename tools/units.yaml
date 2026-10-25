@@ -3247,7 +3247,7 @@
     },
     {
       "id": "UNIT-WRAP-RS-WINDOW-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "rust-window-close-request-callback-borrow-defer-resolve-lifecycle",
       "sources": [
         "wrappers/rust/freemvvm-sys/src/lib.rs",

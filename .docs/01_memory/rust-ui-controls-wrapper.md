@@ -11,3 +11,4 @@
 - Host event turnなしのC ABI consumerではBinding伝播が即時とは限らない。UI peer/host loopを前提にしないconsumerでは同期伝播をassertせず、別のfocused testでhost turnを使って検証する。
 - `UNIT-WRAP-RS-UI-CTRL-001` commit `159cf70`はWindows/Linux CI run `40185381670` success。local `rust-wrapper-ui-controls-test`、`tools/dev.py check`、`tools/dev.py minimum`もpass。
 - Window close-requestでは`CloseRequestView::defer()`がborrowed viewのprivate RuntimeAnchorでRuntime identity/UI thread/open状態を確認する（DD v1.8全文承認済み）。`'static` callbackにborrowed `UiContext`を捕捉させずdeferし、返却されたowned requestは別のUI操作でresolveする。
+- `UNIT-WRAP-RS-WINDOW-001` commit `37d8a29` は`rust-wrapper-window-close-test`、`tools/dev.py check`、`minimum`とWindows/Linux CI run `40187756235`がsuccess。

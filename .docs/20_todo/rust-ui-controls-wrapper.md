@@ -1,7 +1,7 @@
 # Rust UI Control wrapper
 
 - 計画版: 0.1
-- 状態: 計画・Rust wrapper DD v1.8全文承認済み・unit-test設計 v0.4・実装開始承認済み（利用者、2026-10-25）。UNIT-WRAP-RS-UI-CTRL-001完了（`159cf70`、Windows/Linux CI run `40185381670`成功）。UNIT-WRAP-RS-WINDOW-001実装・local検証完了。Windows/Linux CIとpush後の実行記録待ち
+- 状態: 計画・実装・検証完了（2026-10-25）。Rust wrapper DD v1.8全文、unit-test設計v0.4、実装開始承認済み。`UNIT-WRAP-RS-UI-CTRL-001`と`UNIT-WRAP-RS-WINDOW-001`を実装し、各commitのWindows/Linux CI成功を記録。package配布・native peer/backend・releaseは対象外
 - 作成日: 2026-10-25
 - 対象: 0.0.1初期UI Control Core/C ABIをRust safe wrapperから構成・操作する
 - 作業branch案: `impl-rust/ui-controls-wrapper`
@@ -59,7 +59,7 @@ Rust safe wrapperにはRuntime、Property、Subscription、Binding、Async Comma
 9. [x] `impl-rust/core-ui-controls-c-abi`のCI成功revision `dfb86cf`から`impl-rust/ui-controls-wrapper`を計画承認直後に作成し、計画コミットを載せた（レビュー文書用。wrapper source実装はDD・test・実装開始承認後）。C++/C# wrapper branchは親にしていない。
 10. [x] `UNIT-WRAP-RS-UI-CTRL-001`としてControl/Tree/Layout/Property/Focus/Command facade、focused fake test、real C ABI consumerを実装しcommit/pushした（`159cf70`）。
 11. [x] `rust-wrapper-ui-controls-test`、`tools/dev.py check`、`tools/dev.py minimum`、document links、format、diff checksがlocal pass。Windows/Linux CI run `40185381670`もsuccess。
-12. [x] 承認済み計画の次unit `UNIT-WRAP-RS-WINDOW-001`としてWindow close-request callback/lifetime APIとfocused/consumer testsを実装した。`CloseRequestView::defer()`はview内private Runtime anchor/contextでRuntime/UI thread/open状態を確認し、deferred ownerのresolveと失敗処理を行う。focused tests、consumer、`tools/dev.py check`、`minimum`はlocal pass。CI・commit/push結果は続けて記録する。peer/backend、Cargo package配布、0.0.1 release判断とは分離する。
+12. [x] `UNIT-WRAP-RS-WINDOW-001`としてWindow close-request callback/lifetime APIとfocused/consumer testsを実装した。`CloseRequestView::defer()`はview内private Runtime anchor/contextでRuntime/UI thread/open状態を確認し、deferred ownerのresolveと失敗処理を行う。`rust-wrapper-window-close-test`、`tools/dev.py check`、`minimum`はlocal pass。commit `37d8a29`、Windows/Linux CI run `40187756235` success。peer/backend、Cargo package配布、0.0.1 release判断とは分離する。
 
 ## 完了条件案
 
@@ -77,7 +77,7 @@ Rust safe wrapperにはRuntime、Property、Subscription、Binding、Async Comma
 | 2026-10-25 | 0.1 / Rust UI Control wrapper | 利用者承認 | 「ok」により範囲・unit分割・branch親子関係を承認。計画commit `956a447`をpush。DD/test全文承認と実装承認は別ゲート |
 | 2026-10-25 | Rust wrapper DD v1.7 | 利用者承認 | 「ok」によりUI Control safe API設計全文を承認。source実装・test設計承認・実装開始承認とは別ゲート |
 | 2026-10-25 | Rust wrapper DD v1.8 | 利用者承認 | 「ok」により`CloseRequestView::defer()`とview内private Runtime anchor/contextによる検査を含む文書全文を承認。 |
-| 2026-10-25 | Rust wrapper test design v0.4 | 利用者承認 | 「ok」によりfocused fake ABI/consumer試験とunit分割案を含む全文を承認。試験未実装・未実行、実装開始承認は未取得 |
+| 2026-10-25 | Rust wrapper test design v0.4 | 利用者承認 | 「ok」によりfocused fake ABI/consumer試験とunit分割案を含む全文を承認。承認時点の試験実装・実行は未完了で、後続unitとして実施 |
 | 2026-10-25 | Rust UI Control実装開始 | 利用者承認 | 「承認します、実装を進めてください」により承認済みDD/test designに従う実装開始を承認。Window close-request unitは後続の独立unitとして扱う |
 | 2026-10-25 | UNIT-WRAP-RS-UI-CTRL-001 | 実装・検証完了 | commit `159cf70`。focused fake ABI/consumer、check、minimum、Windows/Linux CI run `40185381670` success。Window close-requestは次unit |
-| 2026-10-25 | UNIT-WRAP-RS-WINDOW-001 | 実装・local検証完了 | 承認済みRust wrapper DD v1.8に基づくcallback/defer/resolve実装。`rust-wrapper-window-close-test`、`check`、`minimum`、format・clippy pass。push後CI結果待ち |
+| 2026-10-25 | UNIT-WRAP-RS-WINDOW-001 | 実装・検証完了 | commit `37d8a29`。focused fake ABI/consumer、`check`、`minimum`、format・clippy、Windows/Linux CI run `40187756235` success |

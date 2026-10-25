@@ -103,6 +103,7 @@ Rust `-sys`宣言とsafe wrapperを分けて検証する。実装unit案は`UNIT
 | 2026-10-24 | 0.3実行記録 | — | `tools/dev.py csharp-command-test`、`csharp-command-consumer-test`、`check`、`minimum`と[Windows/Linux CI run 40074886918](https://github.com/edamame-edame/freemvvm/actions/runs/40074886918)がsuccess |
 | 2026-10-25 | 0.4追加 | — | 承認済みRust wrapper DD v1.7に基づき、Control/TreeとWindow close-requestを独立unitへ分けるfocused fake ABI・real C ABI consumer設計を追加。試験は未実装・未実行 |
 | 2026-10-25 | 0.4全文 | 利用者 | 「ok」によりRust UI Control/Tree/Window close-request caseとunit分割案を含む文書全体を承認。今回追加試験の実装・実行状態は別管理 |
+| 2026-10-25 | 0.4実行記録 | — | `UNIT-WRAP-RS-WINDOW-001`のfocused fake ABI（23 crate tests・compile-fail含む）、実C ABI consumer、local `check`/`minimum`、Windows/Linux CI run 40187756235が成功。対象revision `37d8a29`。実装は承認済みRust wrapper DD v1.8に一致 |
 
 ## 改訂履歴
 
