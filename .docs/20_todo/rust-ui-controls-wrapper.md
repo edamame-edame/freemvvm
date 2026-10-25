@@ -1,7 +1,7 @@
 # Rust UI Control wrapper
 
 - 計画版: 0.1
-- 状態: 利用者レビュー待ち（未commit・未実装）
+- 状態: 計画・Rust wrapper DD v1.7承認済み（利用者、2026-10-25）。Rust向けunit-test設計案を作成中。未実装
 - 作成日: 2026-10-25
 - 対象: 0.0.1初期UI Control Core/C ABIをRust safe wrapperから構成・操作する
 - 作業branch案: `impl-rust/ui-controls-wrapper`
@@ -49,13 +49,13 @@ Rust safe wrapperにはRuntime、Property、Subscription、Binding、Async Comma
 ## 実施順・承認境界
 
 1. [x] 現行状態を確認した。Core UI Control C ABI、C# UI Controls、C++ UI Controlsはそれぞれ独立branchで実装・CI完了。Rust crateにはUI Control surfaceがない。
-2. [ ] 本計画案の範囲、unit分割、Core APIsを親とするbranch関係を利用者レビュー。
-3. [ ] 計画承認後、計画を適切なversion/Core planning branchへcommit/pushする。利用者確認より先に計画をcommit/pushしない。
-4. [ ] Rust wrapper DD v1.7の改訂案を作成する。型・method/API surface、borrowed child/content表現、UiContext/Runtime identity、cleanup ticket ownership、Button/Command参照、callback scope/defer/resolve、panic/status境界を必要な箇所に補う。
-5. [ ] Rust wrapper DD v1.7全文の利用者レビュー・承認を得る。DD承認前にwrapper sourceを変更しない。
+2. [x] 本計画案の範囲、unit分割、Core APIsを親とするbranch関係を利用者がレビューし、「ok」で承認した。
+3. [x] 計画を`version/0.0.1`へcommit/push (`956a447`) し、Rust wrapper branchへ同commitをcherry-pick (`60139e7`) した。実装branch `impl-rust/ui-controls-wrapper` はCore APIs CI成功revision `dfb86cf`から作成した。
+4. [x] Rust wrapper DD v1.7の改訂案を作成した。型・method/API surface、child/content ownership、UiContext/Runtime identity、cleanup ticket ownership、Button/Command参照、callback scope/defer/resolve、panic/status境界を提案し、未承認案として区別した。
+5. [x] Rust wrapper DD v1.7全文は利用者の「ok」で承認済み（2026-10-25）。wrapper sourceは未変更。
 6. [ ] approved DDに基づくfake ABI focused / linked C ABI consumer試験案をtest正本へ追加し、試験設計の全文承認を得る。実装承認は別に取得する。
 7. [ ] 実装開始承認後、`tools/units.yaml`へ依存・要求・設計・test IDs/commands/source pathsを登録し、testとimplementationを同一unit revisionにする。
-8. [ ] `impl-rust/core-ui-controls-c-abi`のCI成功revision `dfb86cf`から`impl-rust/ui-controls-wrapper`を作成する。C++/C# wrapper branchは親にしない。
+8. [x] `impl-rust/core-ui-controls-c-abi`のCI成功revision `dfb86cf`から`impl-rust/ui-controls-wrapper`を計画承認直後に作成し、計画コミットを載せた（レビュー文書用。wrapper source実装はDD・test・実装開始承認後）。C++/C# wrapper branchは親にしていない。
 9. [ ] Rust UI Control/Tree/Property/Layout/Focus/Command facadeと、Window close-request lifetimeを、レビュー済みDDと単独実行可能なunit分割に従って実装・commit/pushする。
 10. [ ] focused fake ABI、linked C ABI consumer、`tools/dev.py check`、`tools/dev.py minimum`、manifest/link/diff checksを実行する。実装SHAのWindows/Linux CIを確認し、失敗時は修正後SHAで再確認する。
 11. [ ] 計画・DD・test design・unit state・`.docs/01_memory/`へ実装SHA、実行結果、CIを記録する。peer/backend、Cargo package配布、0.0.1 release判断とは分離する。
@@ -73,3 +73,5 @@ Rust safe wrapperにはRuntime、Property、Subscription、Binding、Async Comma
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
 | 2026-10-25 | 0.1 / Rust UI Control wrapper | 利用者レビュー待ち | 0.0.1計画および現行Core/C ABI、C++/C# wrapperの実装状態から次候補を整理。未commit・未実装 |
+| 2026-10-25 | 0.1 / Rust UI Control wrapper | 利用者承認 | 「ok」により範囲・unit分割・branch親子関係を承認。計画commit `956a447`をpush。DD/test全文承認と実装承認は別ゲート |
+| 2026-10-25 | Rust wrapper DD v1.7 | 利用者承認 | 「ok」によりUI Control safe API設計全文を承認。source実装・test設計承認・実装開始承認とは別ゲート |
