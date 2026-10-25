@@ -52,6 +52,26 @@ class NativeApi(Protocol):
         self, request: int
     ) -> tuple[int, int, int, int]: ...
 
+    def property_create_bool(
+        self, runtime: int, initial: int
+    ) -> tuple[int, int, int]: ...
+
+    def property_create_i64(
+        self, runtime: int, initial: int
+    ) -> tuple[int, int, int]: ...
+
+    def property_get_bool(self, property: int) -> tuple[int, int]: ...
+
+    def property_get_i64(self, property: int) -> tuple[int, int]: ...
+
+    def property_set_bool(
+        self, property: int, value: int
+    ) -> tuple[int, int]: ...
+
+    def property_set_i64(
+        self, property: int, value: int
+    ) -> tuple[int, int]: ...
+
     def handle_release(self, owned: int) -> int: ...
 
     def error_status(self, error: int) -> tuple[int, int]: ...
@@ -99,6 +119,34 @@ class CtypesNativeApi:
                 ctypes.POINTER(ctypes.c_uint32),
                 ctypes.POINTER(Handle),
             ],
+        )
+        self._bind(
+            "ui_abi_1_property_create_bool",
+            [Handle, Bool, ctypes.POINTER(Handle), ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_property_create_i64",
+            [
+                Handle,
+                ctypes.c_int64,
+                ctypes.POINTER(Handle),
+                ctypes.POINTER(Handle),
+            ],
+        )
+        self._bind(
+            "ui_abi_1_property_get_bool", [Handle, ctypes.POINTER(Bool)]
+        )
+        self._bind(
+            "ui_abi_1_property_get_i64",
+            [Handle, ctypes.POINTER(ctypes.c_int64)],
+        )
+        self._bind(
+            "ui_abi_1_property_set_bool",
+            [Handle, Bool, ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_property_set_i64",
+            [Handle, ctypes.c_int64, ctypes.POINTER(Handle)],
         )
         self._bind("ui_abi_1_handle_release", [Handle])
         self._bind(
@@ -208,6 +256,60 @@ class CtypesNativeApi:
             ctypes.byref(error),
         )
         return status, state.value, reason.value, error.value
+
+    def property_create_bool(
+        self, runtime: int, initial: int
+    ) -> tuple[int, int, int]:
+        property_handle = Handle()
+        error = Handle()
+        status = self._library.ui_abi_1_property_create_bool(
+            runtime,
+            initial,
+            ctypes.byref(property_handle),
+            ctypes.byref(error),
+        )
+        return status, property_handle.value, error.value
+
+    def property_create_i64(
+        self, runtime: int, initial: int
+    ) -> tuple[int, int, int]:
+        property_handle = Handle()
+        error = Handle()
+        status = self._library.ui_abi_1_property_create_i64(
+            runtime,
+            initial,
+            ctypes.byref(property_handle),
+            ctypes.byref(error),
+        )
+        return status, property_handle.value, error.value
+
+    def property_get_bool(self, property: int) -> tuple[int, int]:
+        value = Bool()
+        status = self._library.ui_abi_1_property_get_bool(
+            property, ctypes.byref(value)
+        )
+        return status, value.value
+
+    def property_get_i64(self, property: int) -> tuple[int, int]:
+        value = ctypes.c_int64()
+        status = self._library.ui_abi_1_property_get_i64(
+            property, ctypes.byref(value)
+        )
+        return status, value.value
+
+    def property_set_bool(self, property: int, value: int) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_property_set_bool(
+            property, value, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def property_set_i64(self, property: int, value: int) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_property_set_i64(
+            property, value, ctypes.byref(error)
+        )
+        return status, error.value
 
     def handle_release(self, owned: int) -> int:
         return self._library.ui_abi_1_handle_release(owned)

@@ -290,11 +290,23 @@ def _check_result(
     raise UiError(_snapshot_error(api, status, error, release_ticket))
 
 
+def _check_ui_thread(api: _native.NativeApi, runtime: int) -> None:
+    status, value = api.runtime_is_ui_thread(runtime)
+    if status != _native.OK:
+        raise UiError(ErrorSnapshot(status))
+    if value == 0:
+        raise UiError(ErrorSnapshot(_native.WRONG_THREAD))
+    if value != 1:
+        raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+
+
 def _dispose_unexpected(
     api: _native.NativeApi, token: int, release_ticket: _CleanupTicket
 ) -> None:
     if not token:
         return
+    if release_ticket.owner is not None:
+        release_ticket.anchor = release_ticket.owner.anchor
     release_ticket.owner = None
     release_ticket.api = api
     release_ticket.token = token
@@ -509,13 +521,178 @@ class UiContext:
     def check(self) -> None:
         _CleanupManager.retry_pending()
         with self._cell.lease() as token:
-            status, value = self._cell.api.runtime_is_ui_thread(token)
+            _check_ui_thread(self._cell.api, token)
+
+
+@final
+class Property:
+    """Owns a BOOL or signed-I64 Property token."""
+
+    __slots__ = (
+        "_cell",
+        "_runtime_cell",
+        "_kind",
+        "_finalizer",
+        "__weakref__",
+    )
+
+    _BOOL = 1
+    _I64 = 2
+    _I64_MIN = -(1 << 63)
+    _I64_MAX = (1 << 63) - 1
+
+    def __init__(self) -> None:
+        raise TypeError(
+            "Use Property.create(runtime, initial) to create a Property"
+        )
+
+    @classmethod
+    def create(cls, runtime: Runtime, initial: bool | int) -> Property:
+        if not isinstance(runtime, Runtime):
+            raise TypeError("runtime must be a freemvvm.Runtime")
+
+        if type(initial) is bool:
+            kind = cls._BOOL
+            native_initial = int(initial)
+        elif type(initial) is int:
+            if not cls._I64_MIN <= initial <= cls._I64_MAX:
+                raise OverflowError(
+                    "Property int value must fit in signed I64"
+                )
+            kind = cls._I64
+            native_initial = initial
+        else:
+            raise TypeError(
+                "Property initial value must be bool or built-in int"
+            )
+
+        _CleanupManager.retry_pending()
+        api = runtime._cell.api
+        cell = _OwnerCell(api, 0, runtime._cell)
+        error_ticket = _CleanupTicket(api=api, anchor=runtime._cell)
+        with runtime._cell.lease() as runtime_token:
+            _check_ui_thread(api, runtime_token)
+            if kind == cls._BOOL:
+                status, token, error = api.property_create_bool(
+                    runtime_token, native_initial
+                )
+            else:
+                status, token, error = api.property_create_i64(
+                    runtime_token, native_initial
+                )
+
+        if status != _native.OK:
+            if token:
+                _dispose_unexpected(api, token, cell.ticket)
+            raise UiError(_snapshot_error(api, status, error, error_ticket))
+        if not token:
+            if error:
+                raise UiError(
+                    _snapshot_error(
+                        api, _native.INTERNAL_ERROR, error, error_ticket
+                    )
+                )
+            raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+        if error:
+            _dispose_unexpected(api, token, cell.ticket)
+            raise UiError(
+                _snapshot_error(
+                    api, _native.INTERNAL_ERROR, error, error_ticket
+                )
+            )
+
+        cell.token = token
+        instance = object.__new__(cls)
+        instance._cell = cell
+        instance._runtime_cell = runtime._cell
+        instance._kind = kind
+        instance._finalizer = weakref.finalize(
+            instance, _CleanupManager.enqueue, cell.ticket
+        )
+        return instance
+
+    @contextmanager
+    def _ui_call(self) -> Iterator[tuple[_native.NativeApi, int]]:
+        _CleanupManager.retry_pending()
+        api = self._cell.api
+        with self._runtime_cell.lease() as runtime_token:
+            _check_ui_thread(api, runtime_token)
+            with self._cell.lease() as property_token:
+                yield api, property_token
+
+    def get(self) -> bool | int:
+        with self._ui_call() as (api, token):
+            if self._kind == self._BOOL:
+                status, value = api.property_get_bool(token)
+            else:
+                status, value = api.property_get_i64(token)
+
         if status != _native.OK:
             raise UiError(ErrorSnapshot(status))
-        if value == 0:
-            raise UiError(ErrorSnapshot(_native.WRONG_THREAD))
-        if value != 1:
-            raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+        if self._kind == self._BOOL:
+            if value not in (0, 1):
+                raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+            return bool(value)
+        return value
+
+    def set(self, value: bool | int) -> None:
+        if self._kind == self._BOOL:
+            if type(value) is not bool:
+                raise TypeError("BOOL Property values must be built-in bool")
+            native_value = int(value)
+        else:
+            if type(value) is not int:
+                raise TypeError("I64 Property values must be built-in int")
+            if not self._I64_MIN <= value <= self._I64_MAX:
+                raise OverflowError(
+                    "Property int value must fit in signed I64"
+                )
+            native_value = value
+
+        _CleanupManager.retry_pending()
+        error_ticket = _CleanupTicket(
+            api=self._cell.api, anchor=self._runtime_cell
+        )
+        with self._ui_call() as (api, token):
+            if self._kind == self._BOOL:
+                status, error = api.property_set_bool(token, native_value)
+            else:
+                status, error = api.property_set_i64(token, native_value)
+        _check_result(api, status, error, error_ticket)
+
+    def close(self) -> None:
+        _CleanupManager.retry_pending()
+        self._cell.close()
+        if self._cell.token == 0:
+            self._finalizer.detach()
+
+    def try_close(self) -> UiError | None:
+        try:
+            self.close()
+        except UiError as error:
+            return error
+        return None
+
+    def __enter__(self) -> Property:
+        with self._cell.lease():
+            pass
+        return self
+
+    def __exit__(
+        self,
+        _exception_type: object,
+        exception: BaseException | None,
+        _tb: object,
+    ) -> bool:
+        if exception is None:
+            self.close()
+        else:
+            error = self.try_close()
+            if error is not None and hasattr(exception, "add_note"):
+                exception.add_note(
+                    f"FreeMvvm Property close also failed: {error}"
+                )
+        return False
 
 
 @final
@@ -562,6 +739,7 @@ class ShutdownRequest:
 __all__ = [
     "ErrorSnapshot",
     "MissingRuntimeError",
+    "Property",
     "Runtime",
     "ShutdownDisposition",
     "ShutdownMode",
