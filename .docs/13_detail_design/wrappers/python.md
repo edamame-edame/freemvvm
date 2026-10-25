@@ -1,9 +1,9 @@
 # 言語ラッパー：Python
 
-- 文書版: 1.2
+- 文書版: 1.3
 - 文書ロール: detailed-design
 - 更新日: 2026-10-25
-- 状態: 1.2全文承認済み（利用者、「ok」、2026-10-25）。実装・試験状態は別管理
+- 状態: 1.3全文承認済み（利用者、「ok」、2026-10-25）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -17,6 +17,7 @@
 | --- | --- |
 | 所有参照・callback root・通常終了 | [RQ-02-013](../../11_requirements/RQ-02_core-features.md#rq-02-013)、[RQ-03-004](../../11_requirements/RQ-03_language-support.md#rq-03-004)、[RQ-03-008](../../11_requirements/RQ-03_language-support.md#rq-03-008)、[RQ-03-009](../../11_requirements/RQ-03_language-support.md#rq-03-009)、[RQ-03-010](../../11_requirements/RQ-03_language-support.md#rq-03-010)、[RQ-03-011](../../11_requirements/RQ-03_language-support.md#rq-03-011)、[RQ-03-012](../../11_requirements/RQ-03_language-support.md#rq-03-012)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-04-017](../../11_requirements/RQ-04_abi-boundary.md#rq-04-017)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-023](../../11_requirements/RQ-04_abi-boundary.md#rq-04-023)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-003](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)、[RQ-06-005](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-06-006](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-006)、[RQ-07-008](../../11_requirements/RQ-07_binding.md#rq-07-008)、[RQ-07-013](../../11_requirements/RQ-07_binding.md#rq-07-013)、[RQ-07-014](../../11_requirements/RQ-07_binding.md#rq-07-014)、[RQ-12-007](../../11_requirements/RQ-12_build-distribution.md#rq-12-007) |
 | 公開API・cleanup・handler寿命 | [RQ-03-004](../../11_requirements/RQ-03_language-support.md#rq-03-004)、[RQ-03-008](../../11_requirements/RQ-03_language-support.md#rq-03-008)、[RQ-03-009](../../11_requirements/RQ-03_language-support.md#rq-03-009)、[RQ-03-010](../../11_requirements/RQ-03_language-support.md#rq-03-010)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-03-015](../../11_requirements/RQ-03_language-support.md#rq-03-015)、[RQ-03-016](../../11_requirements/RQ-03_language-support.md#rq-03-016)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-05-014](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-014)、[RQ-06-003](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-003) |
+| BOOL/I64 Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -451,6 +452,92 @@ sequenceDiagram
 
 図は一つの代表経路を示す。shutdownとcloseの順番は固定せず、shutdown要求receipt releaseは要求取消を意味しない。blocking native waitは対応ABIがGILを解放できる呼出しとして実装し、GILやwrapper lockを保持したまま利用者callback/host progressを待たない。具体的なctypes GIL解放可否とcallback再入はfake/consumer検証および実装前確認対象とし、C ABI意味論をPython wrapper独自に変更しない。
 
+## BOOL/I64 Property公開API（1.3承認済み）
+
+本節は承認済みRQと共通C ABIのProperty作成・読取・設定・release契約をPythonから利用する最初の値型facadeを定める。1.2全文承認済みのRuntime・owner・call lease・cleanup契約は維持する。本節のsignature、built-in型の受入規則、Python例外写像は設計仕様として承認済みだが、実装済みAPIや試験合格を意味しない。
+
+### 公開API案
+
+| 型/API | 責務・契約 |
+|---|---|
+| `Property.create(runtime, initial)` | Runtime上に値種別固定のPropertyを作成し、成功時にProperty ownerを返す。第1単位の値種別はBOOLとI64のみとする。Property作成はUI thread上で行う。 |
+| `property.get()` | native Property値を取得してPython値へ変換する。値をPython側でcacheせずCore Propertyを正本とする。 |
+| `property.set(value)` | 初期値と同じ値種別に対応するsetterを呼ぶ。型違いを暗黙変換しない。Coreのsetter status/errorを呼出側へ伝える。 |
+| `property.close()` / `try_close()` | Property tokenの明示release。Runtimeをshutdownせず、Runtime ownerのcloseとも分離する。release失敗時はtokenをowner cellで保持し、明示retryを可能にする。 |
+| `Property` context manager | `with Property.create(runtime, initial) as prop:`のexitはProperty close相当とする。 |
+
+`type(initial) is bool`ならBOOL、`type(initial) is int`ならsigned I64として扱い、I64の範囲を超える整数はnative call前に拒否する。boolがintの派生型であるため、bool判定を先に行う。Pythonのその他の型とint/bool subclassは暗黙にbool/intへ変換しない。誤型は`TypeError`、I64範囲外は`OverflowError`とする。将来のUTF8/F64/DECIMAL対応では、受理型と変換規則を各値型設計で追加する。
+
+各PropertyはRuntimeの強参照anchorとNativeOwnerCellを持つ。native call開始時にRuntime/Propertyのopen状態を検査し、call leaseでtokenを保護する。native call中にwrapper lockを保持せず、call leaseが戻るまでcloseからtoken releaseへ進まない。create/get/setはC ABIに従いUI threadでのみ行い、worker呼出しを暗黙dispatchしない。Runtime context checkを早期診断に利用しても、native statusを最終境界とする。
+
+### ABI mapping・失敗境界
+
+| Python側 | C ABI側 | 失敗時の扱い |
+|---|---|---|
+| `bool` | `ui_bool`の0または1 | native getterが0/1以外を返す場合は不正ABI結果として扱い、値へ変換しない |
+| 範囲内のbuilt-in `int` | `int64_t` | signed 64-bit範囲外はnative call前に拒否し、切り詰めない |
+| Property create | `property_create_bool` / `property_create_i64` | statusとowned error tokenからRuntime DDのimmutable `ErrorSnapshot` / `UiError`契約へ写す。部分生成のowned tokenはowner manager規則で回収する |
+| Property get | `property_get_bool` / `property_get_i64` | 失敗statusを保持し、成功時だけout valueを返す。未知statusを既知failureへ偽装しない |
+| Property set | `property_set_bool` / `property_set_i64` | statusとowned error tokenを呼出側へ写す。wrapperにshadow valueを置かず、Coreの失敗時値・通知意味論を変更しない |
+| Property close | `handle_release` | release成功時のみtokenを消費。失敗時はowner tokenを保持し明示再試行可能にする |
+
+status値とErrorSnapshot形式の正本は[共通C ABI設計](../runtime-objects/abi.md)、値保持・検証・通知の外部意味論の正本は[RQ-02 Property](../../11_requirements/RQ-02_core-features.md#rq-02-002)および[上位値モデル設計](../../12_design/runtime-objects/model-values.md)とする。本Python facadeはBinding、Subscription、変更通知、validator callback、一般transactionを追加しない。レビュー用C宣言を配布headerや実装済みABIの根拠として扱わない。
+
+### クラス関係とcall flow
+
+```mermaid
+classDiagram
+    direction TB
+    class Runtime {
+        ui_context()
+        is_ui_thread()
+        close()
+    }
+    class Property {
+        create(runtime, initial)
+        get()
+        set(value)
+        close()
+    }
+    class NativeOwnerCell {
+        begin_call()
+        finish_call()
+        transfer_cleanup()
+    }
+    class ErrorSnapshot {
+        status
+        domain
+        code
+        message
+    }
+    Property *-- NativeOwnerCell : Property token
+    Property o-- Runtime : Runtime anchor
+    Property ..> ErrorSnapshot : operation failure
+```
+
+```mermaid
+sequenceDiagram
+    participant App as Python consumer
+    participant P as Property facade / owner cell
+    participant R as Runtime / UiContext
+    participant ABI as C ABI / Core
+    App->>P: Property.create(runtime, initial)
+    P->>R: open + UI-thread check
+    P->>ABI: property_create_bool or property_create_i64
+    ABI-->>P: owned Property token + status/error
+    P-->>App: Property
+    App->>P: set(value) / get()
+    P->>P: acquire call lease
+    P->>ABI: typed property_set / property_get
+    ABI-->>P: status + value/error
+    P->>P: release call lease
+    P-->>App: result or UiError
+    App->>P: close()
+    P->>ABI: handle_release(Property token)
+```
+
+Runtime anchorはPropertyが生存中にRuntime owner cellの早期回収を防ぐが、Property closeはRuntime shutdownを開始せず、Runtime closeと連鎖させない。最後のProperty handle releaseとRuntime shutdownの詳細は既存Runtime/ABI設計に従う。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -461,3 +548,5 @@ sequenceDiagram
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
 | 2026-10-25 | 1.2改訂案 | Python Runtime facadeの公開型/API、error・ownership境界、shutdown/close分離を提案 |
 | 2026-10-25 | 1.2全文 | 利用者の「ok」により、Runtime公開APIとshutdown/close・ownership境界、異Runtime context検査を後続UI APIへ送る範囲変更を含む全文を承認。実装・試験合格を意味しない |
+| 2026-10-25 | 1.3改訂案 | Python BOOL/I64 Property facadeの公開API、型mapping、owner/call lease、ABI failure境界を文書全体の改訂案として追加 |
+| 2026-10-25 | 1.3全文 | 利用者の「ok」によりBOOL/I64 Property API、型変換・例外・ownership・call flowを含む文書全体を承認。実装・試験合格は別管理 |
