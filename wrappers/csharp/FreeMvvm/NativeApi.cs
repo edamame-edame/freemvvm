@@ -105,6 +105,16 @@ internal interface INativeApi
 
     uint WindowTitleProperty(ulong window, out ulong property);
 
+    uint WindowOpen(ulong window, out ulong error);
+
+    uint WindowClose(ulong window, out ulong error);
+
+    uint WindowCloseRequestSubscribe(ulong window, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error);
+
+    uint WindowCloseRequestDefer(ulong borrowedRequest, out ulong ownedRequest, out ulong error);
+
+    uint WindowCloseRequestResolve(ulong request, uint decision, out ulong error);
+
     uint ContainerInsert(ulong container, ulong child, ulong index, out ulong error);
 
     uint ContainerRemove(ulong container, ulong child, out ulong error);
@@ -323,6 +333,19 @@ internal sealed class NativeRuntimeApi : INativeApi
     public uint WindowClearContent(ulong window, out ulong error) => NativeMethods.WindowClearContent(window, out error);
 
     public uint WindowTitleProperty(ulong window, out ulong property) => NativeMethods.WindowTitleProperty(window, out property);
+
+    public uint WindowOpen(ulong window, out ulong error) => NativeMethods.WindowOpen(window, out error);
+
+    public uint WindowClose(ulong window, out ulong error) => NativeMethods.WindowClose(window, out error);
+
+    public uint WindowCloseRequestSubscribe(ulong window, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error) =>
+        NativeMethods.WindowCloseRequestSubscribe(window, callback, userdata, destroy, out subscription, out error);
+
+    public uint WindowCloseRequestDefer(ulong borrowedRequest, out ulong ownedRequest, out ulong error) =>
+        NativeMethods.WindowCloseRequestDefer(borrowedRequest, out ownedRequest, out error);
+
+    public uint WindowCloseRequestResolve(ulong request, uint decision, out ulong error) =>
+        NativeMethods.WindowCloseRequestResolve(request, decision, out error);
 
     public uint ContainerInsert(ulong container, ulong child, ulong index, out ulong error) => NativeMethods.ContainerInsert(container, child, index, out error);
 
@@ -604,6 +627,27 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_title_property")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint WindowTitleProperty(ulong window, out ulong property);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_open")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WindowOpen(ulong window, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_close")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WindowClose(ulong window, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_close_request_subscribe")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WindowCloseRequestSubscribe(
+        ulong window, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_close_request_defer")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WindowCloseRequestDefer(ulong borrowedRequest, out ulong ownedRequest, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_close_request_resolve")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WindowCloseRequestResolve(ulong request, uint decision, out ulong error);
 
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_container_insert")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

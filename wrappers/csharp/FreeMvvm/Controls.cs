@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace FreeMvvm;
@@ -54,12 +55,13 @@ public abstract class UiWidget : IDisposable
         }
 
         using CallLease lease = leaseResult.Value;
+        var preparedError = new PreparedError(Api);
         try
         {
             uint status = Api.WidgetRequestFocus(lease.Token, out ulong error);
             return status == UiStatus.Ok
                 ? UiResult<bool>.Success(true)
-                : UiResult<bool>.Failure(new PreparedError(Api).Capture(status, error));
+                : UiResult<bool>.Failure(preparedError.Capture(status, error));
         }
         catch
         {
@@ -75,7 +77,7 @@ public abstract class UiWidget : IDisposable
         _runtimeAnchor.Dispose();
     }
 
-    private protected UiResult<TokenOwner> RetainRuntimeAnchor()
+    internal UiResult<TokenOwner> RetainRuntimeAnchor()
     {
         UiResult<CallLease> leaseResult = _runtimeAnchor.AcquireLease();
         if (leaseResult.IsFailure)
@@ -216,12 +218,13 @@ public abstract class UiContainer : UiWidget
         }
 
         using CallLease childLease = childLeaseResult.Value;
+        var preparedError = new PreparedError(Api);
         try
         {
             uint status = Api.ContainerRemove(parentLease.Token, childLease.Token, out ulong error);
             return status == UiStatus.Ok
                 ? UiResult<bool>.Success(true)
-                : UiResult<bool>.Failure(new PreparedError(Api).Capture(status, error));
+                : UiResult<bool>.Failure(preparedError.Capture(status, error));
         }
         catch
         {
@@ -238,12 +241,13 @@ public abstract class UiContainer : UiWidget
         }
 
         using CallLease lease = leaseResult.Value;
+        var preparedError = new PreparedError(Api);
         try
         {
             uint status = Api.ContainerMove(lease.Token, fromIndex, toIndex, out ulong error);
             return status == UiStatus.Ok
                 ? UiResult<bool>.Success(true)
-                : UiResult<bool>.Failure(new PreparedError(Api).Capture(status, error));
+                : UiResult<bool>.Failure(preparedError.Capture(status, error));
         }
         catch
         {
@@ -292,6 +296,7 @@ public abstract class UiContainer : UiWidget
 
         TokenOwner runtimeAnchor = anchorResult.Value;
         ulong child = 0;
+        var preparedError = new PreparedError(Api);
         try
         {
             uint status = Api.ContainerChildAt(lease.Token, index, out child, out ulong error);
@@ -304,7 +309,7 @@ public abstract class UiContainer : UiWidget
             {
                 childOwner.Dispose();
                 runtimeAnchor.Dispose();
-                return UiResult<UiWidget>.Failure(new PreparedError(Api).Capture(status, error));
+                return UiResult<UiWidget>.Failure(preparedError.Capture(status, error));
             }
 
             return UiResult<UiWidget>.Success(WrapOwnedWidget(childOwner, runtimeAnchor));
@@ -323,12 +328,13 @@ public abstract class UiContainer : UiWidget
         ulong child,
         ulong index)
     {
+        var preparedError = new PreparedError(Api);
         try
         {
             uint status = call(Api, parent, child, index, out ulong error);
             return status == UiStatus.Ok
                 ? UiResult<bool>.Success(true)
-                : UiResult<bool>.Failure(new PreparedError(Api).Capture(status, error));
+                : UiResult<bool>.Failure(preparedError.Capture(status, error));
         }
         catch
         {
@@ -356,6 +362,118 @@ public sealed class UiWindow : UiContainer
         static (INativeApi api, ulong window, out ulong property) => api.WindowTitleProperty(window, out property),
         owner => UiProperty<string>.FromOwned(owner, CallbackHandlers));
 
+    public UiResult<bool> TryOpen() => CallWindowPeer(Api.WindowOpen);
+
+    public UiResult<bool> TryCloseWindow() => CallWindowPeer(Api.WindowClose);
+
+    public UiResult<UiSubscription> TrySubscribeCloseRequest(Action<UiWindowCloseRequest> callback)
+    {
+        if (callback is null)
+        {
+            return UiResult<UiSubscription>.Failure(new UiErrorSnapshot(UiStatus.InvalidArgument));
+        }
+
+        UiResult<CallLease> windowLeaseResult = Owner.AcquireLease();
+        if (windowLeaseResult.IsFailure)
+        {
+            return UiResult<UiSubscription>.Failure(windowLeaseResult.Error!);
+        }
+
+        UiResult<TokenOwner> callbackAnchorResult = RetainRuntimeAnchor();
+        if (callbackAnchorResult.IsFailure)
+        {
+            windowLeaseResult.Value.Dispose();
+            return UiResult<UiSubscription>.Failure(callbackAnchorResult.Error!);
+        }
+
+        TokenOwner callbackAnchor = callbackAnchorResult.Value;
+        TokenOwner subscriptionOwner;
+        UiWindowCloseCallbackRoot callbackRoot;
+        GCHandle callbackRootHandle = default;
+        PreparedError preparedError;
+        try
+        {
+            subscriptionOwner = new TokenOwner(Api);
+            callbackRoot = new UiWindowCloseCallbackRoot(Api, callbackAnchor, CallbackHandlers, callback);
+            callbackRootHandle = GCHandle.Alloc(callbackRoot);
+            preparedError = new PreparedError(Api);
+        }
+        catch (OutOfMemoryException)
+        {
+            if (callbackRootHandle.IsAllocated) callbackRootHandle.Free();
+            callbackAnchor.Dispose();
+            windowLeaseResult.Value.Dispose();
+            return UiResult<UiSubscription>.Failure(new UiErrorSnapshot(UiStatus.OutOfMemory));
+        }
+
+        using CallLease windowLease = windowLeaseResult.Value;
+        uint status;
+        ulong subscriptionToken;
+        ulong errorToken;
+        try
+        {
+            status = Api.WindowCloseRequestSubscribe(
+                windowLease.Token,
+                WindowCloseCallbackEntryPoints.CallbackPointer,
+                GCHandle.ToIntPtr(callbackRootHandle),
+                WindowCloseCallbackEntryPoints.DestroyPointer,
+                out subscriptionToken,
+                out errorToken);
+        }
+        catch
+        {
+            callbackRootHandle.Free();
+            subscriptionOwner.Dispose();
+            callbackAnchor.Dispose();
+            return UiResult<UiSubscription>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        }
+
+        if (status != UiStatus.Ok)
+        {
+            callbackRootHandle.Free();
+            if (subscriptionToken != 0) subscriptionOwner.Adopt(subscriptionToken);
+            subscriptionOwner.Dispose();
+            callbackAnchor.Dispose();
+            return UiResult<UiSubscription>.Failure(preparedError.Capture(status, errorToken));
+        }
+
+        if (subscriptionToken == 0)
+        {
+            callbackRootHandle.Free();
+            subscriptionOwner.Dispose();
+            callbackAnchor.Dispose();
+            return UiResult<UiSubscription>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        }
+
+        subscriptionOwner.Adopt(subscriptionToken);
+        return UiResult<UiSubscription>.Success(new UiSubscription(subscriptionOwner));
+    }
+
+    private UiResult<bool> CallWindowPeer(WindowPeerCall call)
+    {
+        UiResult<CallLease> leaseResult = Owner.AcquireLease();
+        if (leaseResult.IsFailure)
+        {
+            return UiResult<bool>.Failure(leaseResult.Error!);
+        }
+
+        using CallLease lease = leaseResult.Value;
+        var preparedError = new PreparedError(Api);
+        try
+        {
+            uint status = call(lease.Token, out ulong error);
+            return status == UiStatus.Ok
+                ? UiResult<bool>.Success(true)
+                : UiResult<bool>.Failure(preparedError.Capture(status, error));
+        }
+        catch
+        {
+            return UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        }
+    }
+
+    private delegate uint WindowPeerCall(ulong window, out ulong error);
+
     public UiResult<UiWidget?> TryGetContent()
     {
         UiResult<CallLease> leaseResult = Owner.AcquireLease();
@@ -375,6 +493,7 @@ public sealed class UiWindow : UiContainer
 
         TokenOwner runtimeAnchor = anchorResult.Value;
         ulong child = 0;
+        var preparedError = new PreparedError(Api);
         try
         {
             uint status = Api.WindowContent(lease.Token, out child, out ulong error);
@@ -387,7 +506,7 @@ public sealed class UiWindow : UiContainer
             {
                 childOwner.Dispose();
                 runtimeAnchor.Dispose();
-                return UiResult<UiWidget?>.Failure(new PreparedError(Api).Capture(status, error));
+                return UiResult<UiWidget?>.Failure(preparedError.Capture(status, error));
             }
 
             if (child == 0)
@@ -429,12 +548,13 @@ public sealed class UiWindow : UiContainer
         }
 
         using CallLease childLease = childLeaseResult.Value;
+        var preparedError = new PreparedError(Api);
         try
         {
             uint status = Api.WindowSetContent(windowLease.Token, childLease.Token, out ulong error);
             return status == UiStatus.Ok
                 ? UiResult<bool>.Success(true)
-                : UiResult<bool>.Failure(new PreparedError(Api).Capture(status, error));
+                : UiResult<bool>.Failure(preparedError.Capture(status, error));
         }
         catch
         {
@@ -451,12 +571,13 @@ public sealed class UiWindow : UiContainer
         }
 
         using CallLease lease = leaseResult.Value;
+        var preparedError = new PreparedError(Api);
         try
         {
             uint status = Api.WindowClearContent(lease.Token, out ulong error);
             return status == UiStatus.Ok
                 ? UiResult<bool>.Success(true)
-                : UiResult<bool>.Failure(new PreparedError(Api).Capture(status, error));
+                : UiResult<bool>.Failure(preparedError.Capture(status, error));
         }
         catch
         {
@@ -476,6 +597,16 @@ public sealed class UiWindow : UiContainer
         }
 
         INativeApi api = runtime.Owner.Api;
+        PreparedError preparedError;
+        try
+        {
+            preparedError = new PreparedError(api);
+        }
+        catch (OutOfMemoryException)
+        {
+            return UiResult<TControl>.Failure(new UiErrorSnapshot(UiStatus.OutOfMemory));
+        }
+
         UiResult<CallLease> runtimeLeaseResult = runtime.Owner.AcquireLease();
         if (runtimeLeaseResult.IsFailure)
         {
@@ -506,7 +637,7 @@ public sealed class UiWindow : UiContainer
                 anchor.Dispose();
                 return UiResult<TControl>.Failure(status == UiStatus.Ok
                     ? new UiErrorSnapshot(UiStatus.InternalError)
-                    : new PreparedError(api).Capture(status, error));
+                    : preparedError.Capture(status, error));
             }
 
             return UiResult<TControl>.Success(wrap(owner, anchor, runtime.CallbackHandlers));
@@ -577,12 +708,13 @@ public sealed class UiStackPanel : UiContainer
         }
 
         using CallLease lease = leaseResult.Value;
+        var preparedError = new PreparedError(Api);
         try
         {
             uint status = Api.StackPanelSetOrientation(lease.Token, (uint)orientation, out ulong error);
             return status == UiStatus.Ok
                 ? UiResult<bool>.Success(true)
-                : UiResult<bool>.Failure(new PreparedError(Api).Capture(status, error));
+                : UiResult<bool>.Failure(preparedError.Capture(status, error));
         }
         catch
         {
@@ -617,13 +749,14 @@ public sealed class UiStackPanel : UiContainer
         }
 
         using CallLease childLease = childLeaseResult.Value;
+        var preparedError = new PreparedError(Api);
         try
         {
             uint status = Api.StackPanelSetChildAlign(
                 panelLease.Token, childLease.Token, (uint)alignment, out ulong error);
             return status == UiStatus.Ok
                 ? UiResult<bool>.Success(true)
-                : UiResult<bool>.Failure(new PreparedError(Api).Capture(status, error));
+                : UiResult<bool>.Failure(preparedError.Capture(status, error));
         }
         catch
         {
@@ -778,6 +911,7 @@ public sealed class UiButton : UiWidget
 
         TokenOwner anchor = anchorResult.Value;
         ulong commandToken = 0;
+        var preparedError = new PreparedError(Api);
         try
         {
             uint status = Api.ButtonCommand(lease.Token, out commandToken, out ulong error);
@@ -790,7 +924,7 @@ public sealed class UiButton : UiWidget
             {
                 owner.Dispose();
                 anchor.Dispose();
-                return UiResult<UiCommand?>.Failure(new PreparedError(Api).Capture(status, error));
+                return UiResult<UiCommand?>.Failure(preparedError.Capture(status, error));
             }
 
             if (commandToken == 0)
@@ -813,12 +947,13 @@ public sealed class UiButton : UiWidget
 
     private UiResult<bool> SetCommand(ulong button, ulong command)
     {
+        var preparedError = new PreparedError(Api);
         try
         {
             uint status = Api.ButtonSetCommand(button, command, out ulong error);
             return status == UiStatus.Ok
                 ? UiResult<bool>.Success(true)
-                : UiResult<bool>.Failure(new PreparedError(Api).Capture(status, error));
+                : UiResult<bool>.Failure(preparedError.Capture(status, error));
         }
         catch
         {

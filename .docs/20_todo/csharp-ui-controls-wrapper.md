@@ -1,7 +1,7 @@
 # C# UI Control wrapper
 
 - 計画版: 0.1
-- 状態: 計画・C# wrapper DD v1.5全文承認済み（利用者、2026-10-25）。Controls unitは実装・local focused/consumer確認済み。Window unitは未着手
+- 状態: 計画・C# wrapper DD v1.5全文承認済み（利用者、2026-10-25）。Controls/Window unitはlocal focused/consumer確認済み。最新共有revisionのWindows/Linux CI待ち
 - 作成日: 2026-10-25
 - 対象: 0.0.1初期UI Control Core/C ABIをC#から構成・操作するwrapper
 - 作業branch案: `impl-csharp/ui-controls-wrapper`
@@ -54,8 +54,8 @@ C# wrapper DD v1.4はRuntime/Property/Binding/Commandの所有・interop・例�
 5. [x] C# DD v1.5全文を利用者が承認（2026-10-25、「ok」）。実装開始承認・試験設計・実装は別管理。
 6. [x] 利用者の実装開始承認（2026-10-25、「はい」）を受領。C# focused/consumer case 4件とunit `UNIT-WRAP-CS-CONTROLS-001` / `UNIT-WRAP-CS-WINDOW-001`を登録し、source・design・requirements・dependencies・commandsへ対応付ける。
 7. [x] Core APIsの最新CI成功revision `dfb86cf` から`impl-csharp/ui-controls-wrapper`を作成・pushした。別言語branchを親にしない。C#専用coding ruleは存在しないことを確認し、実装時はC#14、Nullable、warnings-as-errorsと既存コードの規約に従う。
-8. [ ] Control/tree/property/layout/Focus/Command facadeを実装。`tools/dev.py csharp-controls-test` と `csharp-controls-consumer-test` がlocal pass。unit mappingをCI待ちの`ready`に更新済み。実装unitをcommit/pushし、Windows/Linux CIを確認する。
-9. [ ] Window close callback/defer/resolveのwrapper lifetimeとexception境界をfocused/fake ABIおよび利用可能なC ABI consumerで検証する。
+8. [x] Control/tree/property/layout/Focus/Command facadeを実装。`tools/dev.py csharp-controls-test` と `csharp-controls-consumer-test` local pass。初回commit `8d8ca6c` のWindows/Linux CI run `40168746235`成功。Window unitと共有するerror-ticket前確保の改善を次commitに含め、最新revisionでもCI確認する。
+9. [x] Window peer open/closeとclose callback/defer/resolveのwrapper lifetime・exception境界を実装。`tools/dev.py csharp-window-test` と `csharp-window-consumer-test` がlocal pass、unit mappingはCI待ちの`ready`。
 10. [ ] `tools/dev.py check`、`tools/dev.py minimum`、該当C# focused/consumer試験、文書リンク、unit manifest、`git diff --check`を実行し、実装commitのSHAに対するWindows/Linux CIを確認する。local `check`はこのPCのMSVC STL1001環境エラーでC++ probe時に停止。CIで再確認し、失敗時は原因修正後の新SHAで確認する。
 11. [ ] 計画・DD・test design・unit mapping・`.docs/01_memory/`へ完了結果とCIを記録する。C# Control wrapperの完了をOS peer、package、release完成とは分離する。
 
@@ -75,3 +75,4 @@ C# wrapper DD v1.4はRuntime/Property/Binding/Commandの所有・interop・例�
 | 2026-10-25 | 0.1 / C# UI Control wrapper | 利用者 | 「ok」により本計画を承認。計画commit `dfb86cf`、Windows/Linux CI run `40164472118`成功。DD v1.5改訂案は別途全文レビュー待ち |
 | 2026-10-25 | 0.1 / C# UI Control wrapper | 利用者 | 「ok」によりC# wrapper DD v1.5全文を承認。実装開始は別途確認 |
 | 2026-10-25 | 0.1 / Controls実装unit | Codex | Window/StackPanel/Text/TextBox/Button facade、focused fake ABI test、実C ABI consumerを実装。`csharp-controls-test` と `csharp-controls-consumer-test` local pass。CI未確認 |
+| 2026-10-25 | 0.1 / Window実装unit | Codex | open/close、callback-scope borrowed request、defer/resolve、例外handler、Subscription lifecycleを実装。`csharp-window-test` と `csharp-window-consumer-test` local pass。CI未確認 |

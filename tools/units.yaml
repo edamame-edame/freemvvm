@@ -2623,7 +2623,7 @@
     },
     {
       "id": "UNIT-WRAP-CS-WINDOW-001",
-      "state": "planned",
+      "state": "ready",
       "scope": "csharp-window-peer-open-close-and-close-request-callback-lifecycle",
       "sources": [
         "wrappers/csharp/FreeMvvm/**/*.cs",

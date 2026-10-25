@@ -667,6 +667,22 @@ internal static class Program
         using (label)
         using (button)
         {
+            UiResult<bool> openWindow = window.TryOpen();
+            UiResult<bool> closeWindow = window.TryCloseWindow();
+            if (openWindow.Error?.RawStatus != UiStatus.Unsupported || closeWindow.IsFailure)
+            {
+                Console.Error.WriteLine(
+                    $"Window without a peer should reject open and allow idempotent close while already closed; open={openWindow.Error?.RawStatus}, close={closeWindow.Error?.RawStatus}.");
+                return 78;
+            }
+
+            UiSubscription closeRequests = window.TrySubscribeCloseRequest(static _ => { }).Value;
+            if (closeRequests.TryCancel().IsFailure || closeRequests.TryClose().IsFailure)
+            {
+                Console.Error.WriteLine("Window close-request subscription could not be canceled and released.");
+                return 79;
+            }
+
             if (window.TrySetContent(panel).IsFailure || panel.TryInsert(input, 0).IsFailure ||
                 panel.TryInsert(label, 1).IsFailure || panel.TryInsert(button, 2).IsFailure ||
                 panel.TrySetOrientation(UiControlOrientation.Vertical).IsFailure ||

@@ -37,6 +37,7 @@ internal static class Program
         Run(TestCommandStartExceptionStaysInsideAbiBoundary);
         Run(TestCommandCreateFailureKeepsStartRootLocallyOwned);
         Run(TestUiControlsCreateTreePropertiesAndCommandAssociation);
+        Run(TestWindowCloseRequestBorrowDeferResolveAndCallbackLifetime);
         return _failures == 0 ? 0 : 1;
     }
 
@@ -1092,6 +1093,55 @@ internal static class Program
         runtime.Dispose();
     }
 
+    private static void TestWindowCloseRequestBorrowDeferResolveAndCallbackLifetime()
+    {
+        var native = new FakeNativeApi
+        {
+            WindowOpenStatus = UiStatus.Unsupported,
+            WindowCloseStatus = UiStatus.Unsupported,
+        };
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiWindow window = UiWindow.TryCreate(runtime).Value;
+        var failures = new System.Collections.Generic.List<UiCallbackFailure>();
+        UiCallbackHandlerRegistration handler = runtime.TrySetCallbackFailureHandler(failures.Add).Value;
+        UiWindowCloseRequest? borrowed = null;
+        UiDeferredWindowCloseRequest? deferred = null;
+        bool throwFromCallback = false;
+        UiResult<bool> declined = UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        UiSubscription subscription = window.TrySubscribeCloseRequest(request =>
+        {
+            borrowed = request;
+            if (throwFromCallback) throw new InvalidOperationException("close handler failed");
+            declined = request.TryResolve(UiWindowCloseDecision.Decline);
+            deferred = request.TryDefer().Value;
+        }).Value;
+
+        Check(window.TryOpen().Error?.RawStatus == UiStatus.Unsupported &&
+            window.TryCloseWindow().Error?.RawStatus == UiStatus.Unsupported,
+            "Window peer unsupported status should be preserved by both operations");
+        native.InvokeWindowCloseRequest(0xCAFE);
+        Check(declined.IsSuccess && native.LastCloseDecision == (uint)UiWindowCloseDecision.Decline && deferred is not null,
+            "Callback should resolve borrowed request and create an owned deferred request");
+        Check(borrowed!.TryResolve(UiWindowCloseDecision.Accept).Error?.RawStatus == UiStatus.Closed,
+            "Borrowed close request should expire when its callback returns");
+        Check(deferred!.TryResolve(UiWindowCloseDecision.Accept).IsSuccess &&
+            native.LastCloseDecision == (uint)UiWindowCloseDecision.Accept,
+            "Deferred request should remain resolvable after callback return");
+
+        throwFromCallback = true;
+        native.InvokeWindowCloseRequest(0xCAFF);
+        Check(failures.Count == 1 && failures[0].Kind == UiCallbackFailureKind.WindowCloseRequest,
+            "Managed close callback exceptions should be routed to the typed callback handler");
+        Check(subscription.TryCancel().IsSuccess && subscription.TryClose().IsSuccess &&
+            native.WindowCloseCallbackDestroyCount == 1,
+            "Cancel and handle release should preserve one callback-root destroy");
+
+        deferred.Dispose();
+        handler.Dispose();
+        window.Dispose();
+        runtime.Dispose();
+    }
+
     private sealed class FakeNativeApi : INativeApi
     {
         private readonly ConcurrentDictionary<ulong, int> _releaseFailures = new();
@@ -1139,6 +1189,8 @@ internal static class Program
         internal uint CommandCreateStatus { get; set; } = UiStatus.Ok;
         internal uint CommandExecuteStatus { get; set; } = UiStatus.Ok;
         internal uint CommandCloseStatus { get; set; } = UiStatus.Ok;
+        internal uint WindowOpenStatus { get; set; } = UiStatus.Ok;
+        internal uint WindowCloseStatus { get; set; } = UiStatus.Ok;
         internal ulong LastControlParent { get; private set; }
         internal ulong LastControlChild { get; private set; }
         internal ulong LastControlIndex { get; private set; }
@@ -1148,8 +1200,14 @@ internal static class Program
         internal int FocusRequestCount { get; private set; }
         internal int StackPanelSetOrientationCount { get; private set; }
         internal int ContainerInsertCount { get; private set; }
+        internal uint LastCloseDecision { get; private set; }
+        internal int WindowCloseCallbackDestroyCount { get; private set; }
         internal ulong LastControlHandle { get; private set; }
         private ulong _nextControl = 2000;
+        private const ulong CloseSubscriptionToken = 2200;
+        private IntPtr _windowCloseCallback;
+        private IntPtr _windowCloseUserdata;
+        private IntPtr _windowCloseDestroy;
         internal uint RuntimePostStatus { get; set; } = UiStatus.Ok;
         internal ulong CommandHandle { get; set; } = 1301;
         internal ulong CommandCancelToken { get; set; } = 1302;
@@ -1243,6 +1301,36 @@ internal static class Program
         public uint WidgetIsEnabledProperty(ulong widget, out ulong property) => CreateControlProperty(out property);
         public uint WidgetAccessibleNameProperty(ulong widget, out ulong property) => CreateControlProperty(out property);
         public uint WindowTitleProperty(ulong window, out ulong property) => CreateControlProperty(out property, utf8: true);
+        public uint WindowOpen(ulong window, out ulong error) { error = 0; return WindowOpenStatus; }
+        public uint WindowClose(ulong window, out ulong error) { error = 0; return WindowCloseStatus; }
+        public uint WindowCloseRequestSubscribe(ulong window, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error)
+        {
+            _windowCloseCallback = callback;
+            _windowCloseUserdata = userdata;
+            _windowCloseDestroy = destroy;
+            subscription = CloseSubscriptionToken;
+            error = 0;
+            return UiStatus.Ok;
+        }
+        public uint WindowCloseRequestDefer(ulong borrowedRequest, out ulong ownedRequest, out ulong error)
+        {
+            ownedRequest = 2201;
+            error = 0;
+            return UiStatus.Ok;
+        }
+        public uint WindowCloseRequestResolve(ulong request, uint decision, out ulong error)
+        {
+            LastCloseDecision = decision;
+            error = 0;
+            return UiStatus.Ok;
+        }
+
+        internal unsafe void InvokeWindowCloseRequest(ulong borrowedRequest)
+        {
+            ((delegate* unmanaged[Cdecl]<IntPtr, ulong, void>)_windowCloseCallback)(
+                _windowCloseUserdata,
+                borrowedRequest);
+        }
         public uint TextContentProperty(ulong text, out ulong property) => CreateControlProperty(out property, utf8: true);
         public uint TextBoxValueProperty(ulong textBox, out ulong property) => CreateControlProperty(out property, utf8: true);
         public uint ButtonLabelProperty(ulong button, out ulong property) => CreateControlProperty(out property, utf8: true);
@@ -1780,7 +1868,7 @@ internal static class Program
             return UiStatus.Ok;
         }
 
-        public uint HandleRelease(ulong owned)
+        public unsafe uint HandleRelease(ulong owned)
         {
             _releaseCounts.AddOrUpdate(owned, 1, static (_, count) => count + 1);
             while (true)
@@ -1789,6 +1877,14 @@ internal static class Program
                 if (failures <= 0)
                 {
                     _successfulReleases.AddOrUpdate(owned, 1, static (_, count) => count + 1);
+                    if (owned == CloseSubscriptionToken && _windowCloseDestroy != IntPtr.Zero)
+                    {
+                        IntPtr destroy = _windowCloseDestroy;
+                        _windowCloseDestroy = IntPtr.Zero;
+                        WindowCloseCallbackDestroyCount++;
+                        ((delegate* unmanaged[Cdecl]<IntPtr, void>)destroy)(_windowCloseUserdata);
+                    }
+
                     return UiStatus.Ok;
                 }
 
