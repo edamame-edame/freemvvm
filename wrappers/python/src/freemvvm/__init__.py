@@ -6,8 +6,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import IntEnum
+import itertools
 import queue
+import sys
 import threading
+import traceback
 from typing import Iterator, final
 import weakref
 
@@ -229,6 +232,14 @@ class _CleanupManager:
         if not cls._drain_lock.acquire(blocking=False):
             return
         try:
+            retired_count = _retired_roots.qsize()
+            for _ in range(retired_count):
+                try:
+                    retired = _retired_roots.get_nowait()
+                except queue.Empty:
+                    break
+                if hasattr(retired, "destroy"):
+                    retired.destroy()
             pending_count = cls._queue.qsize()
             for _ in range(pending_count):
                 try:
@@ -239,6 +250,186 @@ class _CleanupManager:
                     cls._queue.put(ticket)
         finally:
             cls._drain_lock.release()
+
+
+def _enqueue_cleanup_tickets(*tickets: _CleanupTicket) -> None:
+    for ticket in tickets:
+        _CleanupManager.enqueue(ticket)
+
+
+_roots_lock = threading.Lock()
+_roots: dict[int, object] = {}
+_root_ids = itertools.count(1)
+_retired_roots: queue.SimpleQueue[object] = queue.SimpleQueue()
+
+
+def _root_add(root: object) -> int:
+    with _roots_lock:
+        key = next(_root_ids)
+        _roots[key] = root
+        return key
+
+
+def _root_get(key: int) -> object | None:
+    with _roots_lock:
+        return _roots.get(key)
+
+
+def _root_destroy(userdata: object) -> None:
+    key = int(userdata or 0)
+    with _roots_lock:
+        root = _roots.pop(key, None)
+    if root is not None and hasattr(root, "destroy"):
+        _retired_roots.put(root)
+
+
+_DESTROY_CALLBACK = _native.VoidCallback(_root_destroy)
+
+
+def _report_callback_exception(error: BaseException) -> None:
+    traceback.print_exception(
+        type(error), error, error.__traceback__, file=sys.stderr
+    )
+
+
+class CommandState(IntEnum):
+    IDLE = 0
+    RUNNING = 1
+    CANCELLING = 2
+    SUCCEEDED = 3
+    FAILED = 4
+    CANCELLED = 5
+
+
+class _StartRoot:
+    __slots__ = ("start", "api", "runtime_cell", "runtime_owner", "trampoline")
+
+    def __init__(
+        self,
+        start: object,
+        api: _native.NativeApi,
+        runtime_cell: _OwnerCell,
+        runtime_owner: _OwnerCell,
+    ) -> None:
+        self.start = start
+        self.api = api
+        self.runtime_cell = runtime_cell
+        self.runtime_owner = runtime_owner
+        self.trampoline = _native.CommandStartCallback(self.invoke)
+
+    def invoke(
+        self,
+        userdata: object,
+        command_token: int,
+        operation_id: int,
+        cancel_token: int,
+    ) -> int:
+        try:
+            command_status, owned_command = self.api.handle_retain(
+                command_token
+            )
+            cancel_status, owned_cancel = self.api.handle_retain(cancel_token)
+            with self.runtime_owner.lease() as runtime_token:
+                runtime_status, owned_runtime = self.api.handle_retain(
+                    runtime_token
+                )
+            if (
+                command_status != _native.OK
+                or cancel_status != _native.OK
+                or runtime_status != _native.OK
+            ):
+                for status, token in (
+                    (command_status, owned_command),
+                    (cancel_status, owned_cancel),
+                    (runtime_status, owned_runtime),
+                ):
+                    if token:
+                        _CleanupManager.enqueue(
+                            _CleanupTicket(
+                                api=self.api,
+                                token=token,
+                                anchor=self.runtime_cell,
+                            )
+                        )
+                return _native.INTERNAL_ERROR
+            operation = CommandOperation._from_tokens(
+                self.api,
+                self.runtime_cell,
+                owned_runtime,
+                owned_command,
+                owned_cancel,
+                operation_id,
+            )
+            try:
+                self.start(operation)  # type: ignore[operator]
+            except BaseException as error:
+                operation.close()
+                _report_callback_exception(error)
+                return _native.INTERNAL_ERROR
+            return _native.OK
+        except BaseException as error:
+            _report_callback_exception(error)
+            return _native.INTERNAL_ERROR
+
+    def destroy(self) -> None:
+        if not self.runtime_owner._release_for_cleanup():
+            _retired_roots.put(self)
+
+
+class _PostRoot:
+    __slots__ = ("callback", "args", "operation", "terminal")
+
+    def __init__(
+        self,
+        callback: object,
+        args: tuple[object, ...],
+        operation: CommandOperation | None = None,
+        terminal: tuple[object, ...] | None = None,
+    ) -> None:
+        self.callback = callback
+        self.args = args
+        self.operation = operation
+        self.terminal = terminal
+
+    def invoke(self, _userdata: object) -> None:
+        try:
+            if self.terminal is not None and self.operation is not None:
+                self.operation._invoke_terminal(self.terminal)
+            else:
+                self.callback(*self.args)  # type: ignore[operator]
+        except BaseException as error:
+            _report_callback_exception(error)
+
+    def destroy(self) -> None:
+        if self.operation is not None:
+            self.operation._post_finished()
+
+
+_POST_CALLBACK = _native.VoidCallback(
+    lambda userdata: (
+        root.invoke(userdata)
+        if (root := _root_get(int(userdata or 0))) is not None
+        else None
+    )
+)
+
+
+def _post_root(
+    api: _native.NativeApi, runtime_token: int, root: _PostRoot
+) -> None:
+    key = _root_add(root)
+    status, error = api.runtime_post(
+        runtime_token, _POST_CALLBACK, key, _DESTROY_CALLBACK
+    )
+    if status != _native.OK:
+        _root_destroy(key)
+        raise UiError(ErrorSnapshot(status))
+    if error:
+        raise UiError(
+            _snapshot_error(
+                api, _native.INTERNAL_ERROR, error, _CleanupTicket(api=api)
+            )
+        )
 
 
 def _snapshot_error(
@@ -1075,6 +1266,364 @@ class Binding:
 
 
 @final
+class CommandOperation:
+    """Thread-independent lease for one accepted Command operation."""
+
+    __slots__ = (
+        "operation_id",
+        "_runtime",
+        "_command",
+        "_cancel",
+        "_lock",
+        "_terminal_pending",
+        "_closed",
+    )
+
+    def __init__(self) -> None:
+        raise TypeError("CommandOperation values are supplied to start()")
+
+    @classmethod
+    def _from_tokens(
+        cls,
+        api: _native.NativeApi,
+        runtime_cell: _OwnerCell,
+        runtime_token: int,
+        command_token: int,
+        cancel_token: int,
+        operation_id: int,
+    ) -> CommandOperation:
+        instance = object.__new__(cls)
+        instance.operation_id = operation_id
+        instance._runtime = _OwnerCell(api, runtime_token, runtime_cell)
+        instance._command = _OwnerCell(api, command_token, runtime_cell)
+        instance._cancel = _OwnerCell(api, cancel_token, runtime_cell)
+        instance._lock = threading.Lock()
+        instance._terminal_pending = False
+        instance._closed = False
+        return instance
+
+    def is_cancel_requested(self) -> bool:
+        with self._lock:
+            if self._closed:
+                raise UiError(ErrorSnapshot(_native.CLOSED))
+        with self._cancel.lease() as token:
+            status, value = self._cancel.api.command_cancel_token_requested(
+                token
+            )
+        if status != _native.OK or value not in (0, 1):
+            raise UiError(
+                ErrorSnapshot(
+                    status if status != _native.OK else _native.INTERNAL_ERROR
+                )
+            )
+        return bool(value)
+
+    def post(self, callback: object, *args: object) -> None:
+        if not callable(callback):
+            raise TypeError("callback must be callable")
+        with self._lock:
+            if self._closed:
+                raise UiError(ErrorSnapshot(_native.CLOSED))
+        with self._runtime.lease() as runtime_token:
+            _post_root(
+                self._runtime.api, runtime_token, _PostRoot(callback, args)
+            )
+
+    def _report(self, kind: str, payload: tuple[object, ...]) -> None:
+        with self._lock:
+            if self._closed:
+                raise UiError(ErrorSnapshot(_native.CLOSED))
+            if self._terminal_pending:
+                raise UiError(ErrorSnapshot(_native.INVALID_ARGUMENT))
+            self._terminal_pending = True
+        root = _PostRoot(None, (), self, (kind, *payload))
+        try:
+            with self._runtime.lease() as runtime_token:
+                _post_root(self._runtime.api, runtime_token, root)
+        except BaseException:
+            with self._lock:
+                self._terminal_pending = False
+            raise
+
+    def report_success(self) -> None:
+        self._report("success", ())
+
+    def report_cancelled(self) -> None:
+        self._report("cancelled", ())
+
+    def report_failure(self, domain: int, code: int, message: str) -> None:
+        if type(domain) is not int or not 0 <= domain <= 0xFFFFFFFF:
+            raise ValueError("domain must be a built-in uint32 int")
+        if type(code) is not int or not 0 <= code <= 0xFFFFFFFF:
+            raise ValueError("code must be a built-in uint32 int")
+        if type(message) is not str:
+            raise TypeError("message must be a built-in str")
+        self._report(
+            "failure", (domain, code, message.encode("utf-8", "strict"))
+        )
+
+    def _invoke_terminal(self, terminal: tuple[object, ...]) -> None:
+        kind, *payload = terminal
+        with self._command.lease() as command_token:
+            if kind == "success":
+                status = self._command.api.command_complete_success(
+                    command_token, self.operation_id
+                )
+            elif kind == "cancelled":
+                status = self._command.api.command_complete_cancelled(
+                    command_token, self.operation_id
+                )
+            else:
+                domain, code, message = payload
+                status = self._command.api.command_complete_failure(
+                    command_token, self.operation_id, domain, code, message
+                )
+        if status != _native.OK:
+            _report_callback_exception(UiError(ErrorSnapshot(status)))
+
+    def _post_finished(self) -> None:
+        with self._lock:
+            release = self._closed
+        if release:
+            self._release_cells()
+
+    def _release_cells(self) -> None:
+        for cell in (self._cancel, self._command, self._runtime):
+            if not cell._release_for_cleanup():
+                _CleanupManager.enqueue(cell.ticket)
+
+    def _close_cells(self) -> None:
+        errors: list[UiError] = []
+        for cell in (self._cancel, self._command, self._runtime):
+            try:
+                cell.close()
+            except UiError as error:
+                errors.append(error)
+        if errors:
+            with self._lock:
+                self._closed = False
+            raise errors[0]
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            pending = self._terminal_pending
+        if pending:
+            return
+        self._close_cells()
+
+
+@final
+class AsyncCommand:
+    """Own an asynchronous command registered with the native Runtime."""
+
+    __slots__ = (
+        "_cell",
+        "_runtime_cell",
+        "_runtime_owner",
+        "_finalizer",
+        "__weakref__",
+    )
+
+    def __init__(self) -> None:
+        raise TypeError("Use AsyncCommand.create() to create a command")
+
+    @classmethod
+    def create(
+        cls,
+        runtime: Runtime,
+        start: object,
+        eligibility: Property | None = None,
+    ) -> AsyncCommand:
+        if not isinstance(runtime, Runtime):
+            raise TypeError("runtime must be a freemvvm.Runtime")
+        if not callable(start):
+            raise TypeError("start must be callable")
+        if eligibility is not None and not isinstance(eligibility, Property):
+            raise TypeError("eligibility must be a BOOL Property or None")
+        runtime_cell = runtime._cell
+        if eligibility is not None and (
+            eligibility._runtime_cell is not runtime_cell
+            or eligibility._kind != Property._BOOL
+        ):
+            raise UiError(ErrorSnapshot(_native.WRONG_TYPE))
+        _CleanupManager.retry_pending()
+        api = runtime_cell.api
+        cell = _OwnerCell(api, 0, runtime_cell)
+        error_ticket = _CleanupTicket(api=api, anchor=runtime_cell)
+        with runtime_cell.lease() as runtime_token:
+            retain_status, retained_runtime = api.handle_retain(runtime_token)
+            if retain_status != _native.OK or not retained_runtime:
+                raise UiError(
+                    ErrorSnapshot(
+                        retain_status
+                        if retain_status != _native.OK
+                        else _native.INTERNAL_ERROR
+                    )
+                )
+            runtime_owner = _OwnerCell(api, retained_runtime, runtime_cell)
+            facade_status, facade_runtime = api.handle_retain(runtime_token)
+            if facade_status != _native.OK or not facade_runtime:
+                runtime_owner.close()
+                raise UiError(
+                    ErrorSnapshot(
+                        facade_status
+                        if facade_status != _native.OK
+                        else _native.INTERNAL_ERROR
+                    )
+                )
+            facade_runtime_owner = _OwnerCell(
+                api, facade_runtime, runtime_cell
+            )
+            root = _StartRoot(start, api, runtime_cell, runtime_owner)
+            key = _root_add(root)
+            if eligibility is None:
+                eligibility_token = 0
+                status, token, error = api.command_create_async(
+                    runtime_token,
+                    eligibility_token,
+                    root.trampoline,
+                    key,
+                    _DESTROY_CALLBACK,
+                )
+            else:
+                with eligibility._cell.lease() as eligibility_token:
+                    status, token, error = api.command_create_async(
+                        runtime_token,
+                        eligibility_token,
+                        root.trampoline,
+                        key,
+                        _DESTROY_CALLBACK,
+                    )
+        if status != _native.OK or not token or error:
+            _root_destroy(key)
+            if status != _native.OK:
+                _CleanupManager.retry_pending()
+            facade_runtime_owner.close()
+            if token:
+                _dispose_unexpected(api, token, cell.ticket)
+            result_status = (
+                status if status != _native.OK else _native.INTERNAL_ERROR
+            )
+            raise UiError(
+                _snapshot_error(api, result_status, error, error_ticket)
+            )
+        cell.token = token
+        instance = object.__new__(cls)
+        instance._cell = cell
+        instance._runtime_cell = runtime_cell
+        instance._runtime_owner = facade_runtime_owner
+        instance._finalizer = weakref.finalize(
+            instance,
+            _enqueue_cleanup_tickets,
+            cell.ticket,
+            facade_runtime_owner.ticket,
+        )
+        return instance
+
+    def execute(self) -> int:
+        api = self._cell.api
+        error_ticket = _CleanupTicket(api=api, anchor=self._runtime_cell)
+        with self._runtime_owner.lease() as runtime_token:
+            _check_ui_thread(api, runtime_token)
+            with self._cell.lease() as command_token:
+                status, operation_id, error = api.command_execute(
+                    command_token
+                )
+        _check_result(api, status, error, error_ticket)
+        if operation_id == 0:
+            raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+        return operation_id
+
+    def cancel(self, operation_id: int) -> None:
+        if (
+            type(operation_id) is not int
+            or not 0 < operation_id <= 0xFFFFFFFFFFFFFFFF
+        ):
+            raise ValueError("operation_id must be a nonzero uint64 int")
+        api = self._cell.api
+        error_ticket = _CleanupTicket(api=api, anchor=self._runtime_cell)
+        with self._runtime_owner.lease() as runtime_token:
+            _check_ui_thread(api, runtime_token)
+            with self._cell.lease() as command_token:
+                status, error = api.command_cancel(command_token, operation_id)
+        _check_result(api, status, error, error_ticket)
+
+    def _property(self, can_execute: bool) -> Property:
+        api = self._cell.api
+        with self._runtime_owner.lease() as runtime_token:
+            _check_ui_thread(api, runtime_token)
+            with self._cell.lease() as token:
+                status, prop = (
+                    api.command_can_execute_property(token)
+                    if can_execute
+                    else api.command_state_property(token)
+                )
+        if status != _native.OK or not prop:
+            raise UiError(
+                ErrorSnapshot(
+                    status if status != _native.OK else _native.INTERNAL_ERROR
+                )
+            )
+        return Property._from_owned_token(
+            api,
+            prop,
+            self._runtime_cell,
+            Property._BOOL if can_execute else Property._I64,
+        )
+
+    def state_property(self) -> Property:
+        return self._property(False)
+
+    def can_execute_property(self) -> Property:
+        return self._property(True)
+
+    def failure_snapshot(self) -> ErrorSnapshot | None:
+        api = self._cell.api
+        with self._runtime_owner.lease() as runtime_token:
+            _check_ui_thread(api, runtime_token)
+            with self._cell.lease() as token:
+                status, error = api.command_failure_snapshot(token)
+        if status != _native.OK:
+            raise UiError(ErrorSnapshot(status))
+        if not error:
+            return None
+        return _snapshot_error(
+            api,
+            _native.OK,
+            error,
+            _CleanupTicket(api=api, anchor=self._runtime_cell),
+        )
+
+    def close(self) -> None:
+        _CleanupManager.retry_pending()
+        if self._cell.token == 0:
+            self._runtime_owner.close()
+            self._finalizer.detach()
+            return
+        api = self._cell.api
+        error_ticket = _CleanupTicket(api=api, anchor=self._runtime_cell)
+        with self._runtime_owner.lease() as runtime_token:
+            _check_ui_thread(api, runtime_token)
+            with self._cell.lease() as token:
+                status, error = api.command_close(token)
+        _check_result(api, status, error, error_ticket)
+        self._cell.close()
+        if self._cell.token == 0:
+            self._runtime_owner.close()
+            self._finalizer.detach()
+
+    def try_close(self) -> UiError | None:
+        try:
+            self.close()
+        except UiError as error:
+            return error
+        return None
+
+
+@final
 class ShutdownRequest:
     """Owns a thread-independent shutdown completion receipt."""
 
@@ -1116,10 +1665,13 @@ class ShutdownRequest:
 
 
 __all__ = [
+    "AsyncCommand",
     "Binding",
     "BindingDirection",
     "BindingErrorSnapshot",
     "BindingMode",
+    "CommandOperation",
+    "CommandState",
     "ErrorSnapshot",
     "MissingRuntimeError",
     "Property",

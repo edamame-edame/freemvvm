@@ -12,6 +12,10 @@ from typing import Protocol
 Handle = ctypes.c_uint64
 Status = ctypes.c_uint32
 Bool = ctypes.c_uint8
+VoidCallback = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
+CommandStartCallback = ctypes.CFUNCTYPE(
+    Status, ctypes.c_void_p, Handle, ctypes.c_uint64, Handle
+)
 
 OK = 0
 INVALID_ARGUMENT = 1
@@ -113,6 +117,62 @@ class NativeApi(Protocol):
     def binding_error_snapshot(
         self, binding: int
     ) -> tuple[int, int, int, int]: ...
+
+    def handle_retain(self, borrowed: int) -> tuple[int, int]: ...
+
+    def runtime_post(
+        self,
+        runtime: int,
+        callback: VoidCallback,
+        userdata: int,
+        destroy: VoidCallback,
+    ) -> tuple[int, int]: ...
+
+    def command_create_async(
+        self,
+        runtime: int,
+        eligibility: int,
+        start: CommandStartCallback,
+        userdata: int,
+        destroy: VoidCallback,
+    ) -> tuple[int, int, int]: ...
+
+    def command_execute(self, command: int) -> tuple[int, int, int]: ...
+
+    def command_cancel(
+        self, command: int, operation_id: int
+    ) -> tuple[int, int]: ...
+
+    def command_close(self, command: int) -> tuple[int, int]: ...
+
+    def command_state_property(self, command: int) -> tuple[int, int]: ...
+
+    def command_can_execute_property(
+        self, command: int
+    ) -> tuple[int, int]: ...
+
+    def command_failure_snapshot(self, command: int) -> tuple[int, int]: ...
+
+    def command_cancel_token_requested(
+        self, token: int
+    ) -> tuple[int, int]: ...
+
+    def command_complete_success(
+        self, command: int, operation_id: int
+    ) -> int: ...
+
+    def command_complete_failure(
+        self,
+        command: int,
+        operation_id: int,
+        domain: int,
+        code: int,
+        message: bytes,
+    ) -> int: ...
+
+    def command_complete_cancelled(
+        self, command: int, operation_id: int
+    ) -> int: ...
 
     def handle_release(self, owned: int) -> int: ...
 
@@ -273,6 +333,70 @@ class CtypesNativeApi:
             ],
         )
         self._bind("ui_abi_1_handle_release", [Handle])
+        self._bind("ui_abi_1_handle_retain", [Handle, ctypes.POINTER(Handle)])
+        self._bind(
+            "ui_abi_1_command_create_async",
+            [
+                Handle,
+                Handle,
+                CommandStartCallback,
+                ctypes.c_void_p,
+                VoidCallback,
+                ctypes.POINTER(Handle),
+                ctypes.POINTER(Handle),
+            ],
+        )
+        self._bind(
+            "ui_abi_1_command_execute",
+            [Handle, ctypes.POINTER(ctypes.c_uint64), ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_command_cancel",
+            [Handle, ctypes.c_uint64, ctypes.POINTER(Handle)],
+        )
+        self._bind("ui_abi_1_command_close", [Handle, ctypes.POINTER(Handle)])
+        self._bind(
+            "ui_abi_1_command_state_property", [Handle, ctypes.POINTER(Handle)]
+        )
+        self._bind(
+            "ui_abi_1_command_can_execute_property",
+            [Handle, ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_command_failure_snapshot",
+            [Handle, ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_command_cancel_token_requested",
+            [Handle, ctypes.POINTER(Bool)],
+        )
+        self._bind(
+            "ui_abi_1_command_complete_success", [Handle, ctypes.c_uint64]
+        )
+        self._bind(
+            "ui_abi_1_command_complete_failure_utf8",
+            [
+                Handle,
+                ctypes.c_uint64,
+                ctypes.c_uint32,
+                ctypes.c_uint32,
+                ctypes.POINTER(ctypes.c_uint8),
+                ctypes.c_uint64,
+            ],
+        )
+        self._bind(
+            "ui_abi_1_command_complete_cancelled", [Handle, ctypes.c_uint64]
+        )
+        self._bind(
+            "ui_abi_1_runtime_post",
+            [
+                Handle,
+                VoidCallback,
+                ctypes.c_void_p,
+                VoidCallback,
+                ctypes.POINTER(Handle),
+            ],
+        )
         self._bind(
             "ui_abi_1_error_status",
             [Handle, ctypes.POINTER(ctypes.c_uint32)],
@@ -575,6 +699,133 @@ class CtypesNativeApi:
 
     def handle_release(self, owned: int) -> int:
         return self._library.ui_abi_1_handle_release(owned)
+
+    def handle_retain(self, borrowed: int) -> tuple[int, int]:
+        owned = Handle()
+        status = self._library.ui_abi_1_handle_retain(
+            borrowed, ctypes.byref(owned)
+        )
+        return status, owned.value
+
+    def command_create_async(
+        self,
+        runtime: int,
+        eligibility: int,
+        start: CommandStartCallback,
+        userdata: int,
+        destroy: VoidCallback,
+    ) -> tuple[int, int, int]:
+        command = Handle()
+        error = Handle()
+        status = self._library.ui_abi_1_command_create_async(
+            runtime,
+            eligibility,
+            start,
+            ctypes.c_void_p(userdata),
+            destroy,
+            ctypes.byref(command),
+            ctypes.byref(error),
+        )
+        return status, command.value, error.value
+
+    def command_execute(self, command: int) -> tuple[int, int, int]:
+        operation_id = ctypes.c_uint64()
+        error = Handle()
+        status = self._library.ui_abi_1_command_execute(
+            command, ctypes.byref(operation_id), ctypes.byref(error)
+        )
+        return status, operation_id.value, error.value
+
+    def command_cancel(
+        self, command: int, operation_id: int
+    ) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_command_cancel(
+            command, operation_id, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def command_close(self, command: int) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_command_close(
+            command, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def command_state_property(self, command: int) -> tuple[int, int]:
+        token = Handle()
+        status = self._library.ui_abi_1_command_state_property(
+            command, ctypes.byref(token)
+        )
+        return status, token.value
+
+    def command_can_execute_property(self, command: int) -> tuple[int, int]:
+        token = Handle()
+        status = self._library.ui_abi_1_command_can_execute_property(
+            command, ctypes.byref(token)
+        )
+        return status, token.value
+
+    def command_failure_snapshot(self, command: int) -> tuple[int, int]:
+        token = Handle()
+        status = self._library.ui_abi_1_command_failure_snapshot(
+            command, ctypes.byref(token)
+        )
+        return status, token.value
+
+    def command_cancel_token_requested(self, token: int) -> tuple[int, int]:
+        requested = Bool()
+        status = self._library.ui_abi_1_command_cancel_token_requested(
+            token, ctypes.byref(requested)
+        )
+        return status, requested.value
+
+    def command_complete_success(self, command: int, operation_id: int) -> int:
+        return self._library.ui_abi_1_command_complete_success(
+            command, operation_id
+        )
+
+    def command_complete_failure(
+        self,
+        command: int,
+        operation_id: int,
+        domain: int,
+        code: int,
+        message: bytes,
+    ) -> int:
+        storage = (ctypes.c_uint8 * len(message)).from_buffer_copy(message)
+        pointer = (
+            ctypes.cast(storage, ctypes.POINTER(ctypes.c_uint8))
+            if message
+            else ctypes.POINTER(ctypes.c_uint8)()
+        )
+        return self._library.ui_abi_1_command_complete_failure_utf8(
+            command, operation_id, domain, code, pointer, len(message)
+        )
+
+    def command_complete_cancelled(
+        self, command: int, operation_id: int
+    ) -> int:
+        return self._library.ui_abi_1_command_complete_cancelled(
+            command, operation_id
+        )
+
+    def runtime_post(
+        self,
+        runtime: int,
+        callback: VoidCallback,
+        userdata: int,
+        destroy: VoidCallback,
+    ) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_runtime_post(
+            runtime,
+            callback,
+            ctypes.c_void_p(userdata),
+            destroy,
+            ctypes.byref(error),
+        )
+        return status, error.value
 
     def error_status(self, error: int) -> tuple[int, int]:
         status_value = ctypes.c_uint32()
