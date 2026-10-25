@@ -1,7 +1,7 @@
 # 初期UI Control C ABI Core実装
 
 - 計画版: 0.1
-- 状態: 利用者承認済み（2026-10-25）。Core UI Control実装を開始
+- 状態: 完了（Core/C ABI実装・unit試験・Windows/Linux CI成功、2026-10-25）
 - 作成日: 2026-10-24
 - 計画branch: `impl-rust/core-ui-controls-c-abi`
 - 親branch: `version/0.0.1`
@@ -74,6 +74,13 @@ Window、StackPanel、Text、TextBox、Buttonを共通C ABIから生成・構成
 - C/C++ probeとABI runtime smokeを更新し、既存ABI利用が壊れていないことを確認する。
 - 対応試験: `UT-WINDOW-ABI-001`および必要な既存ABI regression。
 
+## 実施結果
+
+- `UNIT-CORE-070..072`、`UNIT-ABI-020..021`を実装し、各unitの実装・focused test・C/C++ probeを同一revisionに含めてcommit/pushした。
+- `UNIT-ABI-021`の本実装commit `eaab136` ではRust書式検査の差異がCIで検出されたため、`cargo fmt --all`適用を `f87c082` で修正した。
+- 最終revision `f87c082` の[Windows/Linux CI](https://github.com/edamame-edame/freemvvm/actions/runs/40163386417)は両job成功。作業ブランチ`impl-rust/core-ui-controls-c-abi`の作業ツリーはcleanで、originと同期している。
+- Core/C ABI側の初期UI Control APIは完了。C#を含む各言語wrapperとOS固有Platform peer/backendは後続作業であり、本計画の完了範囲には含めない。
+
 ## 各unitの実行・commit規則
 
 - unit着手時に`tools/units.yaml`へ`UNIT-CORE-070..072`および`UNIT-ABI-020..021`の実在source、依存、test design、test commandを登録してreadyにする。未着手unitはplannedのままにする。
@@ -96,3 +103,4 @@ Window、StackPanel、Text、TextBox、Buttonを共通C ABIから生成・構成
 | --- | --- | --- | --- |
 | 2026-10-24 | 0.1 / 初期UI Control C ABI Core実装 | 利用者レビュー待ち | 計画案のみ。製品コード・unit台帳をまだ変更しない |
 | 2026-10-25 | 0.1 / 初期UI Control C ABI Core実装 | 利用者 | 「ok」により計画全体を承認。unitごとの実装・試験・commitを開始 |
+| 2026-10-25 | 0.1 / 初期UI Control C ABI Core実装 | Codex | `UNIT-CORE-070..072`、`UNIT-ABI-020..021`および最終SHA `f87c082`のWindows/Linux CI成功を確認し完了 |

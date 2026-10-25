@@ -17,4 +17,5 @@
 - UNIT-CORE-072ではLayout dirtyを変更箇所からLogical Treeの全祖先へ伝播する。Window peer/callbackはRuntime状態mutexを解放してから呼び、shutdown時もObjectStoreからstateを移譲して外部peer closeをlock外で実施する。
 - UNIT-ABI-020ではButtonがCommand entryのArcを保持し、public token解放後もgetterで独立tokenを再発行できる。交換時の旧Arc dropはObjectStore mutex解放後に行い、別Runtime Commandは状態変更前に拒否する。Windows SDKが不足する開発端末でも、MinGW CMakeでC/C++ ABI header probeとruntime smokeを検証できる。
 - UNIT-ABI-021ではWindow close subscriptionを既存Subscription cancel/release lifecycleへ接続する。callback中borrowed requestからdeferでowned tokenを発行し、最後の未解決owner releaseをDeclineにする。詳細は[Window close-requestの実装メモ](abi-window-close-request.md)。
+- 初期UI ControlのCore/C ABI計画は`UNIT-CORE-070..072`、`UNIT-ABI-020..021`まで完了。最終revision `f87c082` のWindows/Linux CI run `40163386417`が成功した。次層のwrapperは対象言語ごとにこのCore APIs branchから子branchを作り、C# Controlの実装前にC# DDとwrapper test designを補う。
 - WebEngine branchは利用者による別途採否判断までversion branchへ統合しない。
