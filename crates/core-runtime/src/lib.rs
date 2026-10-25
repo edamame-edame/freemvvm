@@ -16,8 +16,10 @@ pub use property::ValidationError;
 mod runtime;
 mod runtime_handles;
 mod ui_controls;
+mod ui_focus;
 // Typed value semantics back the internal Property state; ABI validation remains a later unit.
 mod ui_tree;
+mod ui_window;
 #[allow(dead_code)]
 mod value;
 
@@ -45,6 +47,8 @@ pub mod abi_support {
         UiControlKind, UiControlProperty, UiControlPropertyOwner, UiControlState,
     };
     use crate::ui_tree::TreeError;
+    pub use crate::ui_window::CloseDecision;
+    use crate::ui_window::WindowLifecycleError;
     use crate::value::{
         DecimalValue, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind,
     };
@@ -1552,6 +1556,19 @@ pub mod abi_support {
         }
     }
 
+    fn map_window_lifecycle_error(error: WindowLifecycleError) -> UiControlApiError {
+        match error {
+            WindowLifecycleError::Unsupported => UiControlApiError::Unsupported,
+            WindowLifecycleError::InvalidState | WindowLifecycleError::StaleRequest => {
+                UiControlApiError::InvalidArgument
+            }
+            WindowLifecycleError::OutOfMemory => UiControlApiError::OutOfMemory,
+            WindowLifecycleError::IdentifierExhausted | WindowLifecycleError::PeerFailure => {
+                UiControlApiError::Internal
+            }
+        }
+    }
+
     fn register_internal_control_property(
         runtime: &Arc<RuntimeCore>,
         initial: TypedValue,
@@ -2000,6 +2017,193 @@ pub mod abi_support {
             )
             .map_err(map_ui_control_tree_error)?;
         tree_child_handle(token, &runtime, UiControlKind::StackPanel, identity)
+    }
+
+    fn map_ui_control_property_error(error: RuntimePropertyError) -> UiControlApiError {
+        match error {
+            RuntimePropertyError::WrongThread => UiControlApiError::WrongThread,
+            RuntimePropertyError::Closed => UiControlApiError::Closed,
+            RuntimePropertyError::Store(UiObjectStoreError::OutOfMemory)
+            | RuntimePropertyError::NotificationQueueOutOfMemory => UiControlApiError::OutOfMemory,
+            RuntimePropertyError::Registry(error) => map_ui_control_registry_error(error),
+            RuntimePropertyError::WrongObjectState => UiControlApiError::InvalidArgument,
+            _ => UiControlApiError::Internal,
+        }
+    }
+
+    pub fn stack_panel_orientation(panel: u64) -> Result<u32, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        runtime
+            .stack_panel_config(identity)
+            .map(|(orientation, _)| orientation)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn stack_panel_set_orientation(
+        panel: u64,
+        orientation: u32,
+    ) -> Result<(), UiControlApiError> {
+        if !matches!(orientation, 1 | 2) {
+            return Err(UiControlApiError::InvalidArgument);
+        }
+        let (_, runtime, identity) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        runtime
+            .stack_panel_set_orientation(identity, orientation)
+            .map(|_| ())
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn stack_panel_child_align(panel: u64, child: u64) -> Result<u32, UiControlApiError> {
+        let (_, runtime, panel_identity) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        let (child_token, child_runtime, child_kind, child_identity) = ui_control_entry(child)?;
+        if child_kind == UiControlKind::Window {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !Arc::ptr_eq(&runtime, &child_runtime) {
+            return Err(UiControlApiError::WrongRuntime);
+        }
+        ui_control_handles()
+            .registry
+            .validate(child_token, &child_kind, &runtime.identity())
+            .map_err(map_ui_control_registry_error)?;
+        runtime
+            .stack_panel_child_align(panel_identity, child_identity)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn stack_panel_set_child_align(
+        panel: u64,
+        child: u64,
+        align: u32,
+    ) -> Result<(), UiControlApiError> {
+        if !matches!(align, 1..=4) {
+            return Err(UiControlApiError::InvalidArgument);
+        }
+        let (_, runtime, panel_identity) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        let (child_token, child_runtime, child_kind, child_identity) = ui_control_entry(child)?;
+        if child_kind == UiControlKind::Window {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !Arc::ptr_eq(&runtime, &child_runtime) {
+            return Err(UiControlApiError::WrongRuntime);
+        }
+        ui_control_handles()
+            .registry
+            .validate(child_token, &child_kind, &runtime.identity())
+            .map_err(map_ui_control_registry_error)?;
+        runtime
+            .stack_panel_set_child_align(panel_identity, child_identity, align)
+            .map(|_| ())
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn ui_control_layout_dirty(control: u64) -> Result<bool, UiControlApiError> {
+        let (_, runtime, _, identity) = ui_control_entry(control)?;
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        runtime
+            .ui_control_layout_dirty(identity)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn ui_control_layout_clean(control: u64) -> Result<(), UiControlApiError> {
+        let (_, runtime, _, identity) = ui_control_entry(control)?;
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        runtime
+            .ui_control_layout_clean(identity)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn widget_request_focus(widget: u64) -> Result<(), UiControlApiError> {
+        let (_, runtime, kind, identity) = ui_control_entry(widget)?;
+        if !matches!(kind, UiControlKind::TextBox | UiControlKind::Button) {
+            return Err(UiControlApiError::WrongType);
+        }
+        runtime
+            .widget_request_focus(identity)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn widget_has_focus(widget: u64) -> Result<bool, UiControlApiError> {
+        let (_, runtime, kind, identity) = ui_control_entry(widget)?;
+        if !matches!(kind, UiControlKind::TextBox | UiControlKind::Button) {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        runtime
+            .focus_state()
+            .map(|(_, focused)| focused == Some(identity))
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn window_open(window: u64) -> Result<u64, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_open(identity)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    pub fn window_close(window: u64) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_close(identity)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    pub fn window_platform_activation(window: u64, active: bool) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_set_active(identity, active)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn window_close_intent(
+        window: u64,
+        callback: Option<Box<dyn FnOnce(u64, u64) -> CloseDecision>>,
+    ) -> Result<Option<(u64, u64)>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_close_intent(identity, callback)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    pub fn window_close_request_resolve(
+        window: u64,
+        request: u64,
+        generation: u64,
+        decision: CloseDecision,
+    ) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_close_resolve(identity, request, generation, decision)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    pub fn window_close_request_release(
+        window: u64,
+        request: u64,
+        generation: u64,
+    ) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_close_request_release(identity, request, generation)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_install_test_peer(
+        window: u64,
+        peer: Arc<dyn crate::ui_window::WindowPeerAdapter>,
+    ) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_set_peer(identity, peer)
+            .map_err(map_ui_control_property_error)
     }
 
     pub fn ui_control_create_window(runtime: u64) -> Result<u64, UiControlApiError> {

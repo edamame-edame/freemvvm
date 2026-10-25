@@ -351,6 +351,51 @@ impl<R> RuntimeTreeStore<R> {
             .ok_or(TreeError::InvalidIdentity)
     }
 
+    pub(crate) fn parent_identity(
+        &self,
+        child: ObjectIdentity,
+    ) -> Result<Option<ObjectIdentity>, TreeError> {
+        self.ensure_ui_thread()?;
+        self.nodes
+            .get(&child)
+            .map(|node| node.parent)
+            .ok_or(TreeError::InvalidIdentity)
+    }
+
+    pub(crate) fn root_identity(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<ObjectIdentity, TreeError> {
+        self.ensure_ui_thread()?;
+        let mut current = identity;
+        loop {
+            let node = self.nodes.get(&current).ok_or(TreeError::InvalidIdentity)?;
+            let Some(parent) = node.parent else {
+                return Ok(current);
+            };
+            current = parent;
+        }
+    }
+
+    pub(crate) fn is_in_subtree(
+        &self,
+        root: ObjectIdentity,
+        identity: ObjectIdentity,
+    ) -> Result<bool, TreeError> {
+        self.ensure_ui_thread()?;
+        let mut current = identity;
+        loop {
+            if current == root {
+                return Ok(true);
+            }
+            let node = self.nodes.get(&current).ok_or(TreeError::InvalidIdentity)?;
+            let Some(parent) = node.parent else {
+                return Ok(false);
+            };
+            current = parent;
+        }
+    }
+
     pub(crate) fn child_identity_at(
         &self,
         parent: ObjectIdentity,

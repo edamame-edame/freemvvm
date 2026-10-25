@@ -3354,6 +3354,62 @@
           "command": ["cargo", "test", "-p", "freemvvm-core", "ui_controls::tests"]
         }
       ]
+    },
+    {
+      "id": "UNIT-CORE-072",
+      "state": "complete",
+      "scope": "stack-panel-layout-focus-and-window-close-core-state",
+      "sources": [
+        "crates/core-runtime/src/ui_controls.rs",
+        "crates/core-runtime/src/runtime.rs",
+        "crates/core-runtime/src/ui_tree.rs",
+        "crates/core-runtime/src/lib.rs",
+        "crates/core-runtime/src/object_store.rs",
+        "crates/core-runtime/src/ui_focus.rs",
+        "crates/core-runtime/src/ui_window.rs"
+      ],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-070", "UNIT-CORE-071"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "初期UI ControlのC ABI操作 / StackPanel設定・Window peer・close判断"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.1",
+          "section": "Window peer・close request / StackPanel・Focus"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "StackPanel配置 / Layout invalidation / Focus"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/input-focus.md",
+          "version": "1.1",
+          "section": "Focus状態と遷移"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/abstraction.md",
+          "version": "1.1",
+          "section": "Window peerとsurface状態"
+        }
+      ],
+      "requirements": ["RQ-09-007", "RQ-09-045", "RQ-09-046", "RQ-09-067", "RQ-09-069", "RQ-09-070", "RQ-09-071", "RQ-11-020"],
+      "cases": ["TC-LAYOUT-01", "TC-PLAT-01", "TC-LIFE-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-LAYOUT-ABI-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "ui_controls::tests"]
+        },
+        {
+          "id": "UT-WINDOW-ABI-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "ui_window::tests"]
+        }
+      ]
     }
   ]
 }
