@@ -1,7 +1,7 @@
 # Python UTF-8 Property wrapper
 
 - 計画版: 0.1
-- 状態: 計画承認済み（利用者、「ok」、2026-10-25）。DD改訂・試験設計・実装は未承認
+- 状態: 実装・focused local検証完了。全体local gatesとWindows/Linux CI確認待ち
 - 作成日: 2026-10-25
 - 対象: 既存Python `Property` facadeへ`str`のUTF-8 create/get/setを追加する独立unit
 - 作業branch案: `impl-python/runtime-wrapper`を継続する。Python RuntimeとBOOL/I64 Propertyに依存し、Core/C ABI変更や他言語wrapper差分は含めない
@@ -15,11 +15,12 @@
 ## 上位根拠と未確定点
 
 - 要求: [RQ-02 Property](../11_requirements/RQ-02_core-features.md)（RQ-02-001、RQ-02-002、RQ-02-017）、[RQ-04 ABI](../11_requirements/RQ-04_abi-boundary.md)（RQ-04-003、RQ-04-020、RQ-04-021）、[ownership](../11_requirements/RQ-05_ownership-callbacks.md)、[threading](../11_requirements/RQ-06_threading-dispatch.md)。要求本文・承認履歴を実装前に再確認する。
-- Python詳細設計: [Python wrapper DD v1.3](../13_detail_design/wrappers/python.md)で`Property`のowner/call lease/API基盤は承認済みだが、値mappingはBOOL/I64のみ。UTF-8 API・例外・strict conversionはDD v1.4改訂案としてレビューする。
+- Python詳細設計: [Python wrapper DD v1.4](../13_detail_design/wrappers/python.md)全文承認済み。`Property`のowner/call lease/API基盤にUTF-8 API・例外・strict conversionを追加した。
 - 共通ABI: [共通C ABI DD](../13_detail_design/runtime-objects/abi.md)のUTF-8 Property create/get/set、byte length、caller-buffer query/readと`UI_BUFFER_TOO_SMALL`規則を再利用する。Core/C ABIを変更しない。
 - 値・ownership: [共通object/value DD](../13_detail_design/runtime-objects/objects-values.md)のUTF-8借用・copy・buffer規則を参照する。
 - 試験: [wrapper unit-test design](../32_unit_test/wrappers.md)、[unit-test strategy](../32_unit_test/unit-test-strategy.md)、[release test matrix](../30_release_test/requirement-test-matrix.md)。既存Rust/C#/C++試験はcoverage参考に限り、Pythonの試験承認を代替しない。
 - コーディング規則: [Python coding rule](../00_rule/coding_rule_python.md)。
+- 実装知見: [Python UTF-8 Property実装memory](../01_memory/python-property-utf8.md)。
 
 ## 提案scope
 
@@ -37,7 +38,7 @@
 2. [x] 本計画0.1のscope・branch・レビューgateについて利用者の「ok」による承認を得た（2026-10-25）。
 3. [x] Python DD v1.4でPython `str` mapping、strict encode/decode、invalid input/output、buffer retry、error/ownership flowを具体化し、利用者の「ok」による全文承認を得た（2026-10-25）。
 4. [x] DD承認後にwrapper test design 0.6へfake ABI/consumer casesを追加し、利用者の「ok」による全文承認を得た（2026-10-25）。`UNIT-WRAP-PY-PROP-UTF8-001`をunit台帳へ`ready`で登録し、実装開始は別承認とする。
-5. [ ] 利用者の実装開始指示後、Python ctypes bindings、Property facade、focused fake ABI tests、独立real C ABI consumer、`tools/dev.py` command/check gatesを同unitに実装する。
+5. [x] 利用者の実装開始指示後、Python ctypes bindings、Property facade、focused fake ABI tests、独立real C ABI consumer、`tools/dev.py` command/check gatesを同unitに実装した。
 6. [ ] Windows local focused tests/consumer/check/minimum/document validation、Windows/Linux CIを実装SHAで確認し、unit/plan/test/memoryを完了記録して日本語でcommit/pushする。
 
 ## 検証と完了条件
@@ -56,3 +57,5 @@
 | 2026-10-25 | 計画0.1全文 | 利用者 | 「ok」によりscope・branch・段階別レビューgateを承認。DD改訂・試験設計・実装開始は別承認 |
 | 2026-10-25 | Python wrapper DD v1.4全文 | 利用者 | 「ok」によりUTF-8 Property API・変換・buffer retry・失敗境界を含む文書全体を承認。試験設計・実装開始は別判断 |
 | 2026-10-25 | wrapper unit-test design 0.6全文 | 利用者 | 「ok」によりPython UTF-8 Propertyのfake ABI/real C ABI consumer試験設計を承認。実装開始・試験合格は別判断 |
+| 2026-10-25 | 実装開始 | 利用者 | 「ok」により承認済みDD v1.4・試験設計0.6に基づく実装開始を指示 |
+| 2026-10-25 | Windows local実行 | — | fake ABI 14件、実C ABI consumer、全体`check`、`minimum`、document-link validationがsuccess。Windows/Linux CIは未完了 |

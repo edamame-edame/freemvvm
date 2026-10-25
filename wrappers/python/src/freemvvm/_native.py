@@ -60,9 +60,17 @@ class NativeApi(Protocol):
         self, runtime: int, initial: int
     ) -> tuple[int, int, int]: ...
 
+    def property_create_utf8(
+        self, runtime: int, initial: bytes
+    ) -> tuple[int, int, int]: ...
+
     def property_get_bool(self, property: int) -> tuple[int, int]: ...
 
     def property_get_i64(self, property: int) -> tuple[int, int]: ...
+
+    def property_get_utf8(
+        self, property: int, buffer: bytearray | None
+    ) -> tuple[int, int]: ...
 
     def property_set_bool(
         self, property: int, value: int
@@ -70,6 +78,10 @@ class NativeApi(Protocol):
 
     def property_set_i64(
         self, property: int, value: int
+    ) -> tuple[int, int]: ...
+
+    def property_set_utf8(
+        self, property: int, value: bytes
     ) -> tuple[int, int]: ...
 
     def handle_release(self, owned: int) -> int: ...
@@ -134,11 +146,30 @@ class CtypesNativeApi:
             ],
         )
         self._bind(
+            "ui_abi_1_property_create_utf8",
+            [
+                Handle,
+                ctypes.POINTER(ctypes.c_uint8),
+                ctypes.c_uint64,
+                ctypes.POINTER(Handle),
+                ctypes.POINTER(Handle),
+            ],
+        )
+        self._bind(
             "ui_abi_1_property_get_bool", [Handle, ctypes.POINTER(Bool)]
         )
         self._bind(
             "ui_abi_1_property_get_i64",
             [Handle, ctypes.POINTER(ctypes.c_int64)],
+        )
+        self._bind(
+            "ui_abi_1_property_get_utf8",
+            [
+                Handle,
+                ctypes.POINTER(ctypes.c_uint8),
+                ctypes.c_uint64,
+                ctypes.POINTER(ctypes.c_uint64),
+            ],
         )
         self._bind(
             "ui_abi_1_property_set_bool",
@@ -147,6 +178,15 @@ class CtypesNativeApi:
         self._bind(
             "ui_abi_1_property_set_i64",
             [Handle, ctypes.c_int64, ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_property_set_utf8",
+            [
+                Handle,
+                ctypes.POINTER(ctypes.c_uint8),
+                ctypes.c_uint64,
+                ctypes.POINTER(Handle),
+            ],
         )
         self._bind("ui_abi_1_handle_release", [Handle])
         self._bind(
@@ -283,6 +323,24 @@ class CtypesNativeApi:
         )
         return status, property_handle.value, error.value
 
+    def property_create_utf8(
+        self, runtime: int, initial: bytes
+    ) -> tuple[int, int, int]:
+        property_handle = Handle()
+        error = Handle()
+        storage = (ctypes.c_uint8 * len(initial)).from_buffer_copy(initial)
+        pointer = ctypes.cast(storage, ctypes.POINTER(ctypes.c_uint8))
+        if not initial:
+            pointer = ctypes.POINTER(ctypes.c_uint8)()
+        status = self._library.ui_abi_1_property_create_utf8(
+            runtime,
+            pointer,
+            len(initial),
+            ctypes.byref(property_handle),
+            ctypes.byref(error),
+        )
+        return status, property_handle.value, error.value
+
     def property_get_bool(self, property: int) -> tuple[int, int]:
         value = Bool()
         status = self._library.ui_abi_1_property_get_bool(
@@ -297,6 +355,22 @@ class CtypesNativeApi:
         )
         return status, value.value
 
+    def property_get_utf8(
+        self, property: int, buffer: bytearray | None
+    ) -> tuple[int, int]:
+        length = ctypes.c_uint64()
+        if buffer is None or not buffer:
+            pointer = ctypes.POINTER(ctypes.c_uint8)()
+            capacity = 0 if buffer is None else len(buffer)
+        else:
+            storage = (ctypes.c_uint8 * len(buffer)).from_buffer(buffer)
+            pointer = ctypes.cast(storage, ctypes.POINTER(ctypes.c_uint8))
+            capacity = len(buffer)
+        status = self._library.ui_abi_1_property_get_utf8(
+            property, pointer, capacity, ctypes.byref(length)
+        )
+        return status, length.value
+
     def property_set_bool(self, property: int, value: int) -> tuple[int, int]:
         error = Handle()
         status = self._library.ui_abi_1_property_set_bool(
@@ -308,6 +382,19 @@ class CtypesNativeApi:
         error = Handle()
         status = self._library.ui_abi_1_property_set_i64(
             property, value, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def property_set_utf8(
+        self, property: int, value: bytes
+    ) -> tuple[int, int]:
+        error = Handle()
+        storage = (ctypes.c_uint8 * len(value)).from_buffer_copy(value)
+        pointer = ctypes.cast(storage, ctypes.POINTER(ctypes.c_uint8))
+        if not value:
+            pointer = ctypes.POINTER(ctypes.c_uint8)()
+        status = self._library.ui_abi_1_property_set_utf8(
+            property, pointer, len(value), ctypes.byref(error)
         )
         return status, error.value
 
