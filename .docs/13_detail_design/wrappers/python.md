@@ -1,9 +1,9 @@
 # 言語ラッパー：Python
 
-- 文書版: 1.7
+- 文書版: 1.8
 - 文書ロール: detailed-design
 - 更新日: 2026-10-26
-- 状態: 1.7全文承認済み（利用者、「ok」、2026-10-26）。実装・試験状態は別管理
+- 状態: 1.8全文承認済み（利用者、「ok」、2026-10-26）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -22,6 +22,7 @@
 | DECIMAL Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-02-019](../../11_requirements/RQ-02_core-features.md#rq-02-019)、[RQ-02-020](../../11_requirements/RQ-02_core-features.md#rq-02-020)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 | UTF-8 Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-04-003](../../11_requirements/RQ-04_abi-boundary.md#rq-04-003)、[RQ-04-020](../../11_requirements/RQ-04_abi-boundary.md#rq-04-020)、[RQ-04-021](../../11_requirements/RQ-04_abi-boundary.md#rq-04-021)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 | Property間Binding facade（OneTime/OneWay/TwoWay、cancel/release、遅延error snapshot） | [RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-07-001](../../11_requirements/RQ-07_binding.md#rq-07-001)、[RQ-07-002](../../11_requirements/RQ-07_binding.md#rq-07-002)、[RQ-07-003](../../11_requirements/RQ-07_binding.md#rq-07-003)、[RQ-07-004](../../11_requirements/RQ-07_binding.md#rq-07-004)、[RQ-07-005](../../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-007](../../11_requirements/RQ-07_binding.md#rq-07-007)、[RQ-07-008](../../11_requirements/RQ-07_binding.md#rq-07-008)、[RQ-07-009](../../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../../11_requirements/RQ-07_binding.md#rq-07-010)、[RQ-07-011](../../11_requirements/RQ-07_binding.md#rq-07-011)、[RQ-07-015](../../11_requirements/RQ-07_binding.md#rq-07-015) |
+| Python AsyncCommand facade | [RQ-02-004](../../11_requirements/RQ-02_core-features.md#rq-02-004)、[RQ-03-004](../../11_requirements/RQ-03_language-support.md#rq-03-004)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-008](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-003](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)、[RQ-06-004](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-004)、[RQ-06-008](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-008)、[RQ-06-009](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-009)、[RQ-06-010](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-010)、[RQ-06-011](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-011)、[RQ-06-013](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-013) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -803,6 +804,94 @@ sequenceDiagram
 
 `binding_subscribe_error`、Property `Subscription` facade、callback/root registry、通知購読、converter、Binding from/to non-Property UI control、Bindingの暗黙cancel、C ABI/Core変更は本改訂に含めない。エラー状態は明示的な`error_snapshot()` pollingで読む。callback購読はPython Subscriptionの所有・解除設計と同じ段階で別途提案する。OneTime/OneWay/TwoWayの値伝播、初期同期、遅延validation失敗、cancel後の保証は承認済みRQ-07と既存Binding ABI設計を変更しない。
 
+## Python AsyncCommand公開API（1.8）
+
+本節は承認済み[RQ-06](../../11_requirements/RQ-06_threading-dispatch.md)と[非同期Command設計](../events/commands.md)、[共通C ABI](../runtime-objects/abi.md)をPython wrapperへ写す。Command状態・operation ID・cancel/close・worker完了の意味は共通設計に委譲し、Core/C ABIを変更しない。1.8全文承認はPython公開仕様の採用であり、実装済みAPI・試験合格を意味しない。
+
+### 公開型と操作案
+
+| Python API | 責務案 |
+|---|---|
+| `CommandState(IntEnum)` | 共通C ABIの`IDLE/RUNNING/CANCELLING/SUCCEEDED/FAILED/CANCELLED`値を名前で提供する。state Property自体は既存の`Property[int]`で返し、未知の将来値を整数のまま保持する。 |
+| `AsyncCommand.create(runtime, start, eligibility=None)` | 同一Runtimeに属するoptional BOOL PropertyとPython start callableを登録する。成功時は`AsyncCommand` owner、失敗時は`UiError`。`eligibility=None`はC ABIのnull eligibility tokenへ写す。 |
+| `AsyncCommand.execute()` | UI threadで一回のoperationを受け付け、成功時に非zero operation IDを返す。受付前の拒否は`UiError`であり、業務処理の成功を表さない。 |
+| `AsyncCommand.cancel(operation_id)` | 指定operationへの協調的cancel要求をUI threadで行う。要求の受付とworkerの`CANCELLED`報告を同一視しない。 |
+| `state_property()` / `can_execute_property()` | C ABIが返す独立owned Property tokenを通常の`Property` ownerとして返す。setter制限とstate更新はCoreに委譲する。 |
+| `failure_snapshot()` | 現在のimmutable `ErrorSnapshot`を取得し、snapshotがなければ`None`を返す。取得error tokenは読み取り後に解放する。 |
+| `CommandOperation` | 一回のexecuteに対応するworker lease。`operation_id`、`is_cancel_requested()`、`report_success()`、`report_failure(domain, code, message)`、`report_cancelled()`、`post(callback, *args)`、`close()`を提供する。 |
+
+`start(operation)`はC callback経由でUI thread上に呼ばれる短いPython callableであり、workerを起動・登録して戻る。wrapperはexecutor/thread poolを内蔵せず、アプリが選択するworker方式へ`CommandOperation`を渡す。開始callableが例外を送出した場合はtrampolineで`BaseException`をC境界から捕捉し、既存Runtime callback failure handlerへ`CommandStart`種別として報告して`UI_INTERNAL_ERROR`を返す。Coreが受付済みoperationをFAILEDとして確定し、`execute()`の受付成功自体は取り消さない。worker内例外をwrapper独自のdomain/codeへ自動変換せず、アプリが捕捉して`report_failure`を明示する。
+
+`execute`、`cancel`、Property handle取得、failure snapshot取得、`close`は作成RuntimeのUI thread専用とし、Python側thread identityとC ABIのthread/status検査を併用する。`CommandOperation.is_cancel_requested`、終端report、`post`はworker threadから利用できる。`post(callback, *args)`はcallable/argsへのstrong referenceを保持したrootを作り、`runtime_post`でUI threadへ一度dispatchする。argsはdeep copyせず同じPython object参照を保持するため、呼出し側はdispatchまで不変・同期済みのデータだけを共有する。post受付成功時だけCoreへroot所有を移し、拒否時は呼出し側に所有を残す。callback例外はC ABIへ出さず、既存handlerの`Post`種別へ送る。これによりworkerからProperty setterを直接呼ばず、必要な進捗値を通常Propertyへ反映できる。専用progress API・Progress objectは追加しない。
+
+### worker lease、終端report、所有
+
+start trampolineはcallback中にCommand、cancel token、Runtimeのowned tokenをretainしてから`CommandOperation`を生成し、callableへ渡す。retain/owner準備が失敗した場合はworkerを起動せず、start callback失敗として返す。worker leaseはCommand ownerのclose/公開handle release/Runtime ownerのPython wrapper回収と独立して、workerが終了または明示closeするまで必要tokenとRuntime anchorを保持する。UI-affine Command操作をworker leaseから公開しない。
+
+`report_success`、`report_failure`、`report_cancelled`はworker上でterminal payload/rootを用意し、`runtime_post`でUI threadへ送る。受理されたcallbackだけが対応するC ABI `command_complete_*`を一度呼び、現在のoperation IDに一度だけ終端結果を適用する。Python methodの成功はpost受付を意味し、Core上のstate変更完了はPropertyから観測する。post拒否時はterminal rootとpayloadの所有をworker側に残し、失敗statusを`UiError`に写して、同じ結果を再試行できる。受付成功後の二重reportはwrapperで拒否する。Runtime shutdown後にpostが拒否/破棄されても終端結果をUI上で観測できる保証は追加しない。
+
+`report_failure`はbuilt-in `int`でuint32範囲のdomain/codeとbuilt-in `str` messageを受け、messageをstrict UTF-8へ変換する。C ABIが借用するbytesはnative call中保持する。成功したfailure reportはCoreがerrorをcopyし、`failure_snapshot()`は独立error tokenから不変Python `ErrorSnapshot`を作る。次operation開始後にCoreが現在failureを消しても取得済snapshotは変化しない。
+
+`AsyncCommand.close()`はUI threadで`command_close`を行って新規executeを止め、現在workerへ協調cancelを要求した後に公開Command tokenをreleaseする。`close`はworker終了を待たない。native close失敗ではowner tokenを維持し再試行する。close成功後にreleaseだけが失敗した場合はclosed状態とtokenを保持し、再試行時にclose semanticsを再適用してからtoken解放を完了する。単なる`handle_release`、`CommandOperation.close()`、finalizerは`command_close`やcancelの代替にならない。公開handle release/finalizerだけではCore登録とstart rootを解除せず、明示closeまたはRuntime shutdownまで登録を維持する。Callback rootはcreate成功時だけCoreへ移し、C destroyとin-flight start callbackの完了後に一度だけsafe-point queueへ回収を委譲する。
+
+### クラス関係と主要flow
+
+```mermaid
+classDiagram
+    direction TB
+    class Runtime
+    class Property~T~
+    class AsyncCommand {
+        create(runtime, start, eligibility)
+        execute()
+        cancel(operation_id)
+        state_property()
+        can_execute_property()
+        failure_snapshot()
+        close()
+        try_close()
+    }
+    class CommandOperation {
+        operation_id
+        is_cancel_requested()
+        report_success()
+        report_failure(domain, code, message)
+        report_cancelled()
+        post(callback, args)
+        close()
+    }
+    class StartCallbackRoot
+    class PostCallbackRoot
+    Runtime o-- AsyncCommand : Runtime anchor
+    AsyncCommand ..> Property : optional eligibility / returned state
+    AsyncCommand *-- StartCallbackRoot : create success transfers ownership
+    AsyncCommand ..> CommandOperation : start callback creates per operation
+    CommandOperation o-- Runtime : retained post-capable token
+    CommandOperation ..> PostCallbackRoot : accepted post transfers ownership
+```
+
+```mermaid
+sequenceDiagram
+    participant App as Python app
+    participant Cmd as AsyncCommand / UI thread
+    participant Core as Rust Core via C ABI
+    participant Worker as App-selected worker
+    App->>Cmd: execute()
+    Cmd->>Core: command_execute
+    Core->>Cmd: start trampoline(operation id, borrowed token)
+    Cmd->>Core: retain Command / cancel / Runtime worker handles
+    Cmd->>Worker: start(operation)
+    Worker->>Core: is_cancel_requested()
+    Worker->>Core: runtime_post(terminal or callback root)
+    Core->>Cmd: UI callback: command_complete_* / post callback
+    Cmd->>Core: update terminal state / invoke rooted callback
+    Worker->>Core: release worker lease after finish
+```
+
+### 1.8範囲外・確認待ち
+
+Core/C ABIの変更、内蔵executor/thread pool、`asyncio` Task統合、専用progress値/Property、worker例外からdomain/codeを自動生成するpolicy、Property/Binding/Control以外のMVVM facade、Command completion callback/Subscriptionは含めない。`post(callback, *args)`をAsyncCommandOperationの最小UI dispatch surfaceに限定し、callback例外を既存Runtime handlerの`Post`種別へ分類する。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -823,3 +912,5 @@ sequenceDiagram
 | 2026-10-25 | 1.6全文 | 利用者の「ok」によりPython `decimal.Decimal`からDECIMAL C ABIへの厳密bits mapping、scale/係数範囲変換、error/ownership flowを含む全文を承認。実装・試験設計・試験合格は別管理 |
 | 2026-10-26 | 1.7改訂案 | Python Binding mode/create result、owner/releaseとcancelの分離、遅延error snapshot pollingと所有、ABI異常出力処理を追加。文書全体レビュー待ち。Subscription callbackと実装・試験設計は対象外 |
 | 2026-10-26 | 1.7全文 | 利用者の「ok」により、Binding公開型/API、OneTime結果、owner/releaseとcancelの分離、error snapshot polling/所有、ABI失敗境界を含む文書全体を承認。実装・試験設計・試験合格は別管理 |
+| 2026-10-26 | 1.8改訂案 | Python AsyncCommand/CommandOperationの公開API、worker lease、runtime_post、callback root、例外・close境界を提案。文書全体レビュー待ち |
+| 2026-10-26 | 1.8全文 | 利用者の「ok」によりAsyncCommand/CommandOperationの公開API、worker lease、post/終端報告、callback root、例外・close境界を含む文書全体を承認。試験設計・実装開始は別承認 |

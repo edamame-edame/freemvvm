@@ -3901,6 +3901,99 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-binding-consumer-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-WRAP-PY-COMMAND-001",
+      "state": "planned",
+      "scope": "python-async-command-worker-cancel-terminal-post-and-lifetime",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-CORE-066",
+        "UNIT-ABI-018",
+        "UNIT-WRAP-PY-RUNTIME-001",
+        "UNIT-WRAP-PY-PROP-BOOL-I64-001",
+        "UNIT-WRAP-PY-BINDING-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.8",
+          "section": "Python AsyncCommand公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/events/commands.md",
+          "version": "1.1",
+          "section": "Async Command execution, state, cancellation, completion, and ownership"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "Async Command C ABI / runtime_post"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "Runtime post queueとUI dispatch turn"
+        }
+      ],
+      "requirements": [
+        "RQ-02-004",
+        "RQ-03-004",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-04-022",
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-008",
+        "RQ-05-009",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-06-002",
+        "RQ-06-003",
+        "RQ-06-004",
+        "RQ-06-008",
+        "RQ-06-009",
+        "RQ-06-010",
+        "RQ-06-011",
+        "RQ-06-013"
+      ],
+      "cases": [
+        "TC-CMD-01",
+        "TC-ABI-COMP-01",
+        "TC-CALLBACK-01",
+        "TC-OWN-01",
+        "TC-THREAD-01",
+        "TC-LIFE-01",
+        "TC-ERROR-01",
+        "TC-WRAP-PY-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-COMMAND-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-command-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-COMMAND-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-command-consumer-test"]
+        }
+      ]
     }
   ]
 }
