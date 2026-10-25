@@ -3738,6 +3738,84 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-utf8-consumer-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-WRAP-PY-PROP-DECIMAL-001",
+      "state": "planned",
+      "scope": "python-decimal-property-exact-bits-mapping-create-get-set-close",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-CORE-031",
+        "UNIT-CORE-032",
+        "UNIT-CORE-033",
+        "UNIT-ABI-009",
+        "UNIT-ABI-010",
+        "UNIT-ABI-011",
+        "UNIT-ABI-018",
+        "UNIT-WRAP-PY-PROP-BOOL-I64-001",
+        "UNIT-WRAP-PY-PROP-F64-001",
+        "UNIT-WRAP-PY-PROP-UTF8-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.6",
+          "section": "DECIMAL Property公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "DECIMAL canonical encoding"
+        },
+        {
+          "path": ".docs/12_design/runtime-objects/model-values.md",
+          "version": "1.0",
+          "section": "型別値領域と比較・変換"
+        }
+      ],
+      "requirements": [
+        "RQ-02-001",
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-02-019",
+        "RQ-02-020",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "cases": [
+        "TC-PROP-01",
+        "TC-ABI-REP-01",
+        "TC-LIFE-01",
+        "TC-THREAD-01",
+        "TC-ERROR-01",
+        "TC-WRAP-PY-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-PROP-DECIMAL-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-decimal-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-PROP-DECIMAL-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-decimal-consumer-test"]
+        }
+      ]
     }
   ]
 }

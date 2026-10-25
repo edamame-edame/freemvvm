@@ -1,7 +1,7 @@
 # Python DECIMAL Property wrapper
 
 - 計画版: 0.1
-- 状態: 計画0.1承認済み（利用者、「ok」、2026-10-25）。DD改訂・試験設計・実装は未承認
+- 状態: 計画0.1・Python DD 1.6・wrapper試験設計0.8承認済み。unitはplanned登録済み。実装開始の確認待ち（利用者、「ok」、2026-10-25）
 - 作成日: 2026-10-25
 - 対象: Python `Property` facadeへ初期DECIMAL値のcreate/get/setを追加する独立unit
 - 作業branch案: `impl-python/runtime-wrapper`を継続。完了済みPython Runtime・BOOL/I64・UTF-8・F64 Propertyを基盤とし、Core/C ABIや他言語wrapperは変更しない
@@ -35,8 +35,8 @@
 1. [x] Python F64 unit完了後のbranch/worktree、要求、承認済みBD/DD、C ABI関数とCore/ABI DECIMAL unit完了状態を確認した。
 2. [x] 本計画0.1のscope・順序について利用者の承認を得た（2026-10-25）。承認後に計画をcommitし、DD提案へ進む。
 3. [x] 要求・既存DECIMAL設計・C#/Rust境界を照合し、Python wrapper DD v1.6へ公開Decimal型、厳密範囲写像、bits表現、失敗型、ownership/call flowを提案。利用者が文書全体を承認（2026-10-25）。
-4. [ ] DD承認後、wrapper試験設計をv0.8へ改訂し、focused fake APIとreal C ABI consumerの試験ケースを提案して文書全体の承認を得る。
-5. [ ] 承認済み設計・試験に基づき`UNIT-WRAP-PY-PROP-DECIMAL-001`を依存関係・要求・case・command付きで`tools/units.yaml`に登録する。登録後に実装開始を別途確認する。
+4. [x] DD承認後、wrapper試験設計をv0.8へ改訂。focused fake APIとreal C ABI consumerの試験ケースを含む文書全体を利用者が承認（2026-10-25）。
+5. [x] 承認済み設計・試験に基づき`UNIT-WRAP-PY-PROP-DECIMAL-001`を依存関係・要求・case・planned command付きで`tools/units.yaml`へ登録（state=`planned`）。実装開始は別途確認待ち。
 6. [ ] 実装開始指示後、Python canonical Decimal mapping、facade create/get/set、focused fake tests、独立C ABI consumer、`tools/dev.py` command/check gatesを実装する。
 7. [ ] Windows local focused tests/consumer/check/minimum/document validationと、実装SHAを確認するWindows/Linux CIを実行し、計画・試験記録・memory・unit台帳を完了記録して日本語commit/pushする。
 
