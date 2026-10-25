@@ -9,3 +9,4 @@
 - Rust UI実装時はC ABI返却token用のcleanup ticketとerror snapshot用ticketの両方をABI呼出し前に確保する。ABI呼出し後に追加allocationして失敗tokenを取りこぼさない。
 - Buttonの`command()`は独立owned handleを返すが、`AsyncCommand::close()`はhandle releaseだけでなく共有Core Commandをcloseする。getter ownerはdrop/releaseし、Core Command closeは一度だけ行う。
 - Host event turnなしのC ABI consumerではBinding伝播が即時とは限らない。UI peer/host loopを前提にしないconsumerでは同期伝播をassertせず、別のfocused testでhost turnを使って検証する。
+- `UNIT-WRAP-RS-UI-CTRL-001` commit `159cf70`はWindows/Linux CI run `40185381670` success。local `rust-wrapper-ui-controls-test`、`tools/dev.py check`、`tools/dev.py minimum`もpass。

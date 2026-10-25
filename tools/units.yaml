@@ -3173,7 +3173,7 @@
     },
     {
       "id": "UNIT-WRAP-RS-UI-CTRL-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "rust-ui-control-tree-layout-focus-property-command-facade",
       "sources": [
         "wrappers/rust/freemvvm-sys/src/lib.rs",
