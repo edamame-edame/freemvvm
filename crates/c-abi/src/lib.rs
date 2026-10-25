@@ -2756,9 +2756,8 @@ mod tests {
         ui_abi_1_widget_accessible_name_property, ui_abi_1_widget_is_enabled_property,
         ui_abi_1_widget_request_focus, ui_abi_1_window_clear_content, ui_abi_1_window_close,
         ui_abi_1_window_close_request_defer, ui_abi_1_window_close_request_resolve,
-        ui_abi_1_window_close_request_subscribe, ui_abi_1_window_content,
-        ui_abi_1_window_create, ui_abi_1_window_open, ui_abi_1_window_set_content,
-        ui_abi_1_window_title_property,
+        ui_abi_1_window_close_request_subscribe, ui_abi_1_window_content, ui_abi_1_window_create,
+        ui_abi_1_window_open, ui_abi_1_window_set_content, ui_abi_1_window_title_property,
     };
     use std::ffi::c_void;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -5692,19 +5691,13 @@ mod tests {
         let mut deferred_request = u64::MAX;
         assert_eq!(
             unsafe {
-                ui_abi_1_window_close_request_defer(
-                    0,
-                    &mut deferred_request,
-                    std::ptr::null_mut(),
-                )
+                ui_abi_1_window_close_request_defer(0, &mut deferred_request, std::ptr::null_mut())
             },
             UI_INVALID_HANDLE
         );
         assert_eq!(deferred_request, 0);
         assert_eq!(
-            unsafe {
-                ui_abi_1_window_close_request_resolve(0, 99, std::ptr::null_mut())
-            },
+            unsafe { ui_abi_1_window_close_request_resolve(0, 99, std::ptr::null_mut()) },
             UI_INVALID_ARGUMENT
         );
         let mut unassigned_command = u64::MAX;
