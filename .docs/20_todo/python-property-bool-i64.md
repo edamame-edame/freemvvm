@@ -49,7 +49,7 @@ API配置・例外class・unsupported typeの返し方・UI thread enforcement�
 1. [x] Runtime wrapper実装・CI成功と現在のPython branch状態を確認した。
 2. [x] 本計画全文を提示し、scope/API案/branch案について利用者承認を得た（2026-10-25、「ok」）。
 3. [x] Python wrapper DD v1.3全文にBOOL/I64 Property API・class/ownership/call flow/error/type mappingを提案し、利用者の「ok」（2026-10-25）で文書全体の承認を得た。実装・試験合格は別管理。
-4. [ ] unit-test文書全体にfake ABI/real consumer caseを提案し、文書全体でレビュー・承認を得る。test design承認後に`UNIT-WRAP-PY-PROP-BOOL-I64-001`を台帳へ登録する。
+4. [x] wrapper unit-test文書0.5全文の利用者承認（2026-10-25、「ok」）を得た。`UNIT-WRAP-PY-PROP-BOOL-I64-001`を`tools/units.yaml`へ`ready`で登録した。試験実装・実行は未着手。
 5. [ ] 利用者が実装開始を指示した後、focused implementationと対応testsを同じ実装unitに追加し、承認済み契約から外れる未決事項があれば実装前に差分レビューへ戻す。
 6. [ ] Windows local gates、Windows/Linux CIを実装SHAで確認し、unit/plan/test/memoryの完了記録を追加して日本語でcommit/pushする。
 
@@ -67,3 +67,4 @@ API配置・例外class・unsupported typeの返し方・UI thread enforcement�
 | --- | --- | --- | --- |
 | 2026-10-25 | 計画0.1 / Python BOOL-I64 Property | 利用者 | 「ok」によりscope/API案/branch案を承認。test文書の承認および実装開始を意味しない |
 | 2026-10-25 | Python wrapper DD v1.3全文 | 利用者 | 「ok」によりBOOL/I64 Property公開API・型mapping・ownership・call flowを承認。実装・試験合格は別管理 |
+| 2026-10-25 | wrapper unit-test文書0.5全文 | 利用者 | 「ok」によりfake ABI/real C ABI consumer試験設計を承認。実装開始・試験合格は別判断 |
