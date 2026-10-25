@@ -1,7 +1,7 @@
 # Python DECIMAL Property wrapper
 
 - 計画版: 0.1
-- 状態: 計画0.1・Python DD 1.6・wrapper試験設計0.8承認済み。実装とWindows local gates完了、Windows/Linux CI結果待ち（利用者、「ok」、2026-10-25）
+- 状態: 完了。Python DECIMAL Propertyの実装・Windows local gates・Windows/Linux CI成功（2026-10-26）
 - 作成日: 2026-10-25
 - 対象: Python `Property` facadeへ初期DECIMAL値のcreate/get/setを追加する独立unit
 - 作業branch案: `impl-python/runtime-wrapper`を継続。完了済みPython Runtime・BOOL/I64・UTF-8・F64 Propertyを基盤とし、Core/C ABIや他言語wrapperは変更しない
@@ -38,7 +38,7 @@
 4. [x] DD承認後、wrapper試験設計をv0.8へ改訂。focused fake APIとreal C ABI consumerの試験ケースを含む文書全体を利用者が承認（2026-10-25）。
 5. [x] 承認済み設計・試験に基づき`UNIT-WRAP-PY-PROP-DECIMAL-001`を依存関係・要求・case・planned command付きで`tools/units.yaml`へ登録（state=`planned`）。実装開始は別途確認待ち。
 6. [x] 実装開始指示後、Python canonical Decimal mapping、facade create/get/set、focused fake tests、独立C ABI consumer、`tools/dev.py` command/check gatesを実装した。
-7. [ ] Windows local focused tests/consumer/check/minimum/document validationは成功。実装SHAを確認するWindows/Linux CI成功後、計画・試験記録・memory・unit台帳を完了記録して日本語commit/pushする。
+7. [x] Windows local focused tests/consumer/check/minimum/document validationと、実装SHA `c2b8bdea9959c482af632f0bb72df42bb826c0b2`を確認するWindows/Linux CIが成功。計画・試験記録・memory・unit台帳を完了記録した。CI: [run 40204972480](https://github.com/edamame-edame/freemvvm/actions/runs/40204972480)。
 
 ## 検証と完了条件案
 
@@ -52,3 +52,4 @@
 | 日付 | 対象 | 承認者 | 結論 |
 | --- | --- | --- | --- |
 | 2026-10-25 | 計画0.1 / Python DECIMAL Property wrapper | 利用者 | 「ok」により本計画のscope・順序を承認。DD改訂・試験設計・実装の承認を含まない |
+| 2026-10-26 | 実装完了 | — | fake API 37件、real C ABI consumer、Windows local check 39 gates/minimum、Windows/Linux CIが成功。実装commit `c2b8bdea9959c482af632f0bb72df42bb826c0b2`、[CI run 40204972480](https://github.com/edamame-edame/freemvvm/actions/runs/40204972480) |

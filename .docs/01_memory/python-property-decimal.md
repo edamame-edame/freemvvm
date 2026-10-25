@@ -6,5 +6,5 @@
 - getterはbitsから`Decimal((sign, digits, -scale))`を作り、格納scaleと負のzeroを保つ。数値同値判定・Validator・通知・同値更新時の表現保持はCoreへ委譲し、wrapperはsetterを短絡しない。
 - DECIMAL Property試験設計v0.8は承認済み。`UNIT-WRAP-PY-PROP-DECIMAL-001`をready登録し、fake APIでPython bits mapping・型/範囲/例外・error/lifecycleを検証、別processのreal C ABI consumerで境界値と同値設定後のstored representationを検証する。Core意味論をfakeだけで検証したと主張しない。
 - 実装では`Decimal.as_tuple()`から係数桁列と指数を直接処理し、Decimal contextや中間巨大整数に依存しないよう指数・桁数を先に境界判定する。余剰scale/係数は両方を同時に10で縮約し、負のzeroはbitsのsignとscaleを保持する。
-- 実装済みfake API 37件、real C ABI consumer、Windows全体check 39 gatesとRust 1.85 minimum checkが成功した。最終CIとcommit SHAは計画・試験記録を更新して確定する。
+- 実装済みfake API 37件、real C ABI consumer、Windows全体check 39 gatesとRust 1.85 minimum checkが成功した。実装SHA `c2b8bdea9959c482af632f0bb72df42bb826c0b2`に対するWindows/Linux CI run 40204972480も成功した。
 - 設計根拠: [Python DECIMAL Property計画](../20_todo/python-property-decimal.md)、[Python wrapper DD](../13_detail_design/wrappers/python.md)、[Python wrapper試験設計](../32_unit_test/wrappers.md)。
