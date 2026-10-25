@@ -1,6 +1,6 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 - 文書版: 0.4
-- 状態: 0.4全文承認済み（利用者、「ok」、2026-10-25）。Python Runtime focused test 9件とreal C ABI consumerはWindows localでsuccess。全体check/minimum/CIは別記録。既存0.1〜0.3の承認・実行記録は履歴に記録
+- 状態: 0.4全文承認済み（利用者、「ok」、2026-10-25）。Python Runtime focused test 9件、real C ABI consumer、全体check/minimumがWindows localでsuccess。[Windows/Linux CI run 40190078806](https://github.com/edamame-edame/freemvvm/actions/runs/40190078806)もsuccess。既存0.1〜0.3の承認・実行記録は履歴に記録
 - 更新日: 2026-10-25
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
@@ -91,7 +91,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-24 | 0.3追加 | — | 承認済みC# wrapper DD v1.4と実装開始指示に基づき`UNIT-WRAP-CS-COMMAND-001`のfocused fake ABI・real C ABI consumer試験を登録。試験実装・実行結果は別管理 |
 | 2026-10-24 | 0.3実行記録 | — | `tools/dev.py csharp-command-test`、`csharp-command-consumer-test`、`check`、`minimum`と[Windows/Linux CI run 40074886918](https://github.com/edamame-edame/freemvvm/actions/runs/40074886918)がsuccess |
 
-| 2026-10-25 | 0.4実行記録 | — | `python-runtime-test` 9件、`python-runtime-consumer-test`、`tools/dev.py check`、`minimum`がWindows local success。host bridge未登録のconsumerではshutdown requestが`UI_UNSUPPORTED`で未受付となる結果を確認。CIはpush後に確認 |
+| 2026-10-25 | 0.4実行記録 | — | `python-runtime-test` 9件、`python-runtime-consumer-test`、`tools/dev.py check`、`minimum`がWindows local success。host bridge未登録のconsumerではshutdown requestが`UI_UNSUPPORTED`で未受付となる結果を確認。[Windows/Linux CI run 40190078806](https://github.com/edamame-edame/freemvvm/actions/runs/40190078806) success |
 
 ## 改訂履歴
 

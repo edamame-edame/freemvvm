@@ -33,7 +33,7 @@ Python consumerが承認済みC ABIからRuntimeを作成し、UI-thread context
 3. [x] fake ABIと実C ABI consumerの前提・操作・観測・期待値・後始末をunit-test文書0.4改訂案へ提案した。DD全文承認とtest design全文承認を別々に確認する。
 4. [x] DD v1.2とtest design v0.4の全文承認を記録し、異Runtime context検査は利用側APIが定まる後続UI unitへ送る範囲変更を反映した。`UNIT-WRAP-PY-RUNTIME-001`を`tools/units.yaml`へ登録した。
 5. [x] `version/0.0.1 -> impl-rust/core-ui-controls-c-abi -> impl-python/runtime-wrapper`のbranch関係を確認し、最新Core APIs revisionからPython branchを切った。Rust/C++/C# wrapper siblingの差分を混ぜていない。
-6. [x] Runtime facade、focused fake ABI tests、独立consumer、検証commandを同じ実装unitで実装した。focused tests 9件、Windows実C ABI consumer、`tools/dev.py check`、`minimum`がlocalで成功。CIはpush後に同じ実装revisionで確認する。
+6. [x] Runtime facade、focused fake ABI tests、独立consumer、検証commandを同じ実装unitで実装した。focused tests 9件、Windows実C ABI consumer、`tools/dev.py check`、`minimum`、Windows/Linux CI run 40190078806が実装commit `bdaf48e`で成功。
 7. [ ] Property/Binding/CommandとUI Controlsへは、このunitを基礎とした別の小さな計画・設計・test reviewを作成してから進む。
 
 ## 完了条件案
@@ -56,4 +56,4 @@ Python consumerが承認済みC ABIからRuntimeを作成し、UI-thread context
 
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
-| 2026-10-25 | UNIT-WRAP-PY-RUNTIME-001 | local検証完了 | 9 focused tests、実C ABI consumer、`tools/dev.py check`、`minimum`が成功。CIはpush後に確認 |
+| 2026-10-25 | UNIT-WRAP-PY-RUNTIME-001 | 実装・検証完了 | commit `bdaf48e`。9 focused tests、実C ABI consumer、`tools/dev.py check`、`minimum`成功。[Windows/Linux CI run 40190078806](https://github.com/edamame-edame/freemvvm/actions/runs/40190078806) success |
