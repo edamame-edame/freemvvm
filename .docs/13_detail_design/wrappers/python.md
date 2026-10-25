@@ -1,9 +1,9 @@
 # 言語ラッパー：Python
 
-- 文書版: 1.1
+- 文書版: 1.2
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-10-25
+- 状態: 1.2全文承認済み（利用者、「ok」、2026-10-25）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -399,6 +399,58 @@ managed_main/登録hostのfinallyがcoordinatorへ終了を依頼し、native ga
 
 図のroot queue所有は登録中rootの管理と回収待ちへの移管を表し、coordinatorが常に利用者ownerを強保持する構成ではない。Condition waitではGILとregistry lockを保持しない。停止不能callback等の完遂条件はRQ-03-015のまま維持する。
 
+## Runtime公開API（1.2承認済み）
+
+本節はPython consumer向けRuntime基礎facadeの公開形を定める。1.1で承認済みの所有・cleanup・thread・shutdown契約を変更せず、実装済みAPIを宣言するものでもない。Runtime以外のProperty/UI API、distribution/loaderの変更は含めない。
+
+### 公開型と操作案
+
+| 型/API | 提案する責務・契約 |
+|---|---|
+| `Runtime.create()` | ABI versionを確認してRuntimeを生成する。ABI majorが非対応、または生成失敗なら`UiError`を送出する。成功時のRuntime tokenは唯一のowner cellが保有する。 |
+| `Runtime.is_ui_thread()` | `runtime_is_ui_thread`を呼び、ABIの0/1のみをPython `bool`へ写す。その他の値は内部ABI不整合として失敗させる。 |
+| `Runtime.ui_context()` / `UiContext.check()` | factoryは現在threadが当該RuntimeのUI threadであることをnative queryでも確認し、Runtime identityとowner cellを保持する`UiContext`を返す。`check()`は使用時にもRuntimeのopen状態・threadを再確認する。contextはRuntimeをshutdownせず、強参照によりowner cellの早期解放を防ぐ。 |
+| `Runtime.shutdown()` | `runtime_shutdown`のthread/context依存意味論をそのまま適用する。UI callback/event内は受付後に`ACCEPTED_PENDING`、完了した場合は`COMPLETED`を返す。worker同期呼出しの待機や停止host時の未完了はCore/ABI契約に委ね、Python側で一律UI-thread限定にしない。 |
+| `Runtime.request_shutdown(mode)` | `ShutdownMode.ASYNC`または`SYNC`で要求し、`ShutdownRequest`を返す。受付済み`UI_PENDING`は成功結果として扱い、failure statusとは区別する。 |
+| `ShutdownRequest.query()` | thread-independentなsnapshotとしてraw state/reasonを返す。既知stateはenum相当の便宜表示を提供してよいが、未知state/reasonを捨てない。 |
+| `Runtime.close()` / `try_close()` | Runtime所有参照だけをreleaseする。closeは暗黙shutdown・shutdown待機・要求取消を行わない。release失敗時はowner tokenを維持し、明示再試行を可能にする。`try_close`は既存ResourceOwner規則に沿った非送出cleanup入口とする。 |
+| `Runtime` context manager | `with Runtime.create() as runtime:`のexitは`close()`相当とし、Runtime shutdownを暗黙実行しない。managed host/mainの協調終了は`RuntimeSession` / `managed_main`の別責務であり、このRuntime facade unitに混ぜない。 |
+| `ShutdownRequest.close()` / context manager | receiptのowned handleを解放する。要求・完了処理は取り消さない。 |
+
+`UiContext`の用途は後続のUI wrapper向けcontext capabilityであり、このRuntime-only unitでは生成・同Runtime identity・thread/open検査までを実装対象とする。別Runtimeへcontextを渡すAPIは本unitに追加しない。今後contextを受け取るUI APIではRuntime identity不一致を`WRONG_RUNTIME`へ写す。
+
+### error・ownership・ABI adapter
+
+- Public exceptionはPython DDのErrorSnapshot契約を持つ`UiError`案とし、raw status/domain/code/messageを保持する。statusやmessage文字列の部分一致を分岐根拠にせず、未知の値を保持する。
+- `Runtime.create()`ではnative owned outputが不正に返った場合もtokenを破棄またはcleanup管理へ移管し、部分初期化を外へ漏らさない。owner/call/ticket確保とrelease失敗時の保全は本書1.1の`NativeOwnerCell` / `OwnerManager`規則に従う。
+- private `NativeApi` protocol相当を設け、ABI関数の呼出しをfakeで差し替えられるようにする。これはテスト seamであり、consumer APIや配布library選択機能ではない。
+- 実loaderは既存のbuild/package設計に従う。missing native artifact時のnetwork取得や新しい環境変数/path overrideは加えない。artifact packaging/relocationは今回の範囲外。
+- `Runtime.close()`とshutdownの分離を維持する。RuntimeをcloseしただけではCore runtimeがshutdownしたとはみなさず、反対にshutdown後もowned Runtime tokenは明示close/finalizer cleanupまで保持する。
+
+### 呼出し・状態の要約
+
+```mermaid
+sequenceDiagram
+    participant App as Python consumer
+    participant Runtime as Runtime facade / owner cell
+    participant ABI as versioned C ABI
+    App->>Runtime: Runtime.create()
+    Runtime->>ABI: version query / runtime_create
+    ABI-->>Runtime: owned Runtime token + status/error
+    Runtime-->>App: Runtime
+    App->>Runtime: request_shutdown(mode)
+    Runtime->>ABI: runtime_request_shutdown
+    ABI-->>Runtime: status + owned receipt
+    Runtime-->>App: ShutdownRequest
+    App->>Runtime: receipt.query()
+    Runtime->>ABI: shutdown_request_query
+    ABI-->>Runtime: raw state + reason
+    App->>Runtime: close()
+    Runtime->>ABI: handle_release(Runtime token)
+```
+
+図は一つの代表経路を示す。shutdownとcloseの順番は固定せず、shutdown要求receipt releaseは要求取消を意味しない。blocking native waitは対応ABIがGILを解放できる呼出しとして実装し、GILやwrapper lockを保持したまま利用者callback/host progressを待たない。具体的なctypes GIL解放可否とcallback再入はfake/consumer検証および実装前確認対象とし、C ABI意味論をPython wrapper独自に変更しない。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -407,3 +459,5 @@ managed_main/登録hostのfinallyがcoordinatorへ終了を依頼し、native ga
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-10-25 | 1.2改訂案 | Python Runtime facadeの公開型/API、error・ownership境界、shutdown/close分離を提案 |
+| 2026-10-25 | 1.2全文 | 利用者の「ok」により、Runtime公開APIとshutdown/close・ownership境界、異Runtime context検査を後続UI APIへ送る範囲変更を含む全文を承認。実装・試験合格を意味しない |

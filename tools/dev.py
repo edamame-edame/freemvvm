@@ -132,6 +132,8 @@ def main():
             "rust-wrapper-property-utf8-test",
             "rust-wrapper-property-f64-test",
             "rust-wrapper-property-decimal-test",
+            "python-runtime-test",
+            "python-runtime-consumer-test",
             "csharp-runtime-test",
             "csharp-runtime-consumer-test",
             "csharp-property-test",
@@ -174,6 +176,10 @@ def main():
             if args.command == "rust-wrapper-property-f64-test"
             else "rust-wrapper-property-decimal-consumer-test"
             if args.command == "rust-wrapper-property-decimal-test"
+            else "python-runtime-unit-test"
+            if args.command == "python-runtime-test"
+            else "python-runtime-consumer-test"
+            if args.command == "python-runtime-consumer-test"
             else "csharp-runtime-unit-test"
             if args.command == "csharp-runtime-test"
             else "csharp-property-unit-test"
@@ -217,6 +223,10 @@ def main():
             if args.command == "rust-wrapper-property-f64-test"
             else "Rust DECIMAL Property consumer test executed"
             if args.command == "rust-wrapper-property-decimal-test"
+            else "Python Runtime wrapper unit tests executed"
+            if args.command == "python-runtime-test"
+            else "Python Runtime consumer test executed against host C ABI"
+            if args.command == "python-runtime-consumer-test"
             else "C# Runtime wrapper unit tests executed"
             if args.command == "csharp-runtime-test"
             else "C# Property wrapper unit tests executed"
@@ -478,6 +488,63 @@ def main():
                 environment,
                 results,
                 "csharp-runtime-unit-tests",
+            )
+        elif args.command == "python-runtime-test":
+            test_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            test_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, test_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "wrappers/python/tests/test_runtime.py",
+                ],
+                test_environment,
+                results,
+                "python-runtime-unit-tests",
+            )
+        elif args.command == "python-runtime-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "python-runtime-consumer-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_dir = target_dir / "debug"
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = native_dir / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            consumer_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, consumer_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "wrappers/python/examples/runtime_consumer.py",
+                    str(native_path.resolve()),
+                ],
+                consumer_environment,
+                results,
+                "python-runtime-c-abi-consumer",
             )
         elif args.command == "csharp-runtime-consumer-test":
             run(
@@ -1091,13 +1158,28 @@ def main():
                 "document-links",
             )
             run(
-                ["ruff", "format", "--check", "tools", "wrappers/python/src"],
+                [
+                    "ruff",
+                    "format",
+                    "--check",
+                    "tools",
+                    "wrappers/python/src",
+                    "wrappers/python/tests",
+                    "wrappers/python/examples",
+                ],
                 environment,
                 results,
                 "python-format",
             )
             run(
-                ["ruff", "check", "tools", "wrappers/python/src"],
+                [
+                    "ruff",
+                    "check",
+                    "tools",
+                    "wrappers/python/src",
+                    "wrappers/python/tests",
+                    "wrappers/python/examples",
+                ],
                 environment,
                 results,
                 "python-lint",
@@ -1297,6 +1379,22 @@ def main():
                 "python-dependencies",
             )
             run(
+                [sys.executable, "tools/dev.py", "python-runtime-test"],
+                environment,
+                results,
+                "python-runtime-unit",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-runtime-consumer-test",
+                ],
+                environment,
+                results,
+                "python-runtime-consumer",
+            )
+            run(
                 [
                     sys.executable,
                     "-m",
@@ -1330,7 +1428,7 @@ def main():
                 [
                     sys.executable,
                     "-c",
-                    "import ctypes, freemvvm; print('skeleton import: OK')",
+                    "import freemvvm; print('Python facade: OK')",
                 ],
                 environment,
                 results,

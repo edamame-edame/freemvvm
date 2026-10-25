@@ -3510,6 +3510,66 @@
           "command": ["cargo", "test", "-p", "freemvvm-core", "close_subscription_defers_resolves_and_declines_when_last_owner_is_released"]
         }
       ]
+    },
+    {
+      "id": "UNIT-WRAP-PY-RUNTIME-001",
+      "state": "ready",
+      "scope": "python-runtime-owner-ui-context-shutdown-and-receipt",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": ["UNIT-ABI-001", "UNIT-ABI-004", "UNIT-ABI-005", "UNIT-ABI-007"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.2",
+          "section": "Runtime公開API / Runtime lifecycle and ownership"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "Runtime create / shutdown / shutdown request / UI thread query"
+        },
+        {
+          "path": ".docs/13_detail_design/build/toolchain-packages.md",
+          "version": "1.1",
+          "section": "Python wrapper and native runtime distribution boundary"
+        }
+      ],
+      "requirements": [
+        "RQ-03-014",
+        "RQ-03-016",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-04-022",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-06-005",
+        "RQ-06-006",
+        "RQ-06-007",
+        "RQ-06-012"
+      ],
+      "cases": ["TC-LIFE-01", "TC-THREAD-01", "TC-ERROR-01", "TC-WRAP-PY-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-RUNTIME-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-runtime-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-RUNTIME-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-runtime-consumer-test"]
+        }
+      ]
     }
   ]
 }
