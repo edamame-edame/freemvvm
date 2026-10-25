@@ -1,7 +1,7 @@
 # Python UTF-8 Property wrapper
 
 - 計画版: 0.1
-- 状態: 実装・focused local検証完了。全体local gatesとWindows/Linux CI確認待ち
+- 状態: 完了。実装・Windows local gates・Windows/Linux CI成功
 - 作成日: 2026-10-25
 - 対象: 既存Python `Property` facadeへ`str`のUTF-8 create/get/setを追加する独立unit
 - 作業branch案: `impl-python/runtime-wrapper`を継続する。Python RuntimeとBOOL/I64 Propertyに依存し、Core/C ABI変更や他言語wrapper差分は含めない
@@ -39,7 +39,7 @@
 3. [x] Python DD v1.4でPython `str` mapping、strict encode/decode、invalid input/output、buffer retry、error/ownership flowを具体化し、利用者の「ok」による全文承認を得た（2026-10-25）。
 4. [x] DD承認後にwrapper test design 0.6へfake ABI/consumer casesを追加し、利用者の「ok」による全文承認を得た（2026-10-25）。`UNIT-WRAP-PY-PROP-UTF8-001`をunit台帳へ`ready`で登録し、実装開始は別承認とする。
 5. [x] 利用者の実装開始指示後、Python ctypes bindings、Property facade、focused fake ABI tests、独立real C ABI consumer、`tools/dev.py` command/check gatesを同unitに実装した。
-6. [ ] Windows local focused tests/consumer/check/minimum/document validation、Windows/Linux CIを実装SHAで確認し、unit/plan/test/memoryを完了記録して日本語でcommit/pushする。
+6. [x] Windows local focused tests/consumer/check/minimum/document validation、Windows/Linux CIを実装SHAで確認し、unit/plan/test/memoryを完了記録して日本語でcommit/pushした。
 
 ## 検証と完了条件
 
@@ -58,4 +58,5 @@
 | 2026-10-25 | Python wrapper DD v1.4全文 | 利用者 | 「ok」によりUTF-8 Property API・変換・buffer retry・失敗境界を含む文書全体を承認。試験設計・実装開始は別判断 |
 | 2026-10-25 | wrapper unit-test design 0.6全文 | 利用者 | 「ok」によりPython UTF-8 Propertyのfake ABI/real C ABI consumer試験設計を承認。実装開始・試験合格は別判断 |
 | 2026-10-25 | 実装開始 | 利用者 | 「ok」により承認済みDD v1.4・試験設計0.6に基づく実装開始を指示 |
-| 2026-10-25 | Windows local実行 | — | fake ABI 14件、実C ABI consumer、全体`check`、`minimum`、document-link validationがsuccess。Windows/Linux CIは未完了 |
+| 2026-10-25 | Windows local実行 | — | fake ABI 14件、実C ABI consumer、全体`check`、`minimum`、document-link validationがsuccess |
+| 2026-10-25 | implementation SHA `c3fd6ca6d1fa01613756a1e0b835253c50675e95`のCI | — | [Windows/Linux CI run 40200059368](https://github.com/edamame-edame/freemvvm/actions/runs/40200059368) success |

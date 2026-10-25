@@ -1,6 +1,6 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 - 文書版: 0.6
-- 状態: 0.6全文承認済み。Python UTF-8 Property試験実装済み。focused fake ABI 14件と実C ABI consumerはWindows local success。全体gate/CIは別途確認中。
+- 状態: 0.6全文承認済み。Python UTF-8 Property試験実装・Windows local gates・Windows/Linux CI成功。
 - 更新日: 2026-10-25
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
@@ -92,6 +92,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-25 | 0.6改訂案 | — | 承認済みPython wrapper DD v1.4に基づきUTF-8 Propertyのfake ABI/real C ABI consumer試験案を追加。レビュー待ち |
 | 2026-10-25 | 0.6全文 | 利用者 | 「ok」によりPython UTF-8 Propertyのfake ABI/real C ABI consumer試験設計を含む文書全体を承認。試験実装・実行結果は別管理 |
 | 2026-10-25 | 0.6実行記録 | — | `python-property-utf8-test` 14件と`python-property-utf8-consumer-test`がWindows local success。全体check/minimumとCIは確認中 |
+| 2026-10-25 | 0.6 CI実行記録 | — | 実装SHA `c3fd6ca6d1fa01613756a1e0b835253c50675e95`でfocused 14件、consumer、全体gateがWindows/Linux CI success。[run 40200059368](https://github.com/edamame-edame/freemvvm/actions/runs/40200059368) |
 | 2026-10-24 | 0.2追加 | — | 承認済みRust wrapper DD v1.1とRust Runtime実装計画に基づきfocused fake sys API・real C ABI consumer試験を登録。実行結果は別管理 |
 | 2026-10-24 | 0.2実行記録 | — | Rust Runtime focused 4 tests、compile-fail 2 cases、real C ABI consumer、`tools/dev.py check`、`minimum`がlocal pass。[Windows/Linux CI run 40077169840](https://github.com/edamame-edame/freemvvm/actions/runs/40077169840) success |
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |

@@ -3624,7 +3624,7 @@
     },
     {
       "id": "UNIT-WRAP-PY-PROP-UTF8-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "python-utf8-property-create-get-set-close-strict-buffer-mapping",
       "sources": [
         "wrappers/python/src/freemvvm/**/*.py",
