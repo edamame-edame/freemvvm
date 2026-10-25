@@ -4,6 +4,7 @@ use crate::handle_registry::registry::{InternalOwner, ObjectIdentity};
 use crate::runtime::RuntimeIdentity;
 use crate::ui_window::WindowLifecycle;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum UiControlKind {
@@ -53,6 +54,7 @@ pub(crate) struct UiControlState {
     pub(crate) child_align: HashMap<ObjectIdentity, u32>,
     pub(crate) layout_dirty: bool,
     pub(crate) window: Option<WindowLifecycle>,
+    pub(crate) button_command: Option<Arc<crate::abi_support::CommandHandleEntry>>,
 }
 
 impl UiControlState {
@@ -64,6 +66,7 @@ impl UiControlState {
             child_align: HashMap::new(),
             layout_dirty: true,
             window: (kind == UiControlKind::Window).then(WindowLifecycle::default),
+            button_command: None,
         }
     }
 

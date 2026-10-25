@@ -409,7 +409,7 @@ pub mod abi_support {
         }
     }
 
-    struct CommandHandleEntry {
+    pub(crate) struct CommandHandleEntry {
         runtime: Arc<RuntimeCore>,
         command: Arc<AsyncCommand>,
         state_property: HandleToken,
@@ -1978,6 +1978,37 @@ pub mod abi_support {
             .map_err(map_ui_control_tree_error)
     }
 
+    pub fn container_remove(container: u64, child: u64) -> Result<(), UiControlApiError> {
+        let (container_token, runtime, container_identity) =
+            validate_ui_control(container, UiControlKind::StackPanel)?;
+        let (child_token, child_runtime, child_kind, child_identity) = ui_control_entry(child)?;
+        if child_kind == UiControlKind::Window {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !Arc::ptr_eq(&runtime, &child_runtime) {
+            return Err(UiControlApiError::WrongRuntime);
+        }
+        ui_control_handles()
+            .registry
+            .validate(child_token, &child_kind, &runtime.identity())
+            .map_err(map_ui_control_registry_error)?;
+        if runtime
+            .tree_parent_identity(child_identity)
+            .map_err(map_ui_control_tree_error)?
+            != Some(container_identity)
+        {
+            return Err(UiControlApiError::InvalidArgument);
+        }
+        runtime
+            .detach_tree_child_identity(
+                &ui_control_handles().registry,
+                container_token,
+                UiControlKind::StackPanel,
+                child_identity,
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
     pub fn stack_panel_move(
         panel: u64,
         from_index: usize,
@@ -2251,6 +2282,50 @@ pub mod abi_support {
 
     pub fn ui_control_button_label_property(control: u64) -> Result<u64, UiControlApiError> {
         ui_control_property(control, UiControlProperty::ButtonLabel)
+    }
+
+    pub fn button_set_command(button: u64, command: u64) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(button, UiControlKind::Button)?;
+        let command_entry = if command == 0 {
+            None
+        } else {
+            let entry = command_entry(command).map_err(|error| match error {
+                CommandApiError::InvalidHandle => UiControlApiError::InvalidHandle,
+                CommandApiError::WrongType => UiControlApiError::WrongType,
+                CommandApiError::WrongRuntime => UiControlApiError::WrongRuntime,
+                CommandApiError::WrongThread => UiControlApiError::WrongThread,
+                CommandApiError::Closed => UiControlApiError::Closed,
+                CommandApiError::OutOfMemory => UiControlApiError::OutOfMemory,
+                _ => UiControlApiError::Internal,
+            })?;
+            if !Arc::ptr_eq(&runtime, &entry.runtime) {
+                return Err(UiControlApiError::WrongRuntime);
+            }
+            Some(entry)
+        };
+        runtime
+            .button_set_command_entry(identity, command_entry)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn button_command(button: u64) -> Result<Option<u64>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(button, UiControlKind::Button)?;
+        let Some(entry) = runtime
+            .button_command_entry(identity)
+            .map_err(map_ui_control_property_error)?
+        else {
+            return Ok(None);
+        };
+        let mut commands = command_handles()
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        commands
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        let token =
+            crate::handle_registry::issue_handle_token().ok_or(UiControlApiError::Internal)?;
+        commands.insert(token, entry);
+        Ok(Some(token.into_abi()))
     }
 
     pub fn command_state_property_create(runtime: u64) -> Result<u64, ShutdownApiError> {

@@ -66,6 +66,15 @@ enum {
   UI_SHUTDOWN_REQUEST_HOST_UNAVAILABLE = 2
 };
 
+enum {
+  UI_ORIENTATION_VERTICAL = 1,
+  UI_ORIENTATION_HORIZONTAL = 2,
+  UI_ALIGN_START = 1,
+  UI_ALIGN_CENTER = 2,
+  UI_ALIGN_END = 3,
+  UI_ALIGN_STRETCH = 4
+};
+
 ui_status ui_abi_1_runtime_create(ui_handle *out_runtime, ui_handle *out_error);
 ui_status ui_abi_1_runtime_is_ui_thread(ui_handle runtime, ui_bool *out_yes);
 
@@ -200,6 +209,73 @@ ui_status ui_abi_1_runtime_post(ui_handle runtime, ui_callback callback,
                                 ui_handle *out_error);
 ui_status ui_abi_1_runtime_dispatch_turn(ui_handle runtime);
 ui_status ui_abi_1_runtime_shutdown(ui_handle runtime, ui_handle *out_error);
+
+ui_status ui_abi_1_window_create(ui_handle runtime, ui_handle *out_window,
+                                 ui_handle *out_error);
+ui_status ui_abi_1_stack_panel_create(ui_handle runtime,
+                                      ui_handle *out_panel,
+                                      ui_handle *out_error);
+ui_status ui_abi_1_text_create(ui_handle runtime,
+                               const uint8_t *initial_utf8,
+                               uint64_t initial_byte_length,
+                               ui_handle *out_text, ui_handle *out_error);
+ui_status ui_abi_1_text_box_create(ui_handle runtime,
+                                   const uint8_t *initial_utf8,
+                                   uint64_t initial_byte_length,
+                                   ui_handle *out_text_box,
+                                   ui_handle *out_error);
+ui_status ui_abi_1_button_create(ui_handle runtime,
+                                 const uint8_t *initial_label_utf8,
+                                 uint64_t initial_byte_length,
+                                 ui_handle *out_button, ui_handle *out_error);
+ui_status ui_abi_1_widget_is_enabled_property(
+    ui_handle widget, ui_handle *out_owned_property);
+ui_status ui_abi_1_widget_accessible_name_property(
+    ui_handle widget, ui_handle *out_owned_property);
+ui_status ui_abi_1_window_content(ui_handle window,
+                                  ui_handle *out_owned_child,
+                                  ui_handle *out_error);
+ui_status ui_abi_1_window_set_content(ui_handle window,
+                                      ui_handle borrowed_child,
+                                      ui_handle *out_error);
+ui_status ui_abi_1_window_clear_content(ui_handle window,
+                                        ui_handle *out_error);
+ui_status ui_abi_1_window_title_property(ui_handle window,
+                                         ui_handle *out_owned_property);
+ui_status ui_abi_1_container_insert(ui_handle container,
+                                    ui_handle borrowed_child, uint64_t index,
+                                    ui_handle *out_error);
+ui_status ui_abi_1_container_remove(ui_handle container,
+                                    ui_handle borrowed_child,
+                                    ui_handle *out_error);
+ui_status ui_abi_1_container_move(ui_handle container, uint64_t from_index,
+                                  uint64_t to_index, ui_handle *out_error);
+ui_status ui_abi_1_container_child_count(ui_handle container,
+                                         uint64_t *out_count);
+ui_status ui_abi_1_container_child_at(ui_handle container, uint64_t index,
+                                      ui_handle *out_owned_child,
+                                      ui_handle *out_error);
+ui_status ui_abi_1_stack_panel_orientation(ui_handle panel,
+                                           uint32_t *out_orientation);
+ui_status ui_abi_1_stack_panel_set_orientation(ui_handle panel,
+                                               uint32_t orientation,
+                                               ui_handle *out_error);
+ui_status ui_abi_1_stack_panel_set_child_align(ui_handle panel,
+                                              ui_handle borrowed_child,
+                                              uint32_t align,
+                                              ui_handle *out_error);
+ui_status ui_abi_1_text_content_property(ui_handle text,
+                                         ui_handle *out_owned_property);
+ui_status ui_abi_1_text_box_value_property(ui_handle text_box,
+                                           ui_handle *out_owned_property);
+ui_status ui_abi_1_button_label_property(ui_handle button,
+                                         ui_handle *out_owned_property);
+ui_status ui_abi_1_button_set_command(ui_handle button,
+                                      ui_handle borrowed_command_or_zero,
+                                      ui_handle *out_error);
+ui_status ui_abi_1_button_command(ui_handle button,
+                                  ui_handle *out_owned_command,
+                                  ui_handle *out_error);
 
 ui_status ui_abi_1_handle_release(ui_handle owned);
 ui_status ui_abi_1_handle_retain(ui_handle borrowed, ui_handle *out_owned);

@@ -1875,6 +1875,47 @@ impl RuntimeCore {
             .ok_or(RuntimePropertyError::WrongObjectState)
     }
 
+    pub(crate) fn button_set_command_entry(
+        &self,
+        identity: ObjectIdentity,
+        command: Option<Arc<crate::abi_support::CommandHandleEntry>>,
+    ) -> Result<(), RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let previous = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+            let state = store
+                .resolve_mut(identity)
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Button)
+                .ok_or(RuntimePropertyError::WrongObjectState)?;
+            std::mem::replace(&mut state.button_command, command)
+        };
+        drop(previous);
+        Ok(())
+    }
+
+    pub(crate) fn button_command_entry(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<Option<Arc<crate::abi_support::CommandHandleEntry>>, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Button)
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        Ok(state.button_command.clone())
+    }
+
     pub(crate) fn stack_panel_config(
         &self,
         identity: ObjectIdentity,
