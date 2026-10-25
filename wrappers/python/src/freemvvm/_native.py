@@ -36,6 +36,13 @@ SHUTDOWN_REQUEST_PENDING = 0
 SHUTDOWN_REQUEST_COMPLETED = 1
 SHUTDOWN_REQUEST_HOST_UNAVAILABLE = 2
 
+ORIENTATION_VERTICAL = 1
+ORIENTATION_HORIZONTAL = 2
+ALIGN_START = 1
+ALIGN_CENTER = 2
+ALIGN_END = 3
+ALIGN_STRETCH = 4
+
 
 class NativeApi(Protocol):
     """The narrow private boundary used by the Runtime facade and its tests."""
@@ -117,6 +124,80 @@ class NativeApi(Protocol):
     def binding_error_snapshot(
         self, binding: int
     ) -> tuple[int, int, int, int]: ...
+
+    def window_create(self, runtime: int) -> tuple[int, int, int]: ...
+
+    def stack_panel_create(self, runtime: int) -> tuple[int, int, int]: ...
+
+    def text_create(
+        self, runtime: int, initial: bytes
+    ) -> tuple[int, int, int]: ...
+
+    def text_box_create(
+        self, runtime: int, initial: bytes
+    ) -> tuple[int, int, int]: ...
+
+    def button_create(
+        self, runtime: int, label: bytes
+    ) -> tuple[int, int, int]: ...
+
+    def widget_is_enabled_property(self, widget: int) -> tuple[int, int]: ...
+
+    def widget_accessible_name_property(
+        self, widget: int
+    ) -> tuple[int, int]: ...
+
+    def widget_request_focus(self, widget: int) -> tuple[int, int]: ...
+
+    def window_content(self, window: int) -> tuple[int, int, int]: ...
+
+    def window_set_content(
+        self, window: int, child: int
+    ) -> tuple[int, int]: ...
+
+    def window_clear_content(self, window: int) -> tuple[int, int]: ...
+
+    def window_title_property(self, window: int) -> tuple[int, int]: ...
+
+    def container_insert(
+        self, container: int, child: int, index: int
+    ) -> tuple[int, int]: ...
+
+    def container_remove(
+        self, container: int, child: int
+    ) -> tuple[int, int]: ...
+
+    def container_move(
+        self, container: int, from_index: int, to_index: int
+    ) -> tuple[int, int]: ...
+
+    def container_child_count(self, container: int) -> tuple[int, int]: ...
+
+    def container_child_at(
+        self, container: int, index: int
+    ) -> tuple[int, int, int]: ...
+
+    def stack_panel_orientation(self, panel: int) -> tuple[int, int]: ...
+
+    def stack_panel_set_orientation(
+        self, panel: int, orientation: int
+    ) -> tuple[int, int]: ...
+
+    def stack_panel_set_child_align(
+        self, panel: int, child: int, align: int
+    ) -> tuple[int, int]: ...
+
+    def text_content_property(self, text: int) -> tuple[int, int]: ...
+
+    def text_box_value_property(self, text_box: int) -> tuple[int, int]: ...
+
+    def button_label_property(self, button: int) -> tuple[int, int]: ...
+
+    def button_set_command(
+        self, button: int, command: int
+    ) -> tuple[int, int]: ...
+
+    def button_command(self, button: int) -> tuple[int, int, int]: ...
 
     def handle_retain(self, borrowed: int) -> tuple[int, int]: ...
 
@@ -331,6 +412,93 @@ class CtypesNativeApi:
                 ctypes.POINTER(Handle),
                 ctypes.POINTER(ctypes.c_uint32),
             ],
+        )
+        self._bind(
+            "ui_abi_1_window_create",
+            [Handle, ctypes.POINTER(Handle), ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_stack_panel_create",
+            [Handle, ctypes.POINTER(Handle), ctypes.POINTER(Handle)],
+        )
+        for name in ("text", "text_box", "button"):
+            self._bind(
+                f"ui_abi_1_{name}_create",
+                [
+                    Handle,
+                    ctypes.POINTER(ctypes.c_uint8),
+                    ctypes.c_uint64,
+                    ctypes.POINTER(Handle),
+                    ctypes.POINTER(Handle),
+                ],
+            )
+        for name in (
+            "widget_is_enabled_property",
+            "widget_accessible_name_property",
+            "window_title_property",
+            "text_content_property",
+            "text_box_value_property",
+            "button_label_property",
+        ):
+            self._bind(f"ui_abi_1_{name}", [Handle, ctypes.POINTER(Handle)])
+        self._bind(
+            "ui_abi_1_widget_request_focus", [Handle, ctypes.POINTER(Handle)]
+        )
+        self._bind(
+            "ui_abi_1_window_content",
+            [Handle, ctypes.POINTER(Handle), ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_window_set_content",
+            [Handle, Handle, ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_window_clear_content", [Handle, ctypes.POINTER(Handle)]
+        )
+        self._bind(
+            "ui_abi_1_container_insert",
+            [Handle, Handle, ctypes.c_uint64, ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_container_remove",
+            [Handle, Handle, ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_container_move",
+            [Handle, ctypes.c_uint64, ctypes.c_uint64, ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_container_child_count",
+            [Handle, ctypes.POINTER(ctypes.c_uint64)],
+        )
+        self._bind(
+            "ui_abi_1_container_child_at",
+            [
+                Handle,
+                ctypes.c_uint64,
+                ctypes.POINTER(Handle),
+                ctypes.POINTER(Handle),
+            ],
+        )
+        self._bind(
+            "ui_abi_1_stack_panel_orientation",
+            [Handle, ctypes.POINTER(ctypes.c_uint32)],
+        )
+        self._bind(
+            "ui_abi_1_stack_panel_set_orientation",
+            [Handle, ctypes.c_uint32, ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_stack_panel_set_child_align",
+            [Handle, Handle, ctypes.c_uint32, ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_button_set_command",
+            [Handle, Handle, ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_button_command",
+            [Handle, ctypes.POINTER(Handle), ctypes.POINTER(Handle)],
         )
         self._bind("ui_abi_1_handle_release", [Handle])
         self._bind("ui_abi_1_handle_retain", [Handle, ctypes.POINTER(Handle)])
@@ -696,6 +864,194 @@ class CtypesNativeApi:
             ctypes.byref(direction),
         )
         return status, error.value, rejected_property.value, direction.value
+
+    @staticmethod
+    def _utf8_arguments(value: bytes) -> tuple[object, object, int]:
+        storage = (ctypes.c_uint8 * len(value)).from_buffer_copy(value)
+        pointer = (
+            ctypes.cast(storage, ctypes.POINTER(ctypes.c_uint8))
+            if value
+            else ctypes.POINTER(ctypes.c_uint8)()
+        )
+        return storage, pointer, len(value)
+
+    def _create_utf8_control(
+        self, name: str, runtime: int, initial: bytes
+    ) -> tuple[int, int, int]:
+        _storage, pointer, length = self._utf8_arguments(initial)
+        token = Handle()
+        error = Handle()
+        status = getattr(self._library, f"ui_abi_1_{name}_create")(
+            runtime, pointer, length, ctypes.byref(token), ctypes.byref(error)
+        )
+        return status, token.value, error.value
+
+    def window_create(self, runtime: int) -> tuple[int, int, int]:
+        token = Handle()
+        error = Handle()
+        status = self._library.ui_abi_1_window_create(
+            runtime, ctypes.byref(token), ctypes.byref(error)
+        )
+        return status, token.value, error.value
+
+    def stack_panel_create(self, runtime: int) -> tuple[int, int, int]:
+        token = Handle()
+        error = Handle()
+        status = self._library.ui_abi_1_stack_panel_create(
+            runtime, ctypes.byref(token), ctypes.byref(error)
+        )
+        return status, token.value, error.value
+
+    def text_create(
+        self, runtime: int, initial: bytes
+    ) -> tuple[int, int, int]:
+        return self._create_utf8_control("text", runtime, initial)
+
+    def text_box_create(
+        self, runtime: int, initial: bytes
+    ) -> tuple[int, int, int]:
+        return self._create_utf8_control("text_box", runtime, initial)
+
+    def button_create(
+        self, runtime: int, label: bytes
+    ) -> tuple[int, int, int]:
+        return self._create_utf8_control("button", runtime, label)
+
+    def _owned_property(self, name: str, handle: int) -> tuple[int, int]:
+        token = Handle()
+        status = getattr(self._library, f"ui_abi_1_{name}")(
+            handle, ctypes.byref(token)
+        )
+        return status, token.value
+
+    def widget_is_enabled_property(self, widget: int) -> tuple[int, int]:
+        return self._owned_property("widget_is_enabled_property", widget)
+
+    def widget_accessible_name_property(self, widget: int) -> tuple[int, int]:
+        return self._owned_property("widget_accessible_name_property", widget)
+
+    def widget_request_focus(self, widget: int) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_widget_request_focus(
+            widget, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def window_content(self, window: int) -> tuple[int, int, int]:
+        child = Handle()
+        error = Handle()
+        status = self._library.ui_abi_1_window_content(
+            window, ctypes.byref(child), ctypes.byref(error)
+        )
+        return status, child.value, error.value
+
+    def window_set_content(self, window: int, child: int) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_window_set_content(
+            window, child, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def window_clear_content(self, window: int) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_window_clear_content(
+            window, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def window_title_property(self, window: int) -> tuple[int, int]:
+        return self._owned_property("window_title_property", window)
+
+    def container_insert(
+        self, container: int, child: int, index: int
+    ) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_container_insert(
+            container, child, index, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def container_remove(self, container: int, child: int) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_container_remove(
+            container, child, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def container_move(
+        self, container: int, from_index: int, to_index: int
+    ) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_container_move(
+            container, from_index, to_index, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def container_child_count(self, container: int) -> tuple[int, int]:
+        count = ctypes.c_uint64()
+        status = self._library.ui_abi_1_container_child_count(
+            container, ctypes.byref(count)
+        )
+        return status, count.value
+
+    def container_child_at(
+        self, container: int, index: int
+    ) -> tuple[int, int, int]:
+        child = Handle()
+        error = Handle()
+        status = self._library.ui_abi_1_container_child_at(
+            container, index, ctypes.byref(child), ctypes.byref(error)
+        )
+        return status, child.value, error.value
+
+    def stack_panel_orientation(self, panel: int) -> tuple[int, int]:
+        orientation = ctypes.c_uint32()
+        status = self._library.ui_abi_1_stack_panel_orientation(
+            panel, ctypes.byref(orientation)
+        )
+        return status, orientation.value
+
+    def stack_panel_set_orientation(
+        self, panel: int, orientation: int
+    ) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_stack_panel_set_orientation(
+            panel, orientation, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def stack_panel_set_child_align(
+        self, panel: int, child: int, align: int
+    ) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_stack_panel_set_child_align(
+            panel, child, align, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def text_content_property(self, text: int) -> tuple[int, int]:
+        return self._owned_property("text_content_property", text)
+
+    def text_box_value_property(self, text_box: int) -> tuple[int, int]:
+        return self._owned_property("text_box_value_property", text_box)
+
+    def button_label_property(self, button: int) -> tuple[int, int]:
+        return self._owned_property("button_label_property", button)
+
+    def button_set_command(self, button: int, command: int) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_button_set_command(
+            button, command, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def button_command(self, button: int) -> tuple[int, int, int]:
+        command = Handle()
+        error = Handle()
+        status = self._library.ui_abi_1_button_command(
+            button, ctypes.byref(command), ctypes.byref(error)
+        )
+        return status, command.value, error.value
 
     def handle_release(self, owned: int) -> int:
         return self._library.ui_abi_1_handle_release(owned)

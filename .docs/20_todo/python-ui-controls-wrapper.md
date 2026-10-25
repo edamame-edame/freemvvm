@@ -1,7 +1,7 @@
 # Python Binding・Command・UI Controls wrapper
 
 - 計画版: 0.2改訂案
-- 状態: 計画v0.2を利用者承認済み（「ok」、2026-10-26）。改訂計画のcommit記録中。設計・試験設計・実装は別承認
+- 状態: 計画v0.2を利用者承認済み（「ok」、2026-10-26）。Python Controls unit実装・Windows local gates完了、commit/CI確認中
 - 作成日: 2026-10-26
 - 対象: 0.0.1向けPython MVVM/初期UI縦断に必要なBinding・AsyncCommand・UI Controls wrapper
 - 作業branch案: `impl-python/runtime-wrapper`を継続
@@ -46,14 +46,14 @@ Python consumerが承認済みCore/C ABIのProperty・Binding・AsyncCommand・�
 3. [x] Python public surfaceとrelease planを照合し、Python Binding/AsyncCommand wrapperが未実装というv0.1の前提誤りを確認した。
 4. [x] v0.2の対象範囲・依存順について利用者の「ok」により承認を得た（2026-10-26）。これはDD・試験設計・実装の承認ではない。
 5. [x] 承認後、改訂計画を日本語commit/pushする。
-6. [ ] 各段階で要求・承認履歴、BD/DD、C ABIを照合し、順に設計案を作成・承認する。Python DD v1.7 Binding、v1.8 AsyncCommandは2026-10-26に全文承認済み。残りの候補DD順: v1.9 UI Controls/Tree/Focus、v2.0 Window/close request。各版の全文承認を別々に確認する。
-7. [ ] 各段階に対応するwrapper fake ABI/real C ABI consumer casesを`.docs/32_unit_test/wrappers.md`へ追加する。Python Binding caseを含む文書版0.9とAsyncCommand caseを含む1.0は2026-10-26に全文承認され、`UNIT-WRAP-PY-BINDING-001`、`UNIT-WRAP-PY-COMMAND-001`を登録済み。Controls以降のunit設計・登録は各段階で別途行う。
-8. [ ] 実装開始承認後、以下の独立unitを一つずつplanned登録し、各focused/consumer testを同一revisionのCI gateへ結ぶ。
+6. [x] 各段階で要求・承認履歴、BD/DD、C ABIを照合し、順に設計案を作成・承認する。Python DD v1.7 Binding、v1.8 AsyncCommand、v1.10 UI Controls/Tree/Focusは2026-10-26に全文承認済み。次候補はv2.0 Window/close requestで、その全文承認は別途行う。
+7. [x] 各段階に対応するwrapper fake ABI/real C ABI consumer casesを`.docs/32_unit_test/wrappers.md`へ追加する。Binding caseを含む0.9、AsyncCommand caseを含む1.0、Controls caseを含む1.1は承認済み。Binding/Command/Controls implementation unitsを登録済み。
+8. [x] 実装開始承認後、以下の独立unitを一つずつplanned登録し、各focused/consumer testを同一revisionのCI gateへ結ぶ。
    - `UNIT-WRAP-PY-BINDING-001`: Property Binding作成・mode・cancel/close・error snapshot・所有。
    - `UNIT-WRAP-PY-COMMAND-001`: 非同期Command callback root・execute/cancel/completion/state・例外/close lifecycle。
    - `UNIT-WRAP-PY-CONTROLS-001`: Window/StackPanel/Text/TextBox/Button facade、Property/Binding/Command mapping、Tree、StackPanel設定、Focus要求。Window peer open/close callbackを含めない。
    - `UNIT-WRAP-PY-WINDOW-001`: Window peer open/closeとclose-request callback/defer/resolveのowner/root lifecycle。Controls unitに依存させる。
-9. [ ] `impl-python/runtime-wrapper`だけでunitを一つずつ実装する。各unitのlocal gatesとそのcommit SHAのWindows/Linux CI成功後に日本語commit/pushし、completeにする。Binding unitは実装・focused/consumer test・local `check`/`minimum`およびWindows/Linux CIまで完了（SHA `d5cfc1f3`、run 40212415054）。Command以降は未着手。
+9. [ ] `impl-python/runtime-wrapper`だけでunitを一つずつ実装する。各unitのlocal gatesとそのcommit SHAのWindows/Linux CI成功後に日本語commit/pushし、completeにする。Binding（SHA `d5cfc1f3`、run 40212415054）とCommand（SHA `aaf1ce68`、run 40214188291）は完了。Controlsの14 fake ABI cases・実 C ABI consumer・local `check`/`minimum`は成功し、commit/CI確認待ち。Window unitは未着手。
 10. [ ] 全unit完了後、`tools/dev.py check`、`minimum`、Python focused/consumer tests、document links、unit manifest、`git diff --check`を検証し、最終CI SHAと結果を計画・試験記録・memoryへ反映する。
 
 ## 完了条件
@@ -70,3 +70,4 @@ Python consumerが承認済みCore/C ABIのProperty・Binding・AsyncCommand・�
 | --- | --- | --- | --- |
 | 2026-10-26 | 計画0.1 / Python UI Controls wrapper | 利用者承認・commit済み | 利用者「ok」。commit `789cf3b`。Python Binding/Commandが既存という誤った前提を含んでいたため、実装着手前に改訂 |
 | 2026-10-26 | 計画0.2 / Python Binding・Command・UI Controls wrapper | 利用者承認 | 「ok」によりPython Binding/AsyncCommand先行unitと依存順を追加した改訂を承認。設計・試験設計・実装の承認は別 |
+| 2026-10-26 | UNIT-WRAP-PY-CONTROLS-001 | 実装開始承認 | 利用者の「実装開始」により、承認済みDD v1.10・test design v1.1のControls/Tree/Focus範囲の実装を開始 |

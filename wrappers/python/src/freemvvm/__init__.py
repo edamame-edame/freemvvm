@@ -11,7 +11,7 @@ import queue
 import sys
 import threading
 import traceback
-from typing import Iterator, final
+from typing import Callable, Iterator, final
 import weakref
 
 from . import _native
@@ -58,6 +58,18 @@ class BindingMode(IntEnum):
 class BindingDirection(IntEnum):
     SOURCE_TO_TARGET = 1
     TARGET_TO_SOURCE = 2
+
+
+class Orientation(IntEnum):
+    VERTICAL = _native.ORIENTATION_VERTICAL
+    HORIZONTAL = _native.ORIENTATION_HORIZONTAL
+
+
+class Alignment(IntEnum):
+    START = _native.ALIGN_START
+    CENTER = _native.ALIGN_CENTER
+    END = _native.ALIGN_END
+    STRETCH = _native.ALIGN_STRETCH
 
 
 @dataclass(frozen=True, slots=True)
@@ -1523,6 +1535,47 @@ class AsyncCommand:
         )
         return instance
 
+    @classmethod
+    def _from_owned_token(
+        cls,
+        api: _native.NativeApi,
+        token: int,
+        runtime_cell: _OwnerCell,
+    ) -> AsyncCommand:
+        """Adopt an owned Command token returned by a Control getter."""
+        if token == 0:
+            raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+        runtime_owner = _OwnerCell(api, 0, runtime_cell)
+        retain_status = _native.INTERNAL_ERROR
+        retained_runtime = 0
+        with runtime_cell.lease() as runtime_token:
+            _check_ui_thread(api, runtime_token)
+            retain_status, retained_runtime = api.handle_retain(runtime_token)
+        if retain_status != _native.OK or not retained_runtime:
+            ticket = _CleanupTicket(api=api, anchor=runtime_cell)
+            _dispose_unexpected(api, token, ticket)
+            _dispose_unexpected(api, retained_runtime, runtime_owner.ticket)
+            raise UiError(
+                ErrorSnapshot(
+                    retain_status
+                    if retain_status != _native.OK
+                    else _native.INTERNAL_ERROR
+                )
+            )
+        runtime_owner.token = retained_runtime
+        cell = _OwnerCell(api, token, runtime_cell)
+        instance = object.__new__(cls)
+        instance._cell = cell
+        instance._runtime_cell = runtime_cell
+        instance._runtime_owner = runtime_owner
+        instance._finalizer = weakref.finalize(
+            instance,
+            _enqueue_cleanup_tickets,
+            cell.ticket,
+            runtime_owner.ticket,
+        )
+        return instance
+
     def execute(self) -> int:
         api = self._cell.api
         error_ticket = _CleanupTicket(api=api, anchor=self._runtime_cell)
@@ -1623,7 +1676,443 @@ class AsyncCommand:
         return None
 
 
+class Widget:
+    """Own one UI Widget reference; concrete views are created by factories."""
+
+    __slots__ = ("_cell", "_runtime_cell", "_finalizer", "__weakref__")
+
+    def __init__(self) -> None:
+        raise TypeError("Use a concrete Widget create() factory")
+
+    @classmethod
+    def _create(
+        cls,
+        runtime: Runtime,
+        create: Callable[[_native.NativeApi, int], tuple[int, int, int]],
+    ) -> Widget:
+        if not isinstance(runtime, Runtime):
+            raise TypeError("runtime must be a freemvvm.Runtime")
+        _CleanupManager.retry_pending()
+        api = runtime._cell.api
+        runtime_cell = runtime._cell
+        error_ticket = _CleanupTicket(api=api, anchor=runtime_cell)
+        with runtime_cell.lease() as runtime_token:
+            _check_ui_thread(api, runtime_token)
+            status, token, error = create(api, runtime_token)
+        if status != _native.OK or not token or error:
+            _dispose_unexpected(
+                api, token, _CleanupTicket(api=api, anchor=runtime_cell)
+            )
+            _check_result(api, status, error, error_ticket)
+            raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+        return cls._from_owned_token(api, token, runtime_cell)
+
+    @classmethod
+    def _from_owned_token(
+        cls,
+        api: _native.NativeApi,
+        token: int,
+        runtime_cell: _OwnerCell,
+    ) -> Widget:
+        if token == 0:
+            raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+        cell = _OwnerCell(api, token, runtime_cell)
+        instance = object.__new__(cls)
+        instance._cell = cell
+        instance._runtime_cell = runtime_cell
+        instance._finalizer = weakref.finalize(
+            instance, _CleanupManager.enqueue, cell.ticket
+        )
+        return instance
+
+    @contextmanager
+    def _ui_call(self) -> Iterator[tuple[_native.NativeApi, int]]:
+        _CleanupManager.retry_pending()
+        api = self._cell.api
+        with self._runtime_cell.lease() as runtime_token:
+            _check_ui_thread(api, runtime_token)
+            with self._cell.lease() as widget_token:
+                yield api, widget_token
+
+    def _property(
+        self, getter: Callable[[int], tuple[int, int]], kind: int
+    ) -> Property:
+        with self._ui_call() as (api, widget_token):
+            status, token = getter(widget_token)
+        if status != _native.OK or not token:
+            _dispose_unexpected(
+                api,
+                token,
+                _CleanupTicket(api=api, anchor=self._runtime_cell),
+            )
+            raise UiError(
+                ErrorSnapshot(
+                    status if status != _native.OK else _native.INTERNAL_ERROR
+                )
+            )
+        return Property._from_owned_token(api, token, self._runtime_cell, kind)
+
+    @property
+    def is_enabled(self) -> Property:
+        return self._property(
+            self._cell.api.widget_is_enabled_property, Property._BOOL
+        )
+
+    @property
+    def accessible_name(self) -> Property:
+        return self._property(
+            self._cell.api.widget_accessible_name_property, Property._UTF8
+        )
+
+    def request_focus(self) -> None:
+        with self._ui_call() as (api, token):
+            status, error = api.widget_request_focus(token)
+        _check_result(
+            api,
+            status,
+            error,
+            _CleanupTicket(api=api, anchor=self._runtime_cell),
+        )
+
+    def close(self) -> None:
+        _CleanupManager.retry_pending()
+        self._cell.close()
+        if self._cell.token == 0:
+            self._finalizer.detach()
+
+
+class Container(Widget):
+    """Abstract facade for Controls with indexed multiple children."""
+
+    __slots__ = ()
+
+    def __init__(self) -> None:
+        raise TypeError("Container is abstract; create a concrete container")
+
+    @property
+    def child_count(self) -> int:
+        with self._ui_call() as (api, token):
+            status, count = api.container_child_count(token)
+        if status != _native.OK:
+            raise UiError(ErrorSnapshot(status))
+        return count
+
+    def child_at(self, index: int) -> Widget:
+        _validate_index(index, "index")
+        with self._ui_call() as (api, token):
+            status, child, error = api.container_child_at(token, index)
+        if status != _native.OK or error:
+            _dispose_unexpected(
+                api,
+                child,
+                _CleanupTicket(api=api, anchor=self._runtime_cell),
+            )
+            _check_result(
+                api,
+                status,
+                error,
+                _CleanupTicket(api=api, anchor=self._runtime_cell),
+            )
+        if not child:
+            raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+        return Widget._from_owned_token(api, child, self._runtime_cell)
+
+    def insert(self, child: Widget, index: int) -> None:
+        _validate_index(index, "index")
+        if not isinstance(child, Widget):
+            raise TypeError("child must be a freemvvm.Widget")
+        if child._runtime_cell is not self._runtime_cell:
+            raise UiError(ErrorSnapshot(_native.WRONG_RUNTIME))
+        with self._runtime_cell.lease() as runtime_token:
+            _check_ui_thread(self._cell.api, runtime_token)
+            with self._cell.lease() as container_token:
+                with child._cell.lease() as child_token:
+                    status, error = self._cell.api.container_insert(
+                        container_token, child_token, index
+                    )
+        _check_result(
+            self._cell.api,
+            status,
+            error,
+            _CleanupTicket(api=self._cell.api, anchor=self._runtime_cell),
+        )
+
+    def remove(self, child: Widget) -> None:
+        if not isinstance(child, Widget):
+            raise TypeError("child must be a freemvvm.Widget")
+        if child._runtime_cell is not self._runtime_cell:
+            raise UiError(ErrorSnapshot(_native.WRONG_RUNTIME))
+        with self._runtime_cell.lease() as runtime_token:
+            _check_ui_thread(self._cell.api, runtime_token)
+            with self._cell.lease() as container_token:
+                with child._cell.lease() as child_token:
+                    status, error = self._cell.api.container_remove(
+                        container_token, child_token
+                    )
+        _check_result(
+            self._cell.api,
+            status,
+            error,
+            _CleanupTicket(api=self._cell.api, anchor=self._runtime_cell),
+        )
+
+    def move(self, from_index: int, to_index: int) -> None:
+        _validate_index(from_index, "from_index")
+        _validate_index(to_index, "to_index")
+        with self._ui_call() as (api, token):
+            status, error = api.container_move(token, from_index, to_index)
+        _check_result(
+            api,
+            status,
+            error,
+            _CleanupTicket(api=api, anchor=self._runtime_cell),
+        )
+
+
+def _validate_index(value: int, name: str) -> None:
+    if type(value) is not int or not 0 <= value <= 0xFFFFFFFFFFFFFFFF:
+        raise ValueError(f"{name} must be a nonnegative uint64 int")
+
+
+def _encode_control_text(value: str, name: str) -> bytes:
+    if type(value) is not str:
+        raise TypeError(f"{name} must be a built-in str")
+    return value.encode("utf-8", errors="strict")
+
+
 @final
+class Window(Widget):
+    """Own a Window Control; peer open/close belongs to a later facade unit."""
+
+    __slots__ = ()
+
+    @classmethod
+    def create(cls, runtime: Runtime) -> Window:
+        return cls._create(
+            runtime, lambda api, token: api.window_create(token)
+        )
+
+    @property
+    def content(self) -> Widget | None:
+        with self._ui_call() as (api, token):
+            status, child, error = api.window_content(token)
+        if status != _native.OK or error:
+            _dispose_unexpected(
+                api,
+                child,
+                _CleanupTicket(api=api, anchor=self._runtime_cell),
+            )
+            _check_result(
+                api,
+                status,
+                error,
+                _CleanupTicket(api=api, anchor=self._runtime_cell),
+            )
+        if not child:
+            return None
+        return Widget._from_owned_token(api, child, self._runtime_cell)
+
+    def set_content(self, child: Widget) -> None:
+        if not isinstance(child, Widget):
+            raise TypeError("child must be a freemvvm.Widget")
+        if child._runtime_cell is not self._runtime_cell:
+            raise UiError(ErrorSnapshot(_native.WRONG_RUNTIME))
+        with self._runtime_cell.lease() as runtime_token:
+            _check_ui_thread(self._cell.api, runtime_token)
+            with self._cell.lease() as window_token:
+                with child._cell.lease() as child_token:
+                    status, error = self._cell.api.window_set_content(
+                        window_token, child_token
+                    )
+        _check_result(
+            self._cell.api,
+            status,
+            error,
+            _CleanupTicket(api=self._cell.api, anchor=self._runtime_cell),
+        )
+
+    def clear_content(self) -> None:
+        with self._ui_call() as (api, token):
+            status, error = api.window_clear_content(token)
+        _check_result(
+            api,
+            status,
+            error,
+            _CleanupTicket(api=api, anchor=self._runtime_cell),
+        )
+
+    @property
+    def title(self) -> Property:
+        return self._property(
+            self._cell.api.window_title_property, Property._UTF8
+        )
+
+
+@final
+class StackPanel(Container):
+    """Own an indexed multi-child StackPanel Control."""
+
+    __slots__ = ()
+
+    @classmethod
+    def create(cls, runtime: Runtime) -> StackPanel:
+        return cls._create(
+            runtime, lambda api, token: api.stack_panel_create(token)
+        )
+
+    @property
+    def orientation(self) -> Orientation:
+        with self._ui_call() as (api, token):
+            status, orientation = api.stack_panel_orientation(token)
+        if status != _native.OK:
+            raise UiError(ErrorSnapshot(status))
+        try:
+            return Orientation(orientation)
+        except ValueError as error:
+            raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR)) from error
+
+    @orientation.setter
+    def orientation(self, value: Orientation) -> None:
+        if type(value) is not Orientation:
+            raise TypeError("orientation must be an Orientation")
+        with self._ui_call() as (api, token):
+            status, error = api.stack_panel_set_orientation(token, int(value))
+        _check_result(
+            api,
+            status,
+            error,
+            _CleanupTicket(api=api, anchor=self._runtime_cell),
+        )
+
+    def set_child_align(self, child: Widget, alignment: Alignment) -> None:
+        if not isinstance(child, Widget):
+            raise TypeError("child must be a freemvvm.Widget")
+        if type(alignment) is not Alignment:
+            raise TypeError("alignment must be an Alignment")
+        if child._runtime_cell is not self._runtime_cell:
+            raise UiError(ErrorSnapshot(_native.WRONG_RUNTIME))
+        with self._runtime_cell.lease() as runtime_token:
+            _check_ui_thread(self._cell.api, runtime_token)
+            with self._cell.lease() as panel_token:
+                with child._cell.lease() as child_token:
+                    status, error = self._cell.api.stack_panel_set_child_align(
+                        panel_token, child_token, int(alignment)
+                    )
+        _check_result(
+            self._cell.api,
+            status,
+            error,
+            _CleanupTicket(api=self._cell.api, anchor=self._runtime_cell),
+        )
+
+
+@final
+class Text(Widget):
+    """Read-only UTF-8 text Control facade."""
+
+    __slots__ = ()
+
+    @classmethod
+    def create(cls, runtime: Runtime, content: str = "") -> Text:
+        initial = _encode_control_text(content, "content")
+        return cls._create(
+            runtime, lambda api, token: api.text_create(token, initial)
+        )
+
+    @property
+    def content(self) -> Property:
+        return self._property(
+            self._cell.api.text_content_property, Property._UTF8
+        )
+
+
+@final
+class TextBox(Widget):
+    """Text input Control facade for its committed UTF-8 value."""
+
+    __slots__ = ()
+
+    @classmethod
+    def create(cls, runtime: Runtime, value: str = "") -> TextBox:
+        initial = _encode_control_text(value, "value")
+        return cls._create(
+            runtime, lambda api, token: api.text_box_create(token, initial)
+        )
+
+    @property
+    def value(self) -> Property:
+        return self._property(
+            self._cell.api.text_box_value_property, Property._UTF8
+        )
+
+
+@final
+class Button(Widget):
+    """Button facade for its label and optional shared AsyncCommand."""
+
+    __slots__ = ()
+
+    @classmethod
+    def create(cls, runtime: Runtime, label: str = "") -> Button:
+        initial = _encode_control_text(label, "label")
+        return cls._create(
+            runtime, lambda api, token: api.button_create(token, initial)
+        )
+
+    @property
+    def label(self) -> Property:
+        return self._property(
+            self._cell.api.button_label_property, Property._UTF8
+        )
+
+    def set_command(self, command: AsyncCommand | None) -> None:
+        if command is not None and not isinstance(command, AsyncCommand):
+            raise TypeError("command must be an AsyncCommand or None")
+        if (
+            command is not None
+            and command._runtime_cell is not self._runtime_cell
+        ):
+            raise UiError(ErrorSnapshot(_native.WRONG_RUNTIME))
+        with self._runtime_cell.lease() as runtime_token:
+            _check_ui_thread(self._cell.api, runtime_token)
+            with self._cell.lease() as button_token:
+                if command is None:
+                    status, error = self._cell.api.button_set_command(
+                        button_token, 0
+                    )
+                else:
+                    with command._cell.lease() as command_token:
+                        status, error = self._cell.api.button_set_command(
+                            button_token, command_token
+                        )
+        _check_result(
+            self._cell.api,
+            status,
+            error,
+            _CleanupTicket(api=self._cell.api, anchor=self._runtime_cell),
+        )
+
+    @property
+    def command(self) -> AsyncCommand | None:
+        with self._ui_call() as (api, token):
+            status, command, error = api.button_command(token)
+        if status != _native.OK or error:
+            _dispose_unexpected(
+                api,
+                command,
+                _CleanupTicket(api=api, anchor=self._runtime_cell),
+            )
+            _check_result(
+                api,
+                status,
+                error,
+                _CleanupTicket(api=api, anchor=self._runtime_cell),
+            )
+        if not command:
+            return None
+        return AsyncCommand._from_owned_token(api, command, self._runtime_cell)
+
+
 class ShutdownRequest:
     """Owns a thread-independent shutdown completion receipt."""
 
@@ -1665,22 +2154,31 @@ class ShutdownRequest:
 
 
 __all__ = [
+    "Alignment",
     "AsyncCommand",
     "Binding",
     "BindingDirection",
     "BindingErrorSnapshot",
     "BindingMode",
+    "Button",
     "CommandOperation",
     "CommandState",
+    "Container",
     "ErrorSnapshot",
     "MissingRuntimeError",
+    "Orientation",
     "Property",
     "Runtime",
+    "StackPanel",
     "ShutdownDisposition",
     "ShutdownMode",
     "ShutdownRequest",
     "ShutdownRequestState",
     "ShutdownSnapshot",
+    "Text",
+    "TextBox",
     "UiContext",
     "UiError",
+    "Widget",
+    "Window",
 ]

@@ -1,9 +1,9 @@
 # 言語ラッパー：Python
 
-- 文書版: 1.9
+- 文書版: 1.10
 - 文書ロール: detailed-design
 - 更新日: 2026-10-26
-- 状態: 1.9全文承認済み（利用者、「ok」、2026-10-26）。実装・試験状態は別管理
+- 状態: 1.10全文承認済み（利用者、「ok」、2026-10-26）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -892,7 +892,7 @@ sequenceDiagram
 
 Core/C ABIの変更、内蔵executor/thread pool、`asyncio` Task統合、専用progress値/Property、worker例外からdomain/codeを自動生成するpolicy、Property/Binding/Control以外のMVVM facade、Command completion callback/Subscriptionは含めない。`post(callback, *args)`をAsyncCommandOperationの最小UI dispatch surfaceに限定し、callback例外を既存Runtime handlerの`Post`種別へ分類する。
 
-## Python UI Controls / Tree / Focus公開API（1.9改訂案）
+## Python UI Controls / Tree / Focus公開API（1.10改訂案）
 
 本改訂は承認済みRQ-09とUI Controls/Tree/Focus DDをPython facadeへ写す。Core/C ABI変更、Window peer open/close・close-request、OS rendering/input、TextBox editing/selection/caret APIは含めない。WindowはCore Controlとして生成しcontent/titleを扱えるが、現在のC ABI `window_open` は`UI_UNSUPPORTED`であり、このunitで表示可能とは扱わない。Focus要求は既存C ABIへ委譲し、active Windowに属する有効Controlでない等の拒否を`UiError`として伝える。
 
@@ -903,8 +903,8 @@ Core/C ABIの変更、内蔵executor/thread pool、`asyncio` Task統合、専用
 | 型 | 生成・操作 | C ABI対応 | 所有・thread |
 | --- | --- | --- | --- |
 | `Widget` | 共通抽象view。`is_enabled`、`accessible_name`はBOOL/UTF-8 `Property`を返す。`request_focus()`を提供 | `widget_is_enabled_property`、`widget_accessible_name_property`、`widget_request_focus` | 各Widgetは一owned tokenとRuntime anchorを持つ。Propertyごとに独立owned token。操作はRuntime UI thread専用 |
-| `Container` | 共通抽象view。`child_count`、`child_at(index)`、`insert(child, index)`、`remove(child)`、`move(from_index, to_index)` | `container_child_count/child_at/insert/remove/move` | child getterは独立owned tokenを返す。親子操作でPython ownerのtokenは消費しない |
-| `Window` | `create(runtime)`、`content` getter、`set_content(widget)`、`clear_content()`、`title` Property | `window_create/content/set_content/clear_content/title_property` | 空contentは`None`。open/close/close-requestは別のWindow unit |
+| `Container` | 複数子Treeを持つ抽象facade。`child_count`、`child_at(index)`、`insert(child, index)`、`remove(child)`、`move(from_index, to_index)` | `container_child_count/child_at/insert/remove/move` | 現行C ABIの複数子操作はStackPanel向け。child getterは独立owned tokenを返し、親子操作でPython ownerのtokenは消費しない |
+| `Window` | `Widget`の具象facade。`create(runtime)`、`content` getter、`set_content(widget)`、`clear_content()`、`title` Property | `window_create/content/set_content/clear_content/title_property` | Windowは単一content APIであり複数子Container APIを継承しない。空contentは`None`。open/close/close-requestは別のWindow unit |
 | `StackPanel` | `create(runtime)`、`orientation` getter/setter、`set_child_align(child, alignment)`とContainer操作 | `stack_panel_create/orientation/set_orientation/set_child_align` | `Orientation.VERTICAL/HORIZONTAL`、`Alignment.START/CENTER/END/STRETCH`をABI定数へ写像 |
 | `Text` | `create(runtime, content="")`、`content` UTF-8 Property | `text_create`、`text_content_property` | Propertyの既存型検査・所有規則に従う |
 | `TextBox` | `create(runtime, value="")`、`value` UTF-8 Property | `text_box_create`、`text_box_value_property` | selection/caret/editing snapshot/IMEはABI入口がないため本改訂では公開しない |
@@ -914,7 +914,7 @@ Core/C ABIの変更、内蔵executor/thread pool、`asyncio` Task統合、専用
 
 ### C ABI mapping・型判定・エラー境界
 
-現行ABIにはWidget concrete kind queryがない。このため`Window.content`と`Container.child_at()`は型固有操作を持たない共通`Widget` viewを返し、Text等へ推測castしない。型固有Property/Commandを利用するアプリは作成時の具象ownerを保持する。Tree snapshotから型付きfacadeを再構成する機能はABI kind queryなしに実装しない。
+現行ABIにはWidget concrete kind queryがない。このため`Window.content`と`Container.child_at()`は型固有操作を持たない共通`Widget` viewを返し、Text等へ推測castしない。型固有Property/Commandを利用するアプリは作成時の具象ownerを保持する。Tree snapshotから型付きfacadeを再構成する機能はABI kind queryなしに実装しない。Core要求上Windowは子を一つ持つContainer分類だが、Python class inheritanceは操作可能なC ABI surfaceを誤認させないようWindowを`Widget`として、StackPanelを複数子`Container`として表す。Windowのsingle-content操作は同じTree ownership contractの専用APIで行い、複数子用`container_*`に偽装しない。
 
 入力ownerは同Runtime cellであることを検査後、borrowed tokenとして渡す。`set_command(None)`だけがゼロhandleを渡す。out-owned tokenが異常なstatus/zeroの組合せで返った場合、既存ownerと同じunexpected-token cleanupを行う。status/error変換とUI thread検査は共通helperを使う。
 
@@ -959,10 +959,11 @@ classDiagram
         set_command(command)
     }
     Widget <|-- Container
-    Container <|-- Window
+    Widget <|-- Window
     Container <|-- StackPanel
     Widget <|-- Text
     Widget <|-- TextBox
+    Widget <|-- Container
     Widget <|-- Button
     Button o--> AsyncCommand : Core association
     Widget ..> Property : owned facade
@@ -1002,3 +1003,5 @@ Window peer open/close・close-request、成功するFocus遷移のPlatform統�
 | 2026-10-26 | 1.8全文 | 利用者の「ok」によりAsyncCommand/CommandOperationの公開API、worker lease、post/終端報告、callback root、例外・close境界を含む文書全体を承認。試験設計・実装開始は別承認 |
 | 2026-10-26 | 1.9改訂案 | 承認済みRQ-09とUI DD・現行C ABIに基づくPython Controls/Tree/Focus facade案を追加。Window peerとTextBox edit API等の未提供ABI範囲を明示。文書全体レビュー待ち |
 | 2026-10-26 | 1.9全文 | 利用者の「ok」によりPython UI Controls/Tree/Focus facade案と未提供ABI範囲を含む文書全体を承認。試験設計・実装・試験合格は別管理 |
+| 2026-10-26 | 1.10改訂案 | 現行C ABIの複数子`container_*`操作がStackPanel向けでWindowは単一content APIである点に合わせ、Python facadeのContainer inheritanceを修正。文書全体レビュー待ち |
+| 2026-10-26 | 1.10全文 | 利用者の「ok」によりWindowをWidget facade、StackPanelを複数子Container facadeとするPython mappingを含む文書全体を承認。RQ上のContainer分類とWindowのsingle-content意味は維持。試験・実装結果は別管理 |
