@@ -1,9 +1,9 @@
 # 言語ラッパー：Python
 
-- 文書版: 1.3
+- 文書版: 1.4
 - 文書ロール: detailed-design
 - 更新日: 2026-10-25
-- 状態: 1.3全文承認済み（利用者、「ok」、2026-10-25）。実装・試験状態は別管理
+- 状態: 1.4全文承認済み（利用者、「ok」、2026-10-25）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -18,6 +18,7 @@
 | 所有参照・callback root・通常終了 | [RQ-02-013](../../11_requirements/RQ-02_core-features.md#rq-02-013)、[RQ-03-004](../../11_requirements/RQ-03_language-support.md#rq-03-004)、[RQ-03-008](../../11_requirements/RQ-03_language-support.md#rq-03-008)、[RQ-03-009](../../11_requirements/RQ-03_language-support.md#rq-03-009)、[RQ-03-010](../../11_requirements/RQ-03_language-support.md#rq-03-010)、[RQ-03-011](../../11_requirements/RQ-03_language-support.md#rq-03-011)、[RQ-03-012](../../11_requirements/RQ-03_language-support.md#rq-03-012)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-04-017](../../11_requirements/RQ-04_abi-boundary.md#rq-04-017)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-023](../../11_requirements/RQ-04_abi-boundary.md#rq-04-023)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-003](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)、[RQ-06-005](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-06-006](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-006)、[RQ-07-008](../../11_requirements/RQ-07_binding.md#rq-07-008)、[RQ-07-013](../../11_requirements/RQ-07_binding.md#rq-07-013)、[RQ-07-014](../../11_requirements/RQ-07_binding.md#rq-07-014)、[RQ-12-007](../../11_requirements/RQ-12_build-distribution.md#rq-12-007) |
 | 公開API・cleanup・handler寿命 | [RQ-03-004](../../11_requirements/RQ-03_language-support.md#rq-03-004)、[RQ-03-008](../../11_requirements/RQ-03_language-support.md#rq-03-008)、[RQ-03-009](../../11_requirements/RQ-03_language-support.md#rq-03-009)、[RQ-03-010](../../11_requirements/RQ-03_language-support.md#rq-03-010)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-03-015](../../11_requirements/RQ-03_language-support.md#rq-03-015)、[RQ-03-016](../../11_requirements/RQ-03_language-support.md#rq-03-016)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-05-014](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-014)、[RQ-06-003](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-003) |
 | BOOL/I64 Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
+| UTF-8 Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-04-003](../../11_requirements/RQ-04_abi-boundary.md#rq-04-003)、[RQ-04-020](../../11_requirements/RQ-04_abi-boundary.md#rq-04-020)、[RQ-04-021](../../11_requirements/RQ-04_abi-boundary.md#rq-04-021)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -523,12 +524,12 @@ sequenceDiagram
     participant ABI as C ABI / Core
     App->>P: Property.create(runtime, initial)
     P->>R: open + UI-thread check
-    P->>ABI: property_create_bool or property_create_i64
+    P->>ABI: type-specific property_create
     ABI-->>P: owned Property token + status/error
     P-->>App: Property
     App->>P: set(value) / get()
     P->>P: acquire call lease
-    P->>ABI: typed property_set / property_get
+    P->>ABI: type-specific property_set / property_get
     ABI-->>P: status + value/error
     P->>P: release call lease
     P-->>App: result or UiError
@@ -537,6 +538,69 @@ sequenceDiagram
 ```
 
 Runtime anchorはPropertyが生存中にRuntime owner cellの早期回収を防ぐが、Property closeはRuntime shutdownを開始せず、Runtime closeと連鎖させない。最後のProperty handle releaseとRuntime shutdownの詳細は既存Runtime/ABI設計に従う。
+
+## UTF-8 Property公開API（1.4改訂案）
+
+本節は承認済みRQと共通C ABIのUTF-8 Property契約をPython `str`から利用する拡張案である。BOOL/I64 Propertyの公開API・owner/call lease・error snapshot・明示close契約は維持する。本節を含む文書全体は利用者レビュー待ちであり、承認前の確定仕様・実装済みAPI・試験合格を意味しない。
+
+### 公開APIと型mapping
+
+| 型/API | 改訂案の責務・契約 |
+|---|---|
+| `Property.create(runtime, initial)` | `type(initial) is str`の場合はUTF-8 Propertyを作成する。初回値型は既存BOOL/I64と追加UTF-8のみ。createはUI threadで実行する。 |
+| `property.get()` | CoreからUTF-8 byte列を取得し、妥当なUTF-8だけをPython `str`へstrict decodeする。wrapper側に値cacheを置かない。 |
+| `property.set(value)` | UTF-8 Propertyにはbuilt-in `str`だけを受け付け、strict encodeしたbyte列とbyte lengthをC ABIへ渡す。値型違いはnative call前に拒否する。 |
+| `property.close()` / `try_close()`、context manager | 既存Propertyのtoken release・retry・Runtime非shutdown契約をそのまま適用する。 |
+
+UTF-8 Propertyの入力・出力はC ABIのbyte lengthを正とし、NUL終端文字列へ変換しない。Python `str`をstrict UTF-8 encodeし、Unicode normalizationや置換を行わない。空文字列はbyte length 0として渡し、埋め込みNULは通常のUTF-8 byte列として保持する。`str`以外および`str` subclassは`TypeError`、isolated surrogate等strict UTF-8へ変換できない内容はnative call前に`UnicodeEncodeError`で拒否する案とする。
+
+### ABI mapping・buffer read flow
+
+| Python側 | C ABI側 | 改訂案の失敗扱い |
+|---|---|---|
+| `str`のcreate | `property_create_utf8(runtime, bytes, byte_length, out_property, out_error)` | 空byte列はnull pointer・長さ0で表し、有効byte列はCoreがcall中にcopyする。status/error snapshotと部分生成token回収は既存Property/owner契約に従う。 |
+| `str`のset | `property_set_utf8(property, bytes, byte_length, out_error)` | strict encode後にbyte pointer/lengthをcall中だけborrowさせる。失敗status/errorを`UiError`へ写し、wrapper値cacheや暗黙rollbackを追加しない。 |
+| `str`のget | `property_get_utf8(property, buffer, capacity, out_length)` | capacity照会後にbytearrayを確保し、`UI_BUFFER_TOO_SMALL`なら必要長を取り直して再試行する。部分byte列をPython値として公開しない。 |
+| native UTF-8結果 | caller-owned bytearray → `str` | `errors="strict"`相当でdecodeし、invalid UTF-8はreplacementせず`UiError(INTERNAL_ERROR)`として報告する案とする。 |
+
+getterはCore/UI thread上の同期call内で容量照会とcopyを行い、その間にevent loopを回さない。ABIが`UI_BUFFER_TOO_SMALL`を返した場合は再照会・再確保し、成功した長さ分だけをdecodeする。capacityと返却長の矛盾、またはstrict decode失敗は不正ABI出力として扱い、文字列値を返さない。queryとcopyを跨いだ同一snapshot保証は新設しない。
+
+### owner、thread、errorの継承
+
+UTF-8 PropertyもRuntime anchorとNativeOwnerCellを持つ。create/get/setはUI thread専用であり、workerからの自動dispatchは行わない。native callではRuntimeとProperty双方のcall leaseでtoken寿命を保護し、wrapper lockをnative call中に保持しない。explicit close失敗時のtoken保持/retry、finalizer cleanup ticket、未知status/error snapshotのraw情報保持はBOOL/I64 Propertyと同一の契約を適用する。
+
+UTF-8値に関する入力型違いは`TypeError`、Python文字列のstrict encode不能はnative call前の`UnicodeEncodeError`、native側のinvalid UTF-8やABI長矛盾は`UiError(INTERNAL_ERROR)`とする提案である。Coreから返る既知status、例えばwrong-thread、closed、validation failureはstatusを一次情報として既存`UiError`契約へ写す。Property値・通知・validation・Binding意味論はRQ/Coreの正本に従い、本wrapperは通知・Binding・normalization・converterを追加しない。
+
+### sequence flow
+
+```mermaid
+sequenceDiagram
+    participant App as Python consumer
+    participant P as Property facade / owner cell
+    participant R as Runtime / UiContext
+    participant ABI as C ABI / Core
+    App->>P: Property.create(runtime, str)
+    P->>P: strict UTF-8 encode
+    P->>R: acquire Runtime lease + UI-thread check
+    P->>ABI: property_create_utf8(bytes, byte_length)
+    ABI-->>P: Property token + status/error
+    P-->>App: Property
+    App->>P: get()
+    P->>P: acquire Runtime/Property call leases
+    P->>ABI: property_get_utf8(NULL, 0, out_length)
+    ABI-->>P: required byte length
+    P->>ABI: property_get_utf8(buffer, capacity, out_length)
+    ABI-->>P: bytes/status
+    P->>P: strict UTF-8 decode; release call leases
+    P-->>App: str or UiError
+    App->>P: set(str)
+    P->>P: strict UTF-8 encode
+    P->>ABI: property_set_utf8(bytes, byte_length)
+    ABI-->>P: status/error
+    P-->>App: None or UiError
+```
+
+この改訂案はPython wrapper単体のUTF-8 Property facadeに限る。Unicode normalization、locale conversion、F64/DECIMAL、Subscription、Binding、TextBox表示編集、package loader/配布経路は別設計・別unitとする。
 
 ## 文書の承認・改訂履歴
 
@@ -550,3 +614,5 @@ Runtime anchorはPropertyが生存中にRuntime owner cellの早期回収を防�
 | 2026-10-25 | 1.2全文 | 利用者の「ok」により、Runtime公開APIとshutdown/close・ownership境界、異Runtime context検査を後続UI APIへ送る範囲変更を含む全文を承認。実装・試験合格を意味しない |
 | 2026-10-25 | 1.3改訂案 | Python BOOL/I64 Property facadeの公開API、型mapping、owner/call lease、ABI failure境界を文書全体の改訂案として追加 |
 | 2026-10-25 | 1.3全文 | 利用者の「ok」によりBOOL/I64 Property API、型変換・例外・ownership・call flowを含む文書全体を承認。実装・試験合格は別管理 |
+| 2026-10-25 | 1.4改訂案 | Python UTF-8 Property API、strict str/byte mapping、getter buffer retry、invalid sequenceの失敗案を追加。文書全体レビュー待ち |
+| 2026-10-25 | 1.4全文 | 利用者の「ok」によりUTF-8 Property API、strict conversion、buffer retry、failure mappingを含む文書全体を承認。試験設計・実装・試験合格は別管理 |

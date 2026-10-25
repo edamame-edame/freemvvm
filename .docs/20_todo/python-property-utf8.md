@@ -35,7 +35,7 @@
 
 1. [x] Python BOOL/I64 Property unit完了と現在のbranch状態を確認した。
 2. [x] 本計画0.1のscope・branch・レビューgateについて利用者の「ok」による承認を得た（2026-10-25）。
-3. [ ] 計画承認後にPython DD v1.4全文改訂案を作り、Python `str` mapping、strict encode/decode、invalid input/output、buffer retry、error/ownership flowを具体化して全文承認を得る。
+3. [x] Python DD v1.4でPython `str` mapping、strict encode/decode、invalid input/output、buffer retry、error/ownership flowを具体化し、利用者の「ok」による全文承認を得た（2026-10-25）。
 4. [ ] DD承認後にwrapper test design 0.6全文改訂案と`UNIT-WRAP-PY-PROP-UTF8-001`のfake ABI/consumer casesを作成し、全文承認を得る。unit台帳には実行command・RQ・case・依存を登録する。
 5. [ ] 利用者の実装開始指示後、Python ctypes bindings、Property facade、focused fake ABI tests、独立real C ABI consumer、`tools/dev.py` command/check gatesを同unitに実装する。
 6. [ ] Windows local focused tests/consumer/check/minimum/document validation、Windows/Linux CIを実装SHAで確認し、unit/plan/test/memoryを完了記録して日本語でcommit/pushする。
@@ -54,3 +54,4 @@
 | --- | --- | --- | --- |
 | 2026-10-25 | 計画0.1 / Python UTF-8 Property wrapper | — | 次unit候補の計画案。利用者レビュー待ち。DD改訂・試験設計・実装の承認を含まない |
 | 2026-10-25 | 計画0.1全文 | 利用者 | 「ok」によりscope・branch・段階別レビューgateを承認。DD改訂・試験設計・実装開始は別承認 |
+| 2026-10-25 | Python wrapper DD v1.4全文 | 利用者 | 「ok」によりUTF-8 Property API・変換・buffer retry・失敗境界を含む文書全体を承認。試験設計・実装開始は別判断 |
