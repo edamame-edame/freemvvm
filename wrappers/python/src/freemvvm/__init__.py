@@ -46,6 +46,24 @@ class UiError(RuntimeError):
         )
 
 
+class BindingMode(IntEnum):
+    ONE_TIME = 1
+    ONE_WAY = 2
+    TWO_WAY = 3
+
+
+class BindingDirection(IntEnum):
+    SOURCE_TO_TARGET = 1
+    TARGET_TO_SOURCE = 2
+
+
+@dataclass(frozen=True, slots=True)
+class BindingErrorSnapshot:
+    error: ErrorSnapshot
+    rejected_property: Property
+    direction: BindingDirection
+
+
 class ShutdownMode(IntEnum):
     ASYNC = _native.SHUTDOWN_ASYNC
     SYNC = _native.SHUTDOWN_SYNC
@@ -315,6 +333,25 @@ def _dispose_unexpected(
         release_ticket.token = 0
     else:
         _CleanupManager.enqueue(release_ticket)
+
+
+def _dispose_unexpected_binding(
+    api: _native.NativeApi, token: int, release_ticket: _CleanupTicket
+) -> None:
+    if not token:
+        return
+    try:
+        _, error = api.binding_cancel(token)
+    except BaseException:
+        _dispose_unexpected(api, token, release_ticket)
+        raise
+    if error:
+        _dispose_unexpected(
+            api,
+            error,
+            _CleanupTicket(api=api, anchor=release_ticket.anchor),
+        )
+    _dispose_unexpected(api, token, release_ticket)
 
 
 _DECIMAL_MAX_COEFFICIENT = (1 << 58) - 1
@@ -739,6 +776,26 @@ class Property:
             with self._cell.lease() as property_token:
                 yield api, property_token
 
+    @classmethod
+    def _from_owned_token(
+        cls,
+        api: _native.NativeApi,
+        token: int,
+        runtime_cell: _OwnerCell,
+        kind: int,
+    ) -> Property:
+        if token == 0:
+            raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+        cell = _OwnerCell(api, token, runtime_cell)
+        instance = object.__new__(cls)
+        instance._cell = cell
+        instance._runtime_cell = runtime_cell
+        instance._kind = kind
+        instance._finalizer = weakref.finalize(
+            instance, _CleanupManager.enqueue, cell.ticket
+        )
+        return instance
+
     def get(self) -> bool | int | float | Decimal | str:
         with self._ui_call() as (api, token):
             if self._kind == self._BOOL:
@@ -880,6 +937,144 @@ class Property:
 
 
 @final
+class Binding:
+    """Own a Property Binding handle; close releases but does not cancel it."""
+
+    __slots__ = (
+        "_cell",
+        "_runtime_cell",
+        "_kind",
+        "_finalizer",
+        "__weakref__",
+    )
+
+    def __init__(self) -> None:
+        raise TypeError("Use Binding.create() to create a Binding")
+
+    @classmethod
+    def create(
+        cls, source: Property, target: Property, mode: BindingMode
+    ) -> Binding | None:
+        if not isinstance(source, Property) or not isinstance(
+            target, Property
+        ):
+            raise TypeError(
+                "source and target must be freemvvm.Property values"
+            )
+        if not isinstance(mode, BindingMode):
+            raise TypeError("mode must be a freemvvm.BindingMode")
+        if source._runtime_cell is not target._runtime_cell:
+            raise UiError(ErrorSnapshot(_native.WRONG_RUNTIME))
+        if source._kind != target._kind:
+            raise UiError(ErrorSnapshot(_native.WRONG_TYPE))
+
+        _CleanupManager.retry_pending()
+        api = source._cell.api
+        runtime_cell = source._runtime_cell
+        binding_cell = _OwnerCell(api, 0, runtime_cell)
+        error_ticket = _CleanupTicket(api=api, anchor=runtime_cell)
+        with runtime_cell.lease() as runtime_token:
+            _check_ui_thread(api, runtime_token)
+            with source._cell.lease() as source_token:
+                with target._cell.lease() as target_token:
+                    status, binding_token, error_token = api.binding_create(
+                        source_token, target_token, int(mode)
+                    )
+
+        if status == _native.OK and error_token == 0:
+            if mode == BindingMode.ONE_TIME and binding_token == 0:
+                return None
+            if (
+                mode in (BindingMode.ONE_WAY, BindingMode.TWO_WAY)
+                and binding_token
+            ):
+                binding_cell.token = binding_token
+                instance = object.__new__(cls)
+                instance._cell = binding_cell
+                instance._runtime_cell = runtime_cell
+                instance._kind = source._kind
+                instance._finalizer = weakref.finalize(
+                    instance,
+                    _CleanupManager.enqueue,
+                    binding_cell.ticket,
+                )
+                return instance
+
+        result_status = (
+            status if status != _native.OK else _native.INTERNAL_ERROR
+        )
+        if binding_token:
+            _dispose_unexpected_binding(
+                api, binding_token, binding_cell.ticket
+            )
+        raise UiError(
+            _snapshot_error(api, result_status, error_token, error_ticket)
+        )
+
+    def cancel(self) -> None:
+        _CleanupManager.retry_pending()
+        error_ticket = _CleanupTicket(
+            api=self._cell.api, anchor=self._runtime_cell
+        )
+        with self._runtime_cell.lease() as runtime_token:
+            _check_ui_thread(self._cell.api, runtime_token)
+            with self._cell.lease() as binding_token:
+                status, error = self._cell.api.binding_cancel(binding_token)
+        _check_result(self._cell.api, status, error, error_ticket)
+
+    def error_snapshot(self) -> BindingErrorSnapshot | None:
+        _CleanupManager.retry_pending()
+        api = self._cell.api
+        error_ticket = _CleanupTicket(api=api, anchor=self._runtime_cell)
+        property_ticket = _CleanupTicket(api=api, anchor=self._runtime_cell)
+        with self._runtime_cell.lease() as runtime_token:
+            _check_ui_thread(api, runtime_token)
+            with self._cell.lease() as binding_token:
+                status, error_token, rejected_token, raw_direction = (
+                    api.binding_error_snapshot(binding_token)
+                )
+
+        if status != _native.OK:
+            _dispose_unexpected(api, error_token, error_ticket)
+            _dispose_unexpected(api, rejected_token, property_ticket)
+            raise UiError(ErrorSnapshot(status))
+        if error_token == rejected_token == raw_direction == 0:
+            return None
+
+        try:
+            direction = BindingDirection(raw_direction)
+        except ValueError:
+            direction = None
+        if not error_token or not rejected_token or direction is None:
+            _dispose_unexpected(api, error_token, error_ticket)
+            _dispose_unexpected(api, rejected_token, property_ticket)
+            raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+
+        error = _snapshot_error(api, _native.OK, error_token, error_ticket)
+        try:
+            rejected_property = Property._from_owned_token(
+                api, rejected_token, self._runtime_cell, self._kind
+            )
+        except BaseException:
+            _dispose_unexpected(api, rejected_token, property_ticket)
+            raise
+        return BindingErrorSnapshot(error, rejected_property, direction)
+
+    def close(self) -> None:
+        _CleanupManager.retry_pending()
+        self._cell.close()
+        if self._cell.token == 0:
+            self._finalizer.detach()
+
+    def try_close(self) -> UiError | None:
+        try:
+            self.close()
+        except UiError as error:
+            return error
+        return None
+
+
+@final
 class ShutdownRequest:
     """Owns a thread-independent shutdown completion receipt."""
 
@@ -921,6 +1116,10 @@ class ShutdownRequest:
 
 
 __all__ = [
+    "Binding",
+    "BindingDirection",
+    "BindingErrorSnapshot",
+    "BindingMode",
     "ErrorSnapshot",
     "MissingRuntimeError",
     "Property",

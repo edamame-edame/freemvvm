@@ -46,14 +46,14 @@ Python consumerが承認済みCore/C ABIのProperty・Binding・AsyncCommand・�
 3. [x] Python public surfaceとrelease planを照合し、Python Binding/AsyncCommand wrapperが未実装というv0.1の前提誤りを確認した。
 4. [x] v0.2の対象範囲・依存順について利用者の「ok」により承認を得た（2026-10-26）。これはDD・試験設計・実装の承認ではない。
 5. [x] 承認後、改訂計画を日本語commit/pushする。
-6. [ ] 各段階で要求・承認履歴、BD/DD、C ABIを照合し、順に設計案を作成・承認する。候補DD順: Python DD v1.7 Binding、v1.8 AsyncCommand、v1.9 UI Controls/Tree/Focus、v2.0 Window/close request。各版の全文承認を別々に確認する。
-7. [ ] 各段階に対応するwrapper fake ABI/real C ABI consumer casesを`.docs/32_unit_test/wrappers.md`へ追加し、test design文書全体の承認を得てからunitを登録する。
+6. [ ] 各段階で要求・承認履歴、BD/DD、C ABIを照合し、順に設計案を作成・承認する。Python DD v1.7 Bindingは2026-10-26に全文承認済み。残りの候補DD順: v1.8 AsyncCommand、v1.9 UI Controls/Tree/Focus、v2.0 Window/close request。各版の全文承認を別々に確認する。
+7. [ ] 各段階に対応するwrapper fake ABI/real C ABI consumer casesを`.docs/32_unit_test/wrappers.md`へ追加する。Python Binding caseを含む文書版0.9は2026-10-26に全文承認され、`UNIT-WRAP-PY-BINDING-001`をplanned登録済み。後続unitの設計・登録は各段階で別途行う。
 8. [ ] 実装開始承認後、以下の独立unitを一つずつplanned登録し、各focused/consumer testを同一revisionのCI gateへ結ぶ。
    - `UNIT-WRAP-PY-BINDING-001`: Property Binding作成・mode・cancel/close・error snapshot・所有。
    - `UNIT-WRAP-PY-COMMAND-001`: 非同期Command callback root・execute/cancel/completion/state・例外/close lifecycle。
    - `UNIT-WRAP-PY-CONTROLS-001`: Window/StackPanel/Text/TextBox/Button facade、Property/Binding/Command mapping、Tree、StackPanel設定、Focus要求。Window peer open/close callbackを含めない。
    - `UNIT-WRAP-PY-WINDOW-001`: Window peer open/closeとclose-request callback/defer/resolveのowner/root lifecycle。Controls unitに依存させる。
-9. [ ] `impl-python/runtime-wrapper`だけでunitを一つずつ実装する。各unitのlocal gatesとそのcommit SHAのWindows/Linux CI成功後に日本語commit/pushし、completeにする。
+9. [ ] `impl-python/runtime-wrapper`だけでunitを一つずつ実装する。各unitのlocal gatesとそのcommit SHAのWindows/Linux CI成功後に日本語commit/pushし、completeにする。Bindingは実装・focused/consumer test・local `check`/`minimum`まで成功し、CI確認待ち。
 10. [ ] 全unit完了後、`tools/dev.py check`、`minimum`、Python focused/consumer tests、document links、unit manifest、`git diff --check`を検証し、最終CI SHAと結果を計画・試験記録・memoryへ反映する。
 
 ## 完了条件

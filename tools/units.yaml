@@ -3816,6 +3816,91 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-decimal-consumer-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-WRAP-PY-BINDING-001",
+      "state": "planned",
+      "scope": "python-property-binding-modes-cancel-error-snapshot-lifecycle",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-014",
+        "UNIT-ABI-016",
+        "UNIT-ABI-018",
+        "UNIT-WRAP-PY-RUNTIME-001",
+        "UNIT-WRAP-PY-PROP-BOOL-I64-001",
+        "UNIT-WRAP-PY-PROP-F64-001",
+        "UNIT-WRAP-PY-PROP-UTF8-001",
+        "UNIT-WRAP-PY-PROP-DECIMAL-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.7",
+          "section": "Property間Binding公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "BindingのC ABI / 作成と解除 / Bindingエラーの読み取りと通知"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding graphと因果連鎖"
+        }
+      ],
+      "requirements": [
+        "RQ-05-002",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-07-001",
+        "RQ-07-002",
+        "RQ-07-003",
+        "RQ-07-004",
+        "RQ-07-005",
+        "RQ-07-006",
+        "RQ-07-007",
+        "RQ-07-008",
+        "RQ-07-009",
+        "RQ-07-010",
+        "RQ-07-011",
+        "RQ-07-015"
+      ],
+      "cases": [
+        "TC-BIND-01",
+        "TC-BIND-INIT-REJECT-01",
+        "TC-BIND-PROPAGATION-REJECT-01",
+        "TC-LIFE-01",
+        "TC-THREAD-01",
+        "TC-ERROR-01",
+        "TC-WRAP-PY-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-BINDING-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-binding-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-BINDING-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-binding-consumer-test"]
+        }
+      ]
     }
   ]
 }

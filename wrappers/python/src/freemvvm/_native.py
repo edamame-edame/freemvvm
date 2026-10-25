@@ -104,6 +104,16 @@ class NativeApi(Protocol):
         self, property: int, value: bytes
     ) -> tuple[int, int]: ...
 
+    def binding_create(
+        self, source: int, target: int, mode: int
+    ) -> tuple[int, int, int]: ...
+
+    def binding_cancel(self, binding: int) -> tuple[int, int]: ...
+
+    def binding_error_snapshot(
+        self, binding: int
+    ) -> tuple[int, int, int, int]: ...
+
     def handle_release(self, owned: int) -> int: ...
 
     def error_status(self, error: int) -> tuple[int, int]: ...
@@ -240,6 +250,26 @@ class CtypesNativeApi:
                 ctypes.POINTER(ctypes.c_uint8),
                 ctypes.c_uint64,
                 ctypes.POINTER(Handle),
+            ],
+        )
+        self._bind(
+            "ui_abi_1_binding_create",
+            [
+                Handle,
+                Handle,
+                ctypes.c_uint32,
+                ctypes.POINTER(Handle),
+                ctypes.POINTER(Handle),
+            ],
+        )
+        self._bind("ui_abi_1_binding_cancel", [Handle, ctypes.POINTER(Handle)])
+        self._bind(
+            "ui_abi_1_binding_error_snapshot",
+            [
+                Handle,
+                ctypes.POINTER(Handle),
+                ctypes.POINTER(Handle),
+                ctypes.POINTER(ctypes.c_uint32),
             ],
         )
         self._bind("ui_abi_1_handle_release", [Handle])
@@ -507,6 +537,41 @@ class CtypesNativeApi:
             property, pointer, len(value), ctypes.byref(error)
         )
         return status, error.value
+
+    def binding_create(
+        self, source: int, target: int, mode: int
+    ) -> tuple[int, int, int]:
+        binding = Handle()
+        error = Handle()
+        status = self._library.ui_abi_1_binding_create(
+            source,
+            target,
+            mode,
+            ctypes.byref(binding),
+            ctypes.byref(error),
+        )
+        return status, binding.value, error.value
+
+    def binding_cancel(self, binding: int) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_binding_cancel(
+            binding, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def binding_error_snapshot(
+        self, binding: int
+    ) -> tuple[int, int, int, int]:
+        error = Handle()
+        rejected_property = Handle()
+        direction = ctypes.c_uint32()
+        status = self._library.ui_abi_1_binding_error_snapshot(
+            binding,
+            ctypes.byref(error),
+            ctypes.byref(rejected_property),
+            ctypes.byref(direction),
+        )
+        return status, error.value, rejected_property.value, direction.value
 
     def handle_release(self, owned: int) -> int:
         return self._library.ui_abi_1_handle_release(owned)

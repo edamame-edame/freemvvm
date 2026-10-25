@@ -1,9 +1,9 @@
 # 言語ラッパー：Python
 
-- 文書版: 1.6
+- 文書版: 1.7
 - 文書ロール: detailed-design
-- 更新日: 2026-10-25
-- 状態: 1.6全文承認済み（利用者、「ok」、2026-10-25）。実装・試験状態は別管理
+- 更新日: 2026-10-26
+- 状態: 1.7全文承認済み（利用者、「ok」、2026-10-26）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -21,6 +21,7 @@
 | F64 Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-02-018](../../11_requirements/RQ-02_core-features.md#rq-02-018)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 | DECIMAL Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-02-019](../../11_requirements/RQ-02_core-features.md#rq-02-019)、[RQ-02-020](../../11_requirements/RQ-02_core-features.md#rq-02-020)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 | UTF-8 Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-04-003](../../11_requirements/RQ-04_abi-boundary.md#rq-04-003)、[RQ-04-020](../../11_requirements/RQ-04_abi-boundary.md#rq-04-020)、[RQ-04-021](../../11_requirements/RQ-04_abi-boundary.md#rq-04-021)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
+| Property間Binding facade（OneTime/OneWay/TwoWay、cancel/release、遅延error snapshot） | [RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-07-001](../../11_requirements/RQ-07_binding.md#rq-07-001)、[RQ-07-002](../../11_requirements/RQ-07_binding.md#rq-07-002)、[RQ-07-003](../../11_requirements/RQ-07_binding.md#rq-07-003)、[RQ-07-004](../../11_requirements/RQ-07_binding.md#rq-07-004)、[RQ-07-005](../../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-007](../../11_requirements/RQ-07_binding.md#rq-07-007)、[RQ-07-008](../../11_requirements/RQ-07_binding.md#rq-07-008)、[RQ-07-009](../../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../../11_requirements/RQ-07_binding.md#rq-07-010)、[RQ-07-011](../../11_requirements/RQ-07_binding.md#rq-07-011)、[RQ-07-015](../../11_requirements/RQ-07_binding.md#rq-07-015) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -659,7 +660,7 @@ sequenceDiagram
 
 1.4時点のUTF-8改訂はPython wrapper単体のUTF-8 Property facadeに限る。Unicode normalization、locale conversion、F64/DECIMAL、Subscription、Binding、TextBox表示編集、package loader/配布経路はそれぞれの設計・unitで扱う。
 
-## DECIMAL Property公開API（1.6改訂案）
+## DECIMAL Property公開API（1.6全文承認済み）
 
 本節は承認済みRQ-02-017/019/020と共通C ABIのDECIMAL PropertyをPythonから利用する実現案である。BOOL/I64/F64/UTF-8 Propertyの公開API、owner/call lease、error snapshot、明示close契約を維持する。Core/C ABIの数値範囲・数値同値判定・同値時の格納表現維持・通知抑制をwrapperへ複製しない。本節を含む1.6文書全体は利用者承認済み（2026-10-25）。Python境界規則の承認は実装・試験合格を意味しない。
 
@@ -727,7 +728,80 @@ sequenceDiagram
     P-->>App: Decimal / None / UiError
 ```
 
-1.6改訂案はPython DECIMAL Property mappingに限定する。DECIMAL arithmetic API、任意precision、文字列parse/format、locale、TextBox edit/display precision、Binding converter、Subscription、Validator登録、C ABI/Core変更、package loader/配布変更は対象外とする。
+1.6で追加したPython DECIMAL Property mappingは当該APIに限定する。DECIMAL arithmetic API、任意precision、文字列parse/format、locale、TextBox edit/display precision、Binding converter、Subscription、Validator登録、C ABI/Core変更、package loader/配布変更はv1.6の対象外とした。後続版で扱う範囲は各改訂案で別途示す。
+
+## Property間Binding公開API（1.7改訂案）
+
+本節は承認済みRQ-07とBinding ABIを、Python Property facadeから呼び出すための案である。Binding伝播の値・方向・時点・検証・cycle・通知意味論はCore/RQの正本に委譲し、Python wrapper独自の値cache、converter、dispatch、伝播は追加しない。以下はPython公開APIの提案であり、本書v1.7全文の承認前に確定仕様・実装済みAPIとして扱わない。
+
+### 公開型と作成結果
+
+| Python API | 1.7提案の責務・契約 |
+|---|---|
+| `BindingMode(IntEnum)` | `ONE_TIME=1`、`ONE_WAY=2`、`TWO_WAY=3`をC ABI mode値へ対応させる。 |
+| `BindingDirection(IntEnum)` | `SOURCE_TO_TARGET=1`、`TARGET_TO_SOURCE=2`を遅延伝播エラーsnapshotの方向へ対応させる。未知値はABI出力異常として扱う。 |
+| `Binding.create(source, target, mode)` | 既存`Property`間を接続するclass method。引数のPython型/mode、Runtime同一性、Property kindを検査してからC ABIへ委譲する。成功結果はmodeに応じて下記のとおり。 |
+| `BindingErrorSnapshot` | 遅延伝播の不変`ErrorSnapshot`、拒否されたPropertyの新しい所有wrapper、伝播方向をまとめる読み取り結果。拒否Propertyは通常の`Property`と同じく独立して`close()`できる。 |
+
+`Binding.create`はC ABIの`binding_create`を一度呼ぶ。OneTime成功は`None`を返す。OneWay/TwoWay成功は`Binding` ownerを返す。mode違いを曖昧な空ownerで表現しない。非`BindingMode`引数は`TypeError`、異Runtimeは`UiError(WRONG_RUNTIME)`、kind不一致は`UiError(WRONG_TYPE)`とし、UI thread要件はProperty APIと同様にnative call前に検査する。C ABIも同じ制約を検証するため、wrapper検査は境界の早期エラー化でありCore契約の代替ではない。
+
+create時はsource/target両方のowner leaseと共通Runtime leaseを取得し、Runtime同一性とUI threadを確認してからnative callを行う。leaseはnative call復帰まで保持する。wrapper lockはnative call中に保持しない。C ABIが失敗statusとerror tokenを返した場合は既存`_snapshot_error`経路で不変`UiError`へ変換する。成功status時の出力規則はOneTimeならbinding token 0、OneWay/TwoWayなら非0 tokenである。status/error/tokenの組み合わせが契約外なら`INTERNAL_ERROR`とし、予期しないbinding tokenがあれば解除を試みた後releaseし、active接続を孤児化しない。予期しないerror tokenも既存cleanup ticket経路で解放する。
+
+### 所有・解除・遅延エラー
+
+`Binding`は`_OwnerCell`、Runtime owner anchor、finalizer ticketを持つ。明示`cancel()`だけが`binding_cancel`を呼び、保留中を含む以後の伝播を停止する。`close()`、`try_close()`、finalizerはBinding handleの`handle_release`のみを行い、接続をcancelしない。これはRuntime/Coreがactive Bindingを明示cancelまたはshutdownまで保持するABI契約に対応する。接続停止が目的ならhandle releaseに頼らず`cancel()`を呼ぶ。cancel失敗ではowner tokenを消費せず、同じBindingで再試行可能とする。close成功後の操作は`UiError(CLOSED)`、close失敗時のtoken保持/retryは既存owner契約に従う。Bindingには暗黙cancelするcontext managerを設けない。
+
+`error_snapshot()`はUI thread上で現在の遅延伝播エラー状態をpollし、なしなら`None`、ありなら`BindingErrorSnapshot`を返す。error handleと拒否Property handleはABIが返す独立所有tokenとして受け取り、error tokenは直ちに`_snapshot_error`でimmutable `ErrorSnapshot`へ写してreleaseする。拒否Property tokenはsource/targetと同じRuntime anchorおよびProperty kindを持つ通常の`Property` ownerへ変換し、利用者がその値を読む/closeする。取得済みsnapshotのErrorSnapshot内容は後続更新によって変化しない。現在のBinding状態は再度snapshot取得して読む。
+
+| ABI結果 | Python処理案 |
+|---|---|
+| `status != OK` | 出力handleがあればすべて解放し、raw statusを保持する`UiError`を送出する。 |
+| `status == OK`かつerror/property/directionが全て0 | `None`。 |
+| `status == OK`かつerror/propertyが両方非0、directionが既知値 | errorをimmutable化し、Propertyを新ownerへ移してsnapshotを返す。 |
+| 出力の一部欠落、direction未知、成功時にerror tokenがある等の不整合 | 取得した全tokenを解放し、`UiError(INTERNAL_ERROR)`を送出する。 |
+
+### クラス関係と呼出しflow
+
+```mermaid
+classDiagram
+    class Runtime { +close() }
+    class Property { -_cell: OwnerCell; -_runtime_cell: OwnerCell; -_kind: int; +get(); +set(value); +close() }
+    class Binding { -_cell: OwnerCell; -_runtime_cell: OwnerCell; +create(source, target, mode); +cancel(); +error_snapshot(); +close(); +try_close() }
+    class BindingMode { <<enumeration>> ONE_TIME; ONE_WAY; TWO_WAY }
+    class BindingErrorSnapshot { +error: ErrorSnapshot; +rejected_property: Property; +direction: BindingDirection }
+    Runtime "1" <-- "*" Property : anchor
+    Runtime "1" <-- "*" Binding : anchor
+    Property "1" .. "*" Binding : source/target borrowed at create
+    Binding --> BindingMode
+    BindingErrorSnapshot --> Property : owns independent rejected-property wrapper
+```
+
+```mermaid
+sequenceDiagram
+    participant App as Python consumer
+    participant B as Binding facade
+    participant P as source/target Property owners
+    participant R as Runtime owner
+    participant ABI as C ABI / Core
+    App->>B: Binding.create(source, target, mode)
+    B->>R: Runtime lease + UI-thread check
+    B->>P: acquire both Property leases
+    B->>ABI: binding_create(source token, target token, mode)
+    ABI-->>B: status / binding token / error token
+    B-->>App: None for OneTime; Binding for OneWay/TwoWay
+    App->>B: error_snapshot()
+    B->>R: Runtime lease + UI-thread check
+    B->>ABI: binding_error_snapshot(binding token)
+    ABI-->>B: owned error / owned rejected Property / direction
+    B->>B: freeze ErrorSnapshot; adopt Property token
+    B-->>App: BindingErrorSnapshot or None
+    App->>B: cancel() or close()
+    B->>ABI: binding_cancel or handle_release (distinct effects)
+```
+
+### 1.7範囲外
+
+`binding_subscribe_error`、Property `Subscription` facade、callback/root registry、通知購読、converter、Binding from/to non-Property UI control、Bindingの暗黙cancel、C ABI/Core変更は本改訂に含めない。エラー状態は明示的な`error_snapshot()` pollingで読む。callback購読はPython Subscriptionの所有・解除設計と同じ段階で別途提案する。OneTime/OneWay/TwoWayの値伝播、初期同期、遅延validation失敗、cancel後の保証は承認済みRQ-07と既存Binding ABI設計を変更しない。
 
 ## 文書の承認・改訂履歴
 
@@ -747,3 +821,5 @@ sequenceDiagram
 | 2026-10-25 | 1.5全文 | 利用者の「ok」によりF64 Property API・型境界・Core委譲・error/ownership flowを含む文書全体を承認。実装・試験結果は別管理 |
 | 2026-10-25 | 1.5全文 | 利用者の「ok」によりPython F64 Property API、型境界、RQ-02-018のCore委譲、error/ownership flowを含む全文を承認。試験設計・実装・試験合格は別管理 |
 | 2026-10-25 | 1.6全文 | 利用者の「ok」によりPython `decimal.Decimal`からDECIMAL C ABIへの厳密bits mapping、scale/係数範囲変換、error/ownership flowを含む全文を承認。実装・試験設計・試験合格は別管理 |
+| 2026-10-26 | 1.7改訂案 | Python Binding mode/create result、owner/releaseとcancelの分離、遅延error snapshot pollingと所有、ABI異常出力処理を追加。文書全体レビュー待ち。Subscription callbackと実装・試験設計は対象外 |
+| 2026-10-26 | 1.7全文 | 利用者の「ok」により、Binding公開型/API、OneTime結果、owner/releaseとcancelの分離、error snapshot polling/所有、ABI失敗境界を含む文書全体を承認。実装・試験設計・試験合格は別管理 |
