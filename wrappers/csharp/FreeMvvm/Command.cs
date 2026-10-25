@@ -31,6 +31,12 @@ public sealed class UiCommand : IDisposable
         _callbackHandlers = callbackHandlers;
     }
 
+    internal TokenOwner Owner => _owner;
+
+    internal static UiCommand FromOwned(
+        TokenOwner owner, TokenOwner runtimeAnchor, CallbackHandlerState callbackHandlers) =>
+        new(owner, runtimeAnchor, callbackHandlers);
+
     public static UiResult<UiCommand> TryCreateAsync(
         UiRuntime runtime,
         UiProperty<bool>? eligibility,

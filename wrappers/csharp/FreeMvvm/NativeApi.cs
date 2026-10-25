@@ -81,6 +81,56 @@ internal interface INativeApi
 
     uint CommandCompleteCancelled(ulong command, ulong operationId);
 
+    uint WindowCreate(ulong runtime, out ulong window, out ulong error);
+
+    uint StackPanelCreate(ulong runtime, out ulong panel, out ulong error);
+
+    uint TextCreate(ulong runtime, byte[] initial, out ulong text, out ulong error);
+
+    uint TextBoxCreate(ulong runtime, byte[] initial, out ulong textBox, out ulong error);
+
+    uint ButtonCreate(ulong runtime, byte[] initial, out ulong button, out ulong error);
+
+    uint WidgetIsEnabledProperty(ulong widget, out ulong property);
+
+    uint WidgetAccessibleNameProperty(ulong widget, out ulong property);
+
+    uint WidgetRequestFocus(ulong widget, out ulong error);
+
+    uint WindowContent(ulong window, out ulong child, out ulong error);
+
+    uint WindowSetContent(ulong window, ulong child, out ulong error);
+
+    uint WindowClearContent(ulong window, out ulong error);
+
+    uint WindowTitleProperty(ulong window, out ulong property);
+
+    uint ContainerInsert(ulong container, ulong child, ulong index, out ulong error);
+
+    uint ContainerRemove(ulong container, ulong child, out ulong error);
+
+    uint ContainerMove(ulong container, ulong fromIndex, ulong toIndex, out ulong error);
+
+    uint ContainerChildCount(ulong container, out ulong count);
+
+    uint ContainerChildAt(ulong container, ulong index, out ulong child, out ulong error);
+
+    uint StackPanelOrientation(ulong panel, out uint orientation);
+
+    uint StackPanelSetOrientation(ulong panel, uint orientation, out ulong error);
+
+    uint StackPanelSetChildAlign(ulong panel, ulong child, uint alignment, out ulong error);
+
+    uint TextContentProperty(ulong text, out ulong property);
+
+    uint TextBoxValueProperty(ulong textBox, out ulong property);
+
+    uint ButtonLabelProperty(ulong button, out ulong property);
+
+    uint ButtonSetCommand(ulong button, ulong command, out ulong error);
+
+    uint ButtonCommand(ulong button, out ulong command, out ulong error);
+
     uint HandleRetain(ulong borrowed, out ulong owned);
 
     uint RuntimeRequestShutdown(ulong runtime, uint mode, out ulong request, out ulong error);
@@ -231,6 +281,74 @@ internal sealed class NativeRuntimeApi : INativeApi
         NativeMethods.CommandCompleteFailureUtf8(command, operationId, domain, code, message, length);
 
     public uint CommandCompleteCancelled(ulong command, ulong operationId) => NativeMethods.CommandCompleteCancelled(command, operationId);
+
+    public uint WindowCreate(ulong runtime, out ulong window, out ulong error) => NativeMethods.WindowCreate(runtime, out window, out error);
+
+    public uint StackPanelCreate(ulong runtime, out ulong panel, out ulong error) => NativeMethods.StackPanelCreate(runtime, out panel, out error);
+
+    public unsafe uint TextCreate(ulong runtime, byte[] initial, out ulong text, out ulong error)
+    {
+        fixed (byte* bytes = initial)
+        {
+            return NativeMethods.TextCreate(runtime, bytes, (ulong)initial.Length, out text, out error);
+        }
+    }
+
+    public unsafe uint TextBoxCreate(ulong runtime, byte[] initial, out ulong textBox, out ulong error)
+    {
+        fixed (byte* bytes = initial)
+        {
+            return NativeMethods.TextBoxCreate(runtime, bytes, (ulong)initial.Length, out textBox, out error);
+        }
+    }
+
+    public unsafe uint ButtonCreate(ulong runtime, byte[] initial, out ulong button, out ulong error)
+    {
+        fixed (byte* bytes = initial)
+        {
+            return NativeMethods.ButtonCreate(runtime, bytes, (ulong)initial.Length, out button, out error);
+        }
+    }
+
+    public uint WidgetIsEnabledProperty(ulong widget, out ulong property) => NativeMethods.WidgetIsEnabledProperty(widget, out property);
+
+    public uint WidgetAccessibleNameProperty(ulong widget, out ulong property) => NativeMethods.WidgetAccessibleNameProperty(widget, out property);
+
+    public uint WidgetRequestFocus(ulong widget, out ulong error) => NativeMethods.WidgetRequestFocus(widget, out error);
+
+    public uint WindowContent(ulong window, out ulong child, out ulong error) => NativeMethods.WindowContent(window, out child, out error);
+
+    public uint WindowSetContent(ulong window, ulong child, out ulong error) => NativeMethods.WindowSetContent(window, child, out error);
+
+    public uint WindowClearContent(ulong window, out ulong error) => NativeMethods.WindowClearContent(window, out error);
+
+    public uint WindowTitleProperty(ulong window, out ulong property) => NativeMethods.WindowTitleProperty(window, out property);
+
+    public uint ContainerInsert(ulong container, ulong child, ulong index, out ulong error) => NativeMethods.ContainerInsert(container, child, index, out error);
+
+    public uint ContainerRemove(ulong container, ulong child, out ulong error) => NativeMethods.ContainerRemove(container, child, out error);
+
+    public uint ContainerMove(ulong container, ulong fromIndex, ulong toIndex, out ulong error) => NativeMethods.ContainerMove(container, fromIndex, toIndex, out error);
+
+    public uint ContainerChildCount(ulong container, out ulong count) => NativeMethods.ContainerChildCount(container, out count);
+
+    public uint ContainerChildAt(ulong container, ulong index, out ulong child, out ulong error) => NativeMethods.ContainerChildAt(container, index, out child, out error);
+
+    public uint StackPanelOrientation(ulong panel, out uint orientation) => NativeMethods.StackPanelOrientation(panel, out orientation);
+
+    public uint StackPanelSetOrientation(ulong panel, uint orientation, out ulong error) => NativeMethods.StackPanelSetOrientation(panel, orientation, out error);
+
+    public uint StackPanelSetChildAlign(ulong panel, ulong child, uint alignment, out ulong error) => NativeMethods.StackPanelSetChildAlign(panel, child, alignment, out error);
+
+    public uint TextContentProperty(ulong text, out ulong property) => NativeMethods.TextContentProperty(text, out property);
+
+    public uint TextBoxValueProperty(ulong textBox, out ulong property) => NativeMethods.TextBoxValueProperty(textBox, out property);
+
+    public uint ButtonLabelProperty(ulong button, out ulong property) => NativeMethods.ButtonLabelProperty(button, out property);
+
+    public uint ButtonSetCommand(ulong button, ulong command, out ulong error) => NativeMethods.ButtonSetCommand(button, command, out error);
+
+    public uint ButtonCommand(ulong button, out ulong command, out ulong error) => NativeMethods.ButtonCommand(button, out command, out error);
 
     public uint HandleRetain(ulong borrowed, out ulong owned) => NativeMethods.HandleRetain(borrowed, out owned);
 
@@ -438,6 +556,106 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_command_complete_cancelled")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint CommandCompleteCancelled(ulong command, ulong operationId);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_create")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WindowCreate(ulong runtime, out ulong window, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_stack_panel_create")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint StackPanelCreate(ulong runtime, out ulong panel, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_text_create")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static unsafe partial uint TextCreate(ulong runtime, byte* initial, ulong length, out ulong text, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_text_box_create")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static unsafe partial uint TextBoxCreate(ulong runtime, byte* initial, ulong length, out ulong textBox, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_button_create")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static unsafe partial uint ButtonCreate(ulong runtime, byte* initial, ulong length, out ulong button, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_widget_is_enabled_property")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WidgetIsEnabledProperty(ulong widget, out ulong property);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_widget_accessible_name_property")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WidgetAccessibleNameProperty(ulong widget, out ulong property);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_widget_request_focus")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WidgetRequestFocus(ulong widget, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_content")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WindowContent(ulong window, out ulong child, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_set_content")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WindowSetContent(ulong window, ulong child, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_clear_content")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WindowClearContent(ulong window, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_title_property")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WindowTitleProperty(ulong window, out ulong property);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_container_insert")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint ContainerInsert(ulong container, ulong child, ulong index, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_container_remove")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint ContainerRemove(ulong container, ulong child, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_container_move")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint ContainerMove(ulong container, ulong fromIndex, ulong toIndex, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_container_child_count")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint ContainerChildCount(ulong container, out ulong count);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_container_child_at")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint ContainerChildAt(ulong container, ulong index, out ulong child, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_stack_panel_orientation")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint StackPanelOrientation(ulong panel, out uint orientation);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_stack_panel_set_orientation")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint StackPanelSetOrientation(ulong panel, uint orientation, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_stack_panel_set_child_align")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint StackPanelSetChildAlign(ulong panel, ulong child, uint alignment, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_text_content_property")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint TextContentProperty(ulong text, out ulong property);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_text_box_value_property")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint TextBoxValueProperty(ulong textBox, out ulong property);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_button_label_property")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint ButtonLabelProperty(ulong button, out ulong property);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_button_set_command")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint ButtonSetCommand(ulong button, ulong command, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_button_command")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint ButtonCommand(ulong button, out ulong command, out ulong error);
 
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_runtime_request_shutdown")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

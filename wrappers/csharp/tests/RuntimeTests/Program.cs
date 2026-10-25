@@ -36,6 +36,7 @@ internal static class Program
         Run(TestCommandWorkerPostsTerminalResultsAndRetainsSnapshot);
         Run(TestCommandStartExceptionStaysInsideAbiBoundary);
         Run(TestCommandCreateFailureKeepsStartRootLocallyOwned);
+        Run(TestUiControlsCreateTreePropertiesAndCommandAssociation);
         return _failures == 0 ? 0 : 1;
     }
 
@@ -1037,6 +1038,60 @@ internal static class Program
         runtime.Dispose();
     }
 
+    private static void TestUiControlsCreateTreePropertiesAndCommandAssociation()
+    {
+        var native = new FakeNativeApi();
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiWindow window = UiWindow.TryCreate(runtime).Value;
+        UiStackPanel panel = UiStackPanel.TryCreate(runtime).Value;
+        UiTextBox editor = UiTextBox.TryCreate(runtime, "initial").Value;
+        UiButton button = UiButton.TryCreate(runtime, "Apply").Value;
+
+        Check(window.TrySetContent(panel).IsSuccess, "Window should accept same-runtime content");
+        Check(panel.TryInsert(editor, 0).IsSuccess, "Container should insert a child");
+        Check(native.LastControlParent != 0 && native.LastControlChild != 0 && native.LastControlIndex == 0,
+            "Container insert should forward parent, child, and index handles");
+        var foreignNative = new FakeNativeApi();
+        UiRuntime foreignRuntime = UiRuntime.TryCreate(foreignNative).Value;
+        UiText foreignChild = UiText.TryCreate(foreignRuntime, "foreign").Value;
+        int insertCalls = native.ContainerInsertCount;
+        Check(panel.TryInsert(foreignChild, 1).Error?.RawStatus == UiStatus.WrongRuntime &&
+            native.ContainerInsertCount == insertCalls,
+            "A different API owner's child must be rejected before the ABI call");
+        foreignChild.Dispose();
+        foreignRuntime.Dispose();
+        Check(panel.TrySetOrientation(UiControlOrientation.Horizontal).IsSuccess &&
+            native.LastOrientation == (uint)UiControlOrientation.Horizontal,
+            "Stack orientation should round trip through the ABI facade");
+        int orientationCalls = native.StackPanelSetOrientationCount;
+        Check(panel.TrySetOrientation((UiControlOrientation)99).IsFailure &&
+            native.StackPanelSetOrientationCount == orientationCalls,
+            "Unknown orientation values should be rejected before native code");
+        Check(panel.TrySetChildAlignment(editor, UiChildAlignment.Stretch).IsSuccess &&
+            native.LastAlignment == (uint)UiChildAlignment.Stretch,
+            "Stack child alignment should be forwarded");
+        Check(button.TryRequestFocus().IsSuccess && native.FocusRequestCount == 1,
+            "Widget focus request should reach the native facade");
+
+        UiProperty<string> value = editor.TryGetValueProperty().Value;
+        Check(value.TrySet("edited").IsSuccess, "TextBox property should remain a normal bindable Property");
+        Check(Encoding.UTF8.GetString(native.LastSetUtf8) == "edited", "TextBox Property should preserve UTF-8 input");
+
+        UiCommand command = UiCommand.TryCreateAsync(runtime, null, _ => { }).Value;
+        Check(button.TrySetCommand(command).IsSuccess && native.LastButtonCommand == native.CommandHandle,
+            "Button should associate a same-runtime Command handle");
+        Check(button.TrySetCommand(null).IsSuccess && native.LastButtonCommand == 0,
+            "Button command association should be clearable");
+
+        command.Dispose();
+        value.Dispose();
+        button.Dispose();
+        editor.Dispose();
+        panel.Dispose();
+        window.Dispose();
+        runtime.Dispose();
+    }
+
     private sealed class FakeNativeApi : INativeApi
     {
         private readonly ConcurrentDictionary<ulong, int> _releaseFailures = new();
@@ -1084,6 +1139,17 @@ internal static class Program
         internal uint CommandCreateStatus { get; set; } = UiStatus.Ok;
         internal uint CommandExecuteStatus { get; set; } = UiStatus.Ok;
         internal uint CommandCloseStatus { get; set; } = UiStatus.Ok;
+        internal ulong LastControlParent { get; private set; }
+        internal ulong LastControlChild { get; private set; }
+        internal ulong LastControlIndex { get; private set; }
+        internal uint LastOrientation { get; private set; }
+        internal uint LastAlignment { get; private set; }
+        internal ulong LastButtonCommand { get; private set; }
+        internal int FocusRequestCount { get; private set; }
+        internal int StackPanelSetOrientationCount { get; private set; }
+        internal int ContainerInsertCount { get; private set; }
+        internal ulong LastControlHandle { get; private set; }
+        private ulong _nextControl = 2000;
         internal uint RuntimePostStatus { get; set; } = UiStatus.Ok;
         internal ulong CommandHandle { get; set; } = 1301;
         internal ulong CommandCancelToken { get; set; } = 1302;
@@ -1143,6 +1209,66 @@ internal static class Program
         internal uint LastFailureCode { get; private set; }
         internal byte[] LastFailureMessage { get; private set; } = [];
         internal ulong LastPostId => unchecked((ulong)Volatile.Read(ref _nextPost));
+
+        public uint WindowCreate(ulong runtime, out ulong window, out ulong error) => CreateControl(runtime, out window, out error);
+        public uint StackPanelCreate(ulong runtime, out ulong panel, out ulong error) => CreateControl(runtime, out panel, out error);
+
+        public uint TextCreate(ulong runtime, byte[] initial, out ulong text, out ulong error)
+        {
+            LastCreatedUtf8 = initial.ToArray();
+            return CreateControl(runtime, out text, out error);
+        }
+
+        public uint TextBoxCreate(ulong runtime, byte[] initial, out ulong textBox, out ulong error)
+        {
+            LastCreatedUtf8 = initial.ToArray();
+            return CreateControl(runtime, out textBox, out error);
+        }
+
+        public uint ButtonCreate(ulong runtime, byte[] initial, out ulong button, out ulong error)
+        {
+            LastCreatedUtf8 = initial.ToArray();
+            return CreateControl(runtime, out button, out error);
+        }
+
+        private uint CreateControl(ulong runtime, out ulong control, out ulong error)
+        {
+            LastRuntime = runtime;
+            control = ++_nextControl;
+            LastControlHandle = control;
+            error = 0;
+            return UiStatus.Ok;
+        }
+
+        public uint WidgetIsEnabledProperty(ulong widget, out ulong property) => CreateControlProperty(out property);
+        public uint WidgetAccessibleNameProperty(ulong widget, out ulong property) => CreateControlProperty(out property);
+        public uint WindowTitleProperty(ulong window, out ulong property) => CreateControlProperty(out property, utf8: true);
+        public uint TextContentProperty(ulong text, out ulong property) => CreateControlProperty(out property, utf8: true);
+        public uint TextBoxValueProperty(ulong textBox, out ulong property) => CreateControlProperty(out property, utf8: true);
+        public uint ButtonLabelProperty(ulong button, out ulong property) => CreateControlProperty(out property, utf8: true);
+
+        private uint CreateControlProperty(out ulong property, bool utf8 = false)
+        {
+            property = ++_nextProperty;
+            if (utf8) _utf8Properties[property] = [];
+            else _boolProperties[property] = 1;
+            return UiStatus.Ok;
+        }
+
+        public uint WidgetRequestFocus(ulong widget, out ulong error) { FocusRequestCount++; error = 0; return UiStatus.Ok; }
+        public uint WindowContent(ulong window, out ulong child, out ulong error) { child = 0; error = 0; return UiStatus.Ok; }
+        public uint WindowSetContent(ulong window, ulong child, out ulong error) { LastControlParent = window; LastControlChild = child; error = 0; return UiStatus.Ok; }
+        public uint WindowClearContent(ulong window, out ulong error) { LastControlParent = window; error = 0; return UiStatus.Ok; }
+        public uint ContainerInsert(ulong container, ulong child, ulong index, out ulong error) { ContainerInsertCount++; LastControlParent = container; LastControlChild = child; LastControlIndex = index; error = 0; return UiStatus.Ok; }
+        public uint ContainerRemove(ulong container, ulong child, out ulong error) { LastControlParent = container; LastControlChild = child; error = 0; return UiStatus.Ok; }
+        public uint ContainerMove(ulong container, ulong fromIndex, ulong toIndex, out ulong error) { LastControlParent = container; LastControlIndex = toIndex; error = 0; return UiStatus.Ok; }
+        public uint ContainerChildCount(ulong container, out ulong count) { count = 0; return UiStatus.Ok; }
+        public uint ContainerChildAt(ulong container, ulong index, out ulong child, out ulong error) { child = 0; error = 0; return UiStatus.InvalidArgument; }
+        public uint StackPanelOrientation(ulong panel, out uint orientation) { orientation = LastOrientation == 0 ? 1u : LastOrientation; return UiStatus.Ok; }
+        public uint StackPanelSetOrientation(ulong panel, uint orientation, out ulong error) { StackPanelSetOrientationCount++; LastOrientation = orientation; error = 0; return UiStatus.Ok; }
+        public uint StackPanelSetChildAlign(ulong panel, ulong child, uint alignment, out ulong error) { LastControlParent = panel; LastControlChild = child; LastAlignment = alignment; error = 0; return UiStatus.Ok; }
+        public uint ButtonSetCommand(ulong button, ulong command, out ulong error) { LastControlParent = button; LastButtonCommand = command; error = 0; return UiStatus.Ok; }
+        public uint ButtonCommand(ulong button, out ulong command, out ulong error) { command = LastButtonCommand == 0 ? 0 : CommandHandle; error = 0; return UiStatus.Ok; }
 
         public uint RuntimeCreate(out ulong runtime, out ulong error)
         {
