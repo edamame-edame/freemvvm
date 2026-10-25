@@ -11,5 +11,5 @@
 - Python wrapper DD v1.10とwrapper test design v1.1のControls/Tree/Focus範囲は2026-10-26にそれぞれ全文承認された。`UNIT-WRAP-PY-CONTROLS-001`は登録・実装開始承認済みでlocal gates成功、CI確認待ち。
 - Python Controls着手時にC ABI mappingの差を検出: `container_*`は複数子StackPanel向け、Windowは専用single-content API。Python facadeではWindowをWidget、StackPanelをContainerとするDD v1.10を2026-10-26に承認。CoreのWindow Container分類・Tree ownership意味は変更しない。
 - Python Controls実ABIでBinding通知の更新をconsumer確認する場合、Runtimeへhost UI loop bridgeを登録し、source変更をhost event scope内で行う必要がある。Buttonが保持するCommand associationはButton owner解放後にCommandをcloseすると`BUSY`を避けられる。
-- `UNIT-WRAP-PY-CONTROLS-001`はDD v1.10・test design v1.1承認後に登録。Controls wrapperの実装開始承認も記録し、現在focused fake ABI 14件、実C ABI consumer、Windows local check/minimumが成功。実装SHAとCI成功確認待ち。
+- `UNIT-WRAP-PY-CONTROLS-001`はDD v1.10・test design v1.1承認後に登録し、利用者の実装開始承認後に実装。14 fake ABI tests、OneWay/TwoWay BindingとButton Command associationを含む実C ABI consumer、Windows local check/minimum、最終SHA `84e994715c5fbe189e4fd3d68f351d684516440a`のWindows/Linux CI run 40216602669成功後にcomplete。
 - 根拠と現状: [Python UI Controls wrapper計画](../20_todo/python-ui-controls-wrapper.md)、[0.0.1 release計画](../20_todo/release-0.0.1.md)、[RQ-09 UI scope](../11_requirements/RQ-09_ui-scope.md)、[Python wrapper DD](../13_detail_design/wrappers/python.md)、[初期UI Control C ABI](../13_detail_design/runtime-objects/abi.md)。

@@ -100,7 +100,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | --- | --- | --- | --- |
 | 2026-10-26 | 1.1改訂案 | — | 承認済みPython wrapper DD v1.9に基づきControls/Tree/Focus fake ABI / real C ABI consumer試験設計を追加。全文レビュー待ち。unit登録・実装・実行は別段階 |
 | 2026-10-26 | 1.1全文 | 利用者 | 「ok」によりPython Controls/Tree/Focus fake ABI / real C ABI consumer試験設計を含む文書全体を承認。unit登録・実装開始・試験実装は別段階 |
-| 2026-10-26 | 1.1実行記録 | — | Python Controls fake ABI 14件、Window/StackPanel/Control Property・Binding・Button Commandを含む別process実C ABI consumer、Windows local `tools/dev.py check`/`minimum`成功。実装SHA `4578d9a342e7d70e18d47b65b3d7a522df65802a`のWindows/Linux CI確認中 |
+| 2026-10-26 | 1.1実行記録 | — | Python Controls fake ABI 14件、Window/StackPanel/Control Property・OneWay/TwoWay Binding・Button Commandを含む別process実C ABI consumer、Windows local `tools/dev.py check`/`minimum`成功。最終実装SHA `84e994715c5fbe189e4fd3d68f351d684516440a`のWindows/Linux CI success。[run 40216602669](https://github.com/edamame-edame/freemvvm/actions/runs/40216602669) |
 | 2026-10-26 | 0.9改訂案 | — | 承認済みPython wrapper DD v1.7に基づくBinding fake ABI / real C ABI consumer試験設計を追加。文書全体レビュー待ち。試験登録・実装・実行は未承認・未実施 |
 | 2026-10-26 | 0.9全文 | 利用者 | 「ok」によりPython Binding fake ABI / real C ABI consumer試験設計を含む文書全体を承認。実装unit登録・試験実装・実行結果は別管理 |
 | 2026-10-26 | 1.0改訂案 | — | Python AsyncCommand fake ABI / real C ABI consumer試験設計を追加。文書全体レビュー待ち。実装unit登録・試験実装・実行は別段階 |
