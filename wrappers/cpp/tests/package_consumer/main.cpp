@@ -1,5 +1,6 @@
-#include <freemvvm/runtime.hpp>
+#include <freemvvm/command.hpp>
 #include <freemvvm/property.hpp>
+#include <freemvvm/runtime.hpp>
 
 #include <cmath>
 #include <cstdint>
@@ -51,6 +52,33 @@ int main() {
   if (!subscription.cancel().has_value()) return 12;
   if (!count.set(0).has_value() || notification_count != 1) return 13;
   if (!subscription.close().has_value()) return 14;
+
+  auto command_result = freemvvm::Command::create_async(
+      runtime, nullptr,
+      [](freemvvm::CommandWorker) -> freemvvm::Result<void> {
+        return freemvvm::Result<void>::failure(
+            freemvvm::UiError(9));  // UI_INTERNAL_ERROR
+      });
+  if (!command_result.has_value()) return 48;
+  auto command = std::move(*command_result.value());
+  auto operation = command.execute();
+  if (!operation.has_value() || *operation.value() == 0) return 49;
+  auto command_state_result = command.state_property();
+  if (!command_state_result.has_value()) return 50;
+  auto command_state = std::move(*command_state_result.value());
+  auto command_state_value = command_state.get();
+  if (!command_state_value.has_value() ||
+      *command_state_value.value() !=
+          static_cast<std::int64_t>(freemvvm::CommandState::kFailed)) {
+    return 51;
+  }
+  auto command_failure = command.failure_snapshot();
+  if (!command_failure.has_value() || !command_failure.value()->has_value()) {
+    return 52;
+  }
+  if (!command.close().has_value() || !command_state.close().has_value()) {
+    return 53;
+  }
 
   auto bool_target_result = freemvvm::Property<bool>::create(runtime, false);
   if (!bool_target_result.has_value()) return 24;

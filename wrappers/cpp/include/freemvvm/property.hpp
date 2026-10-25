@@ -50,6 +50,7 @@ class Property final {
   friend class Binding;
   template <typename U>
   friend class BindingError;
+  friend class Command;
   Property(std::uint64_t token,
            std::shared_ptr<detail::RuntimeCleanupState> state,
            detail::PendingNode* cleanup_node) noexcept;

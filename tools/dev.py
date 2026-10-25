@@ -125,6 +125,7 @@ def main():
             "cpp-property-decimal-test",
             "cpp-property-subscription-test",
             "cpp-property-binding-test",
+            "cpp-command-test",
             "cpp-package-test",
             "rust-wrapper-runtime-test",
             "rust-wrapper-runtime-consumer-test",
@@ -200,6 +201,8 @@ def main():
             if args.command == "cpp-property-subscription-test"
             else "cpp-property-binding-unit-test"
             if args.command == "cpp-property-binding-test"
+            else "cpp-command-unit-test"
+            if args.command == "cpp-command-test"
             else "cpp-runtime-unit-test"
             if args.command == "cpp-runtime-test"
             else "development-bootstrap"
@@ -243,6 +246,8 @@ def main():
             if args.command == "cpp-property-subscription-test"
             else "C++ Property Binding wrapper unit test executed"
             if args.command == "cpp-property-binding-test"
+            else "C++ asynchronous Command wrapper unit tests executed"
+            if args.command == "cpp-command-test"
             else "C ABI asynchronous Command consumer smoke executed"
             if args.command == "abi-command-smoke"
             else "C++/C# Runtime and package integration tests executed"
@@ -981,6 +986,39 @@ def main():
                 environment,
                 results,
                 "cpp-property-binding-test",
+            )
+        elif args.command == "cpp-command-test":
+            run(
+                ["cmake", "--preset", "dev"],
+                environment,
+                results,
+                "cmake-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "--preset",
+                    "dev",
+                    "--target",
+                    "freemvvm_cpp_command_tests_exe",
+                ],
+                environment,
+                results,
+                "cpp-command-test-build",
+            )
+            run(
+                [
+                    "ctest",
+                    "--test-dir",
+                    "out/cmake/dev",
+                    "-R",
+                    "^wrapper\\.cpp\\.command$",
+                    "--output-on-failure",
+                ],
+                environment,
+                results,
+                "cpp-command-test",
             )
         elif args.command == "cpp-package-test":
             run(

@@ -1,3 +1,4 @@
+#include "freemvvm/command.hpp"
 #include "freemvvm/property.hpp"
 #include "freemvvm/runtime.hpp"
 #include "freemvvm/subscription.hpp"
@@ -193,6 +194,79 @@ ui_status api_binding_subscribe_error(ui_handle binding, ui_callback callback,
                                       ui_handle* out_error) {
   return ui_abi_1_binding_subscribe_error(binding, callback, userdata, destroy,
                                           out_subscription, out_error);
+}
+
+ui_status api_handle_retain(ui_handle borrowed, ui_handle* out_owned) {
+  return ui_abi_1_handle_retain(borrowed, out_owned);
+}
+
+ui_status api_command_create_async(ui_handle runtime, ui_handle eligibility,
+                                   ui_command_start_callback start,
+                                   void* userdata,
+                                   ui_destroy_callback destroy,
+                                   ui_handle* out_command,
+                                   ui_handle* out_error) {
+  return ui_abi_1_command_create_async(runtime, eligibility, start, userdata,
+                                       destroy, out_command, out_error);
+}
+
+ui_status api_command_execute(ui_handle command, std::uint64_t* out_id,
+                              ui_handle* out_error) {
+  return ui_abi_1_command_execute(command, out_id, out_error);
+}
+
+ui_status api_command_cancel(ui_handle command, std::uint64_t operation_id,
+                             ui_handle* out_error) {
+  return ui_abi_1_command_cancel(command, operation_id, out_error);
+}
+
+ui_status api_command_close(ui_handle command, ui_handle* out_error) {
+  return ui_abi_1_command_close(command, out_error);
+}
+
+ui_status api_command_state_property(ui_handle command,
+                                     ui_handle* out_property) {
+  return ui_abi_1_command_state_property(command, out_property);
+}
+
+ui_status api_command_can_execute_property(ui_handle command,
+                                           ui_handle* out_property) {
+  return ui_abi_1_command_can_execute_property(command, out_property);
+}
+
+ui_status api_command_failure_snapshot(ui_handle command,
+                                      ui_handle* out_snapshot) {
+  return ui_abi_1_command_failure_snapshot(command, out_snapshot);
+}
+
+ui_status api_command_cancel_token_requested(ui_handle token,
+                                             ui_bool* out_requested) {
+  return ui_abi_1_command_cancel_token_requested(token, out_requested);
+}
+
+ui_status api_command_complete_success(ui_handle command,
+                                      std::uint64_t operation_id) {
+  return ui_abi_1_command_complete_success(command, operation_id);
+}
+
+ui_status api_command_complete_failure_utf8(
+    ui_handle command, std::uint64_t operation_id, std::uint32_t domain,
+    std::uint32_t code, const std::uint8_t* message,
+    std::uint64_t message_byte_length) {
+  return ui_abi_1_command_complete_failure_utf8(
+      command, operation_id, domain, code, message, message_byte_length);
+}
+
+ui_status api_command_complete_cancelled(ui_handle command,
+                                         std::uint64_t operation_id) {
+  return ui_abi_1_command_complete_cancelled(command, operation_id);
+}
+
+ui_status api_runtime_post(ui_handle runtime, ui_callback callback,
+                           void* userdata, ui_destroy_callback destroy,
+                           ui_handle* out_error) {
+  return ui_abi_1_runtime_post(runtime, callback, userdata, destroy,
+                               out_error);
 }
 
 void report_callback_exception(const std::exception_ptr& exception) noexcept {
@@ -461,6 +535,19 @@ std::shared_ptr<const AbiApi> linked_api() {
       &api_binding_cancel,
       &api_binding_error_snapshot,
       &api_binding_subscribe_error,
+      &api_handle_retain,
+      &api_command_create_async,
+      &api_command_execute,
+      &api_command_cancel,
+      &api_command_close,
+      &api_command_state_property,
+      &api_command_can_execute_property,
+      &api_command_failure_snapshot,
+      &api_command_cancel_token_requested,
+      &api_command_complete_success,
+      &api_command_complete_failure_utf8,
+      &api_command_complete_cancelled,
+      &api_runtime_post,
   });
   return api;
 }

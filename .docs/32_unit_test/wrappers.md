@@ -1,7 +1,7 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 
-- 文書版: 0.4改訂案
-- 状態: 0.1全文承認済み（利用者、2026-10-17）。0.2 C# Property Bindingおよび0.3 C# Commandの試験設計・実装・Windows/Linux CI成功を記録済み。0.4で承認済みC++ wrapper DD v1.4に対応するAsync Command/UI Control focused fake ABIとpackage consumer試験案を追加。文書全体レビュー待ち。実装・実行状態は別管理
+- 文書版: 0.4
+- 状態: 0.1全文承認済み（利用者、2026-10-17）。0.2 C# Property Bindingおよび0.3 C# Commandの試験設計・実装・Windows/Linux CI成功を記録済み。0.4全文は利用者承認済み（2026-10-25）。C++ Async Command focused fake ABIとrelocated package consumerは実装・Windows local pass。C++ UI Control試験は未実装
 - 更新日: 2026-10-25
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
@@ -95,7 +95,8 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-24 | 0.2実行記録 | — | `UNIT-WRAP-CS-BIND-001`のfocused fake ABI・real C ABI consumer、local check/minimum、Windows/Linux CI run 40060773110が成功 |
 | 2026-10-24 | 0.3追加 | — | 承認済みC# wrapper DD v1.4と実装開始指示に基づき`UNIT-WRAP-CS-COMMAND-001`のfocused fake ABI・real C ABI consumer試験を登録。試験実装・実行結果は別管理 |
 | 2026-10-24 | 0.3実行記録 | — | `tools/dev.py csharp-command-test`、`csharp-command-consumer-test`、`check`、`minimum`と[Windows/Linux CI run 40074886918](https://github.com/edamame-edame/freemvvm/actions/runs/40074886918)がsuccess |
-| 2026-10-25 | 0.4改訂案 | — | 承認済みC++ wrapper DD v1.4に基づきCommand/worker、Control、Window close-requestのfocused fake ABIとrelocated package consumer案を追加。全文レビュー待ち、未実装・未実行 |
+| 2026-10-25 | 0.4改訂案 | — | 承認済みC++ wrapper DD v1.4に基づきCommand/worker、Control、Window close-requestのfocused fake ABIとrelocated package consumer案を追加。直後に利用者承認 |
+| 2026-10-25 | 0.4実行記録 | 利用者 / Codex | C++ Command/worker focused fake ABIとrelocated package consumerを利用者承認後に実装し、`cpp-command-test`、`cpp-package-test`、`check`がWindows local pass。unit `UNIT-WRAP-CPP-008`はCI未確認。UI Control casesは未着手 |
 
 ## 改訂履歴
 
@@ -107,4 +108,5 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 0.1 | 2026-10-17 | テスト文書作成指示に基づき前提・操作・観測・期待値・後始末を具体化 | Codex | 本版全文のレビュー待ち。未実装・未実行 |
 | 0.2 | 2026-10-24 | C# Property Bindingのfake ABI focused testとreal C ABI consumerの試験設計を追加 | Codex | 利用者承認済みDD v1.3と実装開始指示の範囲。試験実行状態は別管理 |
 | 0.3 | 2026-10-24 | C#非同期Commandのfake ABI focused testとreal C ABI consumerの試験設計・実行記録を追加 | Codex | 利用者承認済みDD v1.4と実装開始指示の範囲。Windows/Linux CI成功 |
-| 0.4改訂案 | 2026-10-25 | 承認済みC++ wrapper DD v1.4のCommand/worker、UI Control、Window close-requestをfocused testとpackage consumerへ具体化 | Codex | 文書全体レビュー待ち。test source/commandは未登録・未実装 |
+| 0.4改訂案 | 2026-10-25 | 承認済みC++ wrapper DD v1.4のCommand/worker、UI Control、Window close-requestをfocused testとpackage consumerへ具体化 | Codex | 初稿後に全文レビュー・承認済み |
+| 0.4全文 | 2026-10-25 | C++ Command/worker、UI Control、Window close-request focused test案を確定 | 利用者 / Codex | 利用者承認済み。Command/workerとpackage consumerのlocal実行記録は別管理し、UI Control unitは後続 |

@@ -56,6 +56,25 @@ struct AbiApi final {
   ui_status (*binding_subscribe_error)(ui_handle, ui_callback, void*,
                                        ui_destroy_callback, ui_handle*,
                                        ui_handle*);
+  ui_status (*handle_retain)(ui_handle, ui_handle*);
+  ui_status (*command_create_async)(ui_handle, ui_handle,
+                                    ui_command_start_callback, void*,
+                                    ui_destroy_callback, ui_handle*,
+                                    ui_handle*);
+  ui_status (*command_execute)(ui_handle, std::uint64_t*, ui_handle*);
+  ui_status (*command_cancel)(ui_handle, std::uint64_t, ui_handle*);
+  ui_status (*command_close)(ui_handle, ui_handle*);
+  ui_status (*command_state_property)(ui_handle, ui_handle*);
+  ui_status (*command_can_execute_property)(ui_handle, ui_handle*);
+  ui_status (*command_failure_snapshot)(ui_handle, ui_handle*);
+  ui_status (*command_cancel_token_requested)(ui_handle, ui_bool*);
+  ui_status (*command_complete_success)(ui_handle, std::uint64_t);
+  ui_status (*command_complete_failure_utf8)(
+      ui_handle, std::uint64_t, std::uint32_t, std::uint32_t,
+      const std::uint8_t*, std::uint64_t);
+  ui_status (*command_complete_cancelled)(ui_handle, std::uint64_t);
+  ui_status (*runtime_post)(ui_handle, ui_callback, void*,
+                            ui_destroy_callback, ui_handle*);
 };
 
 struct CallbackHandlerRecord final {
