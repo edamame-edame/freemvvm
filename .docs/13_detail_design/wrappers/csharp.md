@@ -1,9 +1,9 @@
 # 言語ラッパー：C#
 
-- 文書版: 1.4改訂案
+- 文書版: 1.5
 - 文書ロール: detailed-design
 - 更新日: 2026-10-24
-- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.2/1.3までの承認履歴を維持。実装・試験状態は別管理
+- 状態: 1.5全文承認済み（利用者、2026-10-25）。1.4までの承認履歴を維持。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -20,6 +20,7 @@
 | Property notification Subscription・callback failure handler | [RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-008](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 | Property Binding・Binding error snapshot/notification | [RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-07-001](../../11_requirements/RQ-07_binding.md#rq-07-001)、[RQ-07-002](../../11_requirements/RQ-07_binding.md#rq-07-002)、[RQ-07-003](../../11_requirements/RQ-07_binding.md#rq-07-003)、[RQ-07-004](../../11_requirements/RQ-07_binding.md#rq-07-004)、[RQ-07-005](../../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-007](../../11_requirements/RQ-07_binding.md#rq-07-007)、[RQ-07-008](../../11_requirements/RQ-07_binding.md#rq-07-008)、[RQ-07-009](../../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../../11_requirements/RQ-07_binding.md#rq-07-010)、[RQ-07-011](../../11_requirements/RQ-07_binding.md#rq-07-011) |
 | 非同期Command wrapper | [RQ-02-004](../../11_requirements/RQ-02_core-features.md#rq-02-004)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-004](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-004)、[RQ-06-008](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-008)、[RQ-06-009](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-009)、[RQ-06-010](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-010)、[RQ-06-011](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-011)、[RQ-09-006](../../11_requirements/RQ-09_ui-scope.md#rq-09-006) |
+| 初期UI Control wrapper | [RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-025](../../11_requirements/RQ-04_abi-boundary.md#rq-04-025)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-002](../../11_requirements/RQ-09_ui-scope.md#rq-09-002)、[RQ-09-003](../../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-09-004](../../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-005](../../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-006](../../11_requirements/RQ-09_ui-scope.md#rq-09-006)、[RQ-09-043](../../11_requirements/RQ-09_ui-scope.md#rq-09-043)、[RQ-09-044](../../11_requirements/RQ-09_ui-scope.md#rq-09-044)、[RQ-09-045](../../11_requirements/RQ-09_ui-scope.md#rq-09-045)、[RQ-09-046](../../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-049](../../11_requirements/RQ-09_ui-scope.md#rq-09-049)、[RQ-09-059](../../11_requirements/RQ-09_ui-scope.md#rq-09-059)、[RQ-09-067](../../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-09-070](../../11_requirements/RQ-09_ui-scope.md#rq-09-070)、[RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -448,7 +449,7 @@ facadeはAcquireLease→native call→finallyでlease返却の順。DisposeはOw
 
 CallLeaseはUI thread権限を付与しない。GCHandleの保持と公開handle tokenの所有は別に数える。SafeHandleのpointer前提の既定処理へ64-bit token寿命を委ねない。
 
-## 非同期Command wrapper（1.4改訂案・未承認）
+## 非同期Command wrapper（1.4）
 
 本節は承認済み非同期Command C ABI設計をC#から利用する公開型、所有、workerとUI threadの境界を定める。共通動作の正本は[イベントハンドリング：非同期Command](../events/commands.md)と[共通C ABI](../runtime-objects/abi.md)であり、本節はそれらの状態遷移・status・shutdown保証を変更しない。C ABIの宣言は設計であり、配布headerや実装済みAPIを意味しない。
 
@@ -533,6 +534,116 @@ sequenceDiagram
 - Command close/Runtime shutdownは新規実行・UI完了反映を止めるがworkerをjoinしない。遅延/古いoperation IDの報告を現在状態へ反映せず、shutdown後にterminal stateがUIから観測できる保証を加えない。
 - wrapperのstart callback exceptionはC ABIを越境させず、`CommandStart` failure kindで既存handlerへ報告する。未設定handler時の既定診断は既存`Trace.TraceError`規則を適用する。worker例外はアプリ側がdomain/code/messageへ明示変換し、wrapperが未定義の既定codeを追加しない。
 
+## 初期UI Control wrapper（1.5改訂案）
+
+本節は承認済みUI Control/C ABI契約をC# facadeへ写像する提案であり、Controlの外部動作やCore stateを追加しない。Core/ABIの正本は[UIクラス：Window・基本Control](../ui/controls.md)、[UIクラス：Tree・Layout・Focus](../ui/tree-layout.md)、[共通C ABI](../runtime-objects/abi.md)である。C# wrapperはC ABIだけを利用し、未接続native peerから成功を返したり、UI-affine呼出しをworkerから自動dispatchしたりしない。
+
+要求根拠は上記対応表の「初期UI Control wrapper」に示す。公開名と戻り値は提案であり、C# facadeの利用者向け保証はリンク先RQを超えない。
+
+### 公開型・操作案
+
+| 型 | 責務・保持データ案 | 公開操作案 | 所有・寿命案 |
+| --- | --- | --- | --- |
+| `UiWidget` | 抽象Widget base。Control token owner、Runtime anchor、callback handler state | `TryGetIsEnabledProperty()`、`TryGetAccessibleNameProperty()`、`TryRequestFocus()`、`TryClose()`、`Dispose()` | Control tokenとRuntime anchorを別ownerにする。`TryClose`/`Dispose`はtoken releaseのみで、Tree所属やWindow peerを暗黙変更しない |
+| `UiContainer` | 抽象Container base | `TryInsert(child, index)`、`TryRemove(child)`、`TryMove(from, to)`、`TryGetChildCount()`、`TryGetChildAt(index)` | child引数はcall中だけborrowする。Core TreeOwnerの所有とpublic wrapper tokenの寿命を分ける |
+| `UiWindow` | Window Control | `TryCreate(runtime)`、`TryGetTitleProperty()`、`TryGetContent()`、`TrySetContent(child)`、`TryClearContent()`、`TryOpen()`、`TryCloseWindow()`、`TrySubscribeCloseRequest(callback)` | content getterは独立したowned wrapperを返す。peer closeとControl token close、Runtime shutdownは別操作 |
+| `UiStackPanel` | StackPanel Control | `TryCreate(runtime)`、`TryGetOrientation()`、`TrySetOrientation(value)`、`TrySetChildAlignment(child, value)` | EnumはC ABIの固定値へ明示変換し、不明値を受け入れない。child alignmentの設定対象は当該panelの所属childだけ |
+| `UiText` | 読取専用表示Control | `TryCreate(runtime, initialText)`、`TryGetContentProperty()` | contentは既存UTF-8 `UiProperty<string>`とし、Control stateに値を複製しない |
+| `UiTextBox` | 文字列入力Control | `TryCreate(runtime, initialText)`、`TryGetValueProperty()` | Valueは既存UTF-8 Property/Bindingを再利用する。本版はC ABIが別途定義する編集snapshot・input validator callbackをこのControl facadeへ追加しない |
+| `UiButton` | Labelとoptional Commandを持つControl | `TryCreate(runtime, initialLabel)`、`TryGetLabelProperty()`、`TrySetCommand(command?)`、`TryGetCommand()` | 設定時のCommandはborrowし、Core参照を保持する。取得時は独立owned `UiCommand`を返し、未設定は成功値`null`とする |
+| `UiWindowCloseRequest` | close callback中のみ利用できるborrowed判断対象 | `TryResolve(decision)`、`TryDefer()` | `TryDefer`成功時だけ独立owned request wrapperへtokenを移す。borrowed objectはcallback終了時に失効し、Dispose対象にしない |
+| `UiDeferredWindowCloseRequest` | 遅延close判断のowned tokenとRuntime anchor | `TryResolve(decision)`、`TryClose()`、`Dispose()` | resolveはrequest tokenを消費しない。未解決のまま最後のownerをreleaseするとCore契約によりDeclineされる |
+
+`UiControlOrientation`（Vertical/Horizontal）、`UiChildAlignment`（Start/Center/End/Stretch）、`UiWindowCloseDecision`（Accept/Decline）をC ABI enum値と対応させる。C ABIにcontrol-kind queryがないため、`TryGetContent`/`TryGetChildAt`の戻り値は共通操作だけを持つ`UiWidget`とし、実型を推測してdowncastしない。具体ControlのAPIが必要なアプリは生成時の型付きwrapperを保持する。動的型判定が必要との判断になった場合は共通C ABIへの追加の要否を別途レビューする。
+
+### 所有関係・主要flow
+
+```mermaid
+classDiagram
+    direction TB
+    class UiRuntime
+    class UiWidget {
+        TryGetIsEnabledProperty()
+        TryGetAccessibleNameProperty()
+        TryRequestFocus()
+        TryClose()
+    }
+    class UiContainer {
+        TryInsert(child, index)
+        TryRemove(child)
+        TryMove(from, to)
+        TryGetChildCount()
+        TryGetChildAt(index)
+    }
+    class UiWindow {
+        TrySetContent(child)
+        TryOpen()
+        TryCloseWindow()
+        TrySubscribeCloseRequest(callback)
+    }
+    class UiStackPanel {
+        TrySetOrientation(value)
+        TrySetChildAlignment(child, value)
+    }
+    class UiText
+    class UiTextBox
+    class UiButton {
+        TrySetCommand(command)
+        TryGetCommand()
+    }
+    class UiProperty~T~
+    class UiCommand
+    class UiSubscription
+    class UiWindowCloseRequest
+    class UiDeferredWindowCloseRequest
+    UiWidget <|-- UiContainer
+    UiWidget <|-- UiText
+    UiWidget <|-- UiTextBox
+    UiWidget <|-- UiButton
+    UiContainer <|-- UiWindow
+    UiContainer <|-- UiStackPanel
+    UiRuntime o-- UiWidget : retained Runtime anchor
+    UiRuntime o-- UiDeferredWindowCloseRequest : retained Runtime anchor
+    UiWidget ..> UiProperty : independent owned property
+    UiButton ..> UiCommand : Core retains borrowed command
+    UiWindow ..> UiSubscription : close callback registration
+    UiSubscription ..> UiWindowCloseRequest : callback-scoped borrowed view
+    UiWindowCloseRequest ..> UiDeferredWindowCloseRequest : defer creates owned token
+```
+
+```mermaid
+sequenceDiagram
+    participant App as C# app
+    participant Parent as UiContainer / UiWindow
+    participant Child as typed UiWidget
+    participant Core as Rust Core / C ABI
+    App->>Parent: TryInsert(child, index)
+    Parent->>Parent: acquire parent/child call leases
+    Parent->>Core: container_insert(parent, borrowed child)
+    Core->>Core: validate Runtime/thread/type and atomically commit TreeOwner
+    Core-->>Parent: status/error
+    Parent-->>App: UiResult
+    App->>Parent: TryGetChildAt(index)
+    Parent->>Core: container_child_at(out owned handle)
+    Core-->>Parent: independent owned child handle
+    Parent->>Parent: wrap as generic UiWidget + Runtime anchor
+    Parent-->>App: UiResult~UiWidget~
+```
+
+### Callback・failure・thread境界案
+
+- Control factoryはcall前にtoken owner、cleanup ticket、Runtime anchorを確保する。C ABI成功時のみreturned handleをownerへadoptする。失敗時はerrorを既存`PreparedError`でcaptureし、仮確保したowner/anchorをreleaseする。release失敗は既存CleanupTicketへ移し、所有tokenを捨てない。
+- 各Control API呼出しは既存`TokenOwner.AcquireLease`を使い、Controlと引数の双方のleaseを保持してからnative callを行う。Disposeとの競合時もactive call中のtokenをreleaseしない。Control property getterはnative owned property handleを専用`TokenOwner`へ移し、既存`UiProperty<T>`へwrapする。
+- Tree mutationのC# layerは入力null、wrapper dispose済み、同じnative API instanceでない引数をnative call前に拒否する。Runtime identity・handle type・UI threadの正本はC ABI/Coreにあり、managed checkだけでnative validationを代替しない。
+- Window close subscriberは既存`UiSubscription`、static unmanaged trampoline、GC root、destroy callback規則を使う。callbackに渡す`UiWindowCloseRequest`はborrowed scope stateを持ち、callback終了時にinvalidateする。callback例外は新しい`UiCallbackFailureKind.WindowCloseRequest`として既存Runtime handlerへ渡し、ABI境界へ出さない。
+- Close callbackがresolveもdeferもしない場合（例外で終了した場合を含む）、C ABI契約どおり既定Acceptとなる。アプリがvetoしたい場合はAccept/Declineを明示するか、deferでowned requestを取得して後から一度resolveする。shutdownはclose vetoを待たない。
+- `TryOpen`/`TryCloseWindow`はpeer操作statusをそのまま返し、CoreのWindow/Tree/Propertyを暗黙破棄しない。peer未接続の`UI_UNSUPPORTED`を例外的成功やmanaged-only open状態へ変換しない。
+- 全Control操作はC ABIのthread規則どおりUI threadで行う。C# wrapperがworker callを自動dispatchしたり、Focus失敗・Tree拒否を成功値に丸めたりしない。
+
+### 試験対象境界案
+
+wrapper focused testsはfake `INativeApi`でowner adoption/cleanup failure、Dispose中call lease、型付きProperty owner分離、異API引数拒否、Tree childのborrowed call lifetime、enum/status変換、typed Command wrapperの所有を確認する。close requestではcallback中のborrowed利用、defer後の独立owner、expired borrowed wrapper拒否、callback exception handler、subscription cancel/destroy一回性を検査する。別process consumerは実C ABIからControl treeを作り、Property/Binding/Command接続・unsupported peer結果を検証する。Coreの描画pixel、OS event loop、native IME/accessibilityはPlatform/release scenario側であり、本wrapper unitでは合格を主張しない。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -546,3 +657,5 @@ sequenceDiagram
 | 2026-10-24 | 1.3全文 | 利用者の「承認します、実装を進めてください」により文書全体を承認。実装・試験状態は別管理 |
 | 2026-10-24 | 1.4改訂案 | 非同期CommandのC#公開型、class diagram、実行/完了sequence、worker参照とfailure境界を追加。計画 `.docs/20_todo/csharp-async-command.md` に基づく |
 | 2026-10-24 | 1.4全文 | 利用者の「承認します。実装を進めてください」により文書全体を承認。実装・試験状態は別管理 |
+| 2026-10-25 | 1.5改訂案 | 初期UI Control facade、Control/Tree/Command ownership、Window close-request callback、C# focused/consumer試験境界を追加。計画 `.docs/20_todo/csharp-ui-controls-wrapper.md` に基づく。全文レビュー待ち |
+| 2026-10-25 | 1.5全文 | 利用者の「ok」により初期UI Control wrapperの公開surface、ownership、callback、failure、thread境界を含む全文を承認。実装開始・試験合格は別管理 |

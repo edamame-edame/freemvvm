@@ -18,4 +18,5 @@
 - UNIT-ABI-020ではButtonがCommand entryのArcを保持し、public token解放後もgetterで独立tokenを再発行できる。交換時の旧Arc dropはObjectStore mutex解放後に行い、別Runtime Commandは状態変更前に拒否する。Windows SDKが不足する開発端末でも、MinGW CMakeでC/C++ ABI header probeとruntime smokeを検証できる。
 - UNIT-ABI-021ではWindow close subscriptionを既存Subscription cancel/release lifecycleへ接続する。callback中borrowed requestからdeferでowned tokenを発行し、最後の未解決owner releaseをDeclineにする。詳細は[Window close-requestの実装メモ](abi-window-close-request.md)。
 - 初期UI ControlのCore/C ABI計画は`UNIT-CORE-070..072`、`UNIT-ABI-020..021`まで完了。最終revision `f87c082` のWindows/Linux CI run `40163386417`が成功した。次層のwrapperは対象言語ごとにこのCore APIs branchから子branchを作り、C# Controlの実装前にC# DDとwrapper test designを補う。
+- C# UI Control wrapper計画は`dfb86cf`で登録され、親Core revisionのWindows/Linux CIも成功（run `40164472118`）。言語別branch `impl-csharp/ui-controls-wrapper`を作成。C# wrapper DD v1.5全文は利用者承認済み。実装sourceを変更する前にC# focused/consumer test designとunit mappingを登録し、実装開始の承認境界を維持する。
 - WebEngine branchは利用者による別途採否判断までversion branchへ統合しない。

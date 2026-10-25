@@ -1,7 +1,7 @@
 # C# UI Control wrapper
 
 - 計画版: 0.1
-- 状態: 計画案（利用者レビュー待ち。未commit・未実装）
+- 状態: 計画・C# wrapper DD v1.5全文承認済み（利用者、2026-10-25）。focused test設計/unit mappingは未登録、実装未着手
 - 作成日: 2026-10-25
 - 対象: 0.0.1初期UI Control Core/C ABIをC#から構成・操作するwrapper
 - 作業branch案: `impl-csharp/ui-controls-wrapper`
@@ -49,8 +49,8 @@ C# wrapper DD v1.4はRuntime/Property/Binding/Commandの所有・interop・例�
 1. [x] Core/C ABI Control implementation plan完了と最終CIを確認。記録commit `9a19b95`、Core APIs branch `impl-rust/core-ui-controls-c-abi`。
 2. [ ] 本計画案の対象範囲・branch親子関係・DD/test承認境界を利用者レビュー。
 3. [ ] 計画承認後、計画文書をcommit/pushする。承認前はこの案をcommitしない。
-4. [ ] C# wrapper DD v1.5の改訂案を作成する。公開型/API候補、C ABI mapping、typed ownership/Dispose、call lease、thread検査、callback rootと例外境界、Control/Command接続、主要class/call/data/ownership flowを必要箇所に追記する。Core側の既承認動作を繰り返し規定せず、RQ/DD差異が見つかれば別途記録する。
-5. [ ] C# DD全文、特に公開surfaceとlifetime/callback契約について利用者承認を得る。実装承認は別に記録し、承認前にsourceを変更しない。
+4. [x] C# wrapper DD v1.5改訂案を作成し、公開型/API候補、C ABI mapping、typed ownership/Dispose、call lease、thread検査、callback rootと例外境界、Control/Command接続、class/call/data/ownership flowを追加。C ABIにcontrol-kind queryがないため、再取得childは共通`UiWidget`のままとしdowncastしない境界も明記した。
+5. [x] C# DD v1.5全文を利用者が承認（2026-10-25、「ok」）。実装開始承認・試験設計・実装は別管理。
 6. [ ] 実装開始承認後、wrapper test designへC# focused/consumer casesを登録し、`tools/units.yaml`へsource・design・requirements・dependencies・commandsを対応付ける。候補unitは`UNIT-WRAP-CS-CONTROLS-001`、`UNIT-WRAP-CS-WINDOW-001`とし、詳細設計と試験粒度に合わせて確定する。
 7. [ ] `impl-rust/core-ui-controls-c-abi`の最新CI成功revisionから`impl-csharp/ui-controls-wrapper`を作成する。別言語branchを親にしない。C# coding ruleの実在と適用範囲を再確認する。
 8. [ ] Control/tree/property/layout/Focus/Command facadeをunit別に実装し、各unitのfocused testと実C ABI consumer試験を同revisionに含めてcommit/pushする。
@@ -71,3 +71,5 @@ C# wrapper DD v1.4はRuntime/Property/Binding/Commandの所有・interop・例�
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
 | 2026-10-25 | 0.1 / C# UI Control wrapper | 利用者レビュー待ち | 次のwrapper層に向けた計画案。未commit・未実装 |
+| 2026-10-25 | 0.1 / C# UI Control wrapper | 利用者 | 「ok」により本計画を承認。計画commit `dfb86cf`、Windows/Linux CI run `40164472118`成功。DD v1.5改訂案は別途全文レビュー待ち |
+| 2026-10-25 | 0.1 / C# UI Control wrapper | 利用者 | 「ok」によりC# wrapper DD v1.5全文を承認。実装開始は別途確認 |
