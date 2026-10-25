@@ -3624,7 +3624,7 @@
     },
     {
       "id": "UNIT-WRAP-PY-PROP-F64-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "python-f64-property-create-get-set-close",
       "sources": [
         "wrappers/python/src/freemvvm/**/*.py",

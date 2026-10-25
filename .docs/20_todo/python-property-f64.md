@@ -1,7 +1,7 @@
 # Python F64 Property wrapper
 
 - 計画版: 0.1
-- 状態: 実装済み。Windows local gates成功。Windows/Linux CI確認待ち
+- 状態: 完了。Windows local gatesおよび同一実装SHAのWindows/Linux CI成功
 - 作成日: 2026-10-25
 - 対象: Python `Property` facadeへbuilt-in `float`のF64 create/get/setを追加する独立unit
 - 作業branch案: `impl-python/runtime-wrapper`を継続。Python Runtime、BOOL/I64、UTF-8 Propertyを基盤とし、Core/C ABIや他言語wrapperは変更しない
@@ -36,7 +36,7 @@
 4. [x] DD承認後、wrapper unit-test design 0.7へfocused fake API・real C ABI consumer casesを提案し、利用者の「ok」により試験設計全文の承認を得た（2026-10-25）。
 5. [x] Implementation unit `UNIT-WRAP-PY-PROP-F64-001`を依存関係付きで`tools/units.yaml`へ登録した。実装開始は別判断とする。
 6. [x] 実装開始指示後、ctypes bindings、Property facade、focused fake tests、独立C ABI consumer、`tools/dev.py` command/check gatesを実装した。
-7. [ ] Windows local focused tests 16件/consumer/check/minimum/document validationは成功。実装commitをpush後、同一SHAのWindows/Linux CIを確認してplan/test/memory/unit台帳を完了記録する。
+7. [x] Windows local focused tests 16件/consumer/check/minimum/document validation成功。実装SHA `1c38de364c1824793db53f758cebf7e160463865`でWindows/Linux CI成功。plan/test/memory/unit台帳へ記録し、日本語commit/pushした。
 
 ## 検証と完了条件案
 
@@ -54,3 +54,4 @@
 | 2026-10-25 | Python wrapper DD v1.5全文 | 利用者 | 「ok」によりF64 Property API・型境界・Core委譲・error/ownership flowを含む全文を承認。試験設計・実装は別承認 |
 | 2026-10-25 | Python wrapper試験設計 v0.7全文 | 利用者 | 「ok」によりfake API / real C ABI consumerのF64 Property試験設計を含む全文を承認。unit登録を実施。実装開始は別承認 |
 | 2026-10-25 | Python F64 Property実装 | — | `UNIT-WRAP-PY-PROP-F64-001`実装とWindows local focused 16件・consumer・check・minimum成功。Windows/Linux CI待ち |
+| 2026-10-25 | Python F64 Property unit完了 | — | 実装SHA `1c38de364c1824793db53f758cebf7e160463865`でWindows/Linux CI run 40202740672 success。実装と試験が同一revisionであることを確認 |

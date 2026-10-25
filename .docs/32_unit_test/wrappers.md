@@ -1,6 +1,6 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 - 文書版: 0.7
-- 状態: 0.7全文承認済み（利用者、「ok」、2026-10-25）。Python F64 Property unit登録済み。Windows local focused test/consumer成功、Windows/Linux CI待ち。
+- 状態: 0.7全文承認済み（利用者、「ok」、2026-10-25）。Python F64 Property unitのWindows local focused test/consumer/check/minimumおよびWindows/Linux CI成功。
 - 更新日: 2026-10-25
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
@@ -98,7 +98,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-25 | 0.7改訂案 | — | 承認済みPython wrapper DD v1.5に基づきF64 Property fake API/real C ABI consumer casesを追加。文書全体レビュー待ち。試験実装・unit登録・実装は未承認 |
 | 2026-10-25 | 0.7全文 | 利用者 | 「ok」によりPython F64 Propertyのfake API/real C ABI consumer試験設計を含む文書全体を承認。試験実装・実行結果は別管理 |
 | 2026-10-25 | 0.7実装整合補足 | — | `Property.create`はbuilt-in型からBOOL/I64/F64/UTF-8 kindを選択するため、bool/int/strは有効入力であることをDDに合わせて明記。F64への型不一致拒否はF64 setterで検証 |
-| 2026-10-25 | 0.7実行記録 | — | Python F64 fake API 16件、別processの実C ABI consumer、およびWindows local `tools/dev.py check` / `minimum` success。Windows/Linux CIは確認待ち |
+| 2026-10-25 | 0.7実行記録 | — | Python F64 fake API 16件、別processの実C ABI consumer、およびWindows local `tools/dev.py check` / `minimum` success。実装SHA `1c38de364c1824793db53f758cebf7e160463865`に対する[Windows/Linux CI run 40202740672](https://github.com/edamame-edame/freemvvm/actions/runs/40202740672) success |
 | 2026-10-24 | 0.2追加 | — | 承認済みRust wrapper DD v1.1とRust Runtime実装計画に基づきfocused fake sys API・real C ABI consumer試験を登録。実行結果は別管理 |
 | 2026-10-24 | 0.2実行記録 | — | Rust Runtime focused 4 tests、compile-fail 2 cases、real C ABI consumer、`tools/dev.py check`、`minimum`がlocal pass。[Windows/Linux CI run 40077169840](https://github.com/edamame-edame/freemvvm/actions/runs/40077169840) success |
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
@@ -125,4 +125,4 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 0.5実行記録 | 2026-10-25 | Python BOOL/I64 Propertyのfocused fake ABI 7件、実C ABI consumer、全体check/minimumと文書リンク検証のWindows local結果およびWindows/Linux CI結果を追記 | Codex | 実装SHA `387eab6b`、CI run 40197894655 success |
 | 0.6 | 2026-10-25 | Python UTF-8 Propertyのfake ABIとreal C ABI consumer試験設計を追加 | Codex | 利用者の「ok」により全文承認。試験実装・実行は別管理 |
 | 0.7 | 2026-10-25 | Python F64 Propertyのfake ABIとreal C ABI consumer試験設計を追加 | Codex | 利用者の「ok」により文書全体を承認。試験実装・実行結果は別管理 |
-| 0.7実行記録 | 2026-10-25 | fake API focused 16件、real C ABI consumer、Windows local check/minimumの結果を追記 | Codex | local success。Windows/Linux CI待ち |
+| 0.7実行記録 | 2026-10-25 | fake API focused 16件、real C ABI consumer、Windows local check/minimumおよびWindows/Linux CIの結果を追記 | Codex | 実装SHA `1c38de36`、CI run 40202740672 success |
