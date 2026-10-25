@@ -164,7 +164,7 @@ def test_invalid_types_and_i64_overflow_are_rejected_before_native_calls() -> (
     class IntSubclass(int):
         pass
 
-    for value in (1.0, b"1", IntSubclass(1)):
+    for value in (b"1", IntSubclass(1)):
         with pytest.raises(TypeError):
             Property.create(runtime, value)  # type: ignore[arg-type]
     for value in (-(1 << 63) - 1, 1 << 63):

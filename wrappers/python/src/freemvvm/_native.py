@@ -60,6 +60,10 @@ class NativeApi(Protocol):
         self, runtime: int, initial: int
     ) -> tuple[int, int, int]: ...
 
+    def property_create_f64(
+        self, runtime: int, initial: float
+    ) -> tuple[int, int, int]: ...
+
     def property_create_utf8(
         self, runtime: int, initial: bytes
     ) -> tuple[int, int, int]: ...
@@ -67,6 +71,8 @@ class NativeApi(Protocol):
     def property_get_bool(self, property: int) -> tuple[int, int]: ...
 
     def property_get_i64(self, property: int) -> tuple[int, int]: ...
+
+    def property_get_f64(self, property: int) -> tuple[int, float]: ...
 
     def property_get_utf8(
         self, property: int, buffer: bytearray | None
@@ -78,6 +84,10 @@ class NativeApi(Protocol):
 
     def property_set_i64(
         self, property: int, value: int
+    ) -> tuple[int, int]: ...
+
+    def property_set_f64(
+        self, property: int, value: float
     ) -> tuple[int, int]: ...
 
     def property_set_utf8(
@@ -146,6 +156,15 @@ class CtypesNativeApi:
             ],
         )
         self._bind(
+            "ui_abi_1_property_create_f64",
+            [
+                Handle,
+                ctypes.c_double,
+                ctypes.POINTER(Handle),
+                ctypes.POINTER(Handle),
+            ],
+        )
+        self._bind(
             "ui_abi_1_property_create_utf8",
             [
                 Handle,
@@ -163,6 +182,10 @@ class CtypesNativeApi:
             [Handle, ctypes.POINTER(ctypes.c_int64)],
         )
         self._bind(
+            "ui_abi_1_property_get_f64",
+            [Handle, ctypes.POINTER(ctypes.c_double)],
+        )
+        self._bind(
             "ui_abi_1_property_get_utf8",
             [
                 Handle,
@@ -178,6 +201,10 @@ class CtypesNativeApi:
         self._bind(
             "ui_abi_1_property_set_i64",
             [Handle, ctypes.c_int64, ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_property_set_f64",
+            [Handle, ctypes.c_double, ctypes.POINTER(Handle)],
         )
         self._bind(
             "ui_abi_1_property_set_utf8",
@@ -323,6 +350,19 @@ class CtypesNativeApi:
         )
         return status, property_handle.value, error.value
 
+    def property_create_f64(
+        self, runtime: int, initial: float
+    ) -> tuple[int, int, int]:
+        property_handle = Handle()
+        error = Handle()
+        status = self._library.ui_abi_1_property_create_f64(
+            runtime,
+            initial,
+            ctypes.byref(property_handle),
+            ctypes.byref(error),
+        )
+        return status, property_handle.value, error.value
+
     def property_create_utf8(
         self, runtime: int, initial: bytes
     ) -> tuple[int, int, int]:
@@ -355,6 +395,13 @@ class CtypesNativeApi:
         )
         return status, value.value
 
+    def property_get_f64(self, property: int) -> tuple[int, float]:
+        value = ctypes.c_double()
+        status = self._library.ui_abi_1_property_get_f64(
+            property, ctypes.byref(value)
+        )
+        return status, value.value
+
     def property_get_utf8(
         self, property: int, buffer: bytearray | None
     ) -> tuple[int, int]:
@@ -381,6 +428,13 @@ class CtypesNativeApi:
     def property_set_i64(self, property: int, value: int) -> tuple[int, int]:
         error = Handle()
         status = self._library.ui_abi_1_property_set_i64(
+            property, value, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def property_set_f64(self, property: int, value: float) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_property_set_f64(
             property, value, ctypes.byref(error)
         )
         return status, error.value

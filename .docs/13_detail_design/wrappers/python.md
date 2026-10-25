@@ -540,13 +540,13 @@ sequenceDiagram
 
 Runtime anchorはPropertyが生存中にRuntime owner cellの早期回収を防ぐが、Property closeはRuntime shutdownを開始せず、Runtime closeと連鎖させない。最後のProperty handle releaseとRuntime shutdownの詳細は既存Runtime/ABI設計に従う。
 
-## F64 Property公開API（1.5改訂案）
+## F64 Property公開API（1.5承認済み）
 
-本節は承認済みRQ-02-017/018と共通C ABIのF64 Property契約をPython `float`から利用する提案である。BOOL/I64/UTF-8 Propertyの公開API・owner/call lease・error snapshot・明示close契約を維持し、Core/C ABIに新しい意味論を追加しない。本節を含む1.5文書全体は利用者レビュー待ちであり、承認前の確定仕様・実装済みAPI・試験合格を意味しない。
+本節は承認済みRQ-02-017/018と共通C ABIのF64 Property契約をPython `float`から利用する設計である。BOOL/I64/UTF-8 Propertyの公開API・owner/call lease・error snapshot・明示close契約を維持し、Core/C ABIに新しい意味論を追加しない。本節を含む1.5文書全体は利用者承認済み（2026-10-25）。この承認は実装・試験合格を意味しない。
 
 ### 公開APIと型mapping
 
-| 型/API | 1.5改訂案の責務・契約 |
+| 型/API | 1.5設計の責務・契約 |
 |---|---|
 | `Property.create(runtime, initial)` | `type(initial) is float`の場合、F64 Propertyを作成する。built-in `float`だけを受け付け、bool/int/float subclass等からの暗黙変換は行わない。createはUI threadで実行する。 |
 | `property.get()` | CoreからF64を取得し、C ABIの`double`をPython `float`として返す。wrapper値cacheを置かず、getter失敗statusは既存のraw `UiError`契約に従う。 |
@@ -557,7 +557,7 @@ F64の公開値型はPython built-in `float`とし、値の受け渡しに`ctype
 
 ### ABI mapping・等価性と表現
 
-| Python側 | C ABI側 | 1.5改訂案の失敗扱い |
+| Python側 | C ABI側 | 1.5設計の失敗扱い |
 |---|---|---|
 | `float`のcreate | `property_create_f64(runtime, initial, out_property, out_error)` | Python `float`を`double`で値渡しする。status/error snapshotと部分生成token cleanupは既存Property契約を使う。 |
 | `float`のget | `property_get_f64(property, out_value)` | 成功値をPython `float`として返す。失敗時はerror tokenのないraw statusを`UiError`へ保持する。 |
@@ -597,11 +597,11 @@ sequenceDiagram
 
 ## UTF-8 Property公開API（1.4承認済み）
 
-本節は承認済みRQと共通C ABIのUTF-8 Property契約をPython `str`から利用する拡張である。BOOL/I64 Propertyの公開API・owner/call lease・error snapshot・明示close契約を維持する。本節は1.4全文承認済み（2026-10-25）。現在の文書版1.5改訂案への承認は別途必要である。
+本節は承認済みRQと共通C ABIのUTF-8 Property契約をPython `str`から利用する拡張である。BOOL/I64 Propertyの公開API・owner/call lease・error snapshot・明示close契約を維持する。本節は1.4全文承認済み（2026-10-25）であり、1.5へ継承されている。
 
 ### 公開APIと型mapping
 
-| 型/API | 改訂案の責務・契約 |
+| 型/API | UTF-8 Propertyの責務・契約 |
 |---|---|
 | `Property.create(runtime, initial)` | `type(initial) is str`の場合はUTF-8 Propertyを作成する。createはUI threadで実行する。 |
 | `property.get()` | CoreからUTF-8 byte列を取得し、妥当なUTF-8だけをPython `str`へstrict decodeする。wrapper側に値cacheを置かない。 |
@@ -612,7 +612,7 @@ UTF-8 Propertyの入力・出力はC ABIのbyte lengthを正とし、NUL終端�
 
 ### ABI mapping・buffer read flow
 
-| Python側 | C ABI側 | 改訂案の失敗扱い |
+| Python側 | C ABI側 | UTF-8 Propertyの失敗扱い |
 |---|---|---|
 | `str`のcreate | `property_create_utf8(runtime, bytes, byte_length, out_property, out_error)` | 空byte列はnull pointer・長さ0で表し、有効byte列はCoreがcall中にcopyする。status/error snapshotと部分生成token回収は既存Property/owner契約に従う。 |
 | `str`のset | `property_set_utf8(property, bytes, byte_length, out_error)` | strict encode後にbyte pointer/lengthをcall中だけborrowさせる。失敗status/errorを`UiError`へ写し、wrapper値cacheや暗黙rollbackを追加しない。 |
@@ -673,4 +673,5 @@ sequenceDiagram
 | 2026-10-25 | 1.4改訂案 | Python UTF-8 Property API、strict str/byte mapping、getter buffer retry、invalid sequenceの失敗案を追加。文書全体レビュー待ち |
 | 2026-10-25 | 1.4全文 | 利用者の「ok」によりUTF-8 Property API、strict conversion、buffer retry、failure mappingを含む文書全体を承認。試験設計・実装・試験合格は別管理 |
 | 2026-10-25 | 1.5改訂案 | Python built-in `float`からF64 C ABIへ直接写すAPI、型境界、RQ-02-018のCore委譲、error/ownership flowを追加。文書全体レビュー待ち |
+| 2026-10-25 | 1.5全文 | 利用者の「ok」によりF64 Property API・型境界・Core委譲・error/ownership flowを含む文書全体を承認。実装・試験結果は別管理 |
 | 2026-10-25 | 1.5全文 | 利用者の「ok」によりPython F64 Property API、型境界、RQ-02-018のCore委譲、error/ownership flowを含む全文を承認。試験設計・実装・試験合格は別管理 |

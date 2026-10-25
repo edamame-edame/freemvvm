@@ -526,7 +526,7 @@ class UiContext:
 
 @final
 class Property:
-    """Owns a BOOL, signed-I64, or UTF-8 Property token."""
+    """Owns a BOOL, signed-I64, F64, or UTF-8 Property token."""
 
     __slots__ = (
         "_cell",
@@ -539,6 +539,7 @@ class Property:
     _BOOL = 1
     _I64 = 2
     _UTF8 = 3
+    _F64 = 4
     _I64_MIN = -(1 << 63)
     _I64_MAX = (1 << 63) - 1
 
@@ -548,7 +549,9 @@ class Property:
         )
 
     @classmethod
-    def create(cls, runtime: Runtime, initial: bool | int | str) -> Property:
+    def create(
+        cls, runtime: Runtime, initial: bool | int | float | str
+    ) -> Property:
         if not isinstance(runtime, Runtime):
             raise TypeError("runtime must be a freemvvm.Runtime")
 
@@ -562,12 +565,16 @@ class Property:
                 )
             kind = cls._I64
             native_initial = initial
+        elif type(initial) is float:
+            kind = cls._F64
+            native_initial = initial
         elif type(initial) is str:
             kind = cls._UTF8
             native_initial = initial.encode("utf-8", errors="strict")
         else:
             raise TypeError(
-                "Property initial value must be built-in bool, int, or str"
+                "Property initial value must be built-in bool, int, float, "
+                "or str"
             )
 
         _CleanupManager.retry_pending()
@@ -582,6 +589,10 @@ class Property:
                 )
             elif kind == cls._I64:
                 status, token, error = api.property_create_i64(
+                    runtime_token, native_initial
+                )
+            elif kind == cls._F64:
+                status, token, error = api.property_create_f64(
                     runtime_token, native_initial
                 )
             else:
@@ -628,12 +639,14 @@ class Property:
             with self._cell.lease() as property_token:
                 yield api, property_token
 
-    def get(self) -> bool | int | str:
+    def get(self) -> bool | int | float | str:
         with self._ui_call() as (api, token):
             if self._kind == self._BOOL:
                 status, value = api.property_get_bool(token)
             elif self._kind == self._I64:
                 status, value = api.property_get_i64(token)
+            elif self._kind == self._F64:
+                status, value = api.property_get_f64(token)
             else:
                 status, length = api.property_get_utf8(token, None)
                 if status not in (_native.OK, _native.BUFFER_TOO_SMALL):
@@ -679,7 +692,7 @@ class Property:
             return bool(value)
         return value
 
-    def set(self, value: bool | int | str) -> None:
+    def set(self, value: bool | int | float | str) -> None:
         if self._kind == self._BOOL:
             if type(value) is not bool:
                 raise TypeError("BOOL Property values must be built-in bool")
@@ -691,6 +704,10 @@ class Property:
                 raise OverflowError(
                     "Property int value must fit in signed I64"
                 )
+            native_value = value
+        elif self._kind == self._F64:
+            if type(value) is not float:
+                raise TypeError("F64 Property values must be built-in float")
             native_value = value
         else:
             if type(value) is not str:
@@ -706,6 +723,8 @@ class Property:
                 status, error = api.property_set_bool(token, native_value)
             elif self._kind == self._I64:
                 status, error = api.property_set_i64(token, native_value)
+            elif self._kind == self._F64:
+                status, error = api.property_set_f64(token, native_value)
             else:
                 status, error = api.property_set_utf8(token, native_value)
         _check_result(api, status, error, error_ticket)

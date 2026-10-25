@@ -138,6 +138,8 @@ def main():
             "python-property-bool-i64-consumer-test",
             "python-property-utf8-test",
             "python-property-utf8-consumer-test",
+            "python-property-f64-test",
+            "python-property-f64-consumer-test",
             "csharp-runtime-test",
             "csharp-runtime-consumer-test",
             "csharp-property-test",
@@ -192,6 +194,10 @@ def main():
             if args.command == "python-property-utf8-test"
             else "python-property-utf8-consumer-test"
             if args.command == "python-property-utf8-consumer-test"
+            else "python-property-f64-unit-test"
+            if args.command == "python-property-f64-test"
+            else "python-property-f64-consumer-test"
+            if args.command == "python-property-f64-consumer-test"
             else "csharp-runtime-unit-test"
             if args.command == "csharp-runtime-test"
             else "csharp-property-unit-test"
@@ -253,6 +259,12 @@ def main():
                 "against host C ABI"
             )
             if args.command == "python-property-utf8-consumer-test"
+            else "Python F64 Property wrapper unit tests executed"
+            if args.command == "python-property-f64-test"
+            else (
+                "Python F64 Property consumer test executed against host C ABI"
+            )
+            if args.command == "python-property-f64-consumer-test"
             else "C# Runtime wrapper unit tests executed"
             if args.command == "csharp-runtime-test"
             else "C# Property wrapper unit tests executed"
@@ -685,6 +697,63 @@ def main():
                 consumer_environment,
                 results,
                 "python-property-utf8-c-abi-consumer",
+            )
+        elif args.command == "python-property-f64-test":
+            test_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            test_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, test_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "wrappers/python/tests/test_property_f64.py",
+                ],
+                test_environment,
+                results,
+                "python-property-f64-unit-tests",
+            )
+        elif args.command == "python-property-f64-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "python-property-consumer-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_dir = target_dir / "debug"
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = native_dir / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            consumer_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, consumer_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "wrappers/python/examples/property_f64_consumer.py",
+                    str(native_path.resolve()),
+                ],
+                consumer_environment,
+                results,
+                "python-property-f64-c-abi-consumer",
             )
         elif args.command == "csharp-runtime-consumer-test":
             run(
@@ -1541,6 +1610,12 @@ def main():
                 "python-property-utf8-unit",
             )
             run(
+                [sys.executable, "tools/dev.py", "python-property-f64-test"],
+                environment,
+                results,
+                "python-property-f64-unit",
+            )
+            run(
                 [
                     sys.executable,
                     "tools/dev.py",
@@ -1569,6 +1644,16 @@ def main():
                 environment,
                 results,
                 "python-property-utf8-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-property-f64-consumer-test",
+                ],
+                environment,
+                results,
+                "python-property-f64-consumer",
             )
             run(
                 [
