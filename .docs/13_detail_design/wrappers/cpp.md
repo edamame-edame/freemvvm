@@ -1,9 +1,9 @@
 # 言語ラッパー：C++
 
-- 文書版: 1.3
+- 文書版: 1.4
 - 文書ロール: detailed-design
-- 更新日: 2026-10-24
-- 状態: 1.2全文承認済み（利用者、2026-10-22）。1.3 Binding API補足承認済み（利用者、2026-10-24）。実装・試験状態は別管理
+- 更新日: 2026-10-25
+- 状態: 1.2全文承認済み（利用者、2026-10-22）。1.3 Binding API補足を含む全文承認済み（利用者、2026-10-24）。1.4 Async Command/UI Control APIを含む全文承認済み（利用者、2026-10-25）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -18,6 +18,8 @@
 | 所有型・callback・例外・thread | [RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-03-005](../../11_requirements/RQ-03_language-support.md#rq-03-005)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-04-016](../../11_requirements/RQ-04_abi-boundary.md#rq-04-016)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-023](../../11_requirements/RQ-04_abi-boundary.md#rq-04-023)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-06-006](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-006) |
 | 公開API・handler・cleanup同期 | [RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-03-005](../../11_requirements/RQ-03_language-support.md#rq-03-005)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-05-014](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-014)、[RQ-12-004](../../11_requirements/RQ-12_build-distribution.md#rq-12-004) |
 | Property Binding | [RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-07-001](../../11_requirements/RQ-07_binding.md#rq-07-001)、[RQ-07-002](../../11_requirements/RQ-07_binding.md#rq-07-002)、[RQ-07-003](../../11_requirements/RQ-07_binding.md#rq-07-003)、[RQ-07-004](../../11_requirements/RQ-07_binding.md#rq-07-004)、[RQ-07-005](../../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-007](../../11_requirements/RQ-07_binding.md#rq-07-007)、[RQ-07-008](../../11_requirements/RQ-07_binding.md#rq-07-008)、[RQ-07-009](../../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../../11_requirements/RQ-07_binding.md#rq-07-010)、[RQ-07-011](../../11_requirements/RQ-07_binding.md#rq-07-011) |
+| Async Command | [RQ-02-004](../../11_requirements/RQ-02_core-features.md#rq-02-004)、[RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-004](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-004)、[RQ-06-008](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-008)、[RQ-06-009](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-009)、[RQ-06-010](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-010)、[RQ-06-011](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-011) |
+| UI Control / Window | [RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-002](../../11_requirements/RQ-09_ui-scope.md#rq-09-002)、[RQ-09-003](../../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-09-004](../../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-005](../../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-006](../../11_requirements/RQ-09_ui-scope.md#rq-09-006)、[RQ-09-007](../../11_requirements/RQ-09_ui-scope.md#rq-09-007)、[RQ-09-008](../../11_requirements/RQ-09_ui-scope.md#rq-09-008)、[RQ-09-009](../../11_requirements/RQ-09_ui-scope.md#rq-09-009)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-011](../../11_requirements/RQ-09_ui-scope.md#rq-09-011)、[RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-09-072](../../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-10-003](../../11_requirements/RQ-10_accessibility.md#rq-10-003) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -477,6 +479,233 @@ class Binding final {
 
 `subscribe_error()`はC ABI `binding_subscribe_error`を使い、既存Property subscriptionと同じnoexcept trampoline、callback handler、例外診断、in-flight destroy規則を再利用する。`CallbackFailure::kind`は`kBindingErrorNotification`とする。登録時の初回callbackはなく、利用者はcallback内で`error_snapshot()`を呼ぶ。Subscription handleのreleaseとerror通知のcancelは分離する。通知順・coalescing・Binding解除/Runtime shutdown時のCore所有権は共通ABI/DDを正とし、wrapperから変更しない。
 
+## Async Commandと初期UI Control API（1.4）
+
+本節は承認済み[Async Command DD](../events/commands.md)、[UI Control DD](../ui/controls.md)、[共通C ABI DD](../runtime-objects/abi.md)をC++17 APIへ対応付ける。1.3までの承認済みAPIは維持する。宣言は設計仕様であり、配布header・実装済みAPI・release対応を示さない。
+
+要求根拠: [RQ-02-004](../../11_requirements/RQ-02_core-features.md#rq-02-004)、[RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-008](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-008)、[RQ-06-009](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-009)、[RQ-06-010](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-010)、[RQ-06-011](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-011)、[RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)–[RQ-09-011](../../11_requirements/RQ-09_ui-scope.md#rq-09-011).
+
+### Async Commandの公開型と操作
+
+`Command`は再利用するCore Command handleを所有し、`CommandWorker`は一回の実行ごとに作られて利用者のworker処理へ渡る値とする。所有wrapperはすべてmove-onlyとし、既存のcleanup node、Runtime state、native module pin規則を使う。wrapperはworker/thread poolを生成・joinしない。
+
+```cpp
+enum class CommandState : std::int64_t {
+  kIdle = 0,
+  kRunning = 1,
+  kCancelling = 2,
+  kSucceeded = 3,
+  kFailed = 4,
+  kCancelled = 5,
+};
+
+class CommandWorker final {
+ public:
+  CommandWorker(const CommandWorker&) = delete;
+  CommandWorker& operator=(const CommandWorker&) = delete;
+  CommandWorker(CommandWorker&&) noexcept;
+  CommandWorker& operator=(CommandWorker&&) noexcept;
+  ~CommandWorker() noexcept;
+
+  std::uint64_t operation_id() const noexcept;
+  Result<bool> is_cancellation_requested() const;
+  Result<void> report_success();
+  Result<void> report_failure(std::uint32_t domain, std::uint32_t code,
+                              const std::string& message);
+  Result<void> report_cancelled();
+};
+
+class Command final {
+ public:
+  using Start = std::function<Result<void>(CommandWorker)>;
+
+  static Result<Command> create_async(Runtime& runtime,
+                                      Property<bool>* eligibility,
+                                      Start start);
+  Result<std::uint64_t> execute();
+  Result<void> cancel(std::uint64_t operation_id);
+  Result<Property<std::int64_t>> state_property() const;
+  Result<Property<bool>> can_execute_property() const;
+  Result<std::optional<ErrorSnapshot>> failure_snapshot() const;
+  Result<void> close() noexcept;
+  Result<void> release() noexcept;
+};
+```
+
+- `eligibility == nullptr`はC ABI handle 0を表し、常時eligibleとして扱う。非null Propertyは同じRuntimeのBOOL型に限る。
+- `execute()`はUI threadでC ABI `command_execute`を呼び、新規operationが受理された場合だけ非zero IDを返す。実行不可は通常の`Result` failureとし、workerを呼び出さない。operation IDの割当、state/can-execute同時更新、既存failure snapshot消去はCoreの契約に委ねる。
+- Coreのstart callback trampolineはborrowed Command/cancel tokenからworker lifetime用の独立owned reference、cleanup node、Runtime anchorを事前確保する。C++ `CommandWorker`を値でstart callableへ渡し、利用者がworkerへmoveして非同期処理を所有できるようにする。start callableは速やかに戻り、UI thread上で長時間処理をしない。
+- start callableはworker開始を受理した場合`Result<void>::success()`を返し、開始できない場合はfailureを返せる。trampolineはsuccessを`UI_OK`、failureのraw statusをstart callback statusへ写し、CoreがCommand DDのoperation failure意味論を適用する。C ABIのstart callbackは`command_execute`の戻り後に同期呼出しされるため、operation IDの発行自体は成功結果として保たれる。
+- start callableの例外はtrampolineで捕捉してC ABIへ出さず、`CallbackKind::kCommandStart`として既存handlerへ通知し、Coreへ標準`UI_INTERNAL_ERROR`を返してoperation failureとする。callback handler例外もC ABIを越境しない。
+- `CommandWorker`のcancel queryは任意threadで行え、cancel tokenだけを参照する。workerからCommand/UI stateを直接変更しない。terminal reportはworkerが持つRuntime参照から`runtime_post`を経由し、UI threadで現在operation ID・Command open状態を照合して一度だけ適用する。
+- `report_success()`、`report_failure()`、`report_cancelled()`の成功は、terminal reportを含む`runtime_post`が受付されたことを表し、Commandへの終端結果適用完了を表さない。受付前に失敗した場合はC ABI契約どおりclosureと保持handleの所有権が呼出し側に残るため、wrapperは再試行可能なreport ownerとして保持し、破棄時に一度だけcleanupする。受付後のcallbackではcomplete関数の戻り値をそのreportの最終結果とし、stale/重複/close後の拒否を成功扱いしない。
+- terminal postが受付前に失敗した場合はworker側がreport payloadとowned referencesを保ち、契約上可能な再試行を妨げない。受理後にRuntime shutdownでpostがdestroyされた場合、UI反映は保証せず、destroyで保持データを一度だけ解放する。
+- `report_failure`はUTF-8 bytes+lengthでC ABIへ渡し、message文面を機械判定に使わない。failure snapshotはAPI invocation errorと別の不変operation結果であり、`failure_snapshot()`は新しいowned `ErrorSnapshot`を返す。
+- `state_property()`はread-only I64 property、`can_execute_property()`はread-only BOOL propertyをそれぞれ新しいownerとして返す。公開`Property::set()`からCommandの読取専用Propertyを書き換えようとした結果を保持し、状態を強制変更しない。
+- `Command::close()`は明示的にC ABI `command_close`を呼び、`release()`はpublic Command handleだけを解放する。destructorもreleaseだけを行い、いずれも意味論上のcloseと同一視しない。closeは新規実行を止め、実行中workerへ協調cancelを要求するが、worker終了を待たない。Runtime shutdownも同様にUI state更新を止めるがworkerをjoinしない。
+- `CommandWorker`はmove-only。worker終了時にterminal resultを報告しなかった場合にwrapperが成功/取消を推定しない。業務側のthread/taskとその終了管理は利用者が所有する。
+
+### Command class・worker所有フロー
+
+```mermaid
+classDiagram
+    class Runtime
+    class Command {
+      create_async()
+      execute()
+      cancel(operation_id)
+      close()
+    }
+    class CommandWorker {
+      operation_id()
+      is_cancellation_requested()
+      report_success()
+      report_failure()
+      report_cancelled()
+    }
+    class Property~bool~
+    class Property~int64_t~
+    class CanExecuteProperty
+    class ErrorSnapshot
+    Runtime ..> Command : create
+    Command --> Property : eligibilityをCoreが参照
+    Command ..> CommandWorker : start callbackが実行単位の値を生成
+    Command --> Property : state / can-execute getterはowned handleを返す
+    Command ..> ErrorSnapshot : failure snapshot getter
+```
+
+```mermaid
+flowchart TB
+    Execute["UI thread: Command.execute"] --> CoreStart["Coreがoperation ID採番・RUNNING commit"]
+    CoreStart --> Start["C++ noexcept start trampoline"]
+    Start -->|worker leaseを保持| Worker["利用者所有worker"]
+    Cancel["UI thread: Command.cancel"] --> Token["thread-safe cancel token"]
+    Token --> Worker
+    Worker -->|runtime_postで終端結果を送る| Post["Runtime UI queue"]
+    Post -->|現operation IDとopen状態を検査| Apply["Coreが終端結果を一度commit"]
+    Apply -->|state / can-execute / failure| Props["read-only Propertyとsnapshot"]
+```
+
+### UI Controlのclassとmethod
+
+現在のC ABIでは`Window`、`StackPanel`、`Text`、`TextBox`、`Button`をopaque handleで表し、`Widget`/`Container`はCoreで独立生成するhandle種別ではなく、wrapperの共通分類とする。Coreから取得したchildは具体的なkindを推測せず返せるよう、`Widget`を具象のmove-only generic handleとする。C ABIには安定したcontrol-kind queryがないため、downcastは提供しない。
+
+```cpp
+enum class Orientation : std::uint32_t { kVertical = 1, kHorizontal = 2 };
+enum class Alignment : std::uint32_t {
+  kStart = 1, kCenter = 2, kEnd = 3, kStretch = 4,
+};
+enum class CloseDecision : std::uint32_t { kAccept = 1, kDecline = 2 };
+
+class Widget {
+ public:
+  Result<Property<bool>> is_enabled_property() const;
+  Result<Property<std::string>> accessible_name_property() const;
+  Result<void> request_focus();
+  Result<void> close() noexcept;
+};
+
+class Container : public Widget {
+ public:
+  Result<void> insert(Widget& child, std::uint64_t index);
+  Result<void> remove(Widget& child);
+  Result<void> move(std::uint64_t from_index, std::uint64_t to_index);
+  Result<std::uint64_t> child_count() const;
+  Result<Widget> child_at(std::uint64_t index) const;
+};
+
+class Window final : public Container {
+ public:
+  static Result<Window> create(Runtime& runtime);
+  Result<std::optional<Widget>> content() const;
+  Result<void> set_content(Widget& child);
+  Result<void> clear_content();
+  Result<Property<std::string>> title_property() const;
+  Result<void> open();
+  Result<void> close_peer();
+  Result<Subscription> subscribe_close_request(
+      std::function<void(WindowCloseRequest&)> callback);
+};
+
+class StackPanel final : public Container {
+ public:
+  static Result<StackPanel> create(Runtime& runtime);
+  Result<Orientation> orientation() const;
+  Result<void> set_orientation(Orientation orientation);
+  Result<void> set_child_alignment(Widget& child, Alignment alignment);
+};
+
+class Text final : public Widget {
+ public:
+  static Result<Text> create(Runtime& runtime, const std::string& initial_text);
+  Result<Property<std::string>> content_property() const;
+};
+
+class TextBox final : public Widget {
+ public:
+  static Result<TextBox> create(Runtime& runtime, const std::string& initial_value);
+  Result<Property<std::string>> value_property() const;
+};
+
+class Button final : public Widget {
+ public:
+  static Result<Button> create(Runtime& runtime, const std::string& initial_label);
+  Result<Property<std::string>> label_property() const;
+  Result<void> set_command(Command& command);
+  Result<void> clear_command();
+  Result<std::optional<Command>> command() const;
+};
+```
+
+- `Widget`、`Container`、Control派生型、`Command`、deferred close requestの各ownerはcopy不可・noexcept moveとする。Controlの`close()`およびdeferred requestの`close()`はowned tokenの解放を行い、成功後だけownerをemptyにする。`Command::close()`はCore Commandを閉じる操作で、token releaseは`Command::release()`またはdestructorが担う。どの明示解放も失敗時はtoken/node/Runtime anchorを保ち再試行できる。destructorのrelease失敗は既存Runtime cleanup queueへ移管する。borrowed `WindowCloseRequest`はclose/release APIを持たない。
+- Control生成時はowned out-token分のcleanup nodeとRuntime anchorをC ABI call前に用意する。Property/child/Command getterは新しい独立ownerを返し、引数Control/Commandは借用する。parentのLogical Tree ownerはC ABI/Coreが管理し、C++ wrapperがchild ownerを移し替えない。
+- `Container::child_at()`と`Window::content()`が返す`Widget`は具体型不明のgeneric wrapperとし、`Window`/`StackPanel`/`Text`等へ推測castしない。contentなしは成功した空optional、index範囲外等はC ABI status/errorを保持する。
+- `TextBox`の本節APIは生成と確定Value Property accessに限定する。編集session、selection/caret、IME、validation APIは現C ABIに対応するsymbolがないため公開しない。StackPanelもC ABIのorientationとchild alignmentに限り、制約値APIを追加しない。
+- UTF-8は`std::string`のdataとbyte lengthでC ABIへ渡す。NUL終端で長さを決めない。初期値はCoreのUTF-8 validation結果を保持し、wrapper独自の値補正・locale conversionをしない。
+- `Button::set_command()`はborrowed CommandをC ABIへ渡し、Coreのsame-Runtime検査とstrong reference commitへ委ねる。setter failureでは既存Commandを保持する。`clear_command()`はhandle 0を渡す。getterは新しいowned Commandまたは成功した空optionalを返す。Button/TreeからのdetachやButton handle releaseをCommand closeとして扱わない。
+- `Window::open()`/`close_peer()`はC ABI peer操作を呼び、unsupported/error statusを保持する。peer closeはCore Window/content/Propertyのcloseではなく、Runtime shutdownとも別に扱う。`Widget::close()`はC++ wrapperが所有するhandle tokenのreleaseであり、Window peer closeとは別操作とする。
+
+### Window close-request borrowed/deferred lifetime
+
+```cpp
+class WindowCloseRequest final {
+ public:
+  WindowCloseRequest(const WindowCloseRequest&) = delete;
+  WindowCloseRequest& operator=(const WindowCloseRequest&) = delete;
+  Result<void> resolve(CloseDecision decision);
+  Result<DeferredWindowCloseRequest> defer();
+};
+
+class DeferredWindowCloseRequest final {
+ public:
+  DeferredWindowCloseRequest(const DeferredWindowCloseRequest&) = delete;
+  DeferredWindowCloseRequest& operator=(const DeferredWindowCloseRequest&) = delete;
+  DeferredWindowCloseRequest(DeferredWindowCloseRequest&&) noexcept;
+  DeferredWindowCloseRequest& operator=(DeferredWindowCloseRequest&&) noexcept;
+  ~DeferredWindowCloseRequest() noexcept;
+  Result<void> resolve(CloseDecision decision);
+  Result<void> close() noexcept;
+};
+```
+
+`WindowCloseRequest`はcallback scope recordにより有効期間を管理するborrowed viewで、`subscribe_close_request`のcallback実行中だけ有効とする。trampolineはRAII cleanupでscopeを無効化する。callback終了後の呼出しは標準`UI_CLOSED`結果にし、失効したborrowed tokenをC ABIへ渡さない。`defer()`は`window_close_request_defer`前にcleanup nodeと独立Runtime anchorを確保し、返された非zero owned outputを直ちにadoptして別のmove-only ownerを返す。`DeferredWindowCloseRequest::resolve()`はそのownerをcall期間だけ借用し、resolve自体ではtokenを解放しない。`close()`はtokenだけを解放する。
+
+C ABI subscriptionのdestroy thunkは登録成功後にstable callback recordとRuntime anchorを所有し、一度だけ解放する。登録失敗時のcallback recordはwrapperが所有する。callback/destroy thunkは`noexcept`とし、callback例外を捕捉して`CallbackKind::kWindowCloseRequest`で報告する。Subscription cancelとowned-token releaseは既存`Subscription`契約どおり分離する。close request既定値、generation、stale requestの意味はCoreを正本とし、wrapperに別のclose state machineを設けない。
+
+### C ABI mapping and call/ownership boundaries
+
+| C++ surface | C ABI calls | Input and result ownership |
+|---|---|---|
+| `Command::create_async`, `execute`, `cancel`、state/can-execute/failure getter | `command_create_async`, `command_execute`, `command_cancel`, `command_state_property`, `command_can_execute_property`, `command_failure_snapshot` | create/getter outputはowned。eligibilityとCommand引数はborrowed。owned output用nodeとRuntime stateをcall前に準備 |
+| `CommandWorker` queryと終端報告 | `handle_retain/release`, `command_cancel_token_requested`, `runtime_post`。posted callback内で`command_complete_success/failure_utf8/cancelled` | worker/reportの間、cancel token/Command/Runtime leaseを保持。workerはCore UI stateを直接変更せず、post受付と終端適用を区別 |
+| Control生成と共通Property | `window_create`, `stack_panel_create`, `text_create`, `text_box_create`, `button_create`, `widget_*_property`, `widget_request_focus`, typed `property_*` | factory/Property outputはowned。UTF-8はpointer+byte length |
+| Tree、layout、Button Command | `window_content/set_content/clear_content`, `container_*`, `stack_panel_*`, `button_set_command/command` | child/Command inputはborrowed。getterは独立ownerを返し、Coreがvalidationとatomic commitを行う |
+| Window peerとclose request | `window_open/close`, `window_close_request_subscribe/defer/resolve`, 既存`subscription_cancel`/`handle_release` | borrowed requestはcallback中だけ有効。deferは別owned requestを返し、登録成功時にcallback rootをCore destroyへ移す |
+
+返されるowned tokenごとに、C ABI call前にcleanup nodeを事前確保する。error snapshotやworker lease retainのように複数owned outputを返すcallは、必要なnodeを全てcall前に予約する。Runtime/handle call leaseを取得し、manager lockを保持せずnative callを実行し、非zero owned outputは直ちにadoptする。optional error detailの取得に失敗してもprimary statusを保持する。ここで示すclass/method nameは提案中のC++ mappingであり、共通symbolの正本はC ABIとする。
+
+1.4案では`CallbackKind`に`kCommandStart`と`kWindowCloseRequest`を追加する。既存enum値を変更せず末尾へ追加し、両種別ともRuntime callback handlerとdiagnostic境界を使う。start callback例外はhandlerへの通知に加えてCommand operation failureに反映し、close-request callback例外はCoreの既定close判断を変更せずhandlerへ通知する。handler自身の例外も`noexcept` trampolineが捕捉し、ABI境界へ伝播させない。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -488,3 +717,5 @@ class Binding final {
 | 2026-10-22 | 1.2改訂案 | 最初のC++ Runtime API、C++17 non-throw Result、Runtime専用cleanup queueとprocess-wide supervisorの所有・retry・module pin境界を追加。1.1承認内容を維持し、全文レビュー待ち |
 | 2026-10-22 | 1.2全文 | 利用者が全文を承認。既承認要求とC ABI契約の範囲でAPI・cleanup寿命を具体化。実装・試験状態は別管理 |
 | 2026-10-24 | 1.3 Binding API補足 | 利用者が承認済み計画/API案を承認。`Property<T>::bind_to`、OneTime optional、cancel/release分離、error snapshotとSubscriptionを具体化。実装・試験状態は別管理 |
+| 2026-10-24 | 1.3全文 | 利用者承認済み。Binding API補足と所有・取消・snapshot境界を含む全文を承認対象とする。実装・試験状態は別管理 |
+| 2026-10-25 | 1.4全文 | C++ Async Command/CommandWorker、初期UI Control/Window、Button Command接続、borrowed/deferred close request、class/call/ownership flowを追加。利用者が全文を承認。実装・試験状態は別管理 |

@@ -1,7 +1,7 @@
 # C++ UI Control wrapper
 
-- 計画版: 0.2改訂案
-- 状態: 改訂案・利用者レビュー待ち。0.1はcommit `ac3e7af`としてpush済み。未実装
+- 計画版: 0.2
+- 状態: 利用者承認済み。計画commit `4a2b598`をpush済み。C++ wrapper DD v1.4全文承認済み。実装未着手
 - 作成日: 2026-10-25
 - 対象: 0.0.1初期UI Control Core/C ABIをC++17から構成・操作するwrapper
 - branch案: `impl-cpp/ui-controls-wrapper`
@@ -49,11 +49,11 @@ C++ wrapperにはRuntime、Property、Binding、Subscriptionの実装がある�
 
 1. [x] 0.0.1計画と現行C++/C# wrapper状態を照合し、次のC++ UI wrapper候補を選定した。
 2. [x] 計画0.1承認後のpreflightでC++ Command wrapper未実装を確認した。Button連携の前提としてAsync Command wrapperを独立unitに追加する。
-3. [ ] 改訂計画0.2のAsync Command先行、unit分割、branch親子関係を利用者がレビューする。承認前は改訂をcommit/pushせず、DD案・source実装へ進まない。
-4. [ ] 承認後、本改訂計画を`impl-cpp/ui-controls-wrapper`でcommit/pushし、Windows/Linux CIの文書gateを確認する。branch親は`impl-rust/core-ui-controls-c-abi`であり、C# wrapper branchを親にしない。
-5. [ ] 実装状態を照合し、既存C++ Runtime/Property/Binding/Subscription source、tests、plan docs、`tools/units.yaml`の差を記録する。実装済みsourceを重複作成せず、unit stateを根拠に合わせる。
-6. [ ] C++ wrapper DD v1.4案を作る。C++17 public types/signatures、C ABI mapping、move-only ownership/cleanup node、Runtime anchor、Async Command execute/state/cancel/completion/failure、Property/Binding連携、Control/Tree/Layout/Focus、ButtonのCommand接続、callback root/例外遮断、borrowed/deferred close request lifetime、status/error/threadを具体化する。class/call/data/ownership flow図は必要箇所に限る。
-7. [ ] C++ wrapper DD v1.4全文を利用者レビューに提示し、承認前にAPIを確定扱い・実装しない。要求/承認済みC ABIと矛盾が見つかったら差異と影響先を記録し、上位文書レビューへ戻す。
+3. [x] 改訂計画0.2のAsync Command先行、unit分割、branch親子関係を利用者がレビュー・承認した。
+4. [x] 承認計画を`impl-cpp/ui-controls-wrapper`でcommit/pushし、Windows/Linux CIの文書gateが成功した。branch親は`impl-rust/core-ui-controls-c-abi`で、C# wrapper branchは含めない。
+5. [x] 実装状態を照合し、既存C++ Runtime/Property/Binding/Subscription source、tests、plan docs、`tools/units.yaml`の差を確認した。Command wrapperは未実装のため重複sourceなし。
+6. [x] C++ wrapper DD v1.4全文案を作成し、C++17 public types/signatures、C ABI mapping、move-only ownership/cleanup node、Runtime anchor、Async Command、Property/Binding連携、Control/Tree/Layout/Focus、Button接続、callback root/例外遮断、borrowed/deferred close request lifetime、status/error/threadを具体化した。
+7. [x] C++ wrapper DD v1.4全文を利用者が承認した（2026-10-25）。要求および承認済みC ABIとの整合を確認し、実装可能な境界を確定した。
 8. [ ] 承認済みDDに基づきAsync CommandとUI Controlのfocused fake-ABI/real C ABI consumer case、およびunit dependency/source/command mappingをtest正本・`tools/units.yaml`へsource変更前に登録する。test文書の改訂は文書全体をレビュー・承認後に適用する。
 9. [ ] C++ Async Command wrapperを独立unitとして実装・検証・commitする。focused testと必要なC ABI consumerを同一revisionへ含め、既存C++ APIの契約に従う。
 10. [ ] C++ Window/Widget/Container/StackPanel/Text/TextBox/Button facadeを独立unitで実装・検証・commitし、ButtonとAsync Commandの接続を含める。
@@ -73,4 +73,4 @@ C++ wrapperにはRuntime、Property、Binding、Subscriptionの実装がある�
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
 | 2026-10-25 | 0.1 / C++ UI Control wrapper | 利用者承認 | 計画commit `ac3e7af`を`impl-cpp/ui-controls-wrapper`へpush。preflightでCommand wrapper未実装を確認したため、下記0.2改訂案で依存・unit順を修正 |
-| 2026-10-25 | 0.2 / C++ Async Command + UI Control wrapper | 利用者レビュー待ち | C++ Async CommandをButton接続の先行unitとして追加。未commit・未実装。C++ DD v1.4全文承認をsource実装前条件とする |
+| 2026-10-25 | 0.2 / C++ Async Command + UI Control wrapper | 利用者承認 | Async CommandをButton接続の先行unitとして追加。計画commit `4a2b598` push済み。C++ DD v1.4全文も承認済み。 |
