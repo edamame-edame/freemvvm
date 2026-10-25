@@ -2054,6 +2054,95 @@
       ]
     },
     {
+      "id": "UNIT-WRAP-CPP-008",
+      "state": "planned",
+      "scope": "cpp-async-command-worker-post-and-failure-wrapper",
+      "sources": [
+        "wrappers/cpp/include/freemvvm/command.hpp",
+        "wrappers/cpp/src/command.cpp",
+        "wrappers/cpp/tests/command_tests.cpp",
+        "wrappers/cpp/tests/package_consumer/main.cpp",
+        "tools/dev.py"
+      ],
+      "config": ["CMakeLists.txt", "wrappers/cpp/CMakeLists.txt", "crates/c-abi/include/freemvvm/abi.h", "tools/units.yaml"],
+      "depends_on": ["UNIT-BUILD-001", "UNIT-ABI-019", "UNIT-CORE-066", "UNIT-WRAP-CPP-007", "UNIT-PKG-CPP-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.4",
+          "section": "Async Commandの公開型と操作 / Command class・worker所有フロー / C ABI mapping"
+        },
+        {
+          "path": ".docs/13_detail_design/events/commands.md",
+          "version": "1.1",
+          "section": "Async Command execution, state, cancellation, completion, and ownership"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "Async Command C ABI / Runtime post ownership"
+        }
+      ],
+      "requirements": ["RQ-02-004", "RQ-03-001", "RQ-03-014", "RQ-04-006", "RQ-04-007", "RQ-04-022", "RQ-05-002", "RQ-05-006", "RQ-05-007", "RQ-05-009", "RQ-05-012", "RQ-06-001", "RQ-06-002", "RQ-06-004", "RQ-06-008", "RQ-06-009", "RQ-06-010", "RQ-06-011", "RQ-12-004"],
+      "cases": ["TC-CMD-01", "TC-OWN-01", "TC-THREAD-01", "TC-CALLBACK-01", "TC-LIFE-01", "TC-ERROR-01", "TC-WRAP-CPP-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {"id": "UT-WRAP-CPP-CMD-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-command-test"]},
+        {"id": "UT-WRAP-CPP-CMD-WORKER-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-command-test"]},
+        {"id": "UT-PKG-CPP-008", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]}
+      ]
+    },
+    {
+      "id": "UNIT-WRAP-CPP-009",
+      "state": "planned",
+      "scope": "cpp-initial-ui-controls-tree-focus-and-window-close-request-wrapper",
+      "sources": [
+        "wrappers/cpp/include/freemvvm/ui_controls.hpp",
+        "wrappers/cpp/src/ui_controls.cpp",
+        "wrappers/cpp/tests/ui_control_tests.cpp",
+        "wrappers/cpp/tests/window_close_tests.cpp",
+        "wrappers/cpp/tests/package_consumer/main.cpp",
+        "tools/dev.py"
+      ],
+      "config": ["CMakeLists.txt", "wrappers/cpp/CMakeLists.txt", "crates/c-abi/include/freemvvm/abi.h", "tools/units.yaml"],
+      "depends_on": ["UNIT-BUILD-001", "UNIT-ABI-020", "UNIT-ABI-021", "UNIT-CORE-070", "UNIT-CORE-071", "UNIT-CORE-072", "UNIT-WRAP-CPP-008", "UNIT-PKG-CPP-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.4",
+          "section": "UI Controlのclassとmethod / Window close-request borrowed/deferred lifetime / C ABI mapping"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.1",
+          "section": "基本Controlの型と責務 / Window close request"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "Tree ownership and child operations / StackPanel layout"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/input-focus.md",
+          "version": "1.1",
+          "section": "Focus request and eligibility"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "Initial UI Control C ABI / Window peer close request"
+        }
+      ],
+      "requirements": ["RQ-04-006", "RQ-05-002", "RQ-05-003", "RQ-05-007", "RQ-05-012", "RQ-06-001", "RQ-09-001", "RQ-09-002", "RQ-09-003", "RQ-09-004", "RQ-09-005", "RQ-09-006", "RQ-09-007", "RQ-09-008", "RQ-09-009", "RQ-09-010", "RQ-09-011", "RQ-09-046", "RQ-09-071", "RQ-09-072", "RQ-10-003", "RQ-12-004"],
+      "cases": ["TC-VERT-01", "TC-TREE-01", "TC-LAYOUT-01", "TC-FOCUS-01", "TC-OWN-01", "TC-LIFE-01", "TC-ERROR-01", "TC-WRAP-CPP-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {"id": "UT-WRAP-CPP-UI-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-controls-test"]},
+        {"id": "UT-WRAP-CPP-WINDOW-CLOSE-001", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-controls-test"]},
+        {"id": "UT-PKG-CPP-009", "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]}
+      ]
+    },
+    {
       "id": "UNIT-CORE-066",
       "state": "complete",
       "scope": "runtime-async-command-state-machine-and-versioned-c-abi",
