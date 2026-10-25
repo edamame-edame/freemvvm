@@ -162,11 +162,7 @@ impl<T> Owned<T> {
         let token = self
             .token
             .ok_or_else(|| UiError::from_status(crate::native_api::CLOSED))?;
-        Ok(Borrowed {
-            token,
-            _owner: PhantomData,
-            _not_send: PhantomData,
-        })
+        Ok(Borrowed::from_token(token, self))
     }
 
     pub fn try_clone(&self) -> Result<Self, UiError> {
@@ -264,13 +260,23 @@ impl<T> Drop for Owned<T> {
 /// A non-owning token whose lifetime is tied to its owner.
 pub struct Borrowed<'a, T> {
     token: u64,
-    _owner: PhantomData<&'a Owned<T>>,
+    _owner: PhantomData<(&'a (), T)>,
     _not_send: PhantomData<Rc<()>>,
 }
 
 impl<T> Borrowed<'_, T> {
     pub(crate) fn token(&self) -> u64 {
         self.token
+    }
+}
+
+impl<'a, T> Borrowed<'a, T> {
+    pub(crate) fn from_token<U: ?Sized>(token: u64, _owner: &'a U) -> Self {
+        Self {
+            token,
+            _owner: PhantomData,
+            _not_send: PhantomData,
+        }
     }
 }
 

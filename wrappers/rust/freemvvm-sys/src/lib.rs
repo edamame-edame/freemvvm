@@ -34,6 +34,13 @@ pub const SHUTDOWN_REQUEST_PENDING: u32 = 0;
 pub const SHUTDOWN_REQUEST_COMPLETED: u32 = 1;
 pub const SHUTDOWN_REQUEST_HOST_UNAVAILABLE: u32 = 2;
 
+pub const UI_ORIENTATION_VERTICAL: u32 = 1;
+pub const UI_ORIENTATION_HORIZONTAL: u32 = 2;
+pub const UI_ALIGN_START: u32 = 1;
+pub const UI_ALIGN_CENTER: u32 = 2;
+pub const UI_ALIGN_END: u32 = 3;
+pub const UI_ALIGN_STRETCH: u32 = 4;
+
 #[cfg_attr(target_os = "windows", link(name = "freemvvm_abi_1.dll"))]
 #[cfg_attr(not(target_os = "windows"), link(name = "freemvvm_abi_1"))]
 unsafe extern "C" {
@@ -226,6 +233,108 @@ unsafe extern "C" {
         request: Handle,
         out_state: *mut u32,
         out_reason: *mut u32,
+        out_error: *mut Handle,
+    ) -> Status;
+
+    pub fn ui_abi_1_window_create(
+        runtime: Handle,
+        out_window: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_stack_panel_create(
+        runtime: Handle,
+        out_panel: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_text_box_create(
+        runtime: Handle,
+        bytes: *const u8,
+        byte_length: u64,
+        out_text_box: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_text_create(
+        runtime: Handle,
+        bytes: *const u8,
+        byte_length: u64,
+        out_text: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_button_create(
+        runtime: Handle,
+        bytes: *const u8,
+        byte_length: u64,
+        out_button: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_widget_is_enabled_property(widget: Handle, out_property: *mut Handle)
+    -> Status;
+    pub fn ui_abi_1_widget_accessible_name_property(
+        widget: Handle,
+        out_property: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_widget_request_focus(widget: Handle, out_error: *mut Handle) -> Status;
+    pub fn ui_abi_1_window_content(
+        window: Handle,
+        out_child: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_window_set_content(
+        window: Handle,
+        borrowed_child: Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_window_clear_content(window: Handle, out_error: *mut Handle) -> Status;
+    pub fn ui_abi_1_window_title_property(window: Handle, out_property: *mut Handle) -> Status;
+    pub fn ui_abi_1_window_open(window: Handle, out_error: *mut Handle) -> Status;
+    pub fn ui_abi_1_window_close(window: Handle, out_error: *mut Handle) -> Status;
+    pub fn ui_abi_1_container_insert(
+        container: Handle,
+        borrowed_child: Handle,
+        index: u64,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_container_remove(
+        container: Handle,
+        borrowed_child: Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_container_move(
+        container: Handle,
+        from_index: u64,
+        to_index: u64,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_container_child_count(container: Handle, out_count: *mut u64) -> Status;
+    pub fn ui_abi_1_container_child_at(
+        container: Handle,
+        index: u64,
+        out_child: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_stack_panel_orientation(panel: Handle, out_value: *mut u32) -> Status;
+    pub fn ui_abi_1_stack_panel_set_orientation(
+        panel: Handle,
+        orientation: u32,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_stack_panel_set_child_align(
+        panel: Handle,
+        borrowed_child: Handle,
+        align: u32,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_text_content_property(text: Handle, out_property: *mut Handle) -> Status;
+    pub fn ui_abi_1_text_box_value_property(text_box: Handle, out_property: *mut Handle) -> Status;
+    pub fn ui_abi_1_button_label_property(button: Handle, out_property: *mut Handle) -> Status;
+    pub fn ui_abi_1_button_set_command(
+        button: Handle,
+        borrowed_command_or_zero: Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_button_command(
+        button: Handle,
+        out_command: *mut Handle,
         out_error: *mut Handle,
     ) -> Status;
 

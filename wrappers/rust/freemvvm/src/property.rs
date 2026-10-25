@@ -267,6 +267,14 @@ fn read_utf8_with(mut get: impl FnMut(Option<&mut [u8]>) -> (u32, u64)) -> Resul
 }
 
 impl<T: PropertyValue> Property<T> {
+    pub(crate) fn from_owner(owner: Owned<PropertyTag>, identity: Arc<()>) -> Self {
+        Self {
+            owner,
+            identity,
+            _value: PhantomData,
+        }
+    }
+
     /// Creates a Property on the Runtime represented by `ui`.
     pub fn try_new(ui: &UiContext<'_>, initial: T) -> Result<Self, UiError> {
         ui.check_ui_thread()?;

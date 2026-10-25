@@ -3172,6 +3172,80 @@
       ]
     },
     {
+      "id": "UNIT-WRAP-RS-UI-CTRL-001",
+      "state": "ready",
+      "scope": "rust-ui-control-tree-layout-focus-property-command-facade",
+      "sources": [
+        "wrappers/rust/freemvvm-sys/src/lib.rs",
+        "wrappers/rust/freemvvm/src/lib.rs",
+        "wrappers/rust/freemvvm/src/handle.rs",
+        "wrappers/rust/freemvvm/src/native_api.rs",
+        "wrappers/rust/freemvvm/src/property.rs",
+        "wrappers/rust/freemvvm/src/command.rs",
+        "wrappers/rust/freemvvm/src/runtime.rs",
+        "wrappers/rust/freemvvm/src/ui.rs",
+        "wrappers/rust/freemvvm/examples/ui_controls_consumer.rs"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "wrappers/rust/freemvvm-sys/Cargo.toml",
+        "wrappers/rust/freemvvm/Cargo.toml",
+        "tools/dev.py",
+        "tools/units.yaml"
+      ],
+      "depends_on": ["UNIT-WRAP-RS-CMD-001", "UNIT-CORE-070"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.7",
+          "section": "UI Control safe facade / borrowed Widget reference / Tree and ownership / class design"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "Window and initial UI Control C ABI"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.1",
+          "section": "Initial Controls / control properties"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "Tree operations / StackPanel layout"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/input-focus.md",
+          "version": "1.1",
+          "section": "Focus request"
+        }
+      ],
+      "requirements": [
+        "RQ-03-003", "RQ-03-007", "RQ-04-006", "RQ-04-007", "RQ-04-025",
+        "RQ-05-002", "RQ-05-003", "RQ-05-012", "RQ-06-001", "RQ-09-001",
+        "RQ-09-002", "RQ-09-003", "RQ-09-004", "RQ-09-006", "RQ-09-007",
+        "RQ-09-043", "RQ-09-044", "RQ-09-071", "RQ-10-003"
+      ],
+      "cases": ["TC-VERT-01", "TC-TREE-01", "TC-BIND-01", "TC-CMD-01", "TC-LAYOUT-01", "TC-LIFE-01", "TC-THREAD-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-RS-UI-CONTROLS-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-ui-controls-test"]
+        },
+        {
+          "id": "UT-WRAP-RS-TREE-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-ui-controls-test"]
+        },
+        {
+          "id": "UT-CONSUMER-RS-UI-CONTROLS-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "rust-wrapper-ui-controls-test"]
+        }
+      ]
+    },
+    {
       "id": "UNIT-CORE-067",
       "state": "complete",
       "scope": "core-object-control-logical-tree-owner-lifecycle",

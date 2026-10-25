@@ -12,6 +12,57 @@ pub(crate) const INTERNAL_ERROR: u32 = freemvvm_sys::INTERNAL_ERROR;
 pub(crate) const UNSUPPORTED: u32 = freemvvm_sys::UNSUPPORTED;
 pub(crate) const PENDING: u32 = freemvvm_sys::PENDING;
 
+#[derive(Clone, Copy)]
+pub(crate) enum UiControlKind {
+    Window,
+    StackPanel,
+    TextBox,
+    Text,
+    Button,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum UiPropertyKind {
+    IsEnabled,
+    AccessibleName,
+    WindowTitle,
+    TextContent,
+    TextBoxValue,
+    ButtonLabel,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum UiAction {
+    RequestFocus,
+    WindowOpen,
+    WindowClose,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum UiTreeAction {
+    WindowContent,
+    WindowSetContent,
+    WindowClearContent,
+    Insert,
+    Remove,
+    Move,
+    ChildCount,
+    ChildAt,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum UiStackPanelAction {
+    Orientation,
+    SetOrientation,
+    SetChildAlign,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum UiButtonAction {
+    SetCommand,
+    Command,
+}
+
 pub(crate) trait NativeApi: Send + Sync {
     fn get_version(&self) -> (u32, u32, u32, u32);
     fn runtime_create(&self) -> (u32, u64, u64);
@@ -24,6 +75,43 @@ pub(crate) trait NativeApi: Send + Sync {
     fn error_status(&self, error: u64) -> (u32, u32);
     fn error_code(&self, error: u64) -> (u32, u32, u32);
     fn error_message_utf8(&self, error: u64, buffer: Option<&mut [u8]>) -> (u32, u64);
+
+    fn ui_create(&self, _kind: UiControlKind, _runtime: u64, _bytes: &[u8]) -> (u32, u64, u64) {
+        (UNSUPPORTED, 0, 0)
+    }
+
+    fn ui_property(&self, _kind: UiPropertyKind, _control: u64) -> (u32, u64) {
+        (UNSUPPORTED, 0)
+    }
+
+    fn ui_action(&self, _action: UiAction, _control: u64) -> (u32, u64) {
+        (UNSUPPORTED, 0)
+    }
+
+    fn ui_tree(
+        &self,
+        _action: UiTreeAction,
+        _parent: u64,
+        _child: u64,
+        _index: u64,
+        _to_index: u64,
+    ) -> (u32, u64, u64) {
+        (UNSUPPORTED, 0, 0)
+    }
+
+    fn ui_stack_panel(
+        &self,
+        _action: UiStackPanelAction,
+        _panel: u64,
+        _child: u64,
+        _value: u32,
+    ) -> (u32, u64, u64) {
+        (UNSUPPORTED, 0, 0)
+    }
+
+    fn ui_button(&self, _action: UiButtonAction, _button: u64, _command: u64) -> (u32, u64, u64) {
+        (UNSUPPORTED, 0, 0)
+    }
 }
 
 pub(crate) type SharedApi = Arc<dyn NativeApi>;
@@ -128,5 +216,210 @@ impl NativeApi for LinkedApi {
             freemvvm_sys::ui_abi_1_error_message_utf8(error, pointer, capacity, &mut length)
         };
         (status, length)
+    }
+
+    fn ui_create(&self, kind: UiControlKind, runtime: u64, bytes: &[u8]) -> (u32, u64, u64) {
+        let mut control = 0;
+        let mut error = 0;
+        let status = match kind {
+            UiControlKind::Window => {
+                // SAFETY: both outputs are valid for this call; runtime is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_window_create(runtime, &mut control, &mut error) }
+            }
+            UiControlKind::StackPanel => {
+                // SAFETY: both outputs are valid for this call; runtime is borrowed.
+                unsafe {
+                    freemvvm_sys::ui_abi_1_stack_panel_create(runtime, &mut control, &mut error)
+                }
+            }
+            UiControlKind::TextBox => {
+                // SAFETY: the byte slice remains valid for the synchronous ABI call.
+                unsafe {
+                    freemvvm_sys::ui_abi_1_text_box_create(
+                        runtime,
+                        bytes.as_ptr(),
+                        bytes.len() as u64,
+                        &mut control,
+                        &mut error,
+                    )
+                }
+            }
+            UiControlKind::Text => {
+                // SAFETY: the byte slice remains valid for the synchronous ABI call.
+                unsafe {
+                    freemvvm_sys::ui_abi_1_text_create(
+                        runtime,
+                        bytes.as_ptr(),
+                        bytes.len() as u64,
+                        &mut control,
+                        &mut error,
+                    )
+                }
+            }
+            UiControlKind::Button => {
+                // SAFETY: the byte slice remains valid for the synchronous ABI call.
+                unsafe {
+                    freemvvm_sys::ui_abi_1_button_create(
+                        runtime,
+                        bytes.as_ptr(),
+                        bytes.len() as u64,
+                        &mut control,
+                        &mut error,
+                    )
+                }
+            }
+        };
+        (status, control, error)
+    }
+
+    fn ui_property(&self, kind: UiPropertyKind, control: u64) -> (u32, u64) {
+        let mut property = 0;
+        let status = match kind {
+            UiPropertyKind::IsEnabled => {
+                // SAFETY: property is valid output storage; control is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_widget_is_enabled_property(control, &mut property) }
+            }
+            UiPropertyKind::AccessibleName => {
+                // SAFETY: property is valid output storage; control is borrowed.
+                unsafe {
+                    freemvvm_sys::ui_abi_1_widget_accessible_name_property(control, &mut property)
+                }
+            }
+            UiPropertyKind::WindowTitle => {
+                // SAFETY: property is valid output storage; control is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_window_title_property(control, &mut property) }
+            }
+            UiPropertyKind::TextContent => {
+                // SAFETY: property is valid output storage; control is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_text_content_property(control, &mut property) }
+            }
+            UiPropertyKind::TextBoxValue => {
+                // SAFETY: property is valid output storage; control is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_text_box_value_property(control, &mut property) }
+            }
+            UiPropertyKind::ButtonLabel => {
+                // SAFETY: property is valid output storage; control is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_button_label_property(control, &mut property) }
+            }
+        };
+        (status, property)
+    }
+
+    fn ui_action(&self, action: UiAction, control: u64) -> (u32, u64) {
+        let mut error = 0;
+        let status = match action {
+            UiAction::RequestFocus => {
+                // SAFETY: error is valid output storage; control is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_widget_request_focus(control, &mut error) }
+            }
+            UiAction::WindowOpen => {
+                // SAFETY: error is valid output storage; Window is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_window_open(control, &mut error) }
+            }
+            UiAction::WindowClose => {
+                // SAFETY: error is valid output storage; Window is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_window_close(control, &mut error) }
+            }
+        };
+        (status, error)
+    }
+
+    fn ui_tree(
+        &self,
+        action: UiTreeAction,
+        parent: u64,
+        child: u64,
+        index: u64,
+        to_index: u64,
+    ) -> (u32, u64, u64) {
+        let mut value = 0;
+        let mut error = 0;
+        let status = match action {
+            UiTreeAction::WindowContent => {
+                // SAFETY: both outputs are valid; Window is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_window_content(parent, &mut value, &mut error) }
+            }
+            UiTreeAction::WindowSetContent => {
+                // SAFETY: error is valid output storage; Window and child are borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_window_set_content(parent, child, &mut error) }
+            }
+            UiTreeAction::WindowClearContent => {
+                // SAFETY: error is valid output storage; Window is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_window_clear_content(parent, &mut error) }
+            }
+            UiTreeAction::Insert => {
+                // SAFETY: error is valid output storage; parent and child are borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_container_insert(parent, child, index, &mut error) }
+            }
+            UiTreeAction::Remove => {
+                // SAFETY: error is valid output storage; parent and child are borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_container_remove(parent, child, &mut error) }
+            }
+            UiTreeAction::Move => {
+                // SAFETY: error is valid output storage; parent is borrowed.
+                unsafe {
+                    freemvvm_sys::ui_abi_1_container_move(parent, index, to_index, &mut error)
+                }
+            }
+            UiTreeAction::ChildCount => {
+                // SAFETY: value is valid output storage; parent is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_container_child_count(parent, &mut value) }
+            }
+            UiTreeAction::ChildAt => {
+                // SAFETY: both outputs are valid; parent is borrowed.
+                unsafe {
+                    freemvvm_sys::ui_abi_1_container_child_at(parent, index, &mut value, &mut error)
+                }
+            }
+        };
+        (status, value, error)
+    }
+
+    fn ui_stack_panel(
+        &self,
+        action: UiStackPanelAction,
+        panel: u64,
+        child: u64,
+        value: u32,
+    ) -> (u32, u64, u64) {
+        let mut result = 0;
+        let mut error = 0;
+        let status = match action {
+            UiStackPanelAction::Orientation => {
+                // SAFETY: result is valid output storage; panel is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_stack_panel_orientation(panel, &mut result) }
+            }
+            UiStackPanelAction::SetOrientation => {
+                // SAFETY: error is valid output storage; panel is borrowed.
+                unsafe {
+                    freemvvm_sys::ui_abi_1_stack_panel_set_orientation(panel, value, &mut error)
+                }
+            }
+            UiStackPanelAction::SetChildAlign => {
+                // SAFETY: error is valid output storage; panel and child are borrowed.
+                unsafe {
+                    freemvvm_sys::ui_abi_1_stack_panel_set_child_align(
+                        panel, child, value, &mut error,
+                    )
+                }
+            }
+        };
+        (status, u64::from(result), error)
+    }
+
+    fn ui_button(&self, action: UiButtonAction, button: u64, command: u64) -> (u32, u64, u64) {
+        let mut value = 0;
+        let mut error = 0;
+        let status = match action {
+            UiButtonAction::SetCommand => {
+                // SAFETY: error is valid output storage; Button and optional Command are borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_button_set_command(button, command, &mut error) }
+            }
+            UiButtonAction::Command => {
+                // SAFETY: both outputs are valid; Button is borrowed.
+                unsafe { freemvvm_sys::ui_abi_1_button_command(button, &mut value, &mut error) }
+            }
+        };
+        (status, value, error)
     }
 }

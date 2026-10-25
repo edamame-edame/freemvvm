@@ -534,6 +534,8 @@ mod tests {
         error_message: Vec<u8>,
         release_failures: HashMap<u64, usize>,
         release_calls: HashMap<u64, usize>,
+        ui_child_count: u64,
+        ui_orientation: u32,
     }
 
     #[derive(Default)]
@@ -629,6 +631,83 @@ mod tests {
             } else {
                 native_api::OK
             }
+        }
+
+        fn ui_create(
+            &self,
+            _kind: crate::native_api::UiControlKind,
+            _runtime: u64,
+            _bytes: &[u8],
+        ) -> (u32, u64, u64) {
+            let mut state = self.state.lock().unwrap();
+            state.next_handle += 1;
+            (native_api::OK, state.next_handle, 0)
+        }
+
+        fn ui_property(
+            &self,
+            _kind: crate::native_api::UiPropertyKind,
+            _control: u64,
+        ) -> (u32, u64) {
+            let mut state = self.state.lock().unwrap();
+            state.next_handle += 1;
+            (native_api::OK, state.next_handle)
+        }
+
+        fn ui_tree(
+            &self,
+            action: crate::native_api::UiTreeAction,
+            _parent: u64,
+            _child: u64,
+            _index: u64,
+            _to_index: u64,
+        ) -> (u32, u64, u64) {
+            let mut state = self.state.lock().unwrap();
+            match action {
+                crate::native_api::UiTreeAction::Insert => {
+                    state.ui_child_count += 1;
+                    (native_api::OK, 0, 0)
+                }
+                crate::native_api::UiTreeAction::Remove => {
+                    state.ui_child_count = state.ui_child_count.saturating_sub(1);
+                    (native_api::OK, 0, 0)
+                }
+                crate::native_api::UiTreeAction::ChildCount => {
+                    (native_api::OK, state.ui_child_count, 0)
+                }
+                crate::native_api::UiTreeAction::WindowContent
+                | crate::native_api::UiTreeAction::ChildAt => (native_api::OK, 0, 0),
+                _ => (native_api::OK, 0, 0),
+            }
+        }
+
+        fn ui_stack_panel(
+            &self,
+            action: crate::native_api::UiStackPanelAction,
+            _panel: u64,
+            _child: u64,
+            value: u32,
+        ) -> (u32, u64, u64) {
+            let mut state = self.state.lock().unwrap();
+            match action {
+                crate::native_api::UiStackPanelAction::Orientation => {
+                    (native_api::OK, u64::from(state.ui_orientation), 0)
+                }
+                crate::native_api::UiStackPanelAction::SetOrientation => {
+                    state.ui_orientation = value;
+                    (native_api::OK, 0, 0)
+                }
+                crate::native_api::UiStackPanelAction::SetChildAlign => (native_api::OK, 0, 0),
+            }
+        }
+
+        fn ui_button(
+            &self,
+            _action: crate::native_api::UiButtonAction,
+            _button: u64,
+            _command: u64,
+        ) -> (u32, u64, u64) {
+            (native_api::OK, 0, 0)
         }
 
         fn error_status(&self, _error: u64) -> (u32, u32) {
@@ -1246,6 +1325,57 @@ mod tests {
             can_execute.close().unwrap();
             eligibility.close().unwrap();
         }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn ui_controls_preserve_runtime_identity_tree_and_layout_contracts() {
+        let _guard = serialize_registry_test();
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api).unwrap();
+        let other_api = Arc::new(FakeApi::default());
+        other_api.set_ui_thread(true);
+        let mut other_runtime = UiRuntime::try_create_with_api(other_api).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let other_ui = other_runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let mut panel = crate::ui::StackPanel::create(&ui).unwrap();
+            let mut text = crate::ui::Text::create(&ui, "hello").unwrap();
+            let mut content = text.content_property(&ui).unwrap();
+            assert_eq!(panel.child_count(&ui).unwrap(), 0);
+            panel.insert(&ui, 0, &text).unwrap();
+            assert_eq!(panel.child_count(&ui).unwrap(), 1);
+            panel
+                .set_orientation(&ui, crate::ui::Orientation::Horizontal)
+                .unwrap();
+            assert_eq!(
+                panel.orientation(&ui).unwrap(),
+                crate::ui::Orientation::Horizontal
+            );
+            window.set_content(&ui, &panel).unwrap();
+            assert!(window.content(&ui).unwrap().is_none());
+            assert_eq!(
+                panel
+                    .set_orientation(&other_ui, crate::ui::Orientation::Vertical)
+                    .unwrap_err()
+                    .raw_status(),
+                native_api::WRONG_RUNTIME
+            );
+            assert_eq!(
+                content
+                    .set(&other_ui, String::from("foreign"))
+                    .unwrap_err()
+                    .raw_status(),
+                native_api::WRONG_RUNTIME
+            );
+            content.close().unwrap();
+            text.close().unwrap();
+            panel.close().unwrap();
+            window.close().unwrap();
+        }
+        other_runtime.close().unwrap();
         runtime.close().unwrap();
     }
 }

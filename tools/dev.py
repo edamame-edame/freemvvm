@@ -128,6 +128,7 @@ def main():
             "cpp-package-test",
             "rust-wrapper-runtime-test",
             "rust-wrapper-runtime-consumer-test",
+            "rust-wrapper-ui-controls-test",
             "rust-wrapper-property-bool-i64-test",
             "rust-wrapper-property-utf8-test",
             "rust-wrapper-property-f64-test",
@@ -166,6 +167,8 @@ def main():
             if args.command == "rust-wrapper-runtime-test"
             else "rust-wrapper-runtime-consumer-test"
             if args.command == "rust-wrapper-runtime-consumer-test"
+            else "rust-wrapper-ui-controls-test"
+            if args.command == "rust-wrapper-ui-controls-test"
             else "rust-wrapper-property-bool-i64-consumer-test"
             if args.command == "rust-wrapper-property-bool-i64-test"
             else "rust-wrapper-property-utf8-consumer-test"
@@ -209,6 +212,8 @@ def main():
             if args.command == "rust-wrapper-runtime-test"
             else "Rust Runtime consumer test executed against host C ABI"
             if args.command == "rust-wrapper-runtime-consumer-test"
+            else "Rust UI Controls focused and C ABI consumer tests executed"
+            if args.command == "rust-wrapper-ui-controls-test"
             else "Rust BOOL/I64 Property consumer test executed"
             if args.command == "rust-wrapper-property-bool-i64-test"
             else "Rust UTF-8 Property consumer test executed"
@@ -340,6 +345,7 @@ def main():
         elif args.command in (
             "rust-wrapper-runtime-test",
             "rust-wrapper-runtime-consumer-test",
+            "rust-wrapper-ui-controls-test",
             "rust-wrapper-property-bool-i64-test",
             "rust-wrapper-property-utf8-test",
             "rust-wrapper-property-f64-test",
@@ -375,7 +381,28 @@ def main():
                     + os.pathsep
                     + native_environment.get("LD_LIBRARY_PATH", "")
                 )
-            if args.command == "rust-wrapper-runtime-test":
+            if args.command == "rust-wrapper-ui-controls-test":
+                run(
+                    ["cargo", "test", "--locked", "-p", "freemvvm"],
+                    native_environment,
+                    results,
+                    "rust-wrapper-ui-controls-tests",
+                )
+                run(
+                    [
+                        "cargo",
+                        "run",
+                        "--locked",
+                        "-p",
+                        "freemvvm",
+                        "--example",
+                        "ui_controls_consumer",
+                    ],
+                    native_environment,
+                    results,
+                    "rust-wrapper-ui-controls-consumer",
+                )
+            elif args.command == "rust-wrapper-runtime-test":
                 run(
                     ["cargo", "test", "--locked", "-p", "freemvvm"],
                     native_environment,

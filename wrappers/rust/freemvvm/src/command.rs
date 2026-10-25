@@ -9,7 +9,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-struct CommandTag;
+pub(crate) struct CommandTag;
 
 const REPORT_PENDING: u8 = 0;
 const REPORT_POSTING: u8 = 1;
@@ -79,6 +79,10 @@ pub struct AsyncCommand {
 }
 
 impl AsyncCommand {
+    pub(crate) fn from_owner(owner: Owned<CommandTag>, identity: Arc<()>) -> Self {
+        Self { owner, identity }
+    }
+
     /// Creates a Command whose start callback transfers one worker context per accepted execution.
     ///
     /// The callback runs synchronously on the UI thread and should start work, then return. It does
@@ -375,6 +379,14 @@ impl AsyncCommand {
         } else {
             Err(UiError::from_status(native_api::WRONG_RUNTIME))
         }
+    }
+
+    pub(crate) fn token_for_call(&self) -> Result<u64, UiError> {
+        Ok(self.owner.borrow()?.token())
+    }
+
+    pub(crate) fn check_ui_context(&self, ui: &UiContext<'_>) -> Result<(), UiError> {
+        self.check_context(ui)
     }
 }
 
