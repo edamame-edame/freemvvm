@@ -100,6 +100,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-26 | 1.0改訂案 | — | Python AsyncCommand fake ABI / real C ABI consumer試験設計を追加。文書全体レビュー待ち。実装unit登録・試験実装・実行は別段階 |
 | 2026-10-26 | 1.0全文 | 利用者 | 「ok」によりPython AsyncCommand fake ABI / real C ABI consumer試験設計を含む文書全体を承認。unit登録はこの後に行い、実装開始は別承認 |
 | 2026-10-26 | 1.0実行記録 | — | Python AsyncCommand fake ABI 4件、別process実C ABI consumerのsuccess/failure/cancel/re-execute/post/property確認、Windows local `tools/dev.py check`と`minimum`がsuccess。実装SHA/CIはcommit後に確認 |
+| 2026-10-26 | 1.0 CI実行記録 | — | 実装SHA `aaf1ce68d3cd090c93631bdd065b3678a687d010`に対するWindows/Linux全gate success。[run 40214188291](https://github.com/edamame-edame/freemvvm/actions/runs/40214188291) |
 | 2026-10-26 | 0.9実行記録 | — | Python Binding fake ABI 29件、別process実C ABI consumer、Windows local `tools/dev.py check`と`minimum`がsuccess。実装SHA `d5cfc1f344992a671e02bfc62b25a78d7bfb22bd`の[Windows/Linux CI run 40212415054](https://github.com/edamame-edame/freemvvm/actions/runs/40212415054) success |
 | 2026-10-25 | 0.5改訂案 | — | Python BOOL/I64 Property testsを追加。文書全体の利用者レビュー待ち。未承認・未実行 |
 | 2026-10-25 | 0.5全文 | 利用者 | 「ok」によりPython BOOL/I64 Propertyのfake ABI/real C ABI consumer試験設計を含む文書全体を承認。実装・実行結果は別管理 |

@@ -3904,7 +3904,7 @@
     },
     {
       "id": "UNIT-WRAP-PY-COMMAND-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "python-async-command-worker-cancel-terminal-post-and-lifetime",
       "sources": [
         "wrappers/python/src/freemvvm/**/*.py",
