@@ -129,6 +129,7 @@ def main():
             "rust-wrapper-runtime-test",
             "rust-wrapper-runtime-consumer-test",
             "rust-wrapper-ui-controls-test",
+            "rust-wrapper-window-close-test",
             "rust-wrapper-property-bool-i64-test",
             "rust-wrapper-property-utf8-test",
             "rust-wrapper-property-f64-test",
@@ -169,6 +170,8 @@ def main():
             if args.command == "rust-wrapper-runtime-consumer-test"
             else "rust-wrapper-ui-controls-test"
             if args.command == "rust-wrapper-ui-controls-test"
+            else "rust-wrapper-window-close-test"
+            if args.command == "rust-wrapper-window-close-test"
             else "rust-wrapper-property-bool-i64-consumer-test"
             if args.command == "rust-wrapper-property-bool-i64-test"
             else "rust-wrapper-property-utf8-consumer-test"
@@ -214,6 +217,11 @@ def main():
             if args.command == "rust-wrapper-runtime-consumer-test"
             else "Rust UI Controls focused and C ABI consumer tests executed"
             if args.command == "rust-wrapper-ui-controls-test"
+            else (
+                "Rust Window close-request focused and C ABI consumer tests "
+                "executed"
+            )
+            if args.command == "rust-wrapper-window-close-test"
             else "Rust BOOL/I64 Property consumer test executed"
             if args.command == "rust-wrapper-property-bool-i64-test"
             else "Rust UTF-8 Property consumer test executed"
@@ -346,6 +354,7 @@ def main():
             "rust-wrapper-runtime-test",
             "rust-wrapper-runtime-consumer-test",
             "rust-wrapper-ui-controls-test",
+            "rust-wrapper-window-close-test",
             "rust-wrapper-property-bool-i64-test",
             "rust-wrapper-property-utf8-test",
             "rust-wrapper-property-f64-test",
@@ -381,7 +390,28 @@ def main():
                     + os.pathsep
                     + native_environment.get("LD_LIBRARY_PATH", "")
                 )
-            if args.command == "rust-wrapper-ui-controls-test":
+            if args.command == "rust-wrapper-window-close-test":
+                run(
+                    ["cargo", "test", "--locked", "-p", "freemvvm"],
+                    native_environment,
+                    results,
+                    "rust-wrapper-window-close-tests",
+                )
+                run(
+                    [
+                        "cargo",
+                        "run",
+                        "--locked",
+                        "-p",
+                        "freemvvm",
+                        "--example",
+                        "window_close_consumer",
+                    ],
+                    native_environment,
+                    results,
+                    "rust-wrapper-window-close-consumer",
+                )
+            elif args.command == "rust-wrapper-ui-controls-test":
                 run(
                     ["cargo", "test", "--locked", "-p", "freemvvm"],
                     native_environment,

@@ -6,7 +6,7 @@ use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 
-struct SubscriptionTag;
+pub(crate) struct SubscriptionTag;
 
 struct CallbackState<F> {
     callback: F,
@@ -22,6 +22,10 @@ pub struct Subscription {
 }
 
 impl Subscription {
+    pub(crate) fn from_owner(owner: Owned<SubscriptionTag>, identity: Arc<()>) -> Self {
+        Self { owner, identity }
+    }
+
     pub(crate) fn register<F>(
         property: u64,
         api: SharedApi,
@@ -179,9 +183,7 @@ impl Subscription {
         let token = self.owner.borrow()?.token();
         let error_ticket = TicketReservation::reserve()
             .map_err(|()| UiError::from_status(native_api::OUT_OF_MEMORY))?;
-        let mut error = 0;
-        // SAFETY: error is writable out storage and token is borrowed for this call.
-        let status = unsafe { freemvvm_sys::ui_abi_1_subscription_cancel(token, &mut error) };
+        let (status, error) = self.owner.api().subscription_cancel(token);
         if status == native_api::OK && error == 0 {
             error_ticket.release();
             return Ok(());

@@ -536,6 +536,18 @@ mod tests {
         release_calls: HashMap<u64, usize>,
         ui_child_count: u64,
         ui_orientation: u32,
+        close_subscribe_status: u32,
+        close_subscribe_error: u64,
+        close_subscription_token: u64,
+        close_callback: Option<freemvvm_sys::WindowCloseCallback>,
+        close_userdata: usize,
+        close_destroy: Option<freemvvm_sys::DestroyCallback>,
+        close_destroy_count: usize,
+        close_defer_status: u32,
+        close_defer_error: u64,
+        close_resolve_status: u32,
+        close_resolve_error: u64,
+        close_resolutions: Vec<(u64, u32)>,
     }
 
     #[derive(Default)]
@@ -568,6 +580,21 @@ mod tests {
 
         fn last_runtime(&self) -> u64 {
             self.state.lock().unwrap().next_handle
+        }
+
+        fn invoke_close_request(&self, request: u64) {
+            let (callback, userdata) = {
+                let state = self.state.lock().unwrap();
+                (state.close_callback, state.close_userdata)
+            };
+            if let Some(callback) = callback {
+                // SAFETY: the fake retains callback userdata until it runs the destroy callback.
+                unsafe { callback(userdata as *mut std::ffi::c_void, request) };
+            }
+        }
+
+        fn close_destroy_count(&self) -> usize {
+            self.state.lock().unwrap().close_destroy_count
         }
     }
 
@@ -708,6 +735,66 @@ mod tests {
             _command: u64,
         ) -> (u32, u64, u64) {
             (native_api::OK, 0, 0)
+        }
+
+        fn close_request_subscribe(
+            &self,
+            _window: u64,
+            callback: Option<freemvvm_sys::WindowCloseCallback>,
+            userdata: *mut std::ffi::c_void,
+            destroy: Option<freemvvm_sys::DestroyCallback>,
+        ) -> (u32, u64, u64) {
+            let mut state = self.state.lock().unwrap();
+            if state.close_subscribe_status != native_api::OK {
+                return (state.close_subscribe_status, 0, state.close_subscribe_error);
+            }
+            state.next_handle += 1;
+            let token = state.next_handle;
+            state.close_subscription_token = token;
+            state.close_callback = callback;
+            state.close_userdata = userdata as usize;
+            state.close_destroy = destroy;
+            (native_api::OK, token, 0)
+        }
+
+        fn close_request_defer(&self, _borrowed: u64) -> (u32, u64, u64) {
+            let mut state = self.state.lock().unwrap();
+            if state.close_defer_status != native_api::OK {
+                return (state.close_defer_status, 0, state.close_defer_error);
+            }
+            state.next_handle += 1;
+            (native_api::OK, state.next_handle, 0)
+        }
+
+        fn close_request_resolve(&self, request: u64, decision: u32) -> (u32, u64) {
+            let mut state = self.state.lock().unwrap();
+            state.close_resolutions.push((request, decision));
+            (state.close_resolve_status, state.close_resolve_error)
+        }
+
+        fn subscription_cancel(&self, token: u64) -> (u32, u64) {
+            let (destroy, userdata) = {
+                let mut state = self.state.lock().unwrap();
+                if token != state.close_subscription_token || token == 0 {
+                    drop(state);
+                    let mut error = 0;
+                    // SAFETY: fake API falls back to native cancellation for real subscriptions.
+                    let status =
+                        unsafe { freemvvm_sys::ui_abi_1_subscription_cancel(token, &mut error) };
+                    return (status, error);
+                }
+                state.close_destroy_count += 1;
+                let userdata = state.close_userdata;
+                state.close_callback = None;
+                state.close_userdata = 0;
+                state.close_subscription_token = 0;
+                (state.close_destroy, userdata)
+            };
+            if let Some(destroy) = destroy {
+                // SAFETY: successful fake cancellation ends the registered userdata lifetime.
+                unsafe { destroy(userdata as *mut std::ffi::c_void) };
+            }
+            (native_api::OK, 0)
         }
 
         fn error_status(&self, _error: u64) -> (u32, u32) {
@@ -1376,6 +1463,165 @@ mod tests {
             window.close().unwrap();
         }
         other_runtime.close().unwrap();
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn window_close_callback_is_owned_until_cancel_and_destroy_runs_once() {
+        let _guard = serialize_registry_test();
+        struct DropProbe(Rc<Cell<usize>>);
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let calls = Rc::new(Cell::new(0));
+            let callback_drop_count = Rc::new(Cell::new(0));
+            let probe = DropProbe(Rc::clone(&callback_drop_count));
+            let callback_calls = Rc::clone(&calls);
+            let mut subscription = window
+                .on_close_request(&ui, move |_request| {
+                    let _keep_probe_until_destroy = &probe;
+                    callback_calls.set(callback_calls.get() + 1);
+                })
+                .unwrap();
+
+            api.invoke_close_request(800);
+            assert_eq!(calls.get(), 1);
+            assert_eq!(callback_drop_count.get(), 0);
+            subscription.cancel(&ui).unwrap();
+            assert_eq!(api.close_destroy_count(), 1);
+            assert_eq!(callback_drop_count.get(), 1);
+            api.invoke_close_request(802);
+            assert_eq!(calls.get(), 1, "cancel prevents later callback starts");
+            subscription.close().unwrap();
+            assert_eq!(api.close_destroy_count(), 1);
+            window.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn failed_window_close_registration_keeps_callback_on_rust_side() {
+        let _guard = serialize_registry_test();
+        struct DropProbe(Rc<Cell<usize>>);
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        api.state.lock().unwrap().close_subscribe_status = native_api::UNSUPPORTED;
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let dropped = Rc::new(Cell::new(0));
+            let probe = DropProbe(Rc::clone(&dropped));
+            let error = match window.on_close_request(&ui, move |_request| {
+                let _keep_probe_in_callback = &probe;
+            }) {
+                Err(error) => error,
+                Ok(_) => panic!("fake close registration unexpectedly succeeded"),
+            };
+            assert_eq!(error.raw_status(), native_api::UNSUPPORTED);
+            assert_eq!(dropped.get(), 1);
+            window.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn window_close_callback_panic_does_not_cross_the_abi_boundary() {
+        let _guard = serialize_registry_test();
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let mut subscription = window
+                .on_close_request(&ui, |_request| panic!("test callback panic"))
+                .unwrap();
+            api.invoke_close_request(801);
+            subscription.cancel(&ui).unwrap();
+            subscription.close().unwrap();
+            window.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn close_request_view_defers_without_capturing_ui_context_and_resolves() {
+        let _guard = serialize_registry_test();
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let deferred = Rc::new(std::cell::RefCell::new(None));
+            let callback_deferred = Rc::clone(&deferred);
+            let mut subscription = window
+                .on_close_request(&ui, move |request| {
+                    *callback_deferred.borrow_mut() = Some(request.defer().unwrap());
+                })
+                .unwrap();
+
+            api.invoke_close_request(803);
+            let mut request = deferred.borrow_mut().take().unwrap();
+            request
+                .resolve(&ui, crate::ui::CloseDecision::Accept)
+                .unwrap();
+            assert_eq!(api.state.lock().unwrap().close_resolutions.len(), 1);
+
+            request.close().unwrap();
+            subscription.cancel(&ui).unwrap();
+            subscription.close().unwrap();
+            window.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn close_request_view_defer_checks_thread_and_reports_abi_failure() {
+        let _guard = serialize_registry_test();
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let defer_status = Rc::new(Cell::new(None));
+            let callback_status = Rc::clone(&defer_status);
+            let mut subscription = window
+                .on_close_request(&ui, move |request| {
+                    callback_status.set(Some(request.defer().err().unwrap().raw_status()));
+                })
+                .unwrap();
+
+            api.set_ui_thread(false);
+            api.invoke_close_request(804);
+            assert_eq!(defer_status.get(), Some(native_api::WRONG_THREAD));
+
+            api.set_ui_thread(true);
+            api.state.lock().unwrap().close_defer_status = native_api::UNSUPPORTED;
+            api.invoke_close_request(805);
+            assert_eq!(defer_status.get(), Some(native_api::UNSUPPORTED));
+
+            subscription.cancel(&ui).unwrap();
+            subscription.close().unwrap();
+            window.close().unwrap();
+        }
         runtime.close().unwrap();
     }
 }

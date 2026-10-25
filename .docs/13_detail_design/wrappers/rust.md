@@ -1,9 +1,9 @@
 # 言語ラッパー：Rust
 
-- 文書版: 1.7
+- 文書版: 1.8
 - 文書ロール: detailed-design
 - 更新日: 2026-10-25
-- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-24）。1.6全文承認済み（利用者、2026-10-24）。1.7全文承認済み（利用者、2026-10-25）。実装・試験状態は別管理
+- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-24）。1.6全文承認済み（利用者、2026-10-24）。1.7全文承認済み（利用者、2026-10-25）。1.8全文承認済み（利用者、2026-10-25）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -567,7 +567,7 @@ sequenceDiagram
 - callback内からのclose/execute禁止やcallback panicのstatus mappingはCommand/C ABI契約から拡張しない。
 - async Future、progress専用型、executor/thread-pool統合は本unitに含めず、既存C ABI `runtime_post`とPropertyを利用する。
 
-## UI Control safe API案（1.7承認済み）
+## UI Control safe API案（1.7・1.8全文承認済み）
 
 本節は[RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-03-007](../../11_requirements/RQ-03_language-support.md#rq-03-007)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-008](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-002](../../11_requirements/RQ-09_ui-scope.md#rq-09-002)、[RQ-09-003](../../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-09-004](../../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-005](../../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-006](../../11_requirements/RQ-09_ui-scope.md#rq-09-006)、[RQ-09-007](../../11_requirements/RQ-09_ui-scope.md#rq-09-007)、[RQ-09-008](../../11_requirements/RQ-09_ui-scope.md#rq-09-008)、[RQ-09-009](../../11_requirements/RQ-09_ui-scope.md#rq-09-009)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-011](../../11_requirements/RQ-09_ui-scope.md#rq-09-011)、[RQ-09-045](../../11_requirements/RQ-09_ui-scope.md#rq-09-045)、[RQ-09-046](../../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-047](../../11_requirements/RQ-09_ui-scope.md#rq-09-047)、[RQ-09-048](../../11_requirements/RQ-09_ui-scope.md#rq-09-048)、[RQ-09-057](../../11_requirements/RQ-09_ui-scope.md#rq-09-057)、[RQ-09-058](../../11_requirements/RQ-09_ui-scope.md#rq-09-058)、[RQ-09-059](../../11_requirements/RQ-09_ui-scope.md#rq-09-059)、[RQ-09-060](../../11_requirements/RQ-09_ui-scope.md#rq-09-060)、[RQ-09-061](../../11_requirements/RQ-09_ui-scope.md#rq-09-061)、[RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-10-003](../../11_requirements/RQ-10_accessibility.md#rq-10-003)、[RQ-10-008](../../11_requirements/RQ-10_accessibility.md#rq-10-008)、[RQ-10-012](../../11_requirements/RQ-10_accessibility.md#rq-10-012)。
 
@@ -670,7 +670,7 @@ impl Button { pub fn create(ui: &UiContext<'_>, label: &str) -> Result<Self, UiE
     pub fn command(&self, ui: &UiContext<'_>) -> Result<Option<AsyncCommand>, UiError>; }
 
 impl CloseRequestView<'_> {
-    pub fn defer(&self, ui: &UiContext<'_>) -> Result<CloseRequest, UiError>;
+    pub fn defer(&self) -> Result<CloseRequest, UiError>;
 }
 impl CloseRequest {
     pub fn resolve(&mut self, ui: &UiContext<'_>, decision: CloseDecision) -> Result<(), UiError>;
@@ -680,13 +680,13 @@ impl CloseRequest {
 
 `WidgetRef`はsealed traitとし、上記の具象ownerおよび`Widget`からのみ実装する案である。trait methodは文書化されたsafe surfaceにraw tokenを出さず、wrapper内部で短期間のborrowed tokenへ変換する。対応するprivate `freemvvm-sys`宣言はfixed-width値・opaque handle・C callback ABIをunsafeとして保持し、safe crateのprivate adapterだけが呼び出す。現行`freemvvm-sys`にはこのControl群の宣言がまだないため、本unitでC ABIの既存symbolを束縛する。`Window::content`と`StackPanel::child_at`はABIのowned out-childを受けて`Widget`へ包む。`None`はABI成功かつtoken zeroの場合に限る。`Unknown` enum値は未知のraw値を保持してgetterで往復できる一方、setterは既知variantだけを受け付け、未知値はABIへ送らない。
 
-全UI操作は既存`UiContext`を必須引数としてRuntime identityとUI threadを検査する。Property getterは既存のtyped `Property<String>` / `Property<bool>`を返し、ControlとPropertyは独立したowned tokenである。ButtonのCommand getterも独立した`AsyncCommand` ownerを返す。`WidgetRef`で異Runtimeのchildを渡す場合、および異Runtime CommandをButtonへ設定する場合はC ABIを呼ぶ前にwrapperで拒否する。Core側status検査は最終防御として維持する。
+全UI操作は既存`UiContext`を必須引数としてRuntime identityとUI threadを検査する。ただし1.8案では、borrowed `CloseRequestView`の`defer()`のみcallback viewが保持するprivate Runtime anchor/contextを利用する。callback登録時に同じRuntimeのanchorをview生成状態へ結び、defer時にそのRuntime identity・UI thread・open状態をwrapperで検査してからABIを呼ぶ。anchorはsafe APIに公開せず、viewのborrow期間を越えて保持できない。Property getterは既存のtyped `Property<String>` / `Property<bool>`を返し、ControlとPropertyは独立したowned tokenである。ButtonのCommand getterも独立した`AsyncCommand` ownerを返す。`WidgetRef`で異Runtimeのchildを渡す場合、および異Runtime CommandをButtonへ設定する場合はC ABIを呼ぶ前にwrapperで拒否する。Core側status検査は最終防御として維持する。
 
 ### Callback、借用期間、close request
 
 `on_close_request`はC ABI登録成功時だけcallback closureをCoreへ移転し、失敗時はRust側に残してdropする。返却する既存`Subscription`は登録を所有し、`cancel(ui)`完了後は新規callbackが開始せず、in-flight callbackとuserdata destroyは既存Subscription/C ABI契約に従う。単にWindowまたは外部のSubscription参照をdropしても、C ABI契約が定める登録解除条件を変更しない。callback panicは既存Rust trampolineのpanic containmentを通し、unwindをABI境界の外へ出さない。
 
-`CloseRequestView<'callback>`は通知callback中だけ有効なborrowed requestで、safe APIから保存・解決・releaseできない。`defer(ui)`だけがABIのdefer操作を呼び、UI context/Runtime identityを検査する。成功した場合に限り独立した`CloseRequest` ownerを返す。defer失敗ではborrowed viewを保持したままcallbackが戻る。deferred ownerは`resolve(ui, decision)`で一度だけAccept/Declineをresolveでき、stale generationや二重resolveはCore statusを`UiError`として返す。未解決ownerのrelease/Drop時にDeclineとなるABI契約を維持し、Drop内でUI callbackを呼び出さない。Windowの`close_peer`はpeerだけを閉じ、Core Window、content、Propertyを保持する。Runtime shutdownは既存Runtime APIで別途行う。
+`CloseRequestView<'callback>`は通知callback中だけ有効なborrowed requestで、safe APIから保存・解決・releaseできない。1.8案の`defer()`はcallback viewが保持するprivate Runtime anchor/contextでUI thread・Runtime identity・open状態を検査し、ABIのdefer操作を呼ぶ。これにより`'static` callback closureが借用`UiContext`を捕捉せずにdeferできる。成功した場合に限り独立した`CloseRequest` ownerを返す。defer失敗ではborrowed viewを保持したままcallbackが戻る。deferred ownerは`resolve(ui, decision)`で一度だけAccept/Declineをresolveでき、stale generationや二重resolveはCore statusを`UiError`として返す。未解決ownerのrelease/Drop時にDeclineとなるABI契約を維持し、Drop内でUI callbackを呼び出さない。Windowの`close_peer`はpeerだけを閉じ、Core Window、content、Propertyを保持する。Runtime shutdownは既存Runtime APIで別途行う。
 
 ```mermaid
 sequenceDiagram
@@ -725,6 +725,8 @@ sequenceDiagram
 | 日付 | 対象版 | 内容・根拠 |
 | --- | --- | --- |
 | 2026-10-25 | 1.7全文 | 利用者の「ok」により初期UI Control/Tree/Layout/Focus/Window close-requestをRust safe wrapperへ写像する公開型・API・borrow/ownership・callback境界を含む文書全体を承認。実装・試験状態は別管理 |
+| 2026-10-25 | 1.8改訂案 | `CloseRequestView::defer(&UiContext)`は`'static` callback内から借用contextを渡しにくい問題を修正するため、`defer()`へ変更し、view内private Runtime anchor/contextでRuntime/thread/open検査する方式を提案。1.7全文承認状態は維持し、1.8全文は利用者確認待ち |
+| 2026-10-25 | 1.8全文 | 利用者の「ok」により、callback view自身がprivate Runtime anchor/contextを使う`CloseRequestView::defer()`への変更を含む文書全体を承認。実装・試験状態は別管理 |
 
 ## 文書の承認・改訂履歴
 
@@ -743,3 +745,5 @@ sequenceDiagram
 | 2026-10-24 | 1.5全文 | 利用者の「OK」によりRust Property Bindingの3 mode、所有型、明示cancel、遅延error snapshot/subscription APIを含む全文を承認。実装・試験状態は別管理 |
 | 2026-10-24 | 1.6全文 | 利用者の「OK」によりAsync Command Rust safe API、worker lease、cancel/completion、state/failure取得を含む全文を承認。実装・試験状態は別管理 |
 | 2026-10-25 | 1.7全文 | 利用者の「ok」によりUI Control safe API、Tree/Property/Command接続、Focus、Window close-requestのRust wrapper設計全文を承認。実装・試験状態は別管理 |
+| 2026-10-25 | 1.8改訂案 | close requestのdefer操作をcallback viewのprivate Runtime anchor/contextで行うAPIへ変更提案。既承認1.7を維持し、1.8文書全体の確認待ち |
+| 2026-10-25 | 1.8全文 | 利用者の「ok」によりclose requestのdefer API変更を含む文書全体を承認。defer/resolve実装は別管理 |

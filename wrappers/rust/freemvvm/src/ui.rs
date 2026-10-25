@@ -7,6 +7,9 @@ use crate::native_api::{
 };
 use crate::property::{Property, PropertyTag};
 use crate::runtime::UiContext;
+use crate::subscription::{Subscription, SubscriptionTag};
+use std::ffi::c_void;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 
 struct WindowTag;
@@ -15,6 +18,10 @@ struct TextBoxTag;
 struct TextTag;
 struct ButtonTag;
 struct WidgetTag;
+struct CloseRequestTag;
+
+const CLOSE_ACCEPT: u32 = 1;
+const CLOSE_DECLINE: u32 = 2;
 
 mod sealed {
     pub trait Sealed {}
@@ -95,6 +102,45 @@ pub struct Button {
 pub struct Widget {
     owner: Owned<WidgetTag>,
     identity: Arc<()>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CloseDecision {
+    Accept,
+    Decline,
+}
+
+impl CloseDecision {
+    fn to_raw(self) -> u32 {
+        match self {
+            Self::Accept => CLOSE_ACCEPT,
+            Self::Decline => CLOSE_DECLINE,
+        }
+    }
+}
+
+/// A close request borrowed only for the duration of a Window close callback.
+///
+/// ```compile_fail
+/// use freemvvm::CloseRequestView;
+/// fn escape(view: CloseRequestView<'_>) -> CloseRequestView<'static> { view }
+/// ```
+pub struct CloseRequestView<'callback> {
+    request: Borrowed<'callback, CloseRequestTag>,
+    identity: &'callback Arc<()>,
+    anchor: &'callback Arc<RuntimeAnchor>,
+}
+
+/// An owned deferred close request. Releasing an unresolved request declines it.
+pub struct CloseRequest {
+    owner: Owned<CloseRequestTag>,
+    identity: Arc<()>,
+}
+
+struct CloseCallbackState<F> {
+    callback: F,
+    identity: Arc<()>,
+    _anchor: Arc<RuntimeAnchor>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -436,6 +482,92 @@ impl Window {
         self.window_action(ui, UiAction::WindowClose)
     }
 
+    pub fn on_close_request<F>(
+        &self,
+        ui: &UiContext<'_>,
+        callback: F,
+    ) -> Result<Subscription, UiError>
+    where
+        F: for<'callback> FnMut(CloseRequestView<'callback>) + 'static,
+    {
+        check_context(&self.identity, ui)?;
+        ui.check_ui_thread()?;
+        let anchor = self
+            .owner
+            .anchor()
+            .ok_or_else(|| UiError::from_status(native_api::CLOSED))?;
+        let window_token = self.owner.borrow()?.token();
+        let subscription_ticket = TicketReservation::reserve()
+            .map_err(|()| UiError::from_status(native_api::OUT_OF_MEMORY))?;
+        let error_ticket = TicketReservation::reserve()
+            .map_err(|()| UiError::from_status(native_api::OUT_OF_MEMORY))?;
+        let state = Box::new(CloseCallbackState {
+            callback,
+            identity: ui.identity(),
+            _anchor: Arc::clone(&anchor),
+        });
+        let userdata = Box::into_raw(state).cast::<c_void>();
+        let (status, token, error) = ui.api().close_request_subscribe(
+            window_token,
+            Some(close_request_trampoline::<F>),
+            userdata,
+            Some(close_request_destroy::<F>),
+        );
+        if status == native_api::OK && token != 0 && error == 0 {
+            return Ok(Subscription::from_owner(
+                Owned::from_token(
+                    token,
+                    Arc::clone(ui.api()),
+                    subscription_ticket,
+                    ui.runtime_token(),
+                    Some(anchor),
+                ),
+                ui.identity(),
+            ));
+        }
+
+        if status != native_api::OK && token == 0 {
+            // The ABI contract transfers userdata only when registration succeeds.
+            // SAFETY: this wrapper allocated the Box and the failed registration retained it.
+            drop(unsafe { Box::from_raw(userdata.cast::<CloseCallbackState<F>>()) });
+        } else if token != 0 {
+            // An inconsistent result may have registered the callback. Cancel before releasing
+            // its owner; if cancellation cannot prove destroy, keep userdata alive.
+            // SAFETY: token is returned by the C ABI and the optional error output may be null.
+            let cancel_status =
+                unsafe { freemvvm_sys::ui_abi_1_subscription_cancel(token, std::ptr::null_mut()) };
+            if cancel_status == native_api::OK && status != native_api::OK {
+                // Failed registration retained userdata; cancellation has no callback to destroy.
+                // SAFETY: the original failed call did not transfer the allocation.
+                drop(unsafe { Box::from_raw(userdata.cast::<CloseCallbackState<F>>()) });
+            }
+        }
+
+        if token == 0 {
+            subscription_ticket.release();
+        } else {
+            drop(Owned::<SubscriptionTag>::from_token(
+                token,
+                Arc::clone(ui.api()),
+                subscription_ticket,
+                ui.runtime_token(),
+                Some(Arc::clone(&anchor)),
+            ));
+        }
+        Err(UiError::capture(
+            ui.api(),
+            if status == native_api::OK {
+                native_api::INTERNAL_ERROR
+            } else {
+                status
+            },
+            error,
+            error_ticket,
+            ui.runtime_token(),
+            Some(anchor),
+        ))
+    }
+
     fn window_action(&self, ui: &UiContext<'_>, action: UiAction) -> Result<(), UiError> {
         check_context(&self.identity, ui)?;
         ui.check_ui_thread()?;
@@ -757,4 +889,106 @@ fn check_context(identity: &Arc<()>, ui: &UiContext<'_>) -> Result<(), UiError> 
     } else {
         Err(UiError::from_status(native_api::WRONG_RUNTIME))
     }
+}
+
+impl CloseRequestView<'_> {
+    pub fn defer(&self) -> Result<CloseRequest, UiError> {
+        self.anchor.check_ui_thread()?;
+        let api = self.anchor.api();
+        let owner_ticket = TicketReservation::reserve()
+            .map_err(|()| UiError::from_status(native_api::OUT_OF_MEMORY))?;
+        let error_ticket = TicketReservation::reserve()
+            .map_err(|()| UiError::from_status(native_api::OUT_OF_MEMORY))?;
+        let (status, token, error) = api.close_request_defer(self.request.token());
+        if status != native_api::OK || token == 0 || error != 0 {
+            if token == 0 {
+                owner_ticket.release();
+            } else {
+                drop(Owned::<CloseRequestTag>::from_token(
+                    token,
+                    Arc::clone(api),
+                    owner_ticket,
+                    self.anchor.token(),
+                    Some(Arc::clone(self.anchor)),
+                ));
+            }
+            return Err(UiError::capture(
+                api,
+                if status == native_api::OK {
+                    native_api::INTERNAL_ERROR
+                } else {
+                    status
+                },
+                error,
+                error_ticket,
+                self.anchor.token(),
+                Some(Arc::clone(self.anchor)),
+            ));
+        }
+        error_ticket.release();
+        Ok(CloseRequest {
+            owner: Owned::from_token(
+                token,
+                Arc::clone(api),
+                owner_ticket,
+                self.anchor.token(),
+                Some(Arc::clone(self.anchor)),
+            ),
+            identity: Arc::clone(self.identity),
+        })
+    }
+}
+
+impl CloseRequest {
+    pub fn resolve(&mut self, ui: &UiContext<'_>, decision: CloseDecision) -> Result<(), UiError> {
+        check_context(&self.identity, ui)?;
+        ui.check_ui_thread()?;
+        let ticket = TicketReservation::reserve()
+            .map_err(|()| UiError::from_status(native_api::OUT_OF_MEMORY))?;
+        let (status, error) = ui
+            .api()
+            .close_request_resolve(self.owner.borrow()?.token(), decision.to_raw());
+        finish_status_call(
+            ui.api(),
+            status,
+            error,
+            ticket,
+            self.owner.runtime_token(),
+            self.owner.anchor(),
+        )
+    }
+
+    pub fn close(&mut self) -> Result<(), UiError> {
+        self.owner.close()
+    }
+}
+
+unsafe extern "C" fn close_request_trampoline<F>(userdata: *mut c_void, request: u64)
+where
+    F: for<'callback> FnMut(CloseRequestView<'callback>) + 'static,
+{
+    if userdata.is_null() || request == 0 {
+        return;
+    }
+    // SAFETY: the C ABI serializes callback invocation and keeps userdata alive until destroy.
+    let state = unsafe { &mut *userdata.cast::<CloseCallbackState<F>>() };
+    let callback_scope = ();
+    let view = CloseRequestView {
+        request: Borrowed::from_token(request, &callback_scope),
+        identity: &state.identity,
+        anchor: &state._anchor,
+    };
+    let _ = catch_unwind(AssertUnwindSafe(|| (state.callback)(view)));
+}
+
+unsafe extern "C" fn close_request_destroy<F>(userdata: *mut c_void)
+where
+    F: for<'callback> FnMut(CloseRequestView<'callback>) + 'static,
+{
+    if userdata.is_null() {
+        return;
+    }
+    // SAFETY: Core transfers the registered Box exactly once when destroy is called.
+    let state = unsafe { Box::from_raw(userdata.cast::<CloseCallbackState<F>>()) };
+    let _ = catch_unwind(AssertUnwindSafe(|| drop(state)));
 }

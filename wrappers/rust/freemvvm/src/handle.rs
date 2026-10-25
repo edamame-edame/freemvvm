@@ -320,6 +320,22 @@ impl RuntimeAnchor {
     pub(crate) fn token(&self) -> u64 {
         self.token
     }
+
+    pub(crate) fn api(&self) -> &SharedApi {
+        &self.api
+    }
+
+    pub(crate) fn check_ui_thread(&self) -> Result<(), UiError> {
+        let (status, is_ui_thread) = self.api.runtime_is_ui_thread(self.token);
+        if status != crate::native_api::OK {
+            return Err(UiError::from_status(status));
+        }
+        match is_ui_thread {
+            1 => Ok(()),
+            0 => Err(UiError::from_status(crate::native_api::WRONG_THREAD)),
+            _ => Err(UiError::from_status(crate::native_api::INTERNAL_ERROR)),
+        }
+    }
 }
 
 impl Drop for RuntimeAnchor {

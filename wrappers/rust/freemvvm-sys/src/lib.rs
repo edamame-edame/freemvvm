@@ -6,6 +6,8 @@
 pub type Handle = u64;
 pub type Status = u32;
 pub type Bool = u8;
+pub type WindowCloseCallback = unsafe extern "C" fn(*mut core::ffi::c_void, Handle);
+pub type DestroyCallback = unsafe extern "C" fn(*mut core::ffi::c_void);
 
 pub const OK: Status = 0;
 pub const INVALID_ARGUMENT: Status = 1;
@@ -288,6 +290,24 @@ unsafe extern "C" {
     pub fn ui_abi_1_window_title_property(window: Handle, out_property: *mut Handle) -> Status;
     pub fn ui_abi_1_window_open(window: Handle, out_error: *mut Handle) -> Status;
     pub fn ui_abi_1_window_close(window: Handle, out_error: *mut Handle) -> Status;
+    pub fn ui_abi_1_window_close_request_subscribe(
+        window: Handle,
+        callback: Option<WindowCloseCallback>,
+        userdata: *mut core::ffi::c_void,
+        destroy: Option<DestroyCallback>,
+        out_subscription: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_window_close_request_defer(
+        borrowed_request: Handle,
+        out_owned_request: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_window_close_request_resolve(
+        request: Handle,
+        decision: u32,
+        out_error: *mut Handle,
+    ) -> Status;
     pub fn ui_abi_1_container_insert(
         container: Handle,
         borrowed_child: Handle,

@@ -112,6 +112,31 @@ pub(crate) trait NativeApi: Send + Sync {
     fn ui_button(&self, _action: UiButtonAction, _button: u64, _command: u64) -> (u32, u64, u64) {
         (UNSUPPORTED, 0, 0)
     }
+
+    fn close_request_subscribe(
+        &self,
+        _window: u64,
+        _callback: Option<freemvvm_sys::WindowCloseCallback>,
+        _userdata: *mut std::ffi::c_void,
+        _destroy: Option<freemvvm_sys::DestroyCallback>,
+    ) -> (u32, u64, u64) {
+        (UNSUPPORTED, 0, 0)
+    }
+
+    fn close_request_defer(&self, _borrowed: u64) -> (u32, u64, u64) {
+        (UNSUPPORTED, 0, 0)
+    }
+
+    fn close_request_resolve(&self, _request: u64, _decision: u32) -> (u32, u64) {
+        (UNSUPPORTED, 0)
+    }
+
+    fn subscription_cancel(&self, token: u64) -> (u32, u64) {
+        let mut error = 0;
+        // SAFETY: error is writable output and the owned Subscription token is borrowed for call.
+        let status = unsafe { freemvvm_sys::ui_abi_1_subscription_cancel(token, &mut error) };
+        (status, error)
+    }
 }
 
 pub(crate) type SharedApi = Arc<dyn NativeApi>;
@@ -421,5 +446,47 @@ impl NativeApi for LinkedApi {
             }
         };
         (status, value, error)
+    }
+
+    fn close_request_subscribe(
+        &self,
+        window: u64,
+        callback: Option<freemvvm_sys::WindowCloseCallback>,
+        userdata: *mut std::ffi::c_void,
+        destroy: Option<freemvvm_sys::DestroyCallback>,
+    ) -> (u32, u64, u64) {
+        let mut subscription = 0;
+        let mut error = 0;
+        // SAFETY: the wrapper keeps userdata alive unless successful registration transfers it.
+        let status = unsafe {
+            freemvvm_sys::ui_abi_1_window_close_request_subscribe(
+                window,
+                callback,
+                userdata,
+                destroy,
+                &mut subscription,
+                &mut error,
+            )
+        };
+        (status, subscription, error)
+    }
+
+    fn close_request_defer(&self, borrowed: u64) -> (u32, u64, u64) {
+        let mut request = 0;
+        let mut error = 0;
+        // SAFETY: outputs are valid and borrowed request is callback-scoped for this call.
+        let status = unsafe {
+            freemvvm_sys::ui_abi_1_window_close_request_defer(borrowed, &mut request, &mut error)
+        };
+        (status, request, error)
+    }
+
+    fn close_request_resolve(&self, request: u64, decision: u32) -> (u32, u64) {
+        let mut error = 0;
+        // SAFETY: error is valid output storage and request is borrowed for the call.
+        let status = unsafe {
+            freemvvm_sys::ui_abi_1_window_close_request_resolve(request, decision, &mut error)
+        };
+        (status, error)
     }
 }

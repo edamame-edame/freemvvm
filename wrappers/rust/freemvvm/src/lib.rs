@@ -22,7 +22,8 @@ pub use runtime::{
 };
 pub use subscription::Subscription;
 pub use ui::{
-    Button, ChildAlign, Orientation, StackPanel, Text, TextBox, Widget, WidgetRef, Window,
+    Button, ChildAlign, CloseDecision, CloseRequest, CloseRequestView, Orientation, StackPanel,
+    Text, TextBox, Widget, WidgetRef, Window,
 };
 
 pub const STATUS_UNSUPPORTED: u32 = freemvvm_sys::UNSUPPORTED;
