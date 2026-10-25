@@ -27,7 +27,9 @@ pub mod abi_support {
     use crate::command::{AsyncCommand, CancelToken, CommandError, CommandSnapshot};
     use crate::dispatcher::{PostErrorKind, PostedWork, UiLoopBridge, WakePriority};
     use crate::handle_registry::HandleToken;
-    use crate::handle_registry::registry::{HandleRegistry, InternalOwner, RegistryError};
+    use crate::handle_registry::registry::{
+        HandleRegistry, InternalOwner, ObjectIdentity, RegistryError,
+    };
     use crate::object_store::UiObjectStoreError;
     use crate::property::{
         PropertyHandleKind, PropertyValidator, Subscription, SubscriptionCallback, ValidationError,
@@ -562,6 +564,7 @@ pub mod abi_support {
     struct UiControlHandleEntry {
         runtime: Arc<RuntimeCore>,
         kind: UiControlKind,
+        identity: ObjectIdentity,
     }
 
     struct UiControlHandles {
@@ -1313,9 +1316,9 @@ pub mod abi_support {
                 .owners
                 .lock()
                 .map_err(|_| RuntimeRetainError::Internal)?;
-            if let Some((runtime, kind)) = owners
+            if let Some((runtime, kind, identity)) = owners
                 .get(&token)
-                .map(|entry| (Arc::clone(&entry.runtime), entry.kind))
+                .map(|entry| (Arc::clone(&entry.runtime), entry.kind, entry.identity))
             {
                 owners
                     .try_reserve(1)
@@ -1328,7 +1331,14 @@ pub mod abi_support {
                         RegistryError::InvalidToken => RuntimeRetainError::InvalidHandle,
                         _ => RuntimeRetainError::Internal,
                     })?;
-                owners.insert(retained, UiControlHandleEntry { runtime, kind });
+                owners.insert(
+                    retained,
+                    UiControlHandleEntry {
+                        runtime,
+                        kind,
+                        identity,
+                    },
+                );
                 return Ok(retained.into_abi());
             }
         }
@@ -1514,6 +1524,13 @@ pub mod abi_support {
             RuntimeTreeError::Registry(error) => map_ui_control_registry_error(error),
             RuntimeTreeError::Registration(error) => map_ui_control_registration_error(error),
             RuntimeTreeError::Tree(TreeError::WrongThread) => UiControlApiError::WrongThread,
+            RuntimeTreeError::Tree(TreeError::RuntimeMismatch) => UiControlApiError::WrongRuntime,
+            RuntimeTreeError::Tree(
+                TreeError::ParentNotContainer
+                | TreeError::AlreadyParented
+                | TreeError::Cycle
+                | TreeError::ChildNotFound,
+            ) => UiControlApiError::InvalidArgument,
             RuntimeTreeError::Tree(TreeError::AllocationFailed) => UiControlApiError::OutOfMemory,
             RuntimeTreeError::SynchronizationPoisoned | RuntimeTreeError::Tree(_) => {
                 UiControlApiError::Internal
@@ -1664,7 +1681,19 @@ pub mod abi_support {
                 move || UiControlState::new(kind, properties),
             )
             .map_err(map_ui_control_tree_error)?;
-        entries.insert(token, UiControlHandleEntry { runtime, kind });
+        let identity = controls
+            .registry
+            .validate(token, &kind, &runtime.identity())
+            .map_err(map_ui_control_registry_error)?
+            .identity();
+        entries.insert(
+            token,
+            UiControlHandleEntry {
+                runtime,
+                kind,
+                identity,
+            },
+        );
         Ok(token.into_abi())
     }
 
@@ -1719,6 +1748,258 @@ pub mod abi_support {
             .map_err(map_ui_control_registry_error)?;
         property_owners.insert(property_token, runtime);
         Ok(property_token.into_abi())
+    }
+
+    fn ui_control_entry(
+        control: u64,
+    ) -> Result<(HandleToken, Arc<RuntimeCore>, UiControlKind, ObjectIdentity), UiControlApiError>
+    {
+        let token = HandleToken::from_abi(control).ok_or(UiControlApiError::InvalidHandle)?;
+        let controls = ui_control_handles();
+        let entries = controls
+            .owners
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        let entry = entries
+            .get(&token)
+            .ok_or(UiControlApiError::InvalidHandle)?;
+        Ok((
+            token,
+            Arc::clone(&entry.runtime),
+            entry.kind,
+            entry.identity,
+        ))
+    }
+
+    fn validate_ui_control(
+        control: u64,
+        expected_kind: UiControlKind,
+    ) -> Result<(HandleToken, Arc<RuntimeCore>, ObjectIdentity), UiControlApiError> {
+        let (token, runtime, kind, identity) = ui_control_entry(control)?;
+        if kind != expected_kind {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        ui_control_handles()
+            .registry
+            .validate(token, &kind, &runtime.identity())
+            .map_err(map_ui_control_registry_error)?;
+        Ok((token, runtime, identity))
+    }
+
+    fn tree_child_handle(
+        parent_token: HandleToken,
+        runtime: &Arc<RuntimeCore>,
+        parent_kind: UiControlKind,
+        child_identity: ObjectIdentity,
+    ) -> Result<u64, UiControlApiError> {
+        let child_kind = runtime
+            .ui_control_kind(child_identity)
+            .map_err(|error| match error {
+                RuntimePropertyError::WrongThread => UiControlApiError::WrongThread,
+                RuntimePropertyError::Closed => UiControlApiError::Closed,
+                RuntimePropertyError::Store(UiObjectStoreError::OutOfMemory) => {
+                    UiControlApiError::OutOfMemory
+                }
+                RuntimePropertyError::Store(UiObjectStoreError::InvalidIdentity)
+                | RuntimePropertyError::WrongObjectState => UiControlApiError::InvalidHandle,
+                _ => UiControlApiError::Internal,
+            })?;
+        let controls = ui_control_handles();
+        let mut owners = controls
+            .owners
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        owners
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        let token = runtime
+            .tree_child_handle_of_kinds(
+                &controls.registry,
+                parent_token,
+                parent_kind,
+                child_identity,
+                child_kind,
+            )
+            .map_err(map_ui_control_tree_error)?;
+        owners.insert(
+            token,
+            UiControlHandleEntry {
+                runtime: Arc::clone(runtime),
+                kind: child_kind,
+                identity: child_identity,
+            },
+        );
+        Ok(token.into_abi())
+    }
+
+    pub fn window_content(window: u64) -> Result<Option<u64>, UiControlApiError> {
+        let (token, runtime, _) = validate_ui_control(window, UiControlKind::Window)?;
+        let count = runtime
+            .tree_child_count(&ui_control_handles().registry, token, UiControlKind::Window)
+            .map_err(map_ui_control_tree_error)?;
+        if count == 0 {
+            return Ok(None);
+        }
+        let identity = runtime
+            .tree_child_identity_at(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::Window,
+                0,
+            )
+            .map_err(map_ui_control_tree_error)?;
+        tree_child_handle(token, &runtime, UiControlKind::Window, identity).map(Some)
+    }
+
+    pub fn window_set_content(window: u64, child: u64) -> Result<(), UiControlApiError> {
+        window_set_content_with_peer(window, child, || Ok(()))
+    }
+
+    pub(crate) fn window_set_content_with_peer<F>(
+        window: u64,
+        child: u64,
+        prepare_peer: F,
+    ) -> Result<(), UiControlApiError>
+    where
+        F: FnOnce() -> Result<(), ()>,
+    {
+        let (window_token, runtime, _) = validate_ui_control(window, UiControlKind::Window)?;
+        let (child_token, child_runtime, child_kind, _) = ui_control_entry(child)?;
+        if child_kind == UiControlKind::Window {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !Arc::ptr_eq(&runtime, &child_runtime) {
+            return Err(UiControlApiError::WrongRuntime);
+        }
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        runtime
+            .replace_tree_single_child(
+                &ui_control_handles().registry,
+                window_token,
+                UiControlKind::Window,
+                child_token,
+                child_kind,
+                prepare_peer,
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
+    pub fn window_clear_content(window: u64) -> Result<(), UiControlApiError> {
+        let (token, runtime, _) = validate_ui_control(window, UiControlKind::Window)?;
+        let count = runtime
+            .tree_child_count(&ui_control_handles().registry, token, UiControlKind::Window)
+            .map_err(map_ui_control_tree_error)?;
+        if count == 0 {
+            return Ok(());
+        }
+        let child = runtime
+            .tree_child_identity_at(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::Window,
+                0,
+            )
+            .map_err(map_ui_control_tree_error)?;
+        runtime
+            .detach_tree_child_identity(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::Window,
+                child,
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
+    pub fn stack_panel_insert(
+        panel: u64,
+        index: usize,
+        child: u64,
+    ) -> Result<(), UiControlApiError> {
+        let (panel_token, runtime, _) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        let (child_token, child_runtime, child_kind, _) = ui_control_entry(child)?;
+        if child_kind == UiControlKind::Window {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !Arc::ptr_eq(&runtime, &child_runtime) {
+            return Err(UiControlApiError::WrongRuntime);
+        }
+        runtime
+            .attach_tree_child_at(
+                &ui_control_handles().registry,
+                panel_token,
+                UiControlKind::StackPanel,
+                child_token,
+                child_kind,
+                index,
+                || Ok(()),
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
+    pub fn stack_panel_remove(panel: u64, index: usize) -> Result<(), UiControlApiError> {
+        let (token, runtime, _) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        let child = runtime
+            .tree_child_identity_at(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::StackPanel,
+                index,
+            )
+            .map_err(map_ui_control_tree_error)?;
+        runtime
+            .detach_tree_child_identity(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::StackPanel,
+                child,
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
+    pub fn stack_panel_move(
+        panel: u64,
+        from_index: usize,
+        to_index: usize,
+    ) -> Result<(), UiControlApiError> {
+        let (token, runtime, _) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        runtime
+            .tree_move_child(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::StackPanel,
+                from_index,
+                to_index,
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
+    pub fn stack_panel_child_count(panel: u64) -> Result<usize, UiControlApiError> {
+        let (token, runtime, _) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        runtime
+            .tree_child_count(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::StackPanel,
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
+    pub fn stack_panel_child_at(panel: u64, index: usize) -> Result<u64, UiControlApiError> {
+        let (token, runtime, _) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        let identity = runtime
+            .tree_child_identity_at(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::StackPanel,
+                index,
+            )
+            .map_err(map_ui_control_tree_error)?;
+        tree_child_handle(token, &runtime, UiControlKind::StackPanel, identity)
     }
 
     pub fn ui_control_create_window(runtime: u64) -> Result<u64, UiControlApiError> {

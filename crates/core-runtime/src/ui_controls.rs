@@ -75,12 +75,14 @@ impl UiControlState {
 mod tests {
     use crate::abi_support::{
         UiControlApiError, handle_release, property_get_bool, property_get_utf8,
-        runtime_create_handle, runtime_set_ui_loop_bridge, runtime_shutdown,
+        runtime_create_handle, runtime_set_ui_loop_bridge, runtime_shutdown, stack_panel_child_at,
+        stack_panel_child_count, stack_panel_insert, stack_panel_move, stack_panel_remove,
         ui_control_accessible_name_property, ui_control_button_label_property,
         ui_control_create_button, ui_control_create_stack_panel, ui_control_create_text,
         ui_control_create_text_box, ui_control_create_window, ui_control_is_enabled_property,
         ui_control_text_box_value_property, ui_control_text_content_property,
-        ui_control_window_title_property,
+        ui_control_window_title_property, window_clear_content, window_content, window_set_content,
+        window_set_content_with_peer,
     };
     use std::ffi::c_void;
 
@@ -201,5 +203,142 @@ mod tests {
         handle_release(button).expect("release Button");
         runtime_shutdown(runtime).expect("shutdown Runtime");
         handle_release(runtime).expect("release Runtime");
+    }
+
+    #[test]
+    fn stack_panel_orders_children_and_tree_owners_outlive_public_tokens() {
+        let runtime = runtime_create_handle().expect("create Runtime");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
+        let first = ui_control_create_text(runtime, b"first").expect("create first Text");
+        let second = ui_control_create_text(runtime, b"second").expect("create second Text");
+
+        stack_panel_insert(panel, 0, first).expect("insert first child");
+        stack_panel_insert(panel, 1, second).expect("insert second child");
+        handle_release(first).expect("release first public token");
+        handle_release(second).expect("release second public token");
+        assert_eq!(stack_panel_child_count(panel).expect("count children"), 2);
+
+        stack_panel_move(panel, 0, 1).expect("move first child to end");
+        for (index, expected) in [(0, b"second".as_slice()), (1, b"first".as_slice())] {
+            let child = stack_panel_child_at(panel, index).expect("issue child token");
+            let property = ui_control_text_content_property(child).expect("get child Property");
+            let mut actual = vec![0; expected.len()];
+            assert_eq!(
+                property_get_utf8(property, Some(&mut actual)).expect("read child content"),
+                expected.len()
+            );
+            assert_eq!(actual, expected);
+            handle_release(property).expect("release Property token");
+            handle_release(child).expect("release issued child token");
+        }
+
+        stack_panel_remove(panel, 1).expect("detach child");
+        assert_eq!(
+            stack_panel_child_count(panel).expect("count after remove"),
+            1
+        );
+        assert_eq!(
+            stack_panel_remove(panel, 7),
+            Err(UiControlApiError::InvalidArgument)
+        );
+        handle_release(panel).expect("release StackPanel");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(runtime).expect("release Runtime");
+    }
+
+    #[test]
+    fn window_replacement_and_clear_detach_content() {
+        let runtime = runtime_create_handle().expect("create Runtime");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let old = ui_control_create_text(runtime, b"old").expect("create old content");
+        let new = ui_control_create_stack_panel(runtime).expect("create new content");
+
+        window_set_content(window, old).expect("set initial content");
+        assert_eq!(
+            window_set_content_with_peer(window, new, || Err(())),
+            Err(UiControlApiError::Internal)
+        );
+        assert!(
+            window_content(window)
+                .expect("old content remains")
+                .is_some()
+        );
+        let observed = window_content(window)
+            .expect("get content")
+            .expect("content exists");
+        handle_release(observed).expect("release getter token");
+        window_set_content(window, new).expect("replace content");
+        let detached_property =
+            ui_control_text_content_property(old).expect("old content remains independently owned");
+        handle_release(detached_property).expect("release detached Property");
+        assert_eq!(
+            window_set_content(window, window),
+            Err(UiControlApiError::WrongType)
+        );
+
+        window_clear_content(window).expect("clear content");
+        assert_eq!(window_content(window).expect("get cleared content"), None);
+        window_set_content(window, old).expect("reattach detached content");
+        handle_release(old).expect("release old public token");
+        handle_release(new).expect("release new public token");
+        handle_release(window).expect("release Window");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(runtime).expect("release Runtime");
+    }
+
+    #[test]
+    fn tree_failures_leave_existing_parent_child_state_unchanged() {
+        let runtime = runtime_create_handle().expect("create Runtime");
+        let other_runtime = runtime_create_handle().expect("create other Runtime");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        runtime_set_ui_loop_bridge(other_runtime, noop_wake, 0, None)
+            .expect("install other loop bridge");
+        let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
+        let other_panel = ui_control_create_stack_panel(runtime).expect("create other StackPanel");
+        let child = ui_control_create_stack_panel(runtime).expect("create child StackPanel");
+        let foreign =
+            ui_control_create_text(other_runtime, b"foreign").expect("create foreign Text");
+
+        assert_eq!(
+            stack_panel_insert(panel, 1, child),
+            Err(UiControlApiError::InvalidArgument)
+        );
+        assert_eq!(stack_panel_child_count(panel).expect("empty panel"), 0);
+        stack_panel_insert(panel, 0, child).expect("attach child");
+        assert_eq!(
+            stack_panel_insert(other_panel, 0, child),
+            Err(UiControlApiError::InvalidArgument)
+        );
+        assert_eq!(
+            stack_panel_insert(child, 0, panel),
+            Err(UiControlApiError::InvalidArgument)
+        );
+        assert_eq!(
+            stack_panel_insert(panel, 1, foreign),
+            Err(UiControlApiError::WrongRuntime)
+        );
+        assert_eq!(
+            stack_panel_child_count(panel).expect("original child remains"),
+            1
+        );
+        assert_eq!(
+            stack_panel_child_count(other_panel).expect("other remains empty"),
+            0
+        );
+        assert_eq!(
+            stack_panel_child_count(child).expect("cycle target remains empty"),
+            0
+        );
+
+        handle_release(child).expect("release child public token");
+        handle_release(foreign).expect("release foreign child");
+        handle_release(panel).expect("release panel");
+        handle_release(other_panel).expect("release other panel");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        runtime_shutdown(other_runtime).expect("shutdown other Runtime");
+        handle_release(runtime).expect("release Runtime");
+        handle_release(other_runtime).expect("release other Runtime");
     }
 }

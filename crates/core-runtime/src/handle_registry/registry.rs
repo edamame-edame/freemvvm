@@ -1037,6 +1037,7 @@ mod tests {
             &child,
             &child_pin,
             &[parent_id],
+            0,
             || Ok(()),
         )
         .expect("prepare attach");
@@ -1124,6 +1125,7 @@ mod tests {
             &middle,
             &middle_pin,
             &[root_id],
+            0,
             || Ok(()),
         )
         .expect("prepare root-middle");
@@ -1135,6 +1137,7 @@ mod tests {
             &leaf,
             &leaf_pin,
             &[root_id, middle_id],
+            0,
             || Ok(()),
         )
         .expect("prepare middle-leaf");
@@ -1190,6 +1193,7 @@ mod tests {
                 &child,
                 &child_pin,
                 &[parent_id],
+                0,
                 || Ok(()),
             )
             .err(),
@@ -1202,6 +1206,7 @@ mod tests {
                 &child,
                 &child_pin,
                 &[parent_id],
+                0,
                 || Err(()),
             )
             .err(),
@@ -1214,6 +1219,7 @@ mod tests {
                 &child,
                 &child_pin,
                 &[parent_id, child_id],
+                0,
                 || Ok(()),
             )
             .err(),
@@ -1236,6 +1242,7 @@ mod tests {
                 &child,
                 &child_pin,
                 &[not_container.identity()],
+                0,
                 || Ok(()),
             )
             .err(),
@@ -1272,6 +1279,7 @@ mod tests {
                 &child,
                 &child_pin,
                 &[parent_id],
+                0,
                 || Ok(()),
             );
             (result, parent, child)

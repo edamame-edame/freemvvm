@@ -11,7 +11,7 @@ use crate::property::{
     PropertyChangeQueue, PropertyHandleKind, PropertyState, PropertyValidator, Subscription,
     ValidationError, ValidatorResult,
 };
-use crate::ui_controls::{UiControlProperty, UiControlState};
+use crate::ui_controls::{UiControlKind, UiControlProperty, UiControlState};
 use crate::ui_tree::{LogicalNode, RuntimeTreeStore, TreeError};
 use crate::value::{
     BindingCopyError, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
@@ -1453,6 +1453,75 @@ impl RuntimeCore {
             .map_err(RuntimeTreeError::Tree)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn attach_tree_child_at<K, F>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        child_token: HandleToken,
+        child_kind: K,
+        index: usize,
+        prepare_peer: F,
+    ) -> Result<(), RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+        F: FnOnce() -> Result<(), ()>,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let child_pin = registry
+            .validate(child_token, &child_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .attach_at(&parent_pin, &child_pin, index, prepare_peer)
+            .map_err(RuntimeTreeError::Tree)
+    }
+
+    pub(crate) fn replace_tree_single_child<K, F>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        child_token: HandleToken,
+        child_kind: K,
+        prepare_peer: F,
+    ) -> Result<(), RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+        F: FnOnce() -> Result<(), ()>,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let child_pin = registry
+            .validate(child_token, &child_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let detached_owner = self
+            .ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .replace_single_child(&parent_pin, &child_pin, prepare_peer)
+            .map_err(RuntimeTreeError::Tree)?;
+        drop(detached_owner);
+        Ok(())
+    }
+
     pub(crate) fn detach_tree_child<K>(
         &self,
         registry: &HandleRegistry<K, RuntimeIdentity>,
@@ -1485,6 +1554,68 @@ impl RuntimeCore {
         Ok(())
     }
 
+    pub(crate) fn detach_tree_child_of_kinds<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        child_token: HandleToken,
+        child_kind: K,
+    ) -> Result<(), RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let child_pin = registry
+            .validate(child_token, &child_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let detached = self
+            .ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .detach(parent_pin.identity(), child_pin.identity())
+            .map_err(RuntimeTreeError::Tree)?;
+        drop(detached);
+        Ok(())
+    }
+
+    pub(crate) fn detach_tree_child_identity<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        child: ObjectIdentity,
+    ) -> Result<(), RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let detached = self
+            .ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .detach(parent_pin.identity(), child)
+            .map_err(RuntimeTreeError::Tree)?;
+        drop(detached);
+        Ok(())
+    }
+
     pub(crate) fn tree_child_handle<K>(
         &self,
         registry: &HandleRegistry<K, RuntimeIdentity>,
@@ -1508,6 +1639,111 @@ impl RuntimeCore {
             .lock()
             .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
             .child_handle(registry, parent_pin.identity(), child, kind)
+            .map_err(RuntimeTreeError::Tree)
+    }
+
+    pub(crate) fn tree_child_handle_of_kinds<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        child: ObjectIdentity,
+        child_kind: K,
+    ) -> Result<HandleToken, RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .child_handle(registry, parent_pin.identity(), child, child_kind)
+            .map_err(RuntimeTreeError::Tree)
+    }
+
+    pub(crate) fn tree_child_count<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+    ) -> Result<usize, RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .child_count(parent_pin.identity())
+            .map_err(RuntimeTreeError::Tree)
+    }
+
+    pub(crate) fn tree_child_identity_at<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        index: usize,
+    ) -> Result<ObjectIdentity, RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .child_identity_at(parent_pin.identity(), index)
+            .map_err(RuntimeTreeError::Tree)
+    }
+
+    pub(crate) fn tree_move_child<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        from_index: usize,
+        to_index: usize,
+    ) -> Result<(), RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .move_child(parent_pin.identity(), from_index, to_index)
             .map_err(RuntimeTreeError::Tree)
     }
 
@@ -1557,6 +1793,23 @@ impl RuntimeCore {
             .ok_or(RuntimePropertyError::WrongObjectState)?
             .try_clone()
             .map_err(RuntimePropertyError::Registry)
+    }
+
+    pub(crate) fn ui_control_kind(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<UiControlKind, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        store
+            .resolve(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<UiControlState>()
+            .map(|state| state.kind)
+            .ok_or(RuntimePropertyError::WrongObjectState)
     }
 
     /// Installs the single synchronous validator for a Property without validating its current value.
