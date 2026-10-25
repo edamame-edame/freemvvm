@@ -2055,7 +2055,7 @@
     },
     {
       "id": "UNIT-WRAP-CPP-008",
-      "state": "ready",
+      "state": "complete",
       "scope": "cpp-async-command-worker-post-and-failure-wrapper",
       "sources": [
         "wrappers/cpp/include/freemvvm/command.hpp",

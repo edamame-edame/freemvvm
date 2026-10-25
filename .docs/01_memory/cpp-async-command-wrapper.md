@@ -6,5 +6,5 @@
 - `runtime_post`が失敗した場合、post closureと各handle ownerをworkerへrestoreし、同じworkerからretry可能にする。成功はUI完了適用ではなくpost受付を意味する。
 - C ABI `command_create_async`は成功時だけstart userdata ownershipを移管する。C++ callback rootは失敗時にローカルownerのまま破棄する。
 - focused fake testは`wrappers/cpp/tests/command_tests.cpp`、relocated package consumerは`wrappers/cpp/tests/package_consumer/main.cpp`。実行入口は`.venv/Scripts/python.exe tools/dev.py cpp-command-test`と`cpp-package-test`。
-- 2026-10-25 Windows localでfocused fake ABI、relocated CMake package consumer、`tools/dev.py check`がpass。unit `UNIT-WRAP-CPP-008`はWindows/Linux CI確認前のready。
+- 2026-10-25 Windows localでfocused fake ABI、relocated CMake package consumer、`tools/dev.py check`がpass。commit `47623f0`でLinux GCCが`std::length_error`の宣言不足を検出したため`<stdexcept>`を明示追加し、修正版`4c987a6`をpush。Windows/Ubuntu CI run `40182098140`が全gate passし`UNIT-WRAP-CPP-008` complete。
 - WindowsでCMake cacheを残したまま`tools/dev.py`が別MSVC toolsetを初期化するとcompiler/header不一致が起きることがある。`out/cmake/dev`の生成物だけを再作成後、通常の`tools/dev.py`入口で検証した。

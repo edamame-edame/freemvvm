@@ -1,7 +1,7 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 
 - 文書版: 0.4
-- 状態: 0.1全文承認済み（利用者、2026-10-17）。0.2 C# Property Bindingおよび0.3 C# Commandの試験設計・実装・Windows/Linux CI成功を記録済み。0.4全文は利用者承認済み（2026-10-25）。C++ Async Command focused fake ABIとrelocated package consumerは実装・Windows local pass。C++ UI Control試験は未実装
+- 状態: 0.1全文承認済み（利用者、2026-10-17）。0.2 C# Property Bindingおよび0.3 C# Commandの試験設計・実装・Windows/Linux CI成功を記録済み。0.4全文は利用者承認済み（2026-10-25）。C++ Async Command focused fake ABI・relocated package consumerは実装済み、Windows/Ubuntu CI run [40182098140](https://github.com/edamame-edame/freemvvm/actions/runs/40182098140)成功。C++ UI Control試験は未実装
 - 更新日: 2026-10-25
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
@@ -96,7 +96,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-24 | 0.3追加 | — | 承認済みC# wrapper DD v1.4と実装開始指示に基づき`UNIT-WRAP-CS-COMMAND-001`のfocused fake ABI・real C ABI consumer試験を登録。試験実装・実行結果は別管理 |
 | 2026-10-24 | 0.3実行記録 | — | `tools/dev.py csharp-command-test`、`csharp-command-consumer-test`、`check`、`minimum`と[Windows/Linux CI run 40074886918](https://github.com/edamame-edame/freemvvm/actions/runs/40074886918)がsuccess |
 | 2026-10-25 | 0.4改訂案 | — | 承認済みC++ wrapper DD v1.4に基づきCommand/worker、Control、Window close-requestのfocused fake ABIとrelocated package consumer案を追加。直後に利用者承認 |
-| 2026-10-25 | 0.4実行記録 | 利用者 / Codex | C++ Command/worker focused fake ABIとrelocated package consumerを利用者承認後に実装し、`cpp-command-test`、`cpp-package-test`、`check`がWindows local pass。unit `UNIT-WRAP-CPP-008`はCI未確認。UI Control casesは未着手 |
+| 2026-10-25 | 0.4実行記録 | 利用者 / Codex | C++ Command/worker focused fake ABIとrelocated package consumerを利用者承認後に実装。`cpp-command-test`、`cpp-package-test`、`check`がWindows local passし、unit `UNIT-WRAP-CPP-008`のWindows/Ubuntu CI run [40182098140](https://github.com/edamame-edame/freemvvm/actions/runs/40182098140)も成功。UI Control casesは未着手 |
 
 ## 改訂履歴
 
