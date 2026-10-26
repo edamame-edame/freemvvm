@@ -39,11 +39,10 @@ use freemvvm_core::abi_support::{
     property_validator_register_bool as core_property_validator_register_bool,
     property_validator_register_i64 as core_property_validator_register_i64,
     property_validator_register_utf8 as core_property_validator_register_utf8,
-    runtime_create_handle, runtime_dispatch_turn, runtime_host_begin_event, runtime_host_end_event,
-    runtime_host_stopped, runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post,
-    runtime_request_shutdown, runtime_retain_handle as core_runtime_retain_handle,
-    runtime_set_ui_loop_bridge, runtime_shutdown, shutdown_request_query,
-    stack_panel_child_at as core_stack_panel_child_at,
+    runtime_dispatch_turn, runtime_host_begin_event, runtime_host_end_event, runtime_host_stopped,
+    runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post, runtime_request_shutdown,
+    runtime_retain_handle as core_runtime_retain_handle, runtime_set_ui_loop_bridge,
+    runtime_shutdown, shutdown_request_query, stack_panel_child_at as core_stack_panel_child_at,
     stack_panel_child_count as core_stack_panel_child_count,
     stack_panel_insert as core_stack_panel_insert, stack_panel_move as core_stack_panel_move,
     stack_panel_orientation as core_stack_panel_orientation,
@@ -71,6 +70,9 @@ use freemvvm_core::abi_support::{
     window_content as core_window_content, window_open as core_window_open,
     window_set_content as core_window_set_content,
 };
+
+#[cfg(target_os = "linux")]
+use freemvvm_core::abi_support::runtime_create_handle_with_platform_factory;
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
 use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -242,7 +244,12 @@ pub unsafe extern "C" fn ui_abi_1_runtime_create(
         return UI_INVALID_ARGUMENT;
     }
 
-    match catch_runtime_creation(runtime_create_handle) {
+    #[cfg(target_os = "linux")]
+    let create = || runtime_create_handle_with_platform_factory(freemvvm_platform_linux::factory());
+    #[cfg(not(target_os = "linux"))]
+    let create = || freemvvm_core::abi_support::runtime_create_handle();
+
+    match catch_runtime_creation(create) {
         Ok(handle) => {
             // SAFETY: the required output pointer was checked non-null above.
             unsafe { out_runtime.write(handle) };

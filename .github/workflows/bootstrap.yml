@@ -50,6 +50,8 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          sudo apt-get update
+          sudo apt-get install --yes libdrm-dev libgbm-dev
           python -m venv .venv
           ./.venv/bin/python -m pip install -r tools/requirements-dev.txt
       - name: Run all bootstrap gates (Windows)
