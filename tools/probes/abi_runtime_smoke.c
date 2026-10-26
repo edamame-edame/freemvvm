@@ -61,7 +61,7 @@ int main(void) {
   ui_status window_open_status = ui_abi_1_window_open(window, 0);
   if (ui_abi_1_has_feature(8, &controls_supported) != UI_OK ||
       controls_supported != 1 ||
-      (window_open_status != UI_OK && window_open_status != UI_INTERNAL) ||
+      (window_open_status != UI_OK && window_open_status != UI_INTERNAL_ERROR) ||
       ui_abi_1_window_close(window, 0) != UI_OK) {
 #else
   if (ui_abi_1_has_feature(8, &controls_supported) != UI_OK ||

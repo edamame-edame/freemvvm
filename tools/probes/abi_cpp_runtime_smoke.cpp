@@ -43,12 +43,12 @@ int main() {
   ui_handle window = 0;
   ui_bool controls_supported = 0;
 #if defined(__linux__)
-  ui_status window_open_status = UI_INTERNAL;
+  ui_status window_open_status = UI_INTERNAL_ERROR;
   if (ui_abi_1_has_feature(8, &controls_supported) != UI_OK ||
       controls_supported != 1 ||
       ui_abi_1_window_create(runtime, &window, nullptr) != UI_OK || window == 0 ||
       ((window_open_status = ui_abi_1_window_open(window, nullptr)) != UI_OK &&
-       window_open_status != UI_INTERNAL) ||
+       window_open_status != UI_INTERNAL_ERROR) ||
       ui_abi_1_window_close(window, nullptr) != UI_OK) {
 #else
   if (ui_abi_1_has_feature(8, &controls_supported) != UI_OK ||
