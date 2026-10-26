@@ -2,9 +2,42 @@ use crate::handle_registry::registry::ObjectIdentity;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Platform-facing peer contract exposed only through the private Core/C-ABI support surface.
+///
+/// A peer owns one Window's native surface resources. Implementations must keep failed `open`
+/// attempts retryable and must not mutate Core UI state.
+pub trait PlatformWindowPeer: Send + Sync {
+    fn open(&self) -> Result<(), PlatformOperationError>;
+    fn close(&self) -> Result<(), PlatformOperationError>;
+}
+
+/// Creates lightweight Window peers for one Runtime's selected platform profile.
+///
+/// Factory construction must not open a DRM device or allocate display resources; that work is
+/// deferred until the returned peer's `open` method is called.
+pub trait PlatformRuntimeFactory: Send + Sync {
+    fn create_window_peer(&self) -> Result<Arc<dyn PlatformWindowPeer>, PlatformOperationError>;
+}
+
+/// Opaque failure at the platform SPI boundary; detailed diagnostics remain backend-owned.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PlatformOperationError;
+
 pub(crate) trait WindowPeerAdapter: Send + Sync {
     fn open(&self, window: ObjectIdentity) -> Result<(), ()>;
     fn close(&self, window: ObjectIdentity) -> Result<(), ()>;
+}
+
+pub(crate) struct FactoryWindowPeer(pub(crate) Arc<dyn PlatformWindowPeer>);
+
+impl WindowPeerAdapter for FactoryWindowPeer {
+    fn open(&self, _: ObjectIdentity) -> Result<(), ()> {
+        self.0.open().map_err(|_| ())
+    }
+
+    fn close(&self, _: ObjectIdentity) -> Result<(), ()> {
+        self.0.close().map_err(|_| ())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -39,6 +72,10 @@ pub(crate) struct WindowLifecycle {
 impl WindowLifecycle {
     pub(crate) fn set_peer(&mut self, peer: Arc<dyn WindowPeerAdapter>) {
         self.peer = Some(peer);
+    }
+
+    pub(crate) fn has_peer(&self) -> bool {
+        self.peer.is_some()
     }
 
     pub(crate) fn is_open(&self) -> bool {

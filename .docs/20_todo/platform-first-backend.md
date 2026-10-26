@@ -1,7 +1,7 @@
 # 0.0.1 初期Platform backendの設計・実装計画
 
 - 計画版: 0.1
-- 状態: 計画全文承認・commit済み。要求/DD/Core差分監査済み。DD v1.2とtest design 0.4全文承認済み。実装未着手・実装開始未承認
+- 状態: 計画・DD v1.2・test design 0.4全文承認済み。実装開始承認済み。UNIT-CORE-073を実装しfocused test local pass、同revision CI待ち。後続unitは未着手
 - 作成日: 2026-10-26
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/platform-adapter-first-backend`
@@ -47,7 +47,7 @@
 2. [x] この計画0.1についてscope・profile・除外範囲・branch関係の利用者レビューを受け、「ok」により計画全文の承認を得た（2026-10-26）。設計・実装開始承認とは分けて記録する。
 3. [x] 実装前にRQ、ADR、BD、DD、test designと既存Core/C ABIの実装状態を照合。未定義のRuntime/profile/factory接続、production WindowPeer、Visual snapshot/Renderer、UI-thread event/frame completion integrationを列挙した（監査結果は本節）。
 4. [x] Platform DD v1.2とUI unit-test design 0.4を作成し、2026-10-26に利用者が文書全体を承認。要求の変更はなく、新unit 3件を承認済み設計・caseに対応させて`tools/units.yaml`へplanned登録した。実装・実行は未着手。
-5. [ ] 設計とunit-test contractの承認後、利用者の実装開始指示を得る。Core変更なので`impl-rust/platform-adapter-first-backend`でのみ実装し、他言語wrapper branchを親やmerge元にしない。
+5. [x] DD/test design承認後、利用者の「ok」（2026-10-26）を実装開始指示として受けた。Core変更は`impl-rust/platform-adapter-first-backend`で実施し、他言語wrapper branchを親やmerge元にしない。
 6. [ ] focused unit/consumer、Linux build、minimum toolchain、`tools/dev.py check`、document linksを実施し、同じrevisionへ結果を記録する。各実装unitを日本語commit/pushし、その実装SHAのWindows/Linux CI成功後にcompleteへ更新する。
 7. [ ] Debian 12 x64とRPi 4 AArch64の実機/profile試験を実行し、実行環境、表示機器、driver/backend、report、SHAをrelease testへ記録する。CI build成功だけで実機確認を完了扱いしない。
 
@@ -64,3 +64,4 @@
 | --- | --- | --- | --- |
 | 2026-10-26 | 計画0.1 | 利用者承認 | 利用者「ok」によりscope・profile・除外範囲・branch関係を含む計画全文を承認。計画のcommit/pushを許可。DD承認・実装開始・release判断は別ゲート |
 | 2026-10-26 | Platform DD 1.2 / UI unit-test design 0.4 | 利用者承認 | 利用者「ok」により両文書全体を承認。planned unit 3件を台帳へ登録。実装開始・試験実装/実行・実機確認は別ゲート |
+| 2026-10-26 | 実装開始 / UNIT-CORE-073 | 利用者承認 | DD/test design承認後の利用者「ok」を実装開始指示として扱う。対象はCore factory/Window peer unit。後続unitの実装承認範囲を先取りしない |

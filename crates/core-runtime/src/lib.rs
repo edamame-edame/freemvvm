@@ -47,8 +47,10 @@ pub mod abi_support {
         UiControlKind, UiControlProperty, UiControlPropertyOwner, UiControlState,
     };
     use crate::ui_tree::TreeError;
-    pub use crate::ui_window::CloseDecision;
     use crate::ui_window::WindowLifecycleError;
+    pub use crate::ui_window::{
+        CloseDecision, PlatformOperationError, PlatformRuntimeFactory, PlatformWindowPeer,
+    };
     use crate::value::{
         DecimalValue, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind,
     };
@@ -1198,7 +1200,23 @@ pub mod abi_support {
 
     /// Creates one Runtime and registers its owning opaque handle.
     pub fn runtime_create_handle() -> Result<u64, RuntimeCreateError> {
-        let runtime = Arc::new(RuntimeCore::new().map_err(|_| RuntimeCreateError::Internal)?);
+        register_runtime_handle(None)
+    }
+
+    /// Creates one Runtime bound to a private platform factory without changing the public C ABI.
+    pub fn runtime_create_handle_with_platform_factory(
+        factory: Arc<dyn PlatformRuntimeFactory>,
+    ) -> Result<u64, RuntimeCreateError> {
+        register_runtime_handle(Some(factory))
+    }
+
+    fn register_runtime_handle(
+        factory: Option<Arc<dyn PlatformRuntimeFactory>>,
+    ) -> Result<u64, RuntimeCreateError> {
+        let runtime = Arc::new(
+            RuntimeCore::new_with_platform_factory(factory)
+                .map_err(|_| RuntimeCreateError::Internal)?,
+        );
         process_runtime_handles()
             .insert(&runtime)
             .map(HandleToken::into_abi)

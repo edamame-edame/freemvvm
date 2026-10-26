@@ -93,9 +93,10 @@ impl UiControlState {
 mod tests {
     use crate::abi_support::{
         UiControlApiError, handle_release, property_get_bool, property_get_utf8, property_set_bool,
-        runtime_create_handle, runtime_dispatch_turn, runtime_set_ui_loop_bridge, runtime_shutdown,
-        stack_panel_child_align, stack_panel_child_at, stack_panel_child_count, stack_panel_insert,
-        stack_panel_move, stack_panel_orientation, stack_panel_remove, stack_panel_set_child_align,
+        runtime_create_handle, runtime_create_handle_with_platform_factory, runtime_dispatch_turn,
+        runtime_set_ui_loop_bridge, runtime_shutdown, stack_panel_child_align,
+        stack_panel_child_at, stack_panel_child_count, stack_panel_insert, stack_panel_move,
+        stack_panel_orientation, stack_panel_remove, stack_panel_set_child_align,
         stack_panel_set_orientation, ui_control_accessible_name_property,
         ui_control_button_label_property, ui_control_create_button, ui_control_create_stack_panel,
         ui_control_create_text, ui_control_create_text_box, ui_control_create_window,
@@ -126,7 +127,101 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct PlatformProbe {
+        created: AtomicUsize,
+        opened: AtomicUsize,
+        closed: AtomicUsize,
+        fail_next_create: std::sync::atomic::AtomicBool,
+    }
+
+    struct TestPlatformFactory(Arc<PlatformProbe>);
+
+    impl crate::abi_support::PlatformRuntimeFactory for TestPlatformFactory {
+        fn create_window_peer(
+            &self,
+        ) -> Result<
+            Arc<dyn crate::abi_support::PlatformWindowPeer>,
+            crate::abi_support::PlatformOperationError,
+        > {
+            self.0.created.fetch_add(1, Ordering::SeqCst);
+            if self.0.fail_next_create.swap(false, Ordering::SeqCst) {
+                return Err(crate::abi_support::PlatformOperationError);
+            }
+            Ok(Arc::new(TestPlatformWindowPeer(Arc::clone(&self.0))))
+        }
+    }
+
+    struct TestPlatformWindowPeer(Arc<PlatformProbe>);
+
+    impl crate::abi_support::PlatformWindowPeer for TestPlatformWindowPeer {
+        fn open(&self) -> Result<(), crate::abi_support::PlatformOperationError> {
+            self.0.opened.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn close(&self) -> Result<(), crate::abi_support::PlatformOperationError> {
+            self.0.closed.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
     unsafe extern "C" fn noop_wake(_: *mut c_void, _: u32) {}
+
+    #[test]
+    fn platform_factory_is_lazy_and_window_close_preserves_core_control() {
+        let probe = Arc::new(PlatformProbe::default());
+        let factory: Arc<dyn crate::abi_support::PlatformRuntimeFactory> =
+            Arc::new(TestPlatformFactory(Arc::clone(&probe)));
+        let runtime = runtime_create_handle_with_platform_factory(factory)
+            .expect("create Runtime with platform factory");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+
+        assert_eq!(probe.created.load(Ordering::SeqCst), 0);
+        assert_eq!(probe.opened.load(Ordering::SeqCst), 0);
+        assert_eq!(window_open(window), Ok(1));
+        assert_eq!(probe.created.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.opened.load(Ordering::SeqCst), 1);
+        assert_eq!(window_open(window), Ok(1));
+        assert_eq!(probe.opened.load(Ordering::SeqCst), 1);
+
+        window_close(window).expect("close only the platform peer");
+        assert_eq!(probe.closed.load(Ordering::SeqCst), 1);
+        let title = ui_control_window_title_property(window).expect("Core Window remains alive");
+        handle_release(title).expect("release title Property");
+        assert_eq!(window_open(window), Ok(2));
+        assert_eq!(probe.created.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.opened.load(Ordering::SeqCst), 2);
+
+        window_close(window).expect("close reopened peer");
+        handle_release(window).expect("release Window");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(runtime).expect("release Runtime");
+    }
+
+    #[test]
+    fn platform_factory_creation_failure_leaves_window_retryable() {
+        let probe = Arc::new(PlatformProbe::default());
+        probe.fail_next_create.store(true, Ordering::SeqCst);
+        let factory: Arc<dyn crate::abi_support::PlatformRuntimeFactory> =
+            Arc::new(TestPlatformFactory(Arc::clone(&probe)));
+        let runtime = runtime_create_handle_with_platform_factory(factory)
+            .expect("create Runtime with platform factory");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+
+        assert_eq!(window_open(window), Err(UiControlApiError::Internal));
+        assert_eq!(probe.opened.load(Ordering::SeqCst), 0);
+        assert_eq!(window_open(window), Ok(1));
+        assert_eq!(probe.created.load(Ordering::SeqCst), 2);
+        assert_eq!(probe.opened.load(Ordering::SeqCst), 1);
+
+        window_close(window).expect("close platform peer");
+        handle_release(window).expect("release Window");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(runtime).expect("release Runtime");
+    }
 
     #[derive(Default)]
     struct CloseRequestProbe {

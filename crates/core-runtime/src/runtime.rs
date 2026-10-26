@@ -14,7 +14,10 @@ use crate::property::{
 use crate::ui_controls::{UiControlKind, UiControlProperty, UiControlState};
 use crate::ui_focus::FocusManager;
 use crate::ui_tree::{LogicalNode, RuntimeTreeStore, TreeError};
-use crate::ui_window::{CloseDecision, WindowLifecycleError, WindowPeerAdapter};
+use crate::ui_window::{
+    CloseDecision, FactoryWindowPeer, PlatformRuntimeFactory, WindowLifecycleError,
+    WindowPeerAdapter,
+};
 use crate::value::{
     BindingCopyError, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
 };
@@ -1102,6 +1105,7 @@ impl RuntimeIdentity {
 #[allow(dead_code)]
 pub(crate) struct RuntimeCore {
     identity: RuntimeIdentity,
+    platform_factory: Option<Arc<dyn PlatformRuntimeFactory>>,
     command_operation_ids: OperationIdIssuer,
     ui_thread: UiThreadContext,
     cleanup: Arc<RuntimeCleanupQueue>,
@@ -1193,6 +1197,12 @@ impl Drop for PropertyDeliveryGuard<'_> {
 #[allow(dead_code)]
 impl RuntimeCore {
     pub(crate) fn new() -> Result<Self, RuntimeCoreError> {
+        Self::new_with_platform_factory(None)
+    }
+
+    pub(crate) fn new_with_platform_factory(
+        platform_factory: Option<Arc<dyn PlatformRuntimeFactory>>,
+    ) -> Result<Self, RuntimeCoreError> {
         let identity = RuntimeIdentity::issue().ok_or(RuntimeCoreError::IdentityUnavailable)?;
         let ui_thread = UiThreadContext::capture();
         let cleanup = RuntimeCleanupQueue::new_for_ui_thread(ui_thread);
@@ -1315,6 +1325,7 @@ impl RuntimeCore {
 
         Ok(Self {
             identity,
+            platform_factory,
             command_operation_ids: OperationIdIssuer::new(),
             ui_thread,
             cleanup,
@@ -2150,6 +2161,31 @@ impl RuntimeCore {
                 RuntimePropertyError::Closed => WindowLifecycleError::InvalidState,
                 _ => WindowLifecycleError::InvalidState,
             })?;
+        let has_peer = {
+            let store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            store
+                .resolve(identity)
+                .map_err(|_| WindowLifecycleError::InvalidState)?
+                .downcast_ref::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .and_then(|state| state.window.as_ref())
+                .ok_or(WindowLifecycleError::InvalidState)?
+                .has_peer()
+        };
+        if !has_peer {
+            let factory = self
+                .platform_factory
+                .as_ref()
+                .ok_or(WindowLifecycleError::Unsupported)?;
+            let peer = factory
+                .create_window_peer()
+                .map_err(|_| WindowLifecycleError::PeerFailure)?;
+            self.window_set_peer(identity, Arc::new(FactoryWindowPeer(peer)))
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+        }
         let (generation, peer) = {
             let mut store = self
                 .ui_objects

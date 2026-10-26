@@ -3513,9 +3513,9 @@
     },
     {
       "id": "UNIT-CORE-073",
-      "state": "planned",
+      "state": "ready",
       "scope": "platform-runtime-factory-and-window-peer-lifecycle",
-      "sources": ["crates/core-runtime/src/platform/**", "crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/ui_window.rs"],
+      "sources": ["crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/ui_window.rs", "crates/core-runtime/src/ui_controls.rs", "crates/core-runtime/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
       "depends_on": ["UNIT-CORE-072"],
       "design": [
@@ -3536,7 +3536,7 @@
       "tests": [
         {
           "id": "UT-PLATFORM-ADAPTER-001",
-          "command": ["cargo", "test", "-p", "freemvvm-core", "platform_adapter"]
+          "command": ["cargo", "test", "-p", "freemvvm-core", "platform_factory_"]
         }
       ]
     },
