@@ -3542,7 +3542,7 @@
     },
     {
       "id": "UNIT-CORE-074",
-      "state": "ready",
+      "state": "complete",
       "scope": "immutable-scene-snapshot-and-frame-completion-contract",
       "sources": ["crates/core-runtime/src/platform/scene.rs", "crates/core-runtime/src/platform/frame.rs", "crates/core-runtime/src/platform/mod.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
