@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 1.1
+- 文書版: 1.2
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-10-26
+- 状態: 1.2全文承認済み（利用者、2026-10-26）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -36,6 +36,23 @@ Control APIとWindow close requestのCore処理は[UIクラス設計](../ui/cont
 ### 実現設計
 
 SceneSnapshotはCore UI値の不変copyを所有しRendererからControlをstrong保持しない。GPU fenceはbackend ownerが保持し、surface再生成では旧generationのcompletionを無視する。Linuxのraw inputはlibinput+xkbcommonをAdapterに閉じ、TSF/IBus/fcitx等のIMEは別session adapterとして同じTextBox APIへ渡す。候補順の評価と正式profileへの採用を別に記録する。
+
+### RuntimeからLinux DRM/KMS backendへの接続
+
+この節はRQ-11-014、RQ-11-020、RQ-11-022と既承認1.1のLinux DRM/KMS+GBM/EGL/OpenGL ES 3選択を、現行Coreのprivate Window peer seamへ接続する。既承認のprofileやfallback方針は変更しない。
+
+| 対象 | 実現仕様 | 境界 |
+| --- | --- | --- |
+| profile選択 | Linux target artifactがDRM/KMS+GBM/EGL/GLES3 profileを選ぶ。初期段階では既存`runtime_create`のABIを増やさず、Runtimeごとに一つのprofileを使う | profileはtarget artifact/manifestで識別し、別profileを同一artifact内で動的選択できるとは主張しない |
+| crate構成 | `core-runtime`はPlatform SPIとCore-owned SceneSnapshotを保持し、backend実装`platform-linux`はCore SPIへ依存、`c-abi`がtarget別backendを組み合わせてRuntime生成時に注入する | `core-runtime`から`platform-linux`へ依存させず、依存循環を作らない。Windows/未対応targetは別backendが接続されるまで既存Unsupported境界を維持 |
+| 初期化 | Runtime生成ではDRM deviceを開かず、最初のWindow open時にAdapter factoryがdevice/connector/GBM/EGL/GLES resourceを準備する | device unavailableやpermission failureはWindow open failureとして返し、Core Window/content/Propertyを保持。software rendererへfallbackしない |
+| 責務境界 | `core-runtime::abi_support`内のRust internal `PlatformRuntimeFactory`がWindowごとの`WindowPeerAdapter`を作る。Adapterはpeer/renderer資源を所有し、Core側は意味状態とimmutable SceneSnapshotを正本にする | C ABI compositionがfactoryをRuntimeへ注入し、公開C ABIにraw DRM/EGL handlesやnew runtime optionsを追加しない。C ABIの公開signatureは変更しない案 |
+| Window open | Window peer作成・surface準備が成功した後にだけCore lifecycleをopenへcommitする。generation付きpeerをWindowへ関連付け、失敗時はCoreOnlyのまま明示retry可能 | surface準備成功とframe Presentedは別状態。`window_open`成功だけからpixel presentationを推論しない |
+| scene/frame | UI threadでlayout完了後にimmutable SceneSnapshotを作り、Rendererへ渡す。FrameStateのPresentedはbackend completionが同generation/revisionで確定した場合だけ公開する | submitはPresentedではない。stale completionは破棄し、描画failureでCore状態を巻き戻さない |
+| event/UI thread | DRM/backend completion eventをcopyし、既存RuntimeのUI-thread dispatch queueへenqueueする。backend threadからCore/user callbackを直接実行しない。`runtime_dispatch_turn`はshutdown controlの既定優先を保ちながら、bounded turn内でcompletionを反映する | 初期Window/scene sliceはraw keyboard/pointer/IME routingを実装しない。page-flip/present completionは対象に含む |
+| close/shutdown | 明示Window peer closeはUI thread上でsurface→EGL/GBM→DRM resourceを解放し、Core Window/Treeを維持する。Runtime shutdownは全peerを既定のsafe pointで停止・解放してからAdapterを破棄する | OS close intentとinputは後続unit。shutdown中の失敗は既存CleanupTicket/diagnostic契約に従い、worker破棄へ逃がさない |
+
+初期実装を`Adapter/profile connection`、`Scene snapshot/renderer`、`DRM present completion/resource loss`の独立unitへ分け、各unitにCore fake adapter試験を対応させる案とする。Linux hardware profileの実画面・device accessはCore/CI fake結果とは分離したsystem/profile試験で確認する。traitのmethod signature、DRM connector/device選択、native dependencyとlink方式、既存ABI status/errorへのfailure mappingは全文レビューで確定し、実装上の都合だけで追加しない。
 
 ## Text engine・IME・OS Accessibility
 
@@ -161,3 +178,5 @@ IMEとAXはWindowを強保持するための関連にせず、OS接続の失効�
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-10-26 | 1.2改訂案 | RQ-11 v0.5と現行Coreを照合し、Linux DRM/KMS first backendのRuntime/profile/Window peer/SceneSnapshot/frame completion/shutdown接続を具体化。全文レビュー待ち |
+| 2026-10-26 | 1.2全文 | 利用者の「ok」によりRuntime/WindowからLinux backendへの接続契約を含む文書全体を承認。実装開始・試験合格は別管理 |

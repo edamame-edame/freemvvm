@@ -1,8 +1,8 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
-- 文書版: 0.3
-- 状態: 0.2全文承認済み（利用者、2026-10-24）。0.3 C ABI Control試験改訂案全文承認済み（利用者、2026-10-24）。UT-CORE-TREE-OWNER-001とTreeCoordinatorのUT-TREE-003は実装・実行済み。0.3追加試験は未実装・未実行
-- 更新日: 2026-10-24
+- 文書版: 0.4
+- 状態: 0.4全文承認済み（利用者、2026-10-26）。Linux Platform Adapter試験は未実装・未実行。既存試験の実装状態は別管理
+- 更新日: 2026-10-26
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
 
@@ -56,6 +56,17 @@ active Windowとfocusable/enabledなTextBox二つ、非focusable Containerを用
 | <a id="ut-text-005"></a>UT-TEXT-005 | 同一編集のBinding伝播、Property通知、編集snapshot通知に順序ログを付ける | RQ-09-066の順序とsnapshot整合をoracleにする。DDの通知順保留記述解消まで実装入口はblocked | [RQ-09-066](../11_requirements/RQ-09_ui-scope.md#rq-09-066)<br/>[TC-IME-01](../30_release_test/requirement-test-matrix.md#case-tc-ime-01)、[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01) |
 | <a id="ut-text-006"></a>UT-TEXT-006 | preedit中に外部から異なる確定値を設定し、その後旧sessionのupdate/commitを投入 | 編集値を新確定値へ置換しfeedback/reasonを初期化。旧sessionを無効化し遅延入力で新値を上書きしない | [RQ-09-042](../11_requirements/RQ-09_ui-scope.md#rq-09-042)<br/>[TC-IME-01](../30_release_test/requirement-test-matrix.md#case-tc-ime-01)、[TC-TRACE-01](../30_release_test/requirement-test-matrix.md#case-tc-trace-01)、[TC-BIND-01](../30_release_test/requirement-test-matrix.md#case-tc-bind-01) |
 
+## Linux Platform Adapter・Scene/frame試験設計
+
+以下は承認済みPlatform DD 1.2に対応する試験設計であり、実装済みtestではない。fake adapter testsはCore state/failure境界を検証し、DRM/GBM/EGL/GLES deviceの実機動作とは分離する。
+Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-001](../30_release_test/system-scenarios.md#rel-profile-001)の証跡として記録する。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-platform-adapter-001"></a>UT-PLATFORM-ADAPTER-001 | fake Platform factoryでRuntime生成、Window open、open失敗・再試行・明示closeを制御する。generationとWindow owner/Treeを記録する | Runtime生成だけでdevice openしない。peer準備成功後だけWindow openをcommit。失敗時はCoreOnlyとcontent/Propertyを維持し再試行できる。closeはpeerのみを解放しCore Windowを破棄しない | [RQ-09-005](../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-11-009](../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-platform-frame-001"></a>UT-PLATFORM-FRAME-001 | fake Rendererにimmutable SceneSnapshotを渡し、prepare/submit/completionを別々に成功・失敗・遅延させる | layout revisionと同じsnapshotだけを提出。submitだけではPresentedにせず、同generation/revision completionでのみ完了。failure時dirtyとCore stateを保持しstale completionを破棄 | [RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-platform-loss-001"></a>UT-PLATFORM-LOSS-001 | fake backendからsurface/device lossをframe中およびshutdown中に返し、旧generation eventと再試行を注入する | SurfaceLost/Recreating境界を反映し、Core UI stateを保持。旧peer event/completionを拒否し、暗黙software fallbackなし。peer resourcesはUI safe point上で一度だけ解放し、失敗cleanupは既存ticketで保持 | [RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-11-019](../11_requirements/RQ-11_platform.md#rq-11-019)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+
 ## 承認履歴
 
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
@@ -66,6 +77,8 @@ active Windowとfocusable/enabledなTextBox二つ、非focusable Containerを用
 | 2026-10-24 | 0.2全文 | 利用者 | 「ok」によりTree owner寿命試験を含む文書全体を承認。試験の実装・実行は別管理 |
 | 2026-10-24 | 0.3改訂案 | — | 初期ControlのC ABI creation/Property/Tree/Window close/Layout境界を試験可能な操作へ対応。文書全体レビュー待ち |
 | 2026-10-24 | 0.3全文 | 利用者 | 「ok」によりC ABI Control境界の試験案全体を承認。新規試験の実装・実行は別管理 |
+| 2026-10-26 | 0.4改訂案 | — | Linux DRM/KMS backendのAdapter/Window peer、Scene/frame、resource lossとhardware profile試験案を追加。文書全体レビュー待ち |
+| 2026-10-26 | 0.4全文 | 利用者 | 「ok」によりLinux Platform Adapter/Scene/frame/resource lossの試験設計全体を承認。試験実装・実行・実機確認は別管理 |
 
 ## 改訂履歴
 
@@ -74,3 +87,4 @@ active Windowとfocusable/enabledなTextBox二つ、非focusable Containerを用
 | 0.1 | 2026-10-17 | テスト文書作成指示に基づき前提・操作・観測・期待値・後始末を具体化 | Codex | 本版全文のレビュー待ち。未実装・未実行 |
 | 0.2 | 2026-10-24 | CoreObjectControlのTree internal ownerとcleanup reservationの寿命・失敗境界を具体化 | Codex | 文書全体は承認済み。UT-CORE-TREE-OWNER-001とUT-TREE-003を実装・実行済み |
 | 0.3 | 2026-10-24 | 初期UI Control C ABIの生成、共通Property、Tree、StackPanel設定、Window close requestを試験行へ追加 | Codex | 文書全体は承認済み。新規試験は未実装・未実行 |
+| 0.4 | 2026-10-26 | Linux DRM/KMS Adapter/Window peer、Scene/frame、device lossとprofile integrationの試験案を追加 | Codex | 文書全体承認済み。試験実装・実機確認は別段階 |

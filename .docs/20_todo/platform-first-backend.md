@@ -1,7 +1,7 @@
 # 0.0.1 初期Platform backendの設計・実装計画
 
 - 計画版: 0.1
-- 状態: 計画全文を利用者が「ok」で承認（2026-10-26）。計画commit/push済み。DD・試験設計・実装開始は別承認
+- 状態: 計画全文承認・commit済み。要求/DD/Core差分監査済み。DD v1.2とtest design 0.4全文承認済み。実装未着手・実装開始未承認
 - 作成日: 2026-10-26
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/platform-adapter-first-backend`
@@ -27,6 +27,16 @@
 - 対象profile候補はDebian 12 x64とRPi 4 AArch64実機。ARMv7は要求どおりcross-build確認に限り、他profileへsupportを拡張表示しない。
 - Core fake adapter / mock deviceで境界・lifecycle・failureを自動検証し、Linux CI buildとRPi 4実機確認の合格条件・手順・必要な証跡を分ける。実機試験は対応機器上の実測が済むまで未実施と記録する。
 
+## 要求・設計・現行Coreの差分監査
+
+2026-10-26に、承認済みRQ-11 v0.5、Platform DD v1.1、共通C ABI DD v1.3、現行`impl-rust/core-ui-controls-c-abi`のCore実装を照合した。
+
+- 要求はWindows 11 x64、Debian 12 x64、ARMv7/AArch64 cross-build、代表RPi 4 AArch64をsupport profileとし、Linux描画backendはDRM/KMS + EGL/OpenGL ESを最初に検証する（RQ-11-014、RQ-11-024）。DD v1.1はLinux経路をGBM/EGL/OpenGL ES 3として具体化済みで、新backendの選定から始める必要はない。
+- 共通C ABI DDは`window_open/close`と失敗時のCore Window保持を定義する。Rust Coreにはprivate `WindowPeerAdapter`の`open/close` lifecycle seamとfake peer試験がある一方、production peer factory/Runtimeへのadapter接続はなく、`window_install_test_peer`はtest-only。peer未登録の`window_open`はUnsupportedとなる。
+- Platform DDはSceneSnapshot（Clip/FillRect/GlyphRun）、frame/surface state、Renderer/Adapter所有境界を定義するが、該当するScene/DrawOp型、production Renderer、frame present経路はCore sourceにまだない。
+- Runtime DDはhost `UiLoopBridge`とUI-thread dispatchを定義する一方、DRM/KMS event collection・frame completionをそのUI turnへ届ける具体的integration seam、Runtime起動時profile/factoryとdevice接続失敗の境界はPlatform/Coreをまたぐ詳細提案が必要。
+- よってDD案では、既承認のbackend/profile選択を再判断せず、Runtime/WindowからLinux adapter、scene/frame、UI-thread event/present/shutdownへの接続契約を具体化する。新しいC ABIや言語wrapper変更が必要となる場合は差分と波及先を別に示し、承認前に実装しない。
+
 ## 対象外
 
 入力routing、TextBox編集、keyboard/IME、Accessibility backend、text shaping、画像codec、Wayland/X11、software renderer、WebEngine、package/release、要求変更。これらは本unitの完了に含めず、後続計画で依存関係と承認状態を整理する。描画可能なVisual snapshotの形式やcontrol paint contractが既存承認文書で未確定なら、実装上の都合で補完せず設計差分としてレビューへ戻す。
@@ -35,8 +45,8 @@
 
 1. [x] Python wrapper完了ブランチから切り離し、親Core API branch `impl-rust/core-ui-controls-c-abi`から本計画レビュー用Rust/Core branchを作成した。別wrapperやWebEngineの差分は含めない。
 2. [x] この計画0.1についてscope・profile・除外範囲・branch関係の利用者レビューを受け、「ok」により計画全文の承認を得た（2026-10-26）。設計・実装開始承認とは分けて記録する。
-3. [ ] 実装前にRQ、ADR、BD、DD、test designと既存Core/C ABIの実装状態を照合し、未定義のCore/Adapter contract・Visual snapshot・frame presentation・resource failure semanticsを列挙する。
-4. [ ] 必要なDD/test design文書の改訂案を作成し、各文書全体の利用者承認を得る。要求と設計に差異があれば、影響範囲と変更案の承認が先。新unit登録は承認済み設計・caseに対応させる。
+3. [x] 実装前にRQ、ADR、BD、DD、test designと既存Core/C ABIの実装状態を照合。未定義のRuntime/profile/factory接続、production WindowPeer、Visual snapshot/Renderer、UI-thread event/frame completion integrationを列挙した（監査結果は本節）。
+4. [x] Platform DD v1.2とUI unit-test design 0.4を作成し、2026-10-26に利用者が文書全体を承認。要求の変更はなく、新unit 3件を承認済み設計・caseに対応させて`tools/units.yaml`へplanned登録した。実装・実行は未着手。
 5. [ ] 設計とunit-test contractの承認後、利用者の実装開始指示を得る。Core変更なので`impl-rust/platform-adapter-first-backend`でのみ実装し、他言語wrapper branchを親やmerge元にしない。
 6. [ ] focused unit/consumer、Linux build、minimum toolchain、`tools/dev.py check`、document linksを実施し、同じrevisionへ結果を記録する。各実装unitを日本語commit/pushし、その実装SHAのWindows/Linux CI成功後にcompleteへ更新する。
 7. [ ] Debian 12 x64とRPi 4 AArch64の実機/profile試験を実行し、実行環境、表示機器、driver/backend、report、SHAをrelease testへ記録する。CI build成功だけで実機確認を完了扱いしない。
@@ -53,3 +63,4 @@
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
 | 2026-10-26 | 計画0.1 | 利用者承認 | 利用者「ok」によりscope・profile・除外範囲・branch関係を含む計画全文を承認。計画のcommit/pushを許可。DD承認・実装開始・release判断は別ゲート |
+| 2026-10-26 | Platform DD 1.2 / UI unit-test design 0.4 | 利用者承認 | 利用者「ok」により両文書全体を承認。planned unit 3件を台帳へ登録。実装開始・試験実装/実行・実機確認は別ゲート |
