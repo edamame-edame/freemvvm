@@ -72,6 +72,8 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 
 実行記録: `UNIT-CORE-074` / `UT-PLATFORM-FRAME-001` は `cargo test -p freemvvm-core platform_frame_` で5 tests pass。`cargo clippy --workspace --all-targets --locked -- -D warnings`、`tools/dev.py check`、`tools/dev.py minimum` もlocal pass。実装SHA `5837a44c541e16afba2f4c665328de7b09cd34e0` の[Windows/Linux CI run 40316650420](https://github.com/edamame-edame/freemvvm/actions/runs/40316650420)はsuccess。これはCore-owned immutable snapshot/frame contractのfake境界試験であり、Layout/Controlからのscene生成、実Renderer、DRM/GPU present、実機描画の実装・確認を意味しない。
 
+実行記録: `UNIT-CORE-075` / `UT-PLATFORM-RENDER-CORE-001` は `cargo test -p freemvvm-core platform_render_core_ --locked` で1 test pass。同期submit failure後のfull-damage retry、非同期completionのUI dispatcher経由適用、stale/duplicate/旧generation completion拒否、shutdown pending後のcompletion post拒否を検証。`cargo clippy -p freemvvm-core --all-targets --locked -- -D warnings`、`tools/dev.py check`、`tools/dev.py minimum`もlocal pass。実装SHAのWindows/Linux CIは未確認。これはCore/Renderer SPIとfake境界の検証であり、scene producer、Linux renderer、DRM/GPU present、実機描画を意味しない。
+
 実行記録: `UNIT-CORE-073` / `UT-PLATFORM-ADAPTER-001` はfocused command `cargo test -p freemvvm-core platform_factory_` で2 tests pass。実装SHA `153a0d07afe7c869258fc021f149b9b271a0140c` の[Windows/Linux CI run 40314950652](https://github.com/edamame-edame/freemvvm/actions/runs/40314950652)はsuccess。全体`tools/dev.py check`と`tools/dev.py minimum`も同一実装revisionでlocal pass。
 
 ## 承認履歴

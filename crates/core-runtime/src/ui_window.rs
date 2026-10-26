@@ -1,4 +1,6 @@
 use crate::handle_registry::registry::ObjectIdentity;
+use crate::platform::frame::{FrameError, FramePhase, FrameTicket, FrameTracker};
+use crate::platform::scene::{Damage, SceneSnapshot};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -9,6 +11,17 @@ use std::sync::Arc;
 pub trait PlatformWindowPeer: Send + Sync {
     fn open(&self) -> Result<(), PlatformOperationError>;
     fn close(&self) -> Result<(), PlatformOperationError>;
+    fn submit_frame(
+        &self,
+        ticket: FrameTicket,
+        scene: Arc<SceneSnapshot>,
+    ) -> Result<(), PlatformOperationError>;
+}
+
+/// Posts a completed or failed backend frame to the Runtime's UI dispatcher.
+pub trait PlatformFrameCompletionSink: Send + Sync {
+    fn complete_frame(&self, ticket: FrameTicket) -> Result<(), PlatformOperationError>;
+    fn fail_frame(&self, ticket: FrameTicket) -> Result<(), PlatformOperationError>;
 }
 
 /// Creates lightweight Window peers for one Runtime's selected platform profile.
@@ -16,7 +29,10 @@ pub trait PlatformWindowPeer: Send + Sync {
 /// Factory construction must not open a DRM device or allocate display resources; that work is
 /// deferred until the returned peer's `open` method is called.
 pub trait PlatformRuntimeFactory: Send + Sync {
-    fn create_window_peer(&self) -> Result<Arc<dyn PlatformWindowPeer>, PlatformOperationError>;
+    fn create_window_peer(
+        &self,
+        completion_sink: Arc<dyn PlatformFrameCompletionSink>,
+    ) -> Result<Arc<dyn PlatformWindowPeer>, PlatformOperationError>;
 }
 
 /// Opaque failure at the platform SPI boundary; detailed diagnostics remain backend-owned.
@@ -26,6 +42,7 @@ pub struct PlatformOperationError;
 pub(crate) trait WindowPeerAdapter: Send + Sync {
     fn open(&self, window: ObjectIdentity) -> Result<(), ()>;
     fn close(&self, window: ObjectIdentity) -> Result<(), ()>;
+    fn submit_frame(&self, ticket: FrameTicket, scene: Arc<SceneSnapshot>) -> Result<(), ()>;
 }
 
 pub(crate) struct FactoryWindowPeer(pub(crate) Arc<dyn PlatformWindowPeer>);
@@ -37,6 +54,10 @@ impl WindowPeerAdapter for FactoryWindowPeer {
 
     fn close(&self, _: ObjectIdentity) -> Result<(), ()> {
         self.0.close().map_err(|_| ())
+    }
+
+    fn submit_frame(&self, ticket: FrameTicket, scene: Arc<SceneSnapshot>) -> Result<(), ()> {
+        self.0.submit_frame(ticket, scene).map_err(|_| ())
     }
 }
 
@@ -55,6 +76,7 @@ pub(crate) enum WindowLifecycleError {
     IdentifierExhausted,
     OutOfMemory,
     PeerFailure,
+    Frame(FrameError),
 }
 
 #[derive(Default)]
@@ -67,6 +89,14 @@ pub(crate) struct WindowLifecycle {
     closing: bool,
     in_flight: Option<(u64, u64)>,
     pending: HashMap<u64, u64>,
+    frames: FrameTracker,
+    force_full_damage: bool,
+}
+
+pub(crate) struct PreparedWindowFrame {
+    pub(crate) ticket: FrameTicket,
+    pub(crate) peer: Arc<dyn WindowPeerAdapter>,
+    pub(crate) scene: Arc<SceneSnapshot>,
 }
 
 impl WindowLifecycle {
@@ -129,6 +159,8 @@ impl WindowLifecycle {
         result.map_err(|()| WindowLifecycleError::PeerFailure)?;
         self.generation = generation;
         self.open = true;
+        self.frames.reset();
+        self.force_full_damage = true;
         Ok(())
     }
 
@@ -170,7 +202,52 @@ impl WindowLifecycle {
         self.open = false;
         self.pending.clear();
         self.in_flight = None;
+        self.frames.reset();
+        self.force_full_damage = true;
         Ok(())
+    }
+
+    pub(crate) fn begin_frame(
+        &mut self,
+        scene: Arc<SceneSnapshot>,
+    ) -> Result<PreparedWindowFrame, FrameError> {
+        if !self.open {
+            return Err(FrameError::InvalidTransition);
+        }
+        let peer = self
+            .peer
+            .as_ref()
+            .cloned()
+            .ok_or(FrameError::InvalidTransition)?;
+        let scene = if self.force_full_damage {
+            Arc::new(scene.with_damage(Damage::Full))
+        } else {
+            scene
+        };
+        let ticket = self.frames.begin(self.generation, Arc::clone(&scene))?;
+        self.frames.mark_submitted(ticket)?;
+        self.force_full_damage = false;
+        Ok(PreparedWindowFrame {
+            ticket,
+            peer,
+            scene,
+        })
+    }
+
+    pub(crate) fn complete_frame(&mut self, ticket: FrameTicket) -> bool {
+        self.frames.complete(ticket)
+    }
+
+    pub(crate) fn fail_frame(&mut self, ticket: FrameTicket) -> bool {
+        let failed = self.frames.fail(ticket);
+        if failed {
+            self.force_full_damage = true;
+        }
+        failed
+    }
+
+    pub(crate) fn frame_phase(&self) -> FramePhase {
+        self.frames.phase()
     }
 
     #[cfg(test)]
@@ -254,6 +331,8 @@ impl WindowLifecycle {
         result.map_err(|()| WindowLifecycleError::PeerFailure)?;
         self.open = false;
         self.pending.clear();
+        self.frames.reset();
+        self.force_full_damage = true;
         Ok(())
     }
 
@@ -313,6 +392,8 @@ impl WindowLifecycle {
     }
 
     pub(crate) fn shutdown(&mut self, identity: ObjectIdentity) {
+        self.frames.reset();
+        self.force_full_damage = true;
         if self.open {
             if let Some(peer) = &self.peer {
                 let _ = peer.close(identity);
@@ -320,6 +401,7 @@ impl WindowLifecycle {
         }
         self.open = false;
         self.pending.clear();
+        self.in_flight = None;
     }
 }
 
@@ -327,6 +409,8 @@ impl WindowLifecycle {
 mod tests {
     use super::{CloseDecision, WindowLifecycle, WindowLifecycleError, WindowPeerAdapter};
     use crate::handle_registry::registry::ObjectIdentity;
+    use crate::platform::frame::FrameTicket;
+    use crate::platform::scene::SceneSnapshot;
     use std::num::NonZeroU64;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -347,6 +431,10 @@ mod tests {
         fn close(&self, _: ObjectIdentity) -> Result<(), ()> {
             self.closes.fetch_add(1, Ordering::Relaxed);
             if self.fail_close { Err(()) } else { Ok(()) }
+        }
+
+        fn submit_frame(&self, _: FrameTicket, _: Arc<SceneSnapshot>) -> Result<(), ()> {
+            Ok(())
         }
     }
 

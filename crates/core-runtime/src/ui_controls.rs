@@ -91,6 +91,7 @@ impl UiControlState {
 
 #[cfg(test)]
 mod tests {
+    use crate::abi_support::{Damage, FramePhase, FrameTicket, Rect, SceneSnapshot};
     use crate::abi_support::{
         UiControlApiError, handle_release, property_get_bool, property_get_utf8, property_set_bool,
         runtime_create_handle, runtime_create_handle_with_platform_factory, runtime_dispatch_turn,
@@ -105,8 +106,9 @@ mod tests {
         ui_control_window_title_property, widget_has_focus, widget_request_focus,
         window_clear_content, window_close, window_close_intent, window_close_intent_subscribed,
         window_close_request_current, window_close_request_defer, window_close_request_resolve,
-        window_close_request_subscribe, window_content, window_install_test_peer, window_open,
-        window_platform_activation, window_set_content, window_set_content_with_peer,
+        window_close_request_subscribe, window_content, window_frame_phase,
+        window_install_test_peer, window_open, window_platform_activation, window_set_content,
+        window_set_content_with_peer, window_submit_frame,
     };
     use crate::ui_window::CloseDecision;
     use std::ffi::c_void;
@@ -125,6 +127,10 @@ mod tests {
             self.1.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
+
+        fn submit_frame(&self, _: FrameTicket, _: Arc<SceneSnapshot>) -> Result<(), ()> {
+            Ok(())
+        }
     }
 
     #[derive(Default)]
@@ -133,6 +139,10 @@ mod tests {
         opened: AtomicUsize,
         closed: AtomicUsize,
         fail_next_create: std::sync::atomic::AtomicBool,
+        completion_sink:
+            std::sync::Mutex<Option<Arc<dyn crate::abi_support::PlatformFrameCompletionSink>>>,
+        submitted: std::sync::Mutex<Vec<(FrameTicket, Arc<SceneSnapshot>)>>,
+        fail_next_submit: std::sync::atomic::AtomicBool,
     }
 
     struct TestPlatformFactory(Arc<PlatformProbe>);
@@ -140,6 +150,7 @@ mod tests {
     impl crate::abi_support::PlatformRuntimeFactory for TestPlatformFactory {
         fn create_window_peer(
             &self,
+            completion_sink: Arc<dyn crate::abi_support::PlatformFrameCompletionSink>,
         ) -> Result<
             Arc<dyn crate::abi_support::PlatformWindowPeer>,
             crate::abi_support::PlatformOperationError,
@@ -148,25 +159,139 @@ mod tests {
             if self.0.fail_next_create.swap(false, Ordering::SeqCst) {
                 return Err(crate::abi_support::PlatformOperationError);
             }
-            Ok(Arc::new(TestPlatformWindowPeer(Arc::clone(&self.0))))
+            *self.0.completion_sink.lock().expect("completion sink lock") =
+                Some(Arc::clone(&completion_sink));
+            Ok(Arc::new(TestPlatformWindowPeer {
+                probe: Arc::clone(&self.0),
+                _completion_sink: completion_sink,
+            }))
         }
     }
 
-    struct TestPlatformWindowPeer(Arc<PlatformProbe>);
+    struct TestPlatformWindowPeer {
+        probe: Arc<PlatformProbe>,
+        _completion_sink: Arc<dyn crate::abi_support::PlatformFrameCompletionSink>,
+    }
 
     impl crate::abi_support::PlatformWindowPeer for TestPlatformWindowPeer {
         fn open(&self) -> Result<(), crate::abi_support::PlatformOperationError> {
-            self.0.opened.fetch_add(1, Ordering::SeqCst);
+            self.probe.opened.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
 
         fn close(&self) -> Result<(), crate::abi_support::PlatformOperationError> {
-            self.0.closed.fetch_add(1, Ordering::SeqCst);
+            self.probe.closed.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn submit_frame(
+            &self,
+            ticket: FrameTicket,
+            scene: Arc<SceneSnapshot>,
+        ) -> Result<(), crate::abi_support::PlatformOperationError> {
+            self.probe
+                .submitted
+                .lock()
+                .expect("submitted frames lock")
+                .push((ticket, scene));
+            if self.probe.fail_next_submit.swap(false, Ordering::SeqCst) {
+                return Err(crate::abi_support::PlatformOperationError);
+            }
             Ok(())
         }
     }
 
     unsafe extern "C" fn noop_wake(_: *mut c_void, _: u32) {}
+
+    fn partial_scene(revision: u64) -> Arc<SceneSnapshot> {
+        let bounds = Rect::new(1.0, 2.0, 3.0, 4.0).expect("damage bounds");
+        Arc::new(
+            SceneSnapshot::new(revision, Arc::from([]), Damage::rect(bounds)).expect("valid scene"),
+        )
+    }
+
+    #[test]
+    fn platform_render_core_completion_is_dispatched_ticketed_and_retries_full_damage() {
+        let probe = Arc::new(PlatformProbe::default());
+        let factory: Arc<dyn crate::abi_support::PlatformRuntimeFactory> =
+            Arc::new(TestPlatformFactory(Arc::clone(&probe)));
+        let runtime = runtime_create_handle_with_platform_factory(factory)
+            .expect("create Runtime with platform factory");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        assert_eq!(window_open(window), Ok(1));
+        let sink = probe
+            .completion_sink
+            .lock()
+            .expect("completion sink lock")
+            .as_ref()
+            .expect("Core completion sink")
+            .clone();
+
+        probe.fail_next_submit.store(true, Ordering::SeqCst);
+        assert_eq!(
+            window_submit_frame(window, partial_scene(1)),
+            Err(UiControlApiError::Internal)
+        );
+        assert_eq!(window_frame_phase(window), Ok(FramePhase::Idle));
+        let retry = window_submit_frame(window, partial_scene(1)).expect("submit full retry");
+        assert_eq!(window_frame_phase(window), Ok(FramePhase::Rendering(retry)));
+        {
+            let submitted = probe.submitted.lock().expect("submitted frames lock");
+            assert_eq!(submitted[0].1.damage(), Damage::Full);
+            assert_eq!(submitted[1].1.damage(), Damage::Full);
+        }
+
+        sink.complete_frame(retry)
+            .expect("queue backend completion");
+        assert_eq!(window_frame_phase(window), Ok(FramePhase::Rendering(retry)));
+        runtime_dispatch_turn(runtime).expect("dispatch completion on UI thread");
+        assert_eq!(window_frame_phase(window), Ok(FramePhase::Presented(retry)));
+
+        sink.fail_frame(retry)
+            .expect("queue duplicate stale failure");
+        runtime_dispatch_turn(runtime).expect("dispatch stale completion");
+        assert_eq!(window_frame_phase(window), Ok(FramePhase::Presented(retry)));
+
+        let async_failure = window_submit_frame(window, partial_scene(2))
+            .expect("submit frame before asynchronous failure");
+        sink.fail_frame(async_failure)
+            .expect("queue asynchronous backend failure");
+        runtime_dispatch_turn(runtime).expect("dispatch asynchronous failure on UI thread");
+        assert_eq!(window_frame_phase(window), Ok(FramePhase::Idle));
+
+        let old_generation = window_submit_frame(window, partial_scene(2))
+            .expect("submit before surface replacement");
+        window_close(window).expect("close old surface");
+        assert_eq!(window_frame_phase(window), Ok(FramePhase::Idle));
+        assert_eq!(window_open(window), Ok(2));
+        let current =
+            window_submit_frame(window, partial_scene(3)).expect("submit new-generation frame");
+        assert_ne!(
+            old_generation.surface_generation(),
+            current.surface_generation()
+        );
+        sink.complete_frame(old_generation)
+            .expect("queue old-generation completion");
+        runtime_dispatch_turn(runtime).expect("discard old-generation completion");
+        assert_eq!(
+            window_frame_phase(window),
+            Ok(FramePhase::Rendering(current))
+        );
+
+        sink.complete_frame(current)
+            .expect("queue current-generation completion");
+        runtime_dispatch_turn(runtime).expect("dispatch current-generation completion");
+        assert_eq!(
+            window_frame_phase(window),
+            Ok(FramePhase::Presented(current))
+        );
+
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        assert!(sink.complete_frame(current).is_err());
+        handle_release(window).expect("release Window");
+        handle_release(runtime).expect("release Runtime");
+    }
 
     #[test]
     fn platform_factory_is_lazy_and_window_close_preserves_core_control() {

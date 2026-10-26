@@ -172,6 +172,19 @@ impl Dispatcher {
 
     /// Ownership transfers only after queue capacity is secured and insertion commits.
     pub(crate) fn post(&self, work: PostedWork) -> Result<(), PostError> {
+        self.post_with_policy(work, false)
+    }
+
+    /// Queue a platform completion only while shutdown has not been requested.
+    pub(crate) fn post_completion(&self, work: PostedWork) -> Result<(), PostError> {
+        self.post_with_policy(work, true)
+    }
+
+    fn post_with_policy(
+        &self,
+        work: PostedWork,
+        reject_shutdown_pending: bool,
+    ) -> Result<(), PostError> {
         let mut state = match self.inner.state.lock() {
             Ok(state) => state,
             Err(_) => {
@@ -181,7 +194,9 @@ impl Dispatcher {
                 });
             }
         };
-        if state.lifecycle != DispatcherLifecycle::Running {
+        if state.lifecycle != DispatcherLifecycle::Running
+            || (reject_shutdown_pending && state.shutdown_pending)
+        {
             return Err(PostError {
                 kind: PostErrorKind::Closed,
                 work,

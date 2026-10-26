@@ -225,6 +225,14 @@ impl SceneSnapshot {
     pub fn damage(&self) -> Damage {
         self.damage
     }
+
+    pub(crate) fn with_damage(&self, damage: Damage) -> Self {
+        Self {
+            layout_revision: self.layout_revision,
+            operations: Arc::clone(&self.operations),
+            damage,
+        }
+    }
 }
 
 #[cfg(test)]

@@ -1,12 +1,16 @@
 use crate::binding::{BindingConnectionId, BindingGraph, BindingGraphError};
 use crate::command::{CommandError, OperationIdIssuer};
-use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission, UiLoopBridge};
+use crate::dispatcher::{
+    DispatchError, Dispatcher, PostedWork, ShutdownRequestAdmission, UiLoopBridge,
+};
 use crate::handle_registry::HandleToken;
 use crate::handle_registry::registry::{
     CleanupQueue, CleanupReservation, CoreObjectControl, HandleRegistry, InternalOwner,
     ObjectIdentity, RegistryError, ValidationPin,
 };
 use crate::object_store::{UiObjectStore, UiObjectStoreError};
+use crate::platform::frame::{FramePhase, FrameTicket};
+use crate::platform::scene::SceneSnapshot;
 use crate::property::{
     PropertyChangeQueue, PropertyHandleKind, PropertyState, PropertyValidator, Subscription,
     ValidationError, ValidatorResult,
@@ -15,8 +19,8 @@ use crate::ui_controls::{UiControlKind, UiControlProperty, UiControlState};
 use crate::ui_focus::FocusManager;
 use crate::ui_tree::{LogicalNode, RuntimeTreeStore, TreeError};
 use crate::ui_window::{
-    CloseDecision, FactoryWindowPeer, PlatformRuntimeFactory, WindowLifecycleError,
-    WindowPeerAdapter,
+    CloseDecision, FactoryWindowPeer, PlatformFrameCompletionSink, PlatformOperationError,
+    PlatformRuntimeFactory, WindowLifecycleError, WindowPeerAdapter,
 };
 use crate::value::{
     BindingCopyError, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
@@ -26,7 +30,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroU64;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::thread::ThreadId;
 
 type Finalizer = Box<dyn FnOnce() + Send>;
@@ -1126,6 +1130,40 @@ pub(crate) struct RuntimeCore {
     shutdown_completion: Mutex<Option<ShutdownCompletion>>,
 }
 
+struct RuntimeFrameCompletionSink {
+    runtime: Weak<RuntimeCore>,
+    window: ObjectIdentity,
+}
+
+impl RuntimeFrameCompletionSink {
+    fn post(&self, ticket: FrameTicket, success: bool) -> Result<(), PlatformOperationError> {
+        let runtime = self.runtime.upgrade().ok_or(PlatformOperationError)?;
+        let dispatcher = runtime
+            .dispatcher()
+            .map_err(|_| PlatformOperationError)?
+            .ok_or(PlatformOperationError)?;
+        let runtime = Arc::downgrade(&runtime);
+        let window = self.window;
+        dispatcher
+            .post_completion(PostedWork::callback(Box::new(move || {
+                if let Some(runtime) = runtime.upgrade() {
+                    runtime.window_frame_completion(window, ticket, success);
+                }
+            })))
+            .map_err(|_| PlatformOperationError)
+    }
+}
+
+impl PlatformFrameCompletionSink for RuntimeFrameCompletionSink {
+    fn complete_frame(&self, ticket: FrameTicket) -> Result<(), PlatformOperationError> {
+        self.post(ticket, true)
+    }
+
+    fn fail_frame(&self, ticket: FrameTicket) -> Result<(), PlatformOperationError> {
+        self.post(ticket, false)
+    }
+}
+
 struct RuntimeBindingOwner {
     _source: ValidationPin<RuntimeIdentity>,
     _target: ValidationPin<RuntimeIdentity>,
@@ -2152,7 +2190,7 @@ impl RuntimeCore {
     }
 
     pub(crate) fn window_open(
-        &self,
+        self: &Arc<Self>,
         identity: ObjectIdentity,
     ) -> Result<u64, WindowLifecycleError> {
         self.ensure_property_access_thread()
@@ -2181,7 +2219,10 @@ impl RuntimeCore {
                 .as_ref()
                 .ok_or(WindowLifecycleError::Unsupported)?;
             let peer = factory
-                .create_window_peer()
+                .create_window_peer(Arc::new(RuntimeFrameCompletionSink {
+                    runtime: Arc::downgrade(self),
+                    window: identity,
+                }))
                 .map_err(|_| WindowLifecycleError::PeerFailure)?;
             self.window_set_peer(identity, Arc::new(FactoryWindowPeer(peer)))
                 .map_err(|_| WindowLifecycleError::InvalidState)?;
@@ -2222,6 +2263,83 @@ impl RuntimeCore {
                 .finish_open(generation, result)?;
         }
         Ok(generation)
+    }
+
+    pub(crate) fn window_submit_frame(
+        &self,
+        identity: ObjectIdentity,
+        scene: Arc<SceneSnapshot>,
+    ) -> Result<FrameTicket, WindowLifecycleError> {
+        self.ensure_property_access_thread()
+            .map_err(|_| WindowLifecycleError::InvalidState)?;
+        let prepared = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            store
+                .resolve_mut(identity)
+                .map_err(|_| WindowLifecycleError::InvalidState)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .and_then(|state| state.window.as_mut())
+                .ok_or(WindowLifecycleError::InvalidState)?
+                .begin_frame(scene)
+                .map_err(WindowLifecycleError::Frame)?
+        };
+        if prepared
+            .peer
+            .submit_frame(prepared.ticket, prepared.scene)
+            .is_err()
+        {
+            self.window_frame_completion(identity, prepared.ticket, false);
+            return Err(WindowLifecycleError::PeerFailure);
+        }
+        Ok(prepared.ticket)
+    }
+
+    pub(crate) fn window_frame_phase(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<FramePhase, WindowLifecycleError> {
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| WindowLifecycleError::InvalidState)?;
+        store
+            .resolve(identity)
+            .map_err(|_| WindowLifecycleError::InvalidState)?
+            .downcast_ref::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_ref())
+            .map(|window| window.frame_phase())
+            .ok_or(WindowLifecycleError::InvalidState)
+    }
+
+    fn window_frame_completion(
+        &self,
+        identity: ObjectIdentity,
+        ticket: FrameTicket,
+        success: bool,
+    ) {
+        let Ok(mut store) = self.ui_objects.lock() else {
+            return;
+        };
+        let Ok(state) = store.resolve_mut(identity) else {
+            return;
+        };
+        let Some(window) = state
+            .downcast_mut::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_mut())
+        else {
+            return;
+        };
+        if success {
+            window.complete_frame(ticket);
+        } else {
+            window.fail_frame(ticket);
+        }
     }
 
     pub(crate) fn window_close(

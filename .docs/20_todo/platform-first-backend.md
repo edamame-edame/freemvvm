@@ -1,7 +1,7 @@
 # 0.0.1 初期Platform backendの設計・実装計画
 
 - 計画版: 0.1
-- 状態: 計画・Platform DD v1.3・UI test design 0.5全文承認済み。UNIT-CORE-073/074は完了。UNIT-CORE-075 / UNIT-PLATFORM-001/002は実装開始待ち
+- 状態: 計画・Platform DD v1.3・UI test design 0.5全文承認済み。UNIT-CORE-073/074は完了、UNIT-CORE-075は実装・local検証済みでCI待ち。Linux backend unit 2件は未着手
 - 作成日: 2026-10-26
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/platform-adapter-first-backend`
@@ -50,8 +50,9 @@
 5. [x] DD/test design承認後、利用者の「ok」（2026-10-26）を実装開始指示として受けた。Core変更は`impl-rust/platform-adapter-first-backend`で実施し、他言語wrapper branchを親やmerge元にしない。
 6. [x] UNIT-CORE-073/074はそれぞれfocused unit、`tools/dev.py check`、`tools/dev.py minimum`、同一実装SHAのWindows/Linux CIを完了し記録した。Linux platform crate/buildはまだ存在せず、この結果には含まれない。
 7. [x] 未確定のunit split・Core render/completion SPI・DRM policy・native dependency・GlyphRun inputをDD v1.3とUI test design 0.5へ反映。`tools/units.yaml`とimplementation inventoryも同じ提案にそろえた。
-8. [x] Platform DD v1.3とUI test design 0.5を文書全体でレビューし、利用者の「ok」（2026-10-26）で承認。unit/test/source mappingは確定。実装開始は別の明示指示を受けてからとする。
-9. [ ] Debian 12 x64とRPi 4 AArch64の実機/profile試験を実行し、実行環境、表示機器、driver/backend、report、SHAをrelease testへ記録する。CI build成功だけで実機確認を完了扱いしない。
+8. [x] Platform DD v1.3とUI test design 0.5を文書全体で承認。利用者の別指示「ok」（2026-10-26）でUNIT-CORE-075の実装を開始。
+9. [x] UNIT-CORE-075を実装し、focused test・`tools/dev.py check`・`tools/dev.py minimum`をlocal pass。同revision Windows/Linux CI待ちのためunit stateは`ready`。
+10. [ ] Debian 12 x64とRPi 4 AArch64の実機/profile試験を実行し、実行環境、表示機器、driver/backend、report、SHAをrelease testへ記録する。CI build成功だけで実機確認を完了扱いしない。
 
 ## 完了条件
 
@@ -73,3 +74,4 @@
 | 2026-10-26 | Linux backend next-step proposal | 利用者承認（draft作成のみ） | 利用者の「ok」により未確定Platform backend契約をDD/test design review draftへ具体化する作業を承認。新draft全文承認・unit implementation開始は別ゲート |
 | 2026-10-26 | Platform DD 1.3 / UI unit-test design 0.5 | レビュー待ち | review draftを作成し、inventory・unit ledgerへplanned提案を反映。利用者のdraft作成承認は文書内容の承認や実装開始を意味しない |
 | 2026-10-26 | Platform DD 1.3 / UI unit-test design 0.5 | 利用者承認 | 利用者の「ok」により両文書全体を承認。planned unit/test mappingを確定。実装開始・試験合格・実機確認は別ゲート |
+| 2026-10-26 | UNIT-CORE-075 実装開始 | 利用者承認 | 文書承認後の別の「ok」を実装開始指示として扱い、Core render submission/completion seamへ着手 |

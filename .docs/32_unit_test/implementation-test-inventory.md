@@ -30,15 +30,17 @@
 
 #### Linux Platform backend unit（DD v1.3 / test design 0.5承認済み）
 
-Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり、UNIT-CORE-073/074はcomplete。下表の後続unit scope/test/source mappingは承認済みで、実装開始前のため`planned`のまま。各unitは個別の実装・同revision検証完了まで実行済みと扱わない。
+Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり、UNIT-CORE-073/074はcomplete。`UNIT-CORE-075`は実装・local検証済みで同revision CI待ちの`ready`。Linux backend 2 unitは未着手の`planned`。各unitは個別の同revision検証完了まで実行済みと扱わない。
 
 | unit | 責務 | test設計 | 状態 |
 | --- | --- | --- | --- |
 | `UNIT-CORE-073` | Platform factoryとWindow peer lifecycle | `UT-PLATFORM-ADAPTER-001` | complete / local・Windows/Linux CI pass |
 | `UNIT-CORE-074` | immutable SceneSnapshotとframe completion | `UT-PLATFORM-FRAME-001` | complete / local・Windows/Linux CI pass |
-| `UNIT-CORE-075` | Core render submissionとdispatcher completion接続 | `UT-PLATFORM-RENDER-CORE-001` | planned / DD 1.3・test design 0.5承認済み |
+| `UNIT-CORE-075` | Core render submissionとdispatcher completion接続 | `UT-PLATFORM-RENDER-CORE-001` | ready / 実装・local検証済み、同revision CI待ち |
 | `UNIT-PLATFORM-001` | Linux DRM node/output選択とGBM/EGL surface lifecycle | `UT-PLATFORM-DEVICE-001` | planned / DD 1.3・test design 0.5承認済み |
 | `UNIT-PLATFORM-002` | Clip/FillRect GLES renderer、DRM present completionとresource loss。GlyphRun描画はfont asset/color契約確定後 | `UT-PLATFORM-PRESENT-001`、`UT-PLATFORM-LOSS-001` | planned / DD 1.3・test design 0.5承認済み |
+
+`UNIT-CORE-075`の実装はCore `WindowLifecycle`へFrameTrackerを接続し、peer submit後はcompletionをCore Dispatcherへ投稿してUI turnでticket照合する。focused test、全体check、最低Rust toolchainがlocal pass。Windows/Linux CIが同じ実装SHAで成功するまでunit stateは`ready`のまま。
 
 #### C# Property notification Subscriptionの実装記録
 

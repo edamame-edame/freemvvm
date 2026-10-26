@@ -54,7 +54,8 @@ pub mod abi_support {
     use crate::ui_tree::TreeError;
     use crate::ui_window::WindowLifecycleError;
     pub use crate::ui_window::{
-        CloseDecision, PlatformOperationError, PlatformRuntimeFactory, PlatformWindowPeer,
+        CloseDecision, PlatformFrameCompletionSink, PlatformOperationError, PlatformRuntimeFactory,
+        PlatformWindowPeer,
     };
     use crate::value::{
         DecimalValue, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind,
@@ -1652,6 +1653,15 @@ pub mod abi_support {
             WindowLifecycleError::IdentifierExhausted | WindowLifecycleError::PeerFailure => {
                 UiControlApiError::Internal
             }
+            WindowLifecycleError::Frame(crate::platform::frame::FrameError::Busy)
+            | WindowLifecycleError::Frame(crate::platform::frame::FrameError::InvalidTransition)
+            | WindowLifecycleError::Frame(crate::platform::frame::FrameError::InvalidGeneration)
+            | WindowLifecycleError::Frame(crate::platform::frame::FrameError::StaleTicket) => {
+                UiControlApiError::InvalidArgument
+            }
+            WindowLifecycleError::Frame(
+                crate::platform::frame::FrameError::IdentifierExhausted,
+            ) => UiControlApiError::Internal,
         }
     }
 
@@ -2262,6 +2272,25 @@ pub mod abi_support {
         let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
         runtime
             .window_open(identity)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    /// Internal Core/Renderer bridge; not part of the public C ABI.
+    pub fn window_submit_frame(
+        window: u64,
+        scene: Arc<SceneSnapshot>,
+    ) -> Result<FrameTicket, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_submit_frame(identity, scene)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    /// Internal observation hook used by Core-side integration tests.
+    pub fn window_frame_phase(window: u64) -> Result<FramePhase, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_frame_phase(identity)
             .map_err(map_window_lifecycle_error)
     }
 
