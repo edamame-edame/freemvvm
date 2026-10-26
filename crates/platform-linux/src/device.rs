@@ -1,4 +1,4 @@
-use drm::control::{Device as ControlDevice, Device as _, ModeTypeFlags, connector};
+use drm::control::{Device as ControlDevice, ModeTypeFlags, connector};
 use gbm::{AsRaw, BufferObjectFlags, Device as GbmDevice, Format};
 use khronos_egl as egl;
 use std::fs::{self, File, OpenOptions};
@@ -87,7 +87,7 @@ fn open_selected_device() -> std::io::Result<SelectedDevice> {
                     info.modes()
                         .iter()
                         .map(|mode| OutputMode {
-                            connector_id: u32::from(handle),
+                            connector_id: u32::from(*handle),
                             width: mode.size().0,
                             height: mode.size().1,
                             preferred: mode.mode_type().contains(ModeTypeFlags::PREFERRED),
@@ -115,6 +115,10 @@ pub(super) struct NativeSurface {
     _selected: SelectedDevice,
 }
 
+// SAFETY: the peer stores NativeSurface behind a Mutex and invokes open/close on the Runtime UI
+// thread. EGL handles are never accessed concurrently or exposed outside this adapter.
+unsafe impl Send for NativeSurface {}
+
 impl Drop for NativeSurface {
     fn drop(&mut self) {
         let _ = self.egl.destroy_surface(self.display, self.egl_surface);
@@ -141,8 +145,8 @@ pub(super) fn open_surface() -> std::io::Result<NativeSurface> {
     )?;
 
     // SAFETY: libEGL.so is loaded dynamically and its EGL entry points are used through the crate.
-    let egl =
-        unsafe { egl::DynamicInstance::<egl::EGL1_5>::load() }.map_err(std::io::Error::other)?;
+    let egl = unsafe { egl::DynamicInstance::<egl::EGL1_5>::load_required() }
+        .map_err(std::io::Error::other)?;
     // SAFETY: GBM returns a valid native display handle whose owner outlives the EGL display.
     let display = unsafe {
         egl.get_platform_display(

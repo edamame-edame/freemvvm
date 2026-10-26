@@ -36,7 +36,7 @@ impl PlatformRuntimeFactory for LinuxFactory {
     }
 }
 
-trait OpenedSurface: Send + Sync {}
+trait OpenedSurface: Send {}
 
 impl OpenedSurface for device::NativeSurface {}
 
