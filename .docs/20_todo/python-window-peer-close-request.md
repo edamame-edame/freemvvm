@@ -1,7 +1,7 @@
 # Python Window peer / close-request wrapper
 
 - 計画版: 0.1
-- 状態: 計画・DD v2.0・test design v1.2承認済み。利用者の「ok」で実装開始（2026-10-26）。実装・local gates成功、同一SHAのCI確認待ち
+- 状態: 計画・DD v2.0・test design v1.2承認済み。実装・Windows local gates・同一SHAのWindows/Linux CIが成功しunit完了（2026-10-26）
 - 親計画: [Python Binding・Command・UI Controls wrapper](python-ui-controls-wrapper.md)
 - 対象branch: `impl-python/runtime-wrapper`
 - 対象unit: `UNIT-WRAP-PY-WINDOW-001`
@@ -38,7 +38,7 @@ Core/Rust/C ABI変更、OS固有peer・描画・実画面検証、close intent�
 4. [x] Wrapper test design v1.2でfake ABI lifecycle casesと実C ABI consumerの制約を定義し、利用者承認を得た。設計承認と試験設計承認は別記録とする。
 5. [x] `UNIT-WRAP-PY-WINDOW-001`をplanned登録し、利用者の実装開始承認後に実装を開始する。
 6. [x] 実装開始承認後、fake callback shimのlifecycle/decision cases 11件を実行。実C ABI consumerでsubscription登録・cancel、openの`UI_UNSUPPORTED`とstatus伝達を確認し、OS close intent発火や画面表示は主張しない。
-7. [x] 同じunitに実装・tests・consumerを揃え、focused gates、Windows local `tools/dev.py check`、`minimum`を実行し成功。実装revisionを日本語commit/pushし、同一SHAのWindows/Linux CI成功後にunitをcompleteにする（CI確認待ち）。
+7. [x] 同じunitに実装・tests・consumerを揃え、focused gates、Windows local `tools/dev.py check`、`minimum`を実行し成功。実装revisionを日本語commit/pushし、同一SHAのWindows/Linux CI成功後にunitをcompleteにする。
 
 ## 完了条件
 
@@ -54,3 +54,4 @@ Core/Rust/C ABI変更、OS固有peer・描画・実画面検証、close intent�
 | --- | --- | --- | --- |
 | 2026-10-26 | 計画0.1 / DD v2.0 / test design v1.2 / UNIT-WRAP-PY-WINDOW-001 | 利用者承認 | 利用者「ok」。文書全体を承認しunitをplanned登録。実装開始は別承認 |
 | 2026-10-26 | 実装開始 | 利用者承認 | 利用者「ok」により実装開始。fake ABI 11件、real C ABI consumer、Windows local check/minimum成功。Windows/Linux CIはcommit後に確認 |
+| 2026-10-26 | 実装完了 | 完了 | 実装SHA `1b4e686c31cc66c843f27bc123ba7790fddd2189`のWindows/Linux CI成功。[run 40306768925](https://github.com/edamame-edame/freemvvm/actions/runs/40306768925)。unit台帳をcompleteへ更新 |
