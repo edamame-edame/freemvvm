@@ -1,7 +1,7 @@
 # Python Binding・Command・UI Controls wrapper
 
 - 計画版: 0.2改訂案
-- 状態: 計画v0.2を利用者承認済み（「ok」、2026-10-26）。Python Controls unit完了。次段階はWindow peer/close request
+- 状態: 計画v0.2を利用者承認済み（「ok」、2026-10-26）。Python Binding・AsyncCommand・Controls/Tree/Focus・Window peer/close-requestの全unitおよび統合検証が完了（2026-10-26）
 - 作成日: 2026-10-26
 - 対象: 0.0.1向けPython MVVM/初期UI縦断に必要なBinding・AsyncCommand・UI Controls wrapper
 - 作業branch案: `impl-python/runtime-wrapper`を継続
@@ -53,8 +53,8 @@ Python consumerが承認済みCore/C ABIのProperty・Binding・AsyncCommand・�
    - `UNIT-WRAP-PY-COMMAND-001`: 非同期Command callback root・execute/cancel/completion/state・例外/close lifecycle。
    - `UNIT-WRAP-PY-CONTROLS-001`: Window/StackPanel/Text/TextBox/Button facade、Property/Binding/Command mapping、Tree、StackPanel設定、Focus要求。Window peer open/close callbackを含めない。
    - `UNIT-WRAP-PY-WINDOW-001`: Window peer open/closeとclose-request callback/defer/resolveのowner/root lifecycle。Controls unitに依存させる。
-9. [ ] `impl-python/runtime-wrapper`だけでunitを一つずつ実装する。各unitのlocal gatesとそのcommit SHAのWindows/Linux CI成功後に日本語commit/pushし、completeにする。Binding（SHA `d5cfc1f3`、run 40212415054）、Command（SHA `aaf1ce68`、run 40214188291）、Controls（14 fake ABI cases、実C ABI consumer、local `check`/`minimum`成功。最終SHA `84e9947`、Windows/Linux run 40216602669成功）は完了。次のWindow unitは未着手。
-10. [ ] 全unit完了後、`tools/dev.py check`、`minimum`、Python focused/consumer tests、document links、unit manifest、`git diff --check`を検証し、最終CI SHAと結果を計画・試験記録・memoryへ反映する。
+9. [x] `impl-python/runtime-wrapper`だけでunitを一つずつ実装し、local gatesと同じ実装SHAのWindows/Linux CI成功後に日本語commit/pushしてcompleteにした。Binding（SHA `d5cfc1f344992a671e02bfc62b25a78d7bfb22bd`、run 40212415054）、Command（SHA `aaf1ce68d3cd090c93631bdd065b3678a687d010`、run 40214188291）、Controls（14 fake ABI cases、実C ABI consumer、SHA `84e994715c5fbe189e4fd3d68f351d684516440a`、run 40216602669）、Window（11 fake ABI cases、実C ABI consumer、SHA `1b4e686c31cc66c843f27bc123ba7790fddd2189`、run 40306768925）はすべて完了。
+10. [x] 全unit完了後、Windows local `tools/dev.py check`、`minimum`、Python focused/consumer tests、document links（76 active documents/7282 local links）、unit manifest JSON、`git diff --check`を検証。Window実装SHAのWindows/Linux CI successと結果を計画・試験記録・memoryへ反映。
 
 ## 完了条件
 
@@ -72,3 +72,4 @@ Python consumerが承認済みCore/C ABIのProperty・Binding・AsyncCommand・�
 | 2026-10-26 | 計画0.2 / Python Binding・Command・UI Controls wrapper | 利用者承認 | 「ok」によりPython Binding/AsyncCommand先行unitと依存順を追加した改訂を承認。設計・試験設計・実装の承認は別 |
 | 2026-10-26 | UNIT-WRAP-PY-CONTROLS-001 | 実装開始承認 | 利用者の「実装開始」により、承認済みDD v1.10・test design v1.1のControls/Tree/Focus範囲の実装を開始 |
 | 2026-10-26 | UNIT-WRAP-PY-CONTROLS-001 | 完了 | 14 fake ABI tests、実C ABI consumer、Windows local `check`/`minimum`、Windows/Linux CI run 40216602669を確認。SHA `84e994715c5fbe189e4fd3d68f351d684516440a` |
+| 2026-10-26 | UNIT-WRAP-PY-WINDOW-001 / 計画v0.2全体 | 完了 | fake ABI 11件、実C ABI consumer、Windows local `check`/`minimum`、同一実装SHA `1b4e686c31cc66c843f27bc123ba7790fddd2189`のWindows/Linux CI run 40306768925 success。全unitと統合検証を完了 |
