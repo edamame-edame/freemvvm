@@ -1,7 +1,7 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
 - 文書版: 0.4
-- 状態: 0.4全文承認済み（利用者、2026-10-26）。UT-PLATFORM-ADAPTER-001は実装・local focused実行済み（2件pass、実装SHAのCI待ち）。他のPlatform試験と実機確認は未実装・未実行
+- 状態: 0.4全文承認済み（利用者、2026-10-26）。UT-PLATFORM-ADAPTER-001は実装・local focused実行済み、実装SHAのWindows/Linux CI成功。後続Platform試験と実機確認は未実装・未実行
 - 更新日: 2026-10-26
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
@@ -67,7 +67,7 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 | <a id="ut-platform-frame-001"></a>UT-PLATFORM-FRAME-001 | fake Rendererにimmutable SceneSnapshotを渡し、prepare/submit/completionを別々に成功・失敗・遅延させる | layout revisionと同じsnapshotだけを提出。submitだけではPresentedにせず、同generation/revision completionでのみ完了。failure時dirtyとCore stateを保持しstale completionを破棄 | [RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 | <a id="ut-platform-loss-001"></a>UT-PLATFORM-LOSS-001 | fake backendからsurface/device lossをframe中およびshutdown中に返し、旧generation eventと再試行を注入する | SurfaceLost/Recreating境界を反映し、Core UI stateを保持。旧peer event/completionを拒否し、暗黙software fallbackなし。peer resourcesはUI safe point上で一度だけ解放し、失敗cleanupは既存ticketで保持 | [RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-11-019](../11_requirements/RQ-11_platform.md#rq-11-019)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 
-実行記録: `UNIT-CORE-073` / `UT-PLATFORM-ADAPTER-001` はfocused command `cargo test -p freemvvm-core platform_factory_` で2 tests pass。Windows/Linux CIは実装revisionをpush後に確認する。
+実行記録: `UNIT-CORE-073` / `UT-PLATFORM-ADAPTER-001` はfocused command `cargo test -p freemvvm-core platform_factory_` で2 tests pass。実装SHA `153a0d07afe7c869258fc021f149b9b271a0140c` の[Windows/Linux CI run 40314950652](https://github.com/edamame-edame/freemvvm/actions/runs/40314950652)はsuccess。全体`tools/dev.py check`と`tools/dev.py minimum`も同一実装revisionでlocal pass。
 
 ## 承認履歴
 

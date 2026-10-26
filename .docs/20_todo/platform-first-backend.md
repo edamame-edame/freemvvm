@@ -1,7 +1,7 @@
 # 0.0.1 初期Platform backendの設計・実装計画
 
 - 計画版: 0.1
-- 状態: 計画・DD v1.2・test design 0.4全文承認済み。実装開始承認済み。UNIT-CORE-073を実装しfocused test local pass、同revision CI待ち。後続unitは未着手
+- 状態: 計画・DD v1.2・test design 0.4全文承認済み。実装開始承認済み。UNIT-CORE-073はlocal check/minimumと同revision Windows/Linux CI passで完了。後続unitは未着手
 - 作成日: 2026-10-26
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/platform-adapter-first-backend`
@@ -65,3 +65,4 @@
 | 2026-10-26 | 計画0.1 | 利用者承認 | 利用者「ok」によりscope・profile・除外範囲・branch関係を含む計画全文を承認。計画のcommit/pushを許可。DD承認・実装開始・release判断は別ゲート |
 | 2026-10-26 | Platform DD 1.2 / UI unit-test design 0.4 | 利用者承認 | 利用者「ok」により両文書全体を承認。planned unit 3件を台帳へ登録。実装開始・試験実装/実行・実機確認は別ゲート |
 | 2026-10-26 | 実装開始 / UNIT-CORE-073 | 利用者承認 | DD/test design承認後の利用者「ok」を実装開始指示として扱う。対象はCore factory/Window peer unit。後続unitの実装承認範囲を先取りしない |
+| 2026-10-26 | UNIT-CORE-073 / `153a0d07` | 実装・試験完了 | focused 2 tests、`tools/dev.py check`、`tools/dev.py minimum`、[Windows/Linux CI run 40314950652](https://github.com/edamame-edame/freemvvm/actions/runs/40314950652) success。Linux target artifact/backend本体と実機profile確認は後続 |

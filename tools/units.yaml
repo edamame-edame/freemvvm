@@ -3513,7 +3513,7 @@
     },
     {
       "id": "UNIT-CORE-073",
-      "state": "ready",
+      "state": "complete",
       "scope": "platform-runtime-factory-and-window-peer-lifecycle",
       "sources": ["crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/ui_window.rs", "crates/core-runtime/src/ui_controls.rs", "crates/core-runtime/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],

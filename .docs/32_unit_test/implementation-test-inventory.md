@@ -30,11 +30,11 @@
 
 #### Linux Platform backendの承認済みplanned unit
 
-Platform DD 1.2とUI試験設計0.4の全文承認を受け、`tools/units.yaml`に以下を登録した。未着手unitのpath・crate・commandは実装時に確定する予定形であり、planned状態は実行対象外。UNIT-CORE-073だけsource/test pathとcommandが実在するためreadyとし、focused local testはpass、CIはpending。
+Platform DD 1.2とUI試験設計0.4の全文承認を受け、`tools/units.yaml`に以下を登録した。未着手unitのpath・crate・commandは実装時に確定する予定形であり、planned状態は実行対象外。UNIT-CORE-073はsource/test pathとcommandが実在し、focused local test、全体check、最低Rust toolchain、実装SHAのWindows/Linux CIが成功したためcomplete。
 
 | unit | 責務 | test設計 | 状態 |
 | --- | --- | --- | --- |
-| `UNIT-CORE-073` | Platform factoryとWindow peer lifecycle | `UT-PLATFORM-ADAPTER-001` | ready / focused local pass、CI pending |
+| `UNIT-CORE-073` | Platform factoryとWindow peer lifecycle | `UT-PLATFORM-ADAPTER-001` | complete / local・Windows/Linux CI pass |
 | `UNIT-CORE-074` | immutable SceneSnapshotとframe completion | `UT-PLATFORM-FRAME-001` | planned |
 | `UNIT-PLATFORM-001` | Linux DRM/KMS presentとresource loss | `UT-PLATFORM-LOSS-001` | planned |
 
