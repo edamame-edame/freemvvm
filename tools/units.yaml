@@ -3566,7 +3566,7 @@
     },
     {
       "id": "UNIT-CORE-075",
-      "state": "ready",
+      "state": "complete",
       "scope": "core-render-submission-and-dispatcher-completion-contract",
       "sources": ["crates/core-runtime/src/platform/frame.rs", "crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/dispatcher.rs", "crates/core-runtime/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],

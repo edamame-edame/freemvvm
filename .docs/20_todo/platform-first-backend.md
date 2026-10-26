@@ -1,7 +1,7 @@
 # 0.0.1 初期Platform backendの設計・実装計画
 
 - 計画版: 0.1
-- 状態: 計画・Platform DD v1.3・UI test design 0.5全文承認済み。UNIT-CORE-073/074は完了、UNIT-CORE-075は実装・local検証済みでCI待ち。Linux backend unit 2件は未着手
+- 状態: 計画・Platform DD v1.3・UI test design 0.5全文承認済み。UNIT-CORE-073/074/075は実装・local検証・同revision Windows/Linux CI完了。次はUNIT-PLATFORM-001
 - 作成日: 2026-10-26
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/platform-adapter-first-backend`
@@ -51,7 +51,7 @@
 6. [x] UNIT-CORE-073/074はそれぞれfocused unit、`tools/dev.py check`、`tools/dev.py minimum`、同一実装SHAのWindows/Linux CIを完了し記録した。Linux platform crate/buildはまだ存在せず、この結果には含まれない。
 7. [x] 未確定のunit split・Core render/completion SPI・DRM policy・native dependency・GlyphRun inputをDD v1.3とUI test design 0.5へ反映。`tools/units.yaml`とimplementation inventoryも同じ提案にそろえた。
 8. [x] Platform DD v1.3とUI test design 0.5を文書全体で承認。利用者の別指示「ok」（2026-10-26）でUNIT-CORE-075の実装を開始。
-9. [x] UNIT-CORE-075を実装し、focused test・`tools/dev.py check`・`tools/dev.py minimum`をlocal pass。同revision Windows/Linux CI待ちのためunit stateは`ready`。
+9. [x] UNIT-CORE-075を実装し、focused test・`tools/dev.py check`・`tools/dev.py minimum`をlocal pass。実装SHA `e3d3acdd56d501c208505719b7d7d340e6314454` の[Windows/Linux CI run 40326835471](https://github.com/edamame-edame/freemvvm/actions/runs/40326835471)もsuccessしunitをcompleteへ更新。
 10. [ ] Debian 12 x64とRPi 4 AArch64の実機/profile試験を実行し、実行環境、表示機器、driver/backend、report、SHAをrelease testへ記録する。CI build成功だけで実機確認を完了扱いしない。
 
 ## 完了条件
@@ -75,3 +75,4 @@
 | 2026-10-26 | Platform DD 1.3 / UI unit-test design 0.5 | レビュー待ち | review draftを作成し、inventory・unit ledgerへplanned提案を反映。利用者のdraft作成承認は文書内容の承認や実装開始を意味しない |
 | 2026-10-26 | Platform DD 1.3 / UI unit-test design 0.5 | 利用者承認 | 利用者の「ok」により両文書全体を承認。planned unit/test mappingを確定。実装開始・試験合格・実機確認は別ゲート |
 | 2026-10-26 | UNIT-CORE-075 実装開始 | 利用者承認 | 文書承認後の別の「ok」を実装開始指示として扱い、Core render submission/completion seamへ着手 |
+| 2026-10-26 | UNIT-CORE-075 / `e3d3acdd` | 実装・試験完了 | focused 1 test、Core Clippy、`tools/dev.py check`、`tools/dev.py minimum` local pass。[同SHA Windows/Linux CI run 40326835471](https://github.com/edamame-edame/freemvvm/actions/runs/40326835471) success。scene producer・Linux renderer・実機描画は後続 |

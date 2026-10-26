@@ -36,11 +36,11 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | --- | --- | --- | --- |
 | `UNIT-CORE-073` | Platform factoryとWindow peer lifecycle | `UT-PLATFORM-ADAPTER-001` | complete / local・Windows/Linux CI pass |
 | `UNIT-CORE-074` | immutable SceneSnapshotとframe completion | `UT-PLATFORM-FRAME-001` | complete / local・Windows/Linux CI pass |
-| `UNIT-CORE-075` | Core render submissionとdispatcher completion接続 | `UT-PLATFORM-RENDER-CORE-001` | ready / 実装・local検証済み、同revision CI待ち |
+| `UNIT-CORE-075` | Core render submissionとdispatcher completion接続 | `UT-PLATFORM-RENDER-CORE-001` | complete / local・同revision Windows/Linux CI pass |
 | `UNIT-PLATFORM-001` | Linux DRM node/output選択とGBM/EGL surface lifecycle | `UT-PLATFORM-DEVICE-001` | planned / DD 1.3・test design 0.5承認済み |
 | `UNIT-PLATFORM-002` | Clip/FillRect GLES renderer、DRM present completionとresource loss。GlyphRun描画はfont asset/color契約確定後 | `UT-PLATFORM-PRESENT-001`、`UT-PLATFORM-LOSS-001` | planned / DD 1.3・test design 0.5承認済み |
 
-`UNIT-CORE-075`の実装はCore `WindowLifecycle`へFrameTrackerを接続し、peer submit後はcompletionをCore Dispatcherへ投稿してUI turnでticket照合する。focused test、全体check、最低Rust toolchainがlocal pass。Windows/Linux CIが同じ実装SHAで成功するまでunit stateは`ready`のまま。
+`UNIT-CORE-075`の実装はCore `WindowLifecycle`へFrameTrackerを接続し、peer submit後はcompletionをCore Dispatcherへ投稿してUI turnでticket照合する。focused test、全体check、最低Rust toolchainがlocal pass。同実装SHA `e3d3acdd56d501c208505719b7d7d340e6314454` の[Windows/Linux CI run 40326835471](https://github.com/edamame-edame/freemvvm/actions/runs/40326835471)もsuccess。
 
 #### C# Property notification Subscriptionの実装記録
 
