@@ -28,15 +28,17 @@
 
 [tools/units.yaml](../../tools/units.yaml)にschema2のUNIT-BUILD-001を登録した。YAMLのJSON互換記法を使い、開発コマンド・設定・probeと、[bootstrap検証](development-bootstrap.md)の実入口を対応付ける。readyはbootstrapの実在source/commandと実行確認に限り、下記planned例の製品UNIT-CORE-001やUT-CORE-HANDLE-001をreadyへ昇格しない。CIの現状は全bootstrap gateの常時実行で、製品unitのpath選択器は未実装である。
 
-#### Linux Platform backendの承認済みplanned unit
+#### Linux Platform backend unit（DD v1.3 / test design 0.5承認済み）
 
-Platform DD 1.2とUI試験設計0.4の全文承認を受け、`tools/units.yaml`に以下を登録した。未着手unitのpath・crate・commandは実装時に確定する予定形であり、planned状態は実行対象外。UNIT-CORE-073はsource/test pathとcommandが実在し、focused local test、全体check、最低Rust toolchain、実装SHAのWindows/Linux CIが成功したためcomplete。
+Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり、UNIT-CORE-073/074はcomplete。下表の後続unit scope/test/source mappingは承認済みで、実装開始前のため`planned`のまま。各unitは個別の実装・同revision検証完了まで実行済みと扱わない。
 
 | unit | 責務 | test設計 | 状態 |
 | --- | --- | --- | --- |
 | `UNIT-CORE-073` | Platform factoryとWindow peer lifecycle | `UT-PLATFORM-ADAPTER-001` | complete / local・Windows/Linux CI pass |
 | `UNIT-CORE-074` | immutable SceneSnapshotとframe completion | `UT-PLATFORM-FRAME-001` | complete / local・Windows/Linux CI pass |
-| `UNIT-PLATFORM-001` | Linux DRM/KMS presentとresource loss | `UT-PLATFORM-LOSS-001` | planned |
+| `UNIT-CORE-075` | Core render submissionとdispatcher completion接続 | `UT-PLATFORM-RENDER-CORE-001` | planned / DD 1.3・test design 0.5承認済み |
+| `UNIT-PLATFORM-001` | Linux DRM node/output選択とGBM/EGL surface lifecycle | `UT-PLATFORM-DEVICE-001` | planned / DD 1.3・test design 0.5承認済み |
+| `UNIT-PLATFORM-002` | Clip/FillRect GLES renderer、DRM present completionとresource loss。GlyphRun描画はfont asset/color契約確定後 | `UT-PLATFORM-PRESENT-001`、`UT-PLATFORM-LOSS-001` | planned / DD 1.3・test design 0.5承認済み |
 
 #### C# Property notification Subscriptionの実装記録
 

@@ -3565,26 +3565,78 @@
       ]
     },
     {
-      "id": "UNIT-PLATFORM-001",
+      "id": "UNIT-CORE-075",
       "state": "planned",
-      "scope": "linux-drm-kms-gbm-egl-gles3-present-and-resource-loss-adapter",
-      "sources": ["crates/platform-linux/src/**"],
-      "config": ["Cargo.toml", "Cargo.lock", "crates/platform-linux/Cargo.toml", "tools/units.yaml"],
-      "depends_on": ["UNIT-CORE-073", "UNIT-CORE-074"],
+      "scope": "core-render-submission-and-dispatcher-completion-contract",
+      "sources": ["crates/core-runtime/src/platform/frame.rs", "crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/dispatcher.rs", "crates/core-runtime/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-074"],
       "design": [
         {
           "path": ".docs/13_detail_design/platform/internal-layers.md",
-          "version": "1.2",
-          "section": "RuntimeからLinux DRM/KMS backendへの接続 / crate構成・scene/frame・event/UI thread"
+          "version": "1.3 approved",
+          "section": "v1.3: Core render submission / completion seam"
         }
       ],
-      "requirements": ["RQ-11-014", "RQ-11-019", "RQ-11-020", "RQ-11-022"],
-      "cases": ["TC-PLAT-01", "TC-LIFE-01", "TC-THREAD-01", "TC-ERROR-01"],
+      "requirements": ["RQ-11-008", "RQ-11-020", "RQ-11-022"],
+      "cases": ["TC-LAYOUT-01", "TC-THREAD-01", "TC-ERROR-01"],
       "test_design": ".docs/32_unit_test/ui.md",
       "tests": [
         {
+          "id": "UT-PLATFORM-RENDER-CORE-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "platform_render_core_"]
+        }
+      ]
+    },
+    {
+      "id": "UNIT-PLATFORM-001",
+      "state": "planned",
+      "scope": "linux-drm-device-output-selection-and-gbm-egl-surface-lifecycle",
+      "sources": ["crates/platform-linux/src/device/**", "crates/platform-linux/src/surface/**", "crates/platform-linux/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/platform-linux/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-073"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.3 approved",
+          "section": "v1.3: Linux device/surface policy"
+        }
+      ],
+      "requirements": ["RQ-11-009", "RQ-11-014", "RQ-11-019", "RQ-11-020", "RQ-11-022"],
+      "cases": ["TC-PLAT-01", "TC-LIFE-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-PLATFORM-DEVICE-001",
+          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "platform_device_"]
+        }
+      ]
+    },
+    {
+      "id": "UNIT-PLATFORM-002",
+      "state": "planned",
+      "scope": "linux-gles-clip-fillrect-render-present-completion-and-resource-loss; defer GlyphRun until font-asset-and-color-contract-is-defined",
+      "sources": ["crates/platform-linux/src/renderer/**", "crates/platform-linux/src/present/**", "crates/platform-linux/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/platform-linux/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-075", "UNIT-PLATFORM-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.3 approved",
+          "section": "v1.3: DrawOp/GlyphRun renderer input"
+        }
+      ],
+      "requirements": ["RQ-11-008", "RQ-11-019", "RQ-11-020", "RQ-11-022"],
+      "cases": ["TC-PLAT-01", "TC-THREAD-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-PLATFORM-PRESENT-001",
+          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "platform_present_"]
+        },
+        {
           "id": "UT-PLATFORM-LOSS-001",
-          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "platform_loss"]
+          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "platform_loss_"]
         }
       ]
     }

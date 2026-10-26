@@ -1,14 +1,14 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
-- 文書版: 0.4
-- 状態: 0.4全文承認済み（利用者、2026-10-26）。UT-PLATFORM-ADAPTER-001は実装・local focused実行済み、実装SHAのWindows/Linux CI成功。後続Platform試験と実機確認は未実装・未実行
+- 文書版: 0.5
+- 状態: 0.5全文承認済み（利用者、2026-10-26）。UT-PLATFORM-ADAPTER-001は実装・local focused実行済み、実装SHAのWindows/Linux CI成功。後続Platform試験と実機確認は未実装・未実行
 - 更新日: 2026-10-26
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
 
 上位根拠: [単体試験方針](unit-test-strategy.md)、[実装unit台帳契約](implementation-test-inventory.md)、[共通fixture・実行記録](README.md)。
 
-設計根拠: [ui/tree-layout.md](../13_detail_design/ui/tree-layout.md) 1.2「Tree所属 / クラス設計の補足」、[runtime-objects/objects-values.md](../13_detail_design/runtime-objects/objects-values.md) 1.3「Tree内部ownerとpublic参照の独立管理」、[ui/controls.md](../13_detail_design/ui/controls.md) 1.1「Control API / Window / 機能委譲」、[ui/input-focus.md](../13_detail_design/ui/input-focus.md) 1.1「Focus状態 / 入力・IME接続」、[ui/text-editing.md](../13_detail_design/ui/text-editing.md) 1.1「入力検証 / IME / 編集候補と確定値」、[runtime-objects/abi.md](../13_detail_design/runtime-objects/abi.md) 1.3改訂案「初期UI ControlのC ABI操作」。
+設計根拠: [ui/tree-layout.md](../13_detail_design/ui/tree-layout.md) 1.2「Tree所属 / クラス設計の補足」、[runtime-objects/objects-values.md](../13_detail_design/runtime-objects/objects-values.md) 1.3「Tree内部ownerとpublic参照の独立管理」、[ui/controls.md](../13_detail_design/ui/controls.md) 1.1「Control API / Window / 機能委譲」、[ui/input-focus.md](../13_detail_design/ui/input-focus.md) 1.1「Focus状態 / 入力・IME接続」、[ui/text-editing.md](../13_detail_design/ui/text-editing.md) 1.1「入力検証 / IME / 編集候補と確定値」、[runtime-objects/abi.md](../13_detail_design/runtime-objects/abi.md) 1.3改訂案「初期UI ControlのC ABI操作」、[Platform internal layers](../13_detail_design/platform/internal-layers.md) 1.3「Core render completion / Linux device / DrawOp」。
 
 ## Tree・Layout・Control
 
@@ -58,14 +58,17 @@ active Windowとfocusable/enabledなTextBox二つ、非focusable Containerを用
 
 ## Linux Platform Adapter・Scene/frame試験設計
 
-以下は承認済みPlatform DD 1.2に対応する試験設計であり、実装済みtestではない。fake adapter testsはCore state/failure境界を検証し、DRM/GBM/EGL/GLES deviceの実機動作とは分離する。
+0.4承認済みbaselineのPlatform testsを維持し、以下の追加・分割は承認済みPlatform DD 1.3に対応する。v0.5の追加caseは承認済みtest oracleだが、test自体は未実装・未実行。fake adapter testsはCore state/failure境界を検証し、DRM/GBM/EGL/GLES deviceの実機動作とは分離する。
 Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-001](../30_release_test/system-scenarios.md#rel-profile-001)の証跡として記録する。
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
 | --- | --- | --- | --- |
 | <a id="ut-platform-adapter-001"></a>UT-PLATFORM-ADAPTER-001 | fake Platform factoryでRuntime生成、Window open、open失敗・再試行・明示closeを制御する。generationとWindow owner/Treeを記録する | Runtime生成だけでdevice openしない。peer準備成功後だけWindow openをcommit。失敗時はCoreOnlyとcontent/Propertyを維持し再試行できる。closeはpeerのみを解放しCore Windowを破棄しない | [RQ-09-005](../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-11-009](../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 | <a id="ut-platform-frame-001"></a>UT-PLATFORM-FRAME-001 | fake Rendererにimmutable SceneSnapshotを渡し、prepare/submit/completionを別々に成功・失敗・遅延させる | layout revisionと同じsnapshotだけを提出。submitだけではPresentedにせず、同generation/revision completionでのみ完了。failure時dirtyとCore stateを保持しstale completionを破棄 | [RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
-| <a id="ut-platform-loss-001"></a>UT-PLATFORM-LOSS-001 | fake backendからsurface/device lossをframe中およびshutdown中に返し、旧generation eventと再試行を注入する | SurfaceLost/Recreating境界を反映し、Core UI stateを保持。旧peer event/completionを拒否し、暗黙software fallbackなし。peer resourcesはUI safe point上で一度だけ解放し、失敗cleanupは既存ticketで保持 | [RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-11-019](../11_requirements/RQ-11_platform.md#rq-11-019)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-platform-render-core-001"></a>UT-PLATFORM-RENDER-CORE-001（v0.5案） | fake Rendererからscene submitを受け、UI dispatcherを介してcompletionを遅延・失敗・重複投稿する | submitだけでPresentedにしない。UI turn上でticket完全一致する成功だけPresented。stale/duplicate completion破棄、failureでCore state保持とfull-damage retry、shutdown後のpost拒否 | [RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-platform-device-001"></a>UT-PLATFORM-DEVICE-001（v0.5案） | fake DRM node/connector/mode inventoryで複数候補、permission failure、no connected output、surface create failure、retry/closeを個別注入する | 承認後のdeterministic single-output選択に従う。Window open成功後だけCore lifecycle commit。failure/closeでresource owner順序を守りCore Window/Treeを維持。fallbackしない | [RQ-11-009](../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-019](../11_requirements/RQ-11_platform.md#rq-11-019)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-platform-present-001"></a>UT-PLATFORM-PRESENT-001（v0.5案） | fake EGL/GLES/DRM surfaceへClip/FillRectをsubmitし、page-flip complete/failure/device lossと遅延旧generation eventを注入する | 承認後に採用するrenderer subsetのDrawOpが同じsnapshot revisionでsubmitされ、exact generation/frame/revision completionでのみPresented。failureはCore stateを失わずFull damage再試行。resource closeは一度だけ、旧completion無効。GlyphRunはfont asset/color契約が未確定のため本testのoracle・合格対象に含めず、未対応operationをPresented成功として黙認しない | [RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-019](../11_requirements/RQ-11_platform.md#rq-11-019)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-platform-loss-001"></a>UT-PLATFORM-LOSS-001（v0.5改訂案） | surface/device lossをframe中およびshutdown中に返し、peer close失敗、旧generation completion、cleanup retryを注入する | SurfaceLost/Recreating境界でCore UI stateを保持。peer event停止、旧completion破棄、safe pointでresource closeを一度だけ試み、cleanup失敗は既存ticketで保持。software fallbackなし | [RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-11-019](../11_requirements/RQ-11_platform.md#rq-11-019)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 
 実行記録: `UNIT-CORE-074` / `UT-PLATFORM-FRAME-001` は `cargo test -p freemvvm-core platform_frame_` で5 tests pass。`cargo clippy --workspace --all-targets --locked -- -D warnings`、`tools/dev.py check`、`tools/dev.py minimum` もlocal pass。実装SHA `5837a44c541e16afba2f4c665328de7b09cd34e0` の[Windows/Linux CI run 40316650420](https://github.com/edamame-edame/freemvvm/actions/runs/40316650420)はsuccess。これはCore-owned immutable snapshot/frame contractのfake境界試験であり、Layout/Controlからのscene生成、実Renderer、DRM/GPU present、実機描画の実装・確認を意味しない。
 
@@ -83,6 +86,8 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 | 2026-10-24 | 0.3全文 | 利用者 | 「ok」によりC ABI Control境界の試験案全体を承認。新規試験の実装・実行は別管理 |
 | 2026-10-26 | 0.4改訂案 | — | Linux DRM/KMS backendのAdapter/Window peer、Scene/frame、resource lossとhardware profile試験案を追加。文書全体レビュー待ち |
 | 2026-10-26 | 0.4全文 | 利用者 | 「ok」によりLinux Platform Adapter/Scene/frame/resource lossの試験設計全体を承認。試験実装・実行・実機確認は別管理 |
+| 2026-10-26 | 0.5改訂案 | — | Core async render/completion seam、DRM device/surface policy、GLES present/resource lossを小unitへ分割。文書全体レビュー待ち。0.4承認baselineを維持 |
+| 2026-10-26 | 0.5全文 | 利用者 | 「ok」によりCore render completion、DRM device/surface、GLES present/resource-lossの試験設計全体を承認。試験実装・実行・実機確認は別管理 |
 
 ## 改訂履歴
 
@@ -92,3 +97,4 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 | 0.2 | 2026-10-24 | CoreObjectControlのTree internal ownerとcleanup reservationの寿命・失敗境界を具体化 | Codex | 文書全体は承認済み。UT-CORE-TREE-OWNER-001とUT-TREE-003を実装・実行済み |
 | 0.3 | 2026-10-24 | 初期UI Control C ABIの生成、共通Property、Tree、StackPanel設定、Window close requestを試験行へ追加 | Codex | 文書全体は承認済み。新規試験は未実装・未実行 |
 | 0.4 | 2026-10-26 | Linux DRM/KMS Adapter/Window peer、Scene/frame、device lossとprofile integrationの試験案を追加 | Codex | 文書全体承認済み。試験実装・実機確認は別段階 |
+| 0.5 | 2026-10-26 | Core render completion、DRM device/surface、GLES present/lossのunit test案を分割・具体化 | Codex | 文書全体承認済み。追加案は未実装・未実行 |
