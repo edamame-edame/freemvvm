@@ -1,9 +1,9 @@
 # 言語ラッパー：Python
 
-- 文書版: 1.10
+- 文書版: 2.0
 - 文書ロール: detailed-design
 - 更新日: 2026-10-26
-- 状態: 1.10全文承認済み（利用者、「ok」、2026-10-26）。実装・試験状態は別管理
+- 状態: 2.0全文承認済み（利用者、「ok」、2026-10-26）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -979,6 +979,60 @@ classDiagram
 
 Window peer open/close・close-request、成功するFocus遷移のPlatform統合確認、TextBox editing/selection/caret/IME、Widget concrete kind query、visibility、直接Click callback、keybinding、rendering、OS peer、Core/C ABI変更は含めない。fake ABI試験では入力検査・owner cleanup・status mappingを検査し、real C ABI consumerではControl creation/property/tree/StackPanel/Button associationを確認する。Platform実装なしにFocus成功を証明したと扱わない。
 
+## Python Window peer / close-request公開API（2.0）
+
+本改訂は承認済みRQ-09-071と既存Window/close-request C ABIをPython facadeへ写す提案である。Core/Rust/C ABI、Platform peer、OS close intentの生成機構は変更しない。現在のhost C ABIでは`window_open()`が`UI_UNSUPPORTED`となり、公開C ABIにもOS close intentを発生させるAPIがないため、実画面表示やclose callbackの実発火を実装済み・consumer確認済みとは扱わない。
+
+要求根拠: [RQ-03-004](../../11_requirements/RQ-03_language-support.md#rq-03-004)、[RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-008](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-008)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-003](../../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)。上位根拠: [共通C ABI Window peer / close request](../runtime-objects/abi.md)、[UI Controls](../ui/controls.md)、[Python wrapper DD](python.md)。
+
+### 公開型・操作案
+
+| 型 | 操作 | C ABI対応 | 所有・thread |
+| --- | --- | --- | --- |
+| `Window` | `open()`、`close_peer()`、`on_close_request(callback)` | `window_open/close`、`window_close_request_subscribe` | UI thread。`open/close_peer`はOS peerだけを操作し、Core stateとowned Window tokenを保持。継承済み`close()`はWindow token releaseのまま |
+| `WindowCloseSubscription` | `cancel()`、`close()`、context manager | 共通`subscription_cancel`とowned Subscription tokenのrelease | cancelとtoken releaseを分離。成功登録がcallback rootを所有し、明示終了・finalizer cleanupは既存owner cleanup規則へ接続 |
+| `CloseRequest` | callback引数。`accept()`、`decline()`、`defer()` | `window_close_request_resolve/defer` | callback中だけ有効なborrowed view。`defer()`成功でowned `DeferredCloseRequest`へ移し、元viewは無効化 |
+| `DeferredCloseRequest` | `accept()`、`decline()`、`close()` | owned deferred requestのresolveと通常handle release | resolveはtokenを消費しない。未解決のままownerをclose/破棄した場合はCore ABI契約どおりDecline |
+
+close subscriberはWindowごとに同時一つとし、重複登録は既存C ABI statusを例外へ写して拒否する。callbackが判断せず戻った場合とcallback例外が起きた場合は、例外を既存`_report_callback_exception`へ報告してtrampolineから漏らさず、判断未実施としてABI既定Acceptに任せる。これは要求の既定動作を変えない。`accept/decline`はcallback内で同期resolveし、`defer`だけが後刻resolveするためのowned tokenを作る。deferred request resolveではgeneration/stale statusをそのまま例外へ写す。
+
+`Window.open()`と`Window.close_peer()`は`_ui_call()`と同じRuntime/UI-thread/owner lease/error mappingを使う。`close_peer()`の失敗はWindow ownerを維持し再試行可能とし、成功してもWindow・content・Propertyを解放しない。`Window.close()`およびcontext manager exitはpeer closeを暗黙に呼ばず、owned Control tokenの既存release semanticsを維持する。
+
+callback登録はclosure、CFUNCTYPE trampoline、Runtime/Window anchorを一つのprivate root recordへ束ねる。native登録が成功した場合のみrootをABI destroyへ移管し、失敗時はPython側が回収する。destroy callbackはrootを一度だけsafe-point cleanupへ移し、Python user codeのdropをC destroy stackで行わない。cancelは以降のcallback entryを止めるが、in-flight callback/rootの破棄完了と同義ではない。Subscription token releaseはcancelを代行しない。callback trampolineとexception reporterは既存共通規則に従いPython例外をC境界へ出さない。
+
+```mermaid
+classDiagram
+    direction TB
+    Widget <|-- Window
+    class Window {
+        open()
+        close_peer()
+        on_close_request(callback)
+        close() : owned token release
+    }
+    class WindowCloseSubscription {
+        cancel()
+        close() : subscription token release
+    }
+    class CloseRequest {
+        accept()
+        decline()
+        defer() DeferredCloseRequest
+    }
+    class DeferredCloseRequest {
+        accept()
+        decline()
+        close()
+    }
+    Window --> WindowCloseSubscription : owns callback registration
+    WindowCloseSubscription --> CloseRequest : callback-scoped borrowed view
+    CloseRequest ..> DeferredCloseRequest : promote on defer
+```
+
+### 2.0範囲外・実装前提
+
+複数subscriber/decision aggregation、Core/C ABI変更、OS Window peer、close intent injection API、rendering/input、Runtime shutdown vetoは含めない。fake ABI試験でcallback invocation/lifecycleを制御し、実C ABI consumerはsubscription register/cancelと`window_open()`の現行status伝達までを確認する。public C ABIにintent triggerがないことを理由にclose decision machineをconsumerが検証したとは主張しない。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -1005,3 +1059,5 @@ Window peer open/close・close-request、成功するFocus遷移のPlatform統�
 | 2026-10-26 | 1.9全文 | 利用者の「ok」によりPython UI Controls/Tree/Focus facade案と未提供ABI範囲を含む文書全体を承認。試験設計・実装・試験合格は別管理 |
 | 2026-10-26 | 1.10改訂案 | 現行C ABIの複数子`container_*`操作がStackPanel向けでWindowは単一content APIである点に合わせ、Python facadeのContainer inheritanceを修正。文書全体レビュー待ち |
 | 2026-10-26 | 1.10全文 | 利用者の「ok」によりWindowをWidget facade、StackPanelを複数子Container facadeとするPython mappingを含む文書全体を承認。RQ上のContainer分類とWindowのsingle-content意味は維持。試験・実装結果は別管理 |
+| 2026-10-26 | 2.0改訂案 | 承認済みRQ-09-071と既存C ABIに基づくWindow peer open/close、close-request callback/defer/resolve facadeとowner lifecycleを追加提案。実C ABIにOS intent triggerがない制約を明記 |
+| 2026-10-26 | 2.0全文 | 利用者の「ok」によりWindow peerとclose-request facade、handle/peer close分離、callback/deferred owner lifecycleを含む全文を承認。実装・試験結果は別管理 |

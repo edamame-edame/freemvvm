@@ -4110,6 +4110,72 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-controls-consumer-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-WRAP-PY-WINDOW-001",
+      "state": "planned",
+      "scope": "python-window-peer-and-close-request-wrapper",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-ABI-021",
+        "UNIT-WRAP-PY-CONTROLS-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "2.0",
+          "section": "Python Window peer / close-request公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "Window peerとclose requestの境界"
+        }
+      ],
+      "requirements": [
+        "RQ-03-004",
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-008",
+        "RQ-05-009",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-09-001",
+        "RQ-09-003",
+        "RQ-09-071"
+      ],
+      "cases": [
+        "TC-LIFE-01",
+        "TC-THREAD-01",
+        "TC-ERROR-01",
+        "TC-WRAP-PY-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-WINDOW-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-window-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-WINDOW-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-window-consumer-test"]
+        }
+      ]
     }
   ]
 }
