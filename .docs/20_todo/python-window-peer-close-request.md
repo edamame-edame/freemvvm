@@ -1,7 +1,7 @@
 # Python Window peer / close-request wrapper
 
 - 計画版: 0.1
-- 状態: 計画・DD v2.0・test design v1.2を利用者が「ok」で承認（2026-10-26）。実装開始は未承認
+- 状態: 計画・DD v2.0・test design v1.2承認済み。利用者の「ok」で実装開始（2026-10-26）。実装・local gates成功、同一SHAのCI確認待ち
 - 親計画: [Python Binding・Command・UI Controls wrapper](python-ui-controls-wrapper.md)
 - 対象branch: `impl-python/runtime-wrapper`
 - 対象unit: `UNIT-WRAP-PY-WINDOW-001`
@@ -36,9 +36,9 @@ Core/Rust/C ABI変更、OS固有peer・描画・実画面検証、close intent�
 2. [x] 計画0.1、Python DD v2.0、wrapper test design v1.2を利用者の「ok」（2026-10-26）により文書単位で承認。実装承認とは分離する。
 3. [x] Python DD v2.0でAPI名、peer open/closeとhandle releaseの区別、borrowed/deferred request lifecycle、subscription/callback root、例外・shutdown境界を提案し、利用者承認を得た。
 4. [x] Wrapper test design v1.2でfake ABI lifecycle casesと実C ABI consumerの制約を定義し、利用者承認を得た。設計承認と試験設計承認は別記録とする。
-5. [x] `UNIT-WRAP-PY-WINDOW-001`をplanned登録。実装開始承認があるまでは実装しない。
-6. [ ] 実装開始承認後、fake callback shimで登録失敗/root回収/cancel・release・in-flight callback/borrowed request期限/defer・resolve/callback例外を検証する。実C ABI consumerではsubscription登録・cancel、openの`UI_UNSUPPORTED`とstatus伝達を検証し、OS close intent発火や画面表示を主張しない。
-7. [ ] 同じunitに実装・tests・consumerを揃え、focused gates、`tools/dev.py check`、`minimum`、document linksを実行する。成功した実装revisionを日本語commit/pushし、そのSHAのWindows/Linux CIが成功後にunitをcompleteにする。
+5. [x] `UNIT-WRAP-PY-WINDOW-001`をplanned登録し、利用者の実装開始承認後に実装を開始する。
+6. [x] 実装開始承認後、fake callback shimのlifecycle/decision cases 11件を実行。実C ABI consumerでsubscription登録・cancel、openの`UI_UNSUPPORTED`とstatus伝達を確認し、OS close intent発火や画面表示は主張しない。
+7. [x] 同じunitに実装・tests・consumerを揃え、focused gates、Windows local `tools/dev.py check`、`minimum`を実行し成功。実装revisionを日本語commit/pushし、同一SHAのWindows/Linux CI成功後にunitをcompleteにする（CI確認待ち）。
 
 ## 完了条件
 
@@ -53,3 +53,4 @@ Core/Rust/C ABI変更、OS固有peer・描画・実画面検証、close intent�
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
 | 2026-10-26 | 計画0.1 / DD v2.0 / test design v1.2 / UNIT-WRAP-PY-WINDOW-001 | 利用者承認 | 利用者「ok」。文書全体を承認しunitをplanned登録。実装開始は別承認 |
+| 2026-10-26 | 実装開始 | 利用者承認 | 利用者「ok」により実装開始。fake ABI 11件、real C ABI consumer、Windows local check/minimum成功。Windows/Linux CIはcommit後に確認 |

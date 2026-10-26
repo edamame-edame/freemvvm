@@ -16,6 +16,7 @@ VoidCallback = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
 CommandStartCallback = ctypes.CFUNCTYPE(
     Status, ctypes.c_void_p, Handle, ctypes.c_uint64, Handle
 )
+WindowCloseCallback = ctypes.CFUNCTYPE(None, ctypes.c_void_p, Handle)
 
 OK = 0
 INVALID_ARGUMENT = 1
@@ -42,6 +43,8 @@ ALIGN_START = 1
 ALIGN_CENTER = 2
 ALIGN_END = 3
 ALIGN_STRETCH = 4
+CLOSE_ACCEPT = 1
+CLOSE_DECLINE = 2
 
 
 class NativeApi(Protocol):
@@ -126,6 +129,28 @@ class NativeApi(Protocol):
     ) -> tuple[int, int, int, int]: ...
 
     def window_create(self, runtime: int) -> tuple[int, int, int]: ...
+
+    def window_open(self, window: int) -> tuple[int, int]: ...
+
+    def window_close(self, window: int) -> tuple[int, int]: ...
+
+    def window_close_request_subscribe(
+        self,
+        window: int,
+        callback: WindowCloseCallback,
+        userdata: int,
+        destroy: VoidCallback,
+    ) -> tuple[int, int, int]: ...
+
+    def window_close_request_defer(
+        self, borrowed_request: int
+    ) -> tuple[int, int, int]: ...
+
+    def window_close_request_resolve(
+        self, request: int, decision: int
+    ) -> tuple[int, int]: ...
+
+    def subscription_cancel(self, subscription: int) -> tuple[int, int]: ...
 
     def stack_panel_create(self, runtime: int) -> tuple[int, int, int]: ...
 
@@ -416,6 +441,30 @@ class CtypesNativeApi:
         self._bind(
             "ui_abi_1_window_create",
             [Handle, ctypes.POINTER(Handle), ctypes.POINTER(Handle)],
+        )
+        self._bind("ui_abi_1_window_open", [Handle, ctypes.POINTER(Handle)])
+        self._bind("ui_abi_1_window_close", [Handle, ctypes.POINTER(Handle)])
+        self._bind(
+            "ui_abi_1_window_close_request_subscribe",
+            [
+                Handle,
+                WindowCloseCallback,
+                ctypes.c_void_p,
+                VoidCallback,
+                ctypes.POINTER(Handle),
+                ctypes.POINTER(Handle),
+            ],
+        )
+        self._bind(
+            "ui_abi_1_window_close_request_defer",
+            [Handle, ctypes.POINTER(Handle), ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_window_close_request_resolve",
+            [Handle, ctypes.c_uint32, ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_subscription_cancel", [Handle, ctypes.POINTER(Handle)]
         )
         self._bind(
             "ui_abi_1_stack_panel_create",
@@ -944,6 +993,65 @@ class CtypesNativeApi:
             window, ctypes.byref(child), ctypes.byref(error)
         )
         return status, child.value, error.value
+
+    def window_open(self, window: int) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_window_open(
+            window, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def window_close(self, window: int) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_window_close(
+            window, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def window_close_request_subscribe(
+        self,
+        window: int,
+        callback: WindowCloseCallback,
+        userdata: int,
+        destroy: VoidCallback,
+    ) -> tuple[int, int, int]:
+        subscription = Handle()
+        error = Handle()
+        status = self._library.ui_abi_1_window_close_request_subscribe(
+            window,
+            callback,
+            ctypes.c_void_p(userdata),
+            destroy,
+            ctypes.byref(subscription),
+            ctypes.byref(error),
+        )
+        return status, subscription.value, error.value
+
+    def window_close_request_defer(
+        self, borrowed_request: int
+    ) -> tuple[int, int, int]:
+        request = Handle()
+        error = Handle()
+        status = self._library.ui_abi_1_window_close_request_defer(
+            borrowed_request, ctypes.byref(request), ctypes.byref(error)
+        )
+        return status, request.value, error.value
+
+    def window_close_request_resolve(
+        self, request: int, decision: int
+    ) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_window_close_request_resolve(
+            request, decision, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def subscription_cancel(self, subscription: int) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_subscription_cancel(
+            subscription, ctypes.byref(error)
+        )
+        return status, error.value
 
     def window_set_content(self, window: int, child: int) -> tuple[int, int]:
         error = Handle()

@@ -148,6 +148,8 @@ def main():
             "python-command-consumer-test",
             "python-controls-test",
             "python-controls-consumer-test",
+            "python-window-test",
+            "python-window-consumer-test",
             "csharp-runtime-test",
             "csharp-runtime-consumer-test",
             "csharp-property-test",
@@ -222,6 +224,10 @@ def main():
             if args.command == "python-controls-test"
             else "python-controls-consumer-test"
             if args.command == "python-controls-consumer-test"
+            else "python-window-unit-test"
+            if args.command == "python-window-test"
+            else "python-window-consumer-test"
+            if args.command == "python-window-consumer-test"
             else "csharp-runtime-unit-test"
             if args.command == "csharp-runtime-test"
             else "csharp-property-unit-test"
@@ -310,6 +316,13 @@ def main():
             if args.command == "python-controls-test"
             else "Python Controls consumer test executed against host C ABI"
             if args.command == "python-controls-consumer-test"
+            else "Python Window peer/close-request wrapper unit tests executed"
+            if args.command == "python-window-test"
+            else (
+                "Python Window peer/close-request consumer test executed "
+                "against host C ABI"
+            )
+            if args.command == "python-window-consumer-test"
             else "C# Runtime wrapper unit tests executed"
             if args.command == "csharp-runtime-test"
             else "C# Property wrapper unit tests executed"
@@ -1034,6 +1047,67 @@ def main():
                 consumer_environment,
                 results,
                 "python-controls-c-abi-consumer",
+            )
+        elif args.command == "python-window-test":
+            test_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            tests_path = str(ROOT / "wrappers/python/tests")
+            test_environment["PYTHONPATH"] = os.pathsep.join(
+                [
+                    source_path,
+                    tests_path,
+                    test_environment.get("PYTHONPATH", ""),
+                ]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "wrappers/python/tests/test_window.py",
+                ],
+                test_environment,
+                results,
+                "python-window-unit-tests",
+            )
+        elif args.command == "python-window-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "python-window-consumer-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = target_dir / "debug" / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            consumer_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, consumer_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "wrappers/python/examples/window_consumer.py",
+                    str(native_path.resolve()),
+                ],
+                consumer_environment,
+                results,
+                "python-window-c-abi-consumer",
             )
         elif args.command == "csharp-runtime-consumer-test":
             run(
@@ -1924,6 +1998,12 @@ def main():
                 "python-controls-unit",
             )
             run(
+                [sys.executable, "tools/dev.py", "python-window-test"],
+                environment,
+                results,
+                "python-window-unit",
+            )
+            run(
                 [
                     sys.executable,
                     "tools/dev.py",
@@ -2002,6 +2082,16 @@ def main():
                 environment,
                 results,
                 "python-controls-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-window-consumer-test",
+                ],
+                environment,
+                results,
+                "python-window-consumer",
             )
             run(
                 [

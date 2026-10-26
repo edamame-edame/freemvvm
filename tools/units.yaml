@@ -4113,7 +4113,7 @@
     },
     {
       "id": "UNIT-WRAP-PY-WINDOW-001",
-      "state": "planned",
+      "state": "ready",
       "scope": "python-window-peer-and-close-request-wrapper",
       "sources": [
         "wrappers/python/src/freemvvm/**/*.py",

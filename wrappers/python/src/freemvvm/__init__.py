@@ -417,6 +417,332 @@ class _PostRoot:
             self.operation._post_finished()
 
 
+class _WindowCloseRoot:
+    __slots__ = (
+        "callback",
+        "api",
+        "runtime_cell",
+        "window_cell",
+        "trampoline",
+    )
+
+    def __init__(
+        self,
+        callback: object,
+        api: _native.NativeApi,
+        runtime_cell: _OwnerCell,
+        window_cell: _OwnerCell,
+    ) -> None:
+        self.callback = callback
+        self.api = api
+        self.runtime_cell = runtime_cell
+        self.window_cell = window_cell
+        self.trampoline = _native.WindowCloseCallback(self.invoke)
+
+    def invoke(self, _userdata: object, borrowed_token: int) -> None:
+        request = CloseRequest(
+            self.api, self.runtime_cell, int(borrowed_token)
+        )
+        try:
+            self.callback(request)  # type: ignore[operator]
+        except BaseException as error:
+            _report_callback_exception(error)
+        finally:
+            request._expire()
+
+    def destroy(self) -> None:
+        self.callback = None
+        self.trampoline = None
+        self.window_cell = None
+        self.runtime_cell = None
+
+
+class CloseRequest:
+    """A borrowed close request valid only during its callback invocation."""
+
+    __slots__ = ("_api", "_runtime_cell", "_token", "_active", "_state")
+
+    def __init__(
+        self, api: _native.NativeApi, runtime_cell: _OwnerCell, token: int
+    ) -> None:
+        self._api = api
+        self._runtime_cell = runtime_cell
+        self._token = token
+        self._active = True
+        self._state = 0
+
+    def _expire(self) -> None:
+        self._active = False
+        self._token = 0
+
+    def _begin_decision(self) -> int:
+        if not self._active or self._state != 0:
+            raise UiError(ErrorSnapshot(_native.CLOSED))
+        self._state = 1
+        return self._token
+
+    def _finish_decision(self, succeeded: bool) -> None:
+        self._state = 2 if succeeded else 0
+
+    def _resolve(self, decision: int) -> None:
+        token = self._begin_decision()
+        succeeded = False
+        try:
+            with self._runtime_cell.lease() as runtime_token:
+                _check_ui_thread(self._api, runtime_token)
+                status, error = self._api.window_close_request_resolve(
+                    token, decision
+                )
+            _check_result(
+                self._api,
+                status,
+                error,
+                _CleanupTicket(api=self._api, anchor=self._runtime_cell),
+            )
+            succeeded = True
+        finally:
+            self._finish_decision(succeeded)
+
+    def accept(self) -> None:
+        self._resolve(_native.CLOSE_ACCEPT)
+
+    def decline(self) -> None:
+        self._resolve(_native.CLOSE_DECLINE)
+
+    def defer(self) -> DeferredCloseRequest:
+        token = self._begin_decision()
+        succeeded = False
+        try:
+            with self._runtime_cell.lease() as runtime_token:
+                _check_ui_thread(self._api, runtime_token)
+                status, owned, error = self._api.window_close_request_defer(
+                    token
+                )
+            if status != _native.OK or error or not owned:
+                _dispose_unexpected(
+                    self._api,
+                    owned,
+                    _CleanupTicket(api=self._api, anchor=self._runtime_cell),
+                )
+                _check_result(
+                    self._api,
+                    status,
+                    error,
+                    _CleanupTicket(api=self._api, anchor=self._runtime_cell),
+                )
+                raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+            result = DeferredCloseRequest._from_owned_token(
+                self._api, owned, self._runtime_cell
+            )
+            succeeded = True
+            self._expire()
+            return result
+        finally:
+            self._finish_decision(succeeded)
+
+
+class DeferredCloseRequest:
+    """Own a deferred request; resolution and handle release are separate."""
+
+    __slots__ = (
+        "_cell",
+        "_runtime_cell",
+        "_finalizer",
+        "_decision_lock",
+        "_decision_state",
+        "__weakref__",
+    )
+
+    def __init__(self) -> None:
+        raise TypeError("Use CloseRequest.defer() to own a deferred request")
+
+    @classmethod
+    def _from_owned_token(
+        cls, api: _native.NativeApi, token: int, runtime_cell: _OwnerCell
+    ) -> DeferredCloseRequest:
+        if token == 0:
+            raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+        cell = _OwnerCell(api, token, runtime_cell)
+        instance = object.__new__(cls)
+        instance._cell = cell
+        instance._runtime_cell = runtime_cell
+        instance._finalizer = weakref.finalize(
+            instance, _CleanupManager.enqueue, cell.ticket
+        )
+        instance._decision_lock = threading.Lock()
+        instance._decision_state = 0
+        return instance
+
+    def _resolve(self, decision: int) -> None:
+        with self._decision_lock:
+            if self._decision_state != 0:
+                raise UiError(ErrorSnapshot(_native.CLOSED))
+            self._decision_state = 1
+        succeeded = False
+        try:
+            _CleanupManager.retry_pending()
+            api = self._cell.api
+            with self._runtime_cell.lease() as runtime_token:
+                _check_ui_thread(api, runtime_token)
+                with self._cell.lease() as token:
+                    status, error = api.window_close_request_resolve(
+                        token, decision
+                    )
+            _check_result(
+                api,
+                status,
+                error,
+                _CleanupTicket(api=api, anchor=self._runtime_cell),
+            )
+            succeeded = True
+        finally:
+            with self._decision_lock:
+                self._decision_state = 2 if succeeded else 0
+
+    def accept(self) -> None:
+        self._resolve(_native.CLOSE_ACCEPT)
+
+    def decline(self) -> None:
+        self._resolve(_native.CLOSE_DECLINE)
+
+    def close(self) -> None:
+        _CleanupManager.retry_pending()
+        self._cell.close()
+        if self._cell.token == 0:
+            self._finalizer.detach()
+
+    def __enter__(self) -> DeferredCloseRequest:
+        with self._cell.lease():
+            pass
+        return self
+
+    def __exit__(
+        self,
+        _exception_type: object,
+        exception: BaseException | None,
+        _tb: object,
+    ) -> bool:
+        if exception is None:
+            self.close()
+        else:
+            try:
+                self.close()
+            except UiError as close_error:
+                if hasattr(exception, "add_note"):
+                    exception.add_note(
+                        "FreeMvvm deferred request close also failed: "
+                        f"{close_error}"
+                    )
+        return False
+
+
+class WindowCloseSubscription:
+    """Own the close-request Subscription; cancel and release are separate."""
+
+    __slots__ = (
+        "_cell",
+        "_runtime_cell",
+        "_window_cell",
+        "_finalizer",
+        "_cancel_lock",
+        "_cancelled",
+        "__weakref__",
+    )
+
+    def __init__(self) -> None:
+        raise TypeError("Use Window.on_close_request() to register a callback")
+
+    @classmethod
+    def _from_owned_token(
+        cls,
+        api: _native.NativeApi,
+        token: int,
+        runtime_cell: _OwnerCell,
+        window_cell: _OwnerCell,
+    ) -> WindowCloseSubscription:
+        if token == 0:
+            raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+        cell = _OwnerCell(api, token, runtime_cell)
+        instance = object.__new__(cls)
+        instance._cell = cell
+        instance._runtime_cell = runtime_cell
+        instance._window_cell = window_cell
+        instance._finalizer = weakref.finalize(
+            instance, _CleanupManager.enqueue, cell.ticket
+        )
+        instance._cancel_lock = threading.Condition(threading.Lock())
+        instance._cancelled = False
+        return instance
+
+    def cancel(self) -> None:
+        with self._cancel_lock:
+            while self._cancelled is None:
+                self._cancel_lock.wait()
+            if self._cancelled:
+                return
+            self._cancelled = None
+        succeeded = False
+        try:
+            with self._runtime_cell.lease() as runtime_token:
+                _check_ui_thread(self._cell.api, runtime_token)
+                with self._cell.lease() as token:
+                    status, error = self._cell.api.subscription_cancel(token)
+            _check_result(
+                self._cell.api,
+                status,
+                error,
+                _CleanupTicket(api=self._cell.api, anchor=self._runtime_cell),
+            )
+            succeeded = True
+        finally:
+            with self._cancel_lock:
+                self._cancelled = succeeded
+                self._cancel_lock.notify_all()
+
+    def close(self) -> None:
+        _CleanupManager.retry_pending()
+        self._cell.close()
+        if self._cell.token == 0:
+            self._finalizer.detach()
+
+    def __enter__(self) -> WindowCloseSubscription:
+        with self._cell.lease():
+            pass
+        return self
+
+    def __exit__(
+        self,
+        _exception_type: object,
+        exception: BaseException | None,
+        _tb: object,
+    ) -> bool:
+        if exception is None:
+            self.cancel()
+            self.close()
+        else:
+            try:
+                self.cancel()
+                self.close()
+            except UiError as close_error:
+                if hasattr(exception, "add_note"):
+                    exception.add_note(
+                        "FreeMvvm close-request subscription cleanup also "
+                        f"failed: {close_error}"
+                    )
+        return False
+
+
+def _invoke_window_close_callback(userdata: object, request: int) -> None:
+    root = _root_get(int(userdata or 0))
+    if isinstance(root, _WindowCloseRoot):
+        root.invoke(userdata, request)
+
+
+_WINDOW_CLOSE_CALLBACK = _native.WindowCloseCallback(
+    _invoke_window_close_callback
+)
+
+
 _POST_CALLBACK = _native.VoidCallback(
     lambda userdata: (
         root.invoke(userdata)
@@ -1882,7 +2208,7 @@ def _encode_control_text(value: str, name: str) -> bytes:
 
 @final
 class Window(Widget):
-    """Own a Window Control; peer open/close belongs to a later facade unit."""
+    """Own a Window Control and its independent native peer operations."""
 
     __slots__ = ()
 
@@ -1939,6 +2265,88 @@ class Window(Widget):
             status,
             error,
             _CleanupTicket(api=api, anchor=self._runtime_cell),
+        )
+
+    def open(self) -> None:
+        with self._ui_call() as (api, token):
+            status, error = api.window_open(token)
+        _check_result(
+            api,
+            status,
+            error,
+            _CleanupTicket(api=api, anchor=self._runtime_cell),
+        )
+
+    def close_peer(self) -> None:
+        with self._ui_call() as (api, token):
+            status, error = api.window_close(token)
+        _check_result(
+            api,
+            status,
+            error,
+            _CleanupTicket(api=api, anchor=self._runtime_cell),
+        )
+
+    def on_close_request(
+        self, callback: Callable[[CloseRequest], object]
+    ) -> WindowCloseSubscription:
+        if not callable(callback):
+            raise TypeError("callback must be callable")
+        api = self._cell.api
+        root = _WindowCloseRoot(callback, api, self._runtime_cell, self._cell)
+        root_key = _root_add(root)
+        try:
+            with self._ui_call() as (call_api, token):
+                status, subscription, error = (
+                    call_api.window_close_request_subscribe(
+                        token,
+                        root.trampoline,
+                        root_key,
+                        _DESTROY_CALLBACK,
+                    )
+                )
+        except BaseException:
+            _root_destroy(root_key)
+            raise
+
+        if status != _native.OK:
+            _root_destroy(root_key)
+            _dispose_unexpected(
+                api,
+                subscription,
+                _CleanupTicket(api=api, anchor=self._runtime_cell),
+            )
+            _check_result(
+                api,
+                status,
+                error,
+                _CleanupTicket(api=api, anchor=self._runtime_cell),
+            )
+
+        if error or not subscription:
+            if subscription:
+                cancel_status, _cancel_error = api.subscription_cancel(
+                    subscription
+                )
+                if cancel_status == _native.OK:
+                    _root_destroy(root_key)
+                _dispose_unexpected(
+                    api,
+                    subscription,
+                    _CleanupTicket(api=api, anchor=self._runtime_cell),
+                )
+            else:
+                _root_destroy(root_key)
+            _check_result(
+                api,
+                _native.INTERNAL_ERROR,
+                error,
+                _CleanupTicket(api=api, anchor=self._runtime_cell),
+            )
+            raise UiError(ErrorSnapshot(_native.INTERNAL_ERROR))
+
+        return WindowCloseSubscription._from_owned_token(
+            api, subscription, self._runtime_cell, self._cell
         )
 
     @property
@@ -2164,6 +2572,8 @@ __all__ = [
     "CommandOperation",
     "CommandState",
     "Container",
+    "CloseRequest",
+    "DeferredCloseRequest",
     "ErrorSnapshot",
     "MissingRuntimeError",
     "Orientation",
@@ -2181,4 +2591,5 @@ __all__ = [
     "UiError",
     "Widget",
     "Window",
+    "WindowCloseSubscription",
 ]
