@@ -48,6 +48,15 @@ fn card_nodes(directory: &Path) -> std::io::Result<Vec<PathBuf>> {
     Ok(nodes.into_iter().map(|(_, path)| path).collect())
 }
 
+fn first_usable_output<N>(
+    nodes: impl IntoIterator<Item = N>,
+    mut inspect: impl FnMut(&N) -> Option<OutputMode>,
+) -> Option<(N, OutputMode)> {
+    nodes
+        .into_iter()
+        .find_map(|node| inspect(&node).map(|mode| (node, mode)))
+}
+
 struct Card(File);
 
 impl AsFd for Card {
@@ -66,15 +75,9 @@ struct SelectedDevice {
 
 fn open_selected_device() -> std::io::Result<SelectedDevice> {
     let nodes = card_nodes(Path::new("/dev/dri"))?;
-    for path in nodes {
-        let card = match OpenOptions::new().read(true).write(true).open(&path) {
-            Ok(file) => Card(file),
-            Err(_) => continue,
-        };
-        let resources = match card.resource_handles() {
-            Ok(resources) => resources,
-            Err(_) => continue,
-        };
+    first_usable_output(nodes, |path| {
+        let card = Card(OpenOptions::new().read(true).write(true).open(path).ok()?);
+        let resources = card.resource_handles().ok()?;
         let modes = resources
             .connectors()
             .iter()
@@ -96,14 +99,15 @@ fn open_selected_device() -> std::io::Result<SelectedDevice> {
                 )
             })
             .flatten();
-        if let Some(mode) = choose_output(modes) {
-            return Ok(SelectedDevice { path, mode });
-        }
-    }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        "no DRM card has a connected connector with a usable mode",
-    ))
+        choose_output(modes)
+    })
+    .map(|(path, mode)| SelectedDevice { path, mode })
+    .ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "no DRM card has a connected connector with a usable mode",
+        )
+    })
 }
 
 pub(super) struct NativeSurface {
@@ -280,5 +284,25 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(names, ["card0", "card2", "card10"]);
         fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn platform_device_skips_unusable_cards_until_first_connected_output() {
+        let attempted = std::cell::RefCell::new(Vec::new());
+        let selected = first_usable_output([0, 1, 2], |card| {
+            attempted.borrow_mut().push(*card);
+            match card {
+                0 | 1 => None, // permission/resource failure and no connected mode
+                2 => Some(OutputMode {
+                    connector_id: 4,
+                    width: 1280,
+                    height: 720,
+                    preferred: true,
+                }),
+                _ => unreachable!(),
+            }
+        });
+        assert_eq!(attempted.into_inner(), [0, 1, 2]);
+        assert_eq!(selected.map(|(card, _)| card), Some(2));
     }
 }
