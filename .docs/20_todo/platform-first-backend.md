@@ -1,7 +1,7 @@
 # 0.0.1 初期Platform backendの設計・実装計画
 
 - 計画版: 0.1
-- 状態: 計画・Platform DD v1.3・UI test design 0.5全文承認済み。UNIT-CORE-073/074/075は実装・local検証・同revision Windows/Linux CI完了。次はUNIT-PLATFORM-001
+- 状態: 計画・Platform DD v1.3・UI test design 0.5全文承認済み。UNIT-CORE-073/074/075とUNIT-PLATFORM-001は実装・検証・同revision Windows/Linux CI完了。次はUNIT-PLATFORM-002
 - 作成日: 2026-10-26
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/platform-adapter-first-backend`
@@ -52,7 +52,8 @@
 7. [x] 未確定のunit split・Core render/completion SPI・DRM policy・native dependency・GlyphRun inputをDD v1.3とUI test design 0.5へ反映。`tools/units.yaml`とimplementation inventoryも同じ提案にそろえた。
 8. [x] Platform DD v1.3とUI test design 0.5を文書全体で承認。利用者の別指示「ok」（2026-10-26）でUNIT-CORE-075の実装を開始。
 9. [x] UNIT-CORE-075を実装し、focused test・`tools/dev.py check`・`tools/dev.py minimum`をlocal pass。実装SHA `e3d3acdd56d501c208505719b7d7d340e6314454` の[Windows/Linux CI run 40326835471](https://github.com/edamame-edame/freemvvm/actions/runs/40326835471)もsuccessしunitをcompleteへ更新。
-10. [ ] Debian 12 x64とRPi 4 AArch64の実機/profile試験を実行し、実行環境、表示機器、driver/backend、report、SHAをrelease testへ記録する。CI build成功だけで実機確認を完了扱いしない。
+10. [x] UNIT-PLATFORM-001を実装。DRM card/connector/mode選択、GBM/EGL surface lifecycle、Linux専用C ABI factory composition、fake boundary testsを追加。Windows local `cargo check/clippy`とfocused fake lifecycle test pass。Linux CIのfocused 5 tests、`tools/dev.py check`、`tools/dev.py minimum`とWindows CI gateが同一SHA `b53f0f59cdc3569094ab770d719dff20b00ae6ed` でpass（[CI run 40330710176](https://github.com/edamame-edame/freemvvm/actions/runs/40330710176)）。Linux CIに必要な`libdrm-dev`/`libgbm-dev`を追加。描画/presentと実機確認は後続。
+11. [ ] Debian 12 x64とRPi 4 AArch64の実機/profile試験を実行し、実行環境、表示機器、driver/backend、report、SHAをrelease testへ記録する。CI build成功だけで実機確認を完了扱いしない。
 
 ## 完了条件
 
@@ -76,3 +77,4 @@
 | 2026-10-26 | Platform DD 1.3 / UI unit-test design 0.5 | 利用者承認 | 利用者の「ok」により両文書全体を承認。planned unit/test mappingを確定。実装開始・試験合格・実機確認は別ゲート |
 | 2026-10-26 | UNIT-CORE-075 実装開始 | 利用者承認 | 文書承認後の別の「ok」を実装開始指示として扱い、Core render submission/completion seamへ着手 |
 | 2026-10-26 | UNIT-CORE-075 / `e3d3acdd` | 実装・試験完了 | focused 1 test、Core Clippy、`tools/dev.py check`、`tools/dev.py minimum` local pass。[同SHA Windows/Linux CI run 40326835471](https://github.com/edamame-edame/freemvvm/actions/runs/40326835471) success。scene producer・Linux renderer・実機描画は後続 |
+| 2026-10-26 | UNIT-PLATFORM-001 / `b53f0f59` | 実装・試験完了 | Linux focused 5 testsとWindows/Linux bootstrap gateが同SHA CI run 40330710176でsuccess。DRM/GBM/EGL surface初期化・close/explicit retry境界まで。描画/presentとDebian/RPi実機確認は対象外 |

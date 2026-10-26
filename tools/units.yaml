@@ -3590,10 +3590,10 @@
     },
     {
       "id": "UNIT-PLATFORM-001",
-      "state": "planned",
+      "state": "complete",
       "scope": "linux-drm-device-output-selection-and-gbm-egl-surface-lifecycle",
-      "sources": ["crates/platform-linux/src/device/**", "crates/platform-linux/src/surface/**", "crates/platform-linux/src/lib.rs"],
-      "config": ["Cargo.toml", "Cargo.lock", "crates/platform-linux/Cargo.toml", "tools/units.yaml"],
+      "sources": ["crates/platform-linux/src/device.rs", "crates/platform-linux/src/lib.rs", "tools/probes/abi_runtime_smoke.c", "tools/probes/abi_cpp_runtime_smoke.cpp"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/c-abi/Cargo.toml", "crates/platform-linux/Cargo.toml", ".github/workflows/bootstrap.yml", "tools/units.yaml"],
       "depends_on": ["UNIT-CORE-073"],
       "design": [
         {
@@ -3608,7 +3608,7 @@
       "tests": [
         {
           "id": "UT-PLATFORM-DEVICE-001",
-          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "platform_device_"]
+          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "platform_device_", "--locked"]
         }
       ]
     },
