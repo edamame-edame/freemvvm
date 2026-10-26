@@ -11,6 +11,7 @@ mod handle_registry;
 pub mod numeric;
 #[allow(dead_code)]
 mod object_store;
+mod platform;
 mod property;
 pub use property::ValidationError;
 mod runtime;
@@ -33,6 +34,10 @@ pub mod abi_support {
         HandleRegistry, InternalOwner, ObjectIdentity, RegistryError,
     };
     use crate::object_store::UiObjectStoreError;
+    pub use crate::platform::frame::{FrameError, FramePhase, FrameTicket, FrameTracker};
+    pub use crate::platform::scene::{
+        Damage, DrawOp, GlyphPlacement, GlyphRunSnapshot, Rect, SceneError, SceneSnapshot,
+    };
     use crate::property::{
         PropertyHandleKind, PropertyValidator, Subscription, SubscriptionCallback, ValidationError,
         ValidatorResult,

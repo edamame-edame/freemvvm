@@ -1,7 +1,7 @@
 # 0.0.1 初期Platform backendの設計・実装計画
 
 - 計画版: 0.1
-- 状態: 計画・DD v1.2・test design 0.4全文承認済み。実装開始承認済み。UNIT-CORE-073はlocal check/minimumと同revision Windows/Linux CI passで完了。後続unitは未着手
+- 状態: 計画・DD v1.2・test design 0.4全文承認済み。実装開始承認済み。UNIT-CORE-073はlocal check/minimumと同revision Windows/Linux CI passで完了。UNIT-CORE-074は実装・local検証済み、CI確認待ち
 - 作成日: 2026-10-26
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/platform-adapter-first-backend`
@@ -48,7 +48,7 @@
 3. [x] 実装前にRQ、ADR、BD、DD、test designと既存Core/C ABIの実装状態を照合。未定義のRuntime/profile/factory接続、production WindowPeer、Visual snapshot/Renderer、UI-thread event/frame completion integrationを列挙した（監査結果は本節）。
 4. [x] Platform DD v1.2とUI unit-test design 0.4を作成し、2026-10-26に利用者が文書全体を承認。要求の変更はなく、新unit 3件を承認済み設計・caseに対応させて`tools/units.yaml`へplanned登録した。実装・実行は未着手。
 5. [x] DD/test design承認後、利用者の「ok」（2026-10-26）を実装開始指示として受けた。Core変更は`impl-rust/platform-adapter-first-backend`で実施し、他言語wrapper branchを親やmerge元にしない。
-6. [ ] focused unit/consumer、Linux build、minimum toolchain、`tools/dev.py check`、document linksを実施し、同じrevisionへ結果を記録する。各実装unitを日本語commit/pushし、その実装SHAのWindows/Linux CI成功後にcompleteへ更新する。
+6. [ ] focused unit/consumer、Linux build、minimum toolchain、`tools/dev.py check`、document linksを実施し、同じrevisionへ結果を記録する。UNIT-CORE-074はfocused 5 tests、Clippy、`tools/dev.py check`、`tools/dev.py minimum`をlocal pass。日本語commit/push後、同一実装SHAのWindows/Linux CI成功を確認してcompleteへ更新する。
 7. [ ] Debian 12 x64とRPi 4 AArch64の実機/profile試験を実行し、実行環境、表示機器、driver/backend、report、SHAをrelease testへ記録する。CI build成功だけで実機確認を完了扱いしない。
 
 ## 完了条件
@@ -66,3 +66,4 @@
 | 2026-10-26 | Platform DD 1.2 / UI unit-test design 0.4 | 利用者承認 | 利用者「ok」により両文書全体を承認。planned unit 3件を台帳へ登録。実装開始・試験実装/実行・実機確認は別ゲート |
 | 2026-10-26 | 実装開始 / UNIT-CORE-073 | 利用者承認 | DD/test design承認後の利用者「ok」を実装開始指示として扱う。対象はCore factory/Window peer unit。後続unitの実装承認範囲を先取りしない |
 | 2026-10-26 | UNIT-CORE-073 / `153a0d07` | 実装・試験完了 | focused 2 tests、`tools/dev.py check`、`tools/dev.py minimum`、[Windows/Linux CI run 40314950652](https://github.com/edamame-edame/freemvvm/actions/runs/40314950652) success。Linux target artifact/backend本体と実機profile確認は後続 |
+| 2026-10-26 | UNIT-CORE-074 | 実装・local検証済み、CI待ち | Immutable SceneSnapshotとgeneration/frame/revision付きframe trackerを追加。focused 5 tests、Clippy、`tools/dev.py check`、`tools/dev.py minimum` local pass。Layout/ControlからのScene生成・production Renderer・device presentは対象外 |

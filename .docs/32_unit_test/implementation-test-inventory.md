@@ -35,7 +35,7 @@ Platform DD 1.2とUI試験設計0.4の全文承認を受け、`tools/units.yaml`
 | unit | 責務 | test設計 | 状態 |
 | --- | --- | --- | --- |
 | `UNIT-CORE-073` | Platform factoryとWindow peer lifecycle | `UT-PLATFORM-ADAPTER-001` | complete / local・Windows/Linux CI pass |
-| `UNIT-CORE-074` | immutable SceneSnapshotとframe completion | `UT-PLATFORM-FRAME-001` | planned |
+| `UNIT-CORE-074` | immutable SceneSnapshotとframe completion | `UT-PLATFORM-FRAME-001` | ready / local pass・CI待ち |
 | `UNIT-PLATFORM-001` | Linux DRM/KMS presentとresource loss | `UT-PLATFORM-LOSS-001` | planned |
 
 #### C# Property notification Subscriptionの実装記録

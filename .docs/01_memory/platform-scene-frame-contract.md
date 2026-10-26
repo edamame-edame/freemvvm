@@ -1,0 +1,6 @@
+# Scope: Core-owned immutable Platform SceneSnapshot and frame completion
+
+- SceneSnapshotの初期描画データはClip/FillRect/GlyphRun、layout revision、damage。Core snapshotは不変copyとし、Renderer側にControl参照を強保持させない。
+- frame完了通知ではsurface generationだけでなくframe/revisionも識別し、submitとPresentedを分ける。現Core実装の`FrameTicket`はgeneration/frame id/scene revisionを持ち、Rendering中の一致completionだけをPresentedにする。
+- `FrameTracker`のfake境界testはCore状態遷移の契約検証。LayoutからのDrawOp構築、Renderer、GPU/device presentや実機確認とは別unitで扱う。
+- damage矩形unionが有限矩形に表せない場合はFullへfallbackする。失敗後の再試行はcaller/Coreがdirty sceneを保持する責務で、FrameTracker自身はdirty状態のownerではない。

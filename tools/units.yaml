@@ -3542,9 +3542,9 @@
     },
     {
       "id": "UNIT-CORE-074",
-      "state": "planned",
+      "state": "ready",
       "scope": "immutable-scene-snapshot-and-frame-completion-contract",
-      "sources": ["crates/core-runtime/src/platform/scene/**", "crates/core-runtime/src/platform/frame/**"],
+      "sources": ["crates/core-runtime/src/platform/scene.rs", "crates/core-runtime/src/platform/frame.rs", "crates/core-runtime/src/platform/mod.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
       "depends_on": ["UNIT-CORE-073"],
       "design": [
@@ -3560,7 +3560,7 @@
       "tests": [
         {
           "id": "UT-PLATFORM-FRAME-001",
-          "command": ["cargo", "test", "-p", "freemvvm-core", "platform_frame"]
+          "command": ["cargo", "test", "-p", "freemvvm-core", "platform_frame_"]
         }
       ]
     },
