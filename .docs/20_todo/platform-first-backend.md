@@ -1,7 +1,7 @@
 # 0.0.1 初期Platform backendの設計・実装計画
 
 - 計画版: 0.2
-- 状態: 計画0.2 / DD v1.4 / UI test design 0.6は2026-10-27に利用者承認済み。UNIT-PLATFORM-002実装・local検証済み、同revision CI未実施
+- 状態: 計画0.2 / DD v1.4 / UI test design 0.6は2026-10-27に利用者承認済み。UNIT-PLATFORM-002はlocal検証と同一SHAのWindows/Linux CIがpass。Debian/RPi実機profile確認は未実施
 - 作成日: 2026-10-26
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/platform-adapter-first-backend`
@@ -54,7 +54,7 @@
 8. [x] Platform DD v1.3とUI test design 0.5を文書全体で承認。利用者の別指示「ok」（2026-10-26）でUNIT-CORE-075の実装を開始。
 9. [x] UNIT-CORE-075を実装し、focused test・`tools/dev.py check`・`tools/dev.py minimum`をlocal pass。実装SHA `e3d3acdd56d501c208505719b7d7d340e6314454` の[Windows/Linux CI run 40326835471](https://github.com/edamame-edame/freemvvm/actions/runs/40326835471)もsuccessしunitをcompleteへ更新。
 10. [x] UNIT-PLATFORM-001を実装。DRM card/connector/mode選択、GBM/EGL surface lifecycle、Linux専用C ABI factory composition、fake boundary testsを追加。Windows local `cargo check/clippy`とfocused fake lifecycle test pass。Linux CIのfocused 5 tests、`tools/dev.py check`、`tools/dev.py minimum`とWindows CI gateが同一SHA `b53f0f59cdc3569094ab770d719dff20b00ae6ed` でpass（[CI run 40330710176](https://github.com/edamame-edame/freemvvm/actions/runs/40330710176)）。Linux CIに必要な`libdrm-dev`/`libgbm-dev`を追加。描画/presentと実機確認は後続。
-11. [ ] UNIT-PLATFORM-002はCore DeviceScale/背景色、GLES Clip/FillRect、DRM CRTC/page-flip、worker completion/lossの範囲で実装中。計画0.2 / DD v1.4 / UI test design 0.6は全文承認済み。Core 160 tests、Linux adapter 10 tests、Linux target cross-check/Clippy、`tools/dev.py check`、`tools/dev.py minimum`がlocal pass。同一revision CIを実施してからunitを完了へ更新する。実機profile確認は後続条件として残す。
+11. [x] UNIT-PLATFORM-002を実装。Core DeviceScale/背景色、GLES Clip/FillRect、DRM CRTC/page-flip、worker completion/lossを追加。Core 160 tests、Linux adapter 10 tests、Linux target cross-check/Clippy、`tools/dev.py check`、`tools/dev.py minimum`がlocal pass。実装SHA `a7879aa3f66342cf7337d20ea1370e8cf8de4c84`の[同SHA Windows/Linux CI run 40514465626](https://github.com/edamame-edame/freemvvm/actions/runs/40514465626)がsuccess。実機profile確認は後続条件として残す。
 12. [ ] Debian 12 x64とRPi 4 AArch64の実機/profile試験を実行し、実行環境、表示機器、driver/backend、report、SHAをrelease testへ記録する。CI build成功だけで実機確認を完了扱いしない。
 
 ## 完了条件
@@ -82,3 +82,4 @@
 | 2026-10-26 | UNIT-PLATFORM-001 / `b53f0f59` | 実装・試験完了 | Linux focused 5 testsとWindows/Linux bootstrap gateが同SHA CI run 40330710176でsuccess。DRM/GBM/EGL surface初期化・close/explicit retry境界まで。描画/presentとDebian/RPi実機確認は対象外 |
 | 2026-10-27 | 計画0.2改訂案 / DD 1.4 / UI test design 0.6 | review draft | CoreからScale/背景色を渡す指示とClipの意味を反映。変更したplan/design/test全文はcommit前レビュー待ち。利用者の実装継続指示に基づきコード作業中 |
 | 2026-10-27 | 計画0.2 / DD 1.4 / UI test design 0.6 | 利用者承認 | 利用者の「ok」によりCore Scale/背景色、Clip境界、GLES subset、DRM page-flip lifecycle、試験oracleを含む文書全体を承認。UNIT-PLATFORM-002実装の同revision CI・実機確認は別管理 |
+| 2026-10-27 | UNIT-PLATFORM-002 / `a7879aa3` | 実装・試験完了 | Core/Linux focused testsと全体local gates pass。同SHA Windows/Linux CI run 40514465626 success。Debian 12/RPi 4実機profile確認は未実施 |

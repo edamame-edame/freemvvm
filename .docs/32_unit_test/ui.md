@@ -1,7 +1,7 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
 - 文書版: 0.6
-- 状態: 0.6全文承認済み（利用者、2026-10-27）。UNIT-PLATFORM-002の実装とlocal試験は進行中、同revision CI・実機確認は未完了
+- 状態: 0.6全文承認済み（利用者、2026-10-27）。UNIT-PLATFORM-002は実装・同SHA Windows/Linux CI完了。実機確認は未完了
 - 更新日: 2026-10-27
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
@@ -77,7 +77,7 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 
 実行記録: `UNIT-CORE-073` / `UT-PLATFORM-ADAPTER-001` はfocused command `cargo test -p freemvvm-core platform_factory_` で2 tests pass。実装SHA `153a0d07afe7c869258fc021f149b9b271a0140c` の[Windows/Linux CI run 40314950652](https://github.com/edamame-edame/freemvvm/actions/runs/40314950652)はsuccess。全体`tools/dev.py check`と`tools/dev.py minimum`も同一実装revisionでlocal pass。
 
-実行記録: `UNIT-PLATFORM-002`は実装・文書レビュー中。`cargo test -p freemvvm-core` 160 tests、`cargo test -p freemvvm-platform-linux` 10 tests、Linux target `cargo check --tests` / `cargo clippy --all-targets -- -D warnings`、`tools/dev.py check`、`tools/dev.py minimum`がlocal pass。Core指定の正規化RGB背景色をSceneSnapshotが保持し、damage-only copyでも維持することと、renderer planが同じ色をsurface clear色として使うことを確認。DD v1.4 / test design 0.6の全文承認、同revision CI、実機描画は未完了。
+実行記録: `UNIT-PLATFORM-002` / `UT-PLATFORM-PRESENT-001`・`UT-PLATFORM-LOSS-001`・`UT-PLATFORM-SCALE-CORE-001`は`cargo test -p freemvvm-core` 160 tests、`cargo test -p freemvvm-platform-linux` 10 tests、Linux target `cargo check --tests` / `cargo clippy --all-targets -- -D warnings`、`tools/dev.py check`、`tools/dev.py minimum`がlocal pass。Core指定の正規化RGB背景色をSceneSnapshotが保持し、damage-only copyでも維持することと、renderer planが同じ色をsurface clear色として使うことを確認。実装SHA `a7879aa3f66342cf7337d20ea1370e8cf8de4c84` の[同SHA Windows/Linux CI run 40514465626](https://github.com/edamame-edame/freemvvm/actions/runs/40514465626)もsuccess。実機描画は未確認。
 
 ## 承認履歴
 

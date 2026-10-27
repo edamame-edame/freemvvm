@@ -3614,7 +3614,7 @@
     },
     {
       "id": "UNIT-PLATFORM-002",
-      "state": "in_progress",
+      "state": "complete",
       "scope": "Core-SceneSnapshot-DeviceScale-and-normalized-RGB-background-and-linux-gles-clip-fillrect-render-drm-pageflip-completion-resource-loss; Clip changes visibility only, defer GlyphRun",
       "sources": ["crates/core-runtime/src/platform/scene.rs", "crates/core-runtime/src/platform/frame.rs", "crates/core-runtime/src/ui_controls.rs", "crates/core-runtime/src/lib.rs", "crates/platform-linux/src/renderer.rs", "crates/platform-linux/src/device.rs", "crates/platform-linux/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/platform-linux/Cargo.toml", "tools/units.yaml"],
