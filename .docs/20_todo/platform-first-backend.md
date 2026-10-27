@@ -1,7 +1,7 @@
 # 0.0.1 初期Platform backendの設計・実装計画
 
-- 計画版: 0.1
-- 状態: 計画・Platform DD v1.3・UI test design 0.5全文承認済み。UNIT-CORE-073/074/075とUNIT-PLATFORM-001は実装・検証・同revision Windows/Linux CI完了。次はUNIT-PLATFORM-002
+- 計画版: 0.2
+- 状態: 計画0.2 / DD v1.4 / UI test design 0.6は2026-10-27に利用者承認済み。UNIT-PLATFORM-002実装・local検証済み、同revision CI未実施
 - 作成日: 2026-10-26
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/platform-adapter-first-backend`
@@ -17,12 +17,13 @@
 - 要求: [RQ-09 UI範囲](../11_requirements/RQ-09_ui-scope.md)、[RQ-11 Platform](../11_requirements/RQ-11_platform.md) RQ-11-001～004、008～009、014、019～024、[RQ-06 thread/dispatch](../11_requirements/RQ-06_threading-dispatch.md)、[RQ-12 build/distribution](../11_requirements/RQ-12_build-distribution.md)。要求本文・承認履歴は実装開始前に再確認する。
 - 上位設計: [Platform abstraction](../13_detail_design/platform/abstraction.md) v1.1、[Platform internal layers](../13_detail_design/platform/internal-layers.md) v1.1、[Runtime](../13_detail_design/runtime-objects/runtime.md)、[UI Tree/Layout](../13_detail_design/ui/tree-layout.md)、[共通C ABI](../13_detail_design/runtime-objects/abi.md)。文書全体の承認状態と具体化済み/未決事項を再確認する。
 - 試験: [UI単体試験](../32_unit_test/ui.md)、[wrapper単体試験](../32_unit_test/wrappers.md)、[Linux profile integration](../30_release_test/system-scenarios.md)、[unit-test strategy](../32_unit_test/unit-test-strategy.md)。Core fake adapter試験と実機profile確認を別結果として記録する。
-- 作業規則: [Git rule](../02_git/rule.md)、[Rust coding rule](../00_rule/coding_rule_Rust.md)、[implementation unit inventory](../32_unit_test/implementation-test-inventory.md)。
+- 作業規則: [Git rule](../02_git/rule.md)、[Rust coding rule](../00_rule/coding_rule_Rust.md)、[implementation unit inventory](../32_unit_test/implementation-test-inventory.md)。実装上の注意は[Platform Linux backend memory](../01_memory/platform-linux-backend.md)を参照。
 
 ## 提案scope
 
 - 最初の描画backendはRQ-11-014どおりLinux DRM/KMS + EGL/OpenGL ESとする。既存要求にないWayland/X11/software-renderer自動fallbackは追加しない。
 - Rust Core、共通Renderer、Platform Adapter間の具体的trait/API、backend初期化と明示的unsupported/failure mapping、Window peer/surface所有、UI thread event/frame/shutdown handoffを承認済み抽象化へ落とす。
+- UNIT-PLATFORM-002ではCoreが正の有限`DeviceScale`と各成分0.0～1.0の正規化RGB背景色をSceneSnapshotへ渡し、Linux GLES rendererはDIP座標をpixelへ変換し、各frameの未描画領域を指定色でclearする。Clipは可視範囲だけを制限し子のlayout/PAINT semanticsを変えない。Clipは現在のeffective clipを置換し、Scene側が祖先clipを合成して渡す提案。
 - まずWindow peerの生成・表示先接続・最小frame present・close/資源喪失処理を縦断可能にする設計とtest designを作る。実装unitは責務が独立して確認できる範囲に分ける。
 - 対象profile候補はDebian 12 x64とRPi 4 AArch64実機。ARMv7は要求どおりcross-build確認に限り、他profileへsupportを拡張表示しない。
 - Core fake adapter / mock deviceで境界・lifecycle・failureを自動検証し、Linux CI buildとRPi 4実機確認の合格条件・手順・必要な証跡を分ける。実機試験は対応機器上の実測が済むまで未実施と記録する。
@@ -53,7 +54,8 @@
 8. [x] Platform DD v1.3とUI test design 0.5を文書全体で承認。利用者の別指示「ok」（2026-10-26）でUNIT-CORE-075の実装を開始。
 9. [x] UNIT-CORE-075を実装し、focused test・`tools/dev.py check`・`tools/dev.py minimum`をlocal pass。実装SHA `e3d3acdd56d501c208505719b7d7d340e6314454` の[Windows/Linux CI run 40326835471](https://github.com/edamame-edame/freemvvm/actions/runs/40326835471)もsuccessしunitをcompleteへ更新。
 10. [x] UNIT-PLATFORM-001を実装。DRM card/connector/mode選択、GBM/EGL surface lifecycle、Linux専用C ABI factory composition、fake boundary testsを追加。Windows local `cargo check/clippy`とfocused fake lifecycle test pass。Linux CIのfocused 5 tests、`tools/dev.py check`、`tools/dev.py minimum`とWindows CI gateが同一SHA `b53f0f59cdc3569094ab770d719dff20b00ae6ed` でpass（[CI run 40330710176](https://github.com/edamame-edame/freemvvm/actions/runs/40330710176)）。Linux CIに必要な`libdrm-dev`/`libgbm-dev`を追加。描画/presentと実機確認は後続。
-11. [ ] Debian 12 x64とRPi 4 AArch64の実機/profile試験を実行し、実行環境、表示機器、driver/backend、report、SHAをrelease testへ記録する。CI build成功だけで実機確認を完了扱いしない。
+11. [ ] UNIT-PLATFORM-002はCore DeviceScale/背景色、GLES Clip/FillRect、DRM CRTC/page-flip、worker completion/lossの範囲で実装中。計画0.2 / DD v1.4 / UI test design 0.6は全文承認済み。Core 160 tests、Linux adapter 10 tests、Linux target cross-check/Clippy、`tools/dev.py check`、`tools/dev.py minimum`がlocal pass。同一revision CIを実施してからunitを完了へ更新する。実機profile確認は後続条件として残す。
+12. [ ] Debian 12 x64とRPi 4 AArch64の実機/profile試験を実行し、実行環境、表示機器、driver/backend、report、SHAをrelease testへ記録する。CI build成功だけで実機確認を完了扱いしない。
 
 ## 完了条件
 
@@ -78,3 +80,5 @@
 | 2026-10-26 | UNIT-CORE-075 実装開始 | 利用者承認 | 文書承認後の別の「ok」を実装開始指示として扱い、Core render submission/completion seamへ着手 |
 | 2026-10-26 | UNIT-CORE-075 / `e3d3acdd` | 実装・試験完了 | focused 1 test、Core Clippy、`tools/dev.py check`、`tools/dev.py minimum` local pass。[同SHA Windows/Linux CI run 40326835471](https://github.com/edamame-edame/freemvvm/actions/runs/40326835471) success。scene producer・Linux renderer・実機描画は後続 |
 | 2026-10-26 | UNIT-PLATFORM-001 / `b53f0f59` | 実装・試験完了 | Linux focused 5 testsとWindows/Linux bootstrap gateが同SHA CI run 40330710176でsuccess。DRM/GBM/EGL surface初期化・close/explicit retry境界まで。描画/presentとDebian/RPi実機確認は対象外 |
+| 2026-10-27 | 計画0.2改訂案 / DD 1.4 / UI test design 0.6 | review draft | CoreからScale/背景色を渡す指示とClipの意味を反映。変更したplan/design/test全文はcommit前レビュー待ち。利用者の実装継続指示に基づきコード作業中 |
+| 2026-10-27 | 計画0.2 / DD 1.4 / UI test design 0.6 | 利用者承認 | 利用者の「ok」によりCore Scale/背景色、Clip境界、GLES subset、DRM page-flip lifecycle、試験oracleを含む文書全体を承認。UNIT-PLATFORM-002実装の同revision CI・実機確認は別管理 |

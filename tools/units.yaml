@@ -3614,29 +3614,33 @@
     },
     {
       "id": "UNIT-PLATFORM-002",
-      "state": "planned",
-      "scope": "linux-gles-clip-fillrect-render-present-completion-and-resource-loss; defer GlyphRun until font-asset-and-color-contract-is-defined",
-      "sources": ["crates/platform-linux/src/renderer/**", "crates/platform-linux/src/present/**", "crates/platform-linux/src/lib.rs"],
+      "state": "in_progress",
+      "scope": "Core-SceneSnapshot-DeviceScale-and-normalized-RGB-background-and-linux-gles-clip-fillrect-render-drm-pageflip-completion-resource-loss; Clip changes visibility only, defer GlyphRun",
+      "sources": ["crates/core-runtime/src/platform/scene.rs", "crates/core-runtime/src/platform/frame.rs", "crates/core-runtime/src/ui_controls.rs", "crates/core-runtime/src/lib.rs", "crates/platform-linux/src/renderer.rs", "crates/platform-linux/src/device.rs", "crates/platform-linux/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/platform-linux/Cargo.toml", "tools/units.yaml"],
       "depends_on": ["UNIT-CORE-075", "UNIT-PLATFORM-001"],
       "design": [
         {
           "path": ".docs/13_detail_design/platform/internal-layers.md",
-          "version": "1.3 approved",
-          "section": "v1.3: DrawOp/GlyphRun renderer input"
+          "version": "1.4 proposal",
+          "section": "v1.4: Core scale/background and Clip rendering contract"
         }
       ],
-      "requirements": ["RQ-11-008", "RQ-11-019", "RQ-11-020", "RQ-11-022"],
+      "requirements": ["RQ-09-067", "RQ-11-008", "RQ-11-019", "RQ-11-020", "RQ-11-022"],
       "cases": ["TC-PLAT-01", "TC-THREAD-01", "TC-ERROR-01"],
       "test_design": ".docs/32_unit_test/ui.md",
       "tests": [
         {
           "id": "UT-PLATFORM-PRESENT-001",
-          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "platform_present_"]
+          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "platform_present_", "--locked"]
         },
         {
           "id": "UT-PLATFORM-LOSS-001",
-          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "platform_loss_"]
+          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "platform_loss_", "--locked"]
+        },
+        {
+          "id": "UT-PLATFORM-SCALE-CORE-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "platform_frame_scene_snapshot_", "--locked"]
         }
       ]
     }

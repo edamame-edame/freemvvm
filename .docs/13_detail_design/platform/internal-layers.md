@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 1.3
+- 文書版: 1.4
 - 文書ロール: detailed-design
-- 更新日: 2026-10-26
-- 状態: 1.3全文承認済み（利用者、2026-10-26）。実装・試験状態は別管理
+- 更新日: 2026-10-27
+- 状態: 1.4全文承認済み（利用者、2026-10-27）。DeviceScale・BackgroundColor・Clip rendering semanticsを含む。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -96,6 +96,20 @@ font assetをDRM profileへロードする場所、font package未配置時の�
 | `UNIT-PLATFORM-002` | Clip/FillRectのGLES render、DRM present completion、generation/resource-loss処理。GlyphRun描画はfont asset/color契約確定後の後続範囲 | `UT-PLATFORM-PRESENT-001` と既存`UT-PLATFORM-LOSS-001` |
 
 各unitをfake境界testとtarget buildで順に検証する。Debian 12 x64/RPi 4 AArch64の実画面確認は別system/profile evidenceとし、Linux CI buildやfake present testを実機passへ読み替えない。
+
+### v1.4: Core scale and Clip rendering contract（実装提案）
+
+利用者の2026-10-27指示を反映する提案。v1.3の既承認範囲は維持し、文書全体レビュー完了まではこの節を確定設計として扱わない。
+
+| 項目 | 実現案 | 境界 |
+| --- | --- | --- |
+| DeviceScale | Coreが環境由来の`scale_x`/`scale_y`を有限正数として`SceneSnapshot`へ格納し、Linux rendererはDIPのedgeに各軸倍率を適用してpixel boundsへ変換する | rendererはscaleを独自推定しない。無効scaleはsnapshot作成時に拒否する |
+| BackgroundColor | Coreが正規化RGB（各成分0.0～1.0）を`SceneSnapshot`へ格納し、Linux GLES rendererはDrawOp適用前にその色でsurface全体をclearする | rendererはOSやGPUから色を推定せず、未指定時の暗黙色を持たない。SceneSnapshot生成時に非有限値・範囲外値を拒否する |
+| Clip | `Clip(Rect)`は以後のDrawOpに適用する現在のeffective clipを置換する。Scene生成側は子と祖先client clipの交差済み範囲を渡し、rendererはsurface viewportとの交差をscissorへ設定する | Clipは子のDesiredSize/FinalBounds/レイアウト入力を変えず、PAINTイベントの発火・寸法規則も追加しない。既存要求の描画・hit-test clipにのみ使う |
+| 初期描画subset | GLES3はCore指定BackgroundColorでsurfaceをclearした後にClip/FillRectを実行し、未対応GlyphRunを含むsceneはPresented成功として扱わずsubmit failureにする | GlyphRunはfont asset/color契約の別決定後。fallbackなし |
+| native thread/lifecycle | DRM/EGL/GLES resourceはWindow workerだけが所有する。初回frameでCRTCを設定し、以降はpage-flip event完了後にticketをCore sinkへ返す。closeはpending flip完了後に実行し、以前のCRTC stateを復元してreleaseする | 旧generation eventはCore trackerが拒否。native errorはresourceを破棄し、Coreにfailureを返す。software fallbackなし |
+
+この提案はScene生成や公開PAINT eventを導入しない。要求[RQ-09-067](../../11_requirements/RQ-09_ui-scope.md#rq-09-067)の論理寸法/device scale分離と祖先clip、およびRQ-11-008/019/020/022のframe completion/loss契約を適用する。2026-10-27の利用者指示により、未描画領域はCore指定の正規化RGBで毎frame clearする案を反映した。文書全体レビュー前はv1.4 proposalとして扱う。
 
 ## Text engine・IME・OS Accessibility
 
@@ -225,3 +239,5 @@ IMEとAXはWindowを強保持するための関連にせず、OS接続の失効�
 | 2026-10-26 | 1.2全文 | 利用者の「ok」によりRuntime/WindowからLinux backendへの接続契約を含む文書全体を承認。実装開始・試験合格は別管理 |
 | 2026-10-26 | 1.3改訂案 | `UNIT-CORE-075` render/completion seam、Linux DRM output/native dependency/failure候補、GlyphRun renderer input、実装unit splitを提案。文書全体レビュー待ち。1.2承認範囲を維持 |
 | 2026-10-26 | 1.3全文 | 利用者の「ok」によりCore render/completion seam、Linux device policy、GlyphRun境界、unit splitを含む文書全体を承認。実装開始・試験合格は別管理 |
+| 2026-10-27 | 1.4改訂案 | CoreからDeviceScale/BackgroundColorを渡す利用者指示とClip可視範囲の確認を反映し、GLES座標変換・clear・Clip置換・worker page-flip completion/closeの提案を追加。文書全体レビュー待ち |
+| 2026-10-27 | 1.4全文 | 利用者の「ok」によりDeviceScale・Core指定BackgroundColor・Clip可視範囲・DRM page-flip/lifecycleを含む文書全体を承認。実装・CI・実機確認は別管理 |

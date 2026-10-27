@@ -206,7 +206,14 @@ mod tests {
     fn partial_scene(revision: u64) -> Arc<SceneSnapshot> {
         let bounds = Rect::new(1.0, 2.0, 3.0, 4.0).expect("damage bounds");
         Arc::new(
-            SceneSnapshot::new(revision, Arc::from([]), Damage::rect(bounds)).expect("valid scene"),
+            SceneSnapshot::new(
+                revision,
+                crate::abi_support::DeviceScale::new(1.0, 1.0).expect("valid test scale"),
+                [0.0, 0.0, 0.0],
+                Arc::from([]),
+                Damage::rect(bounds),
+            )
+            .expect("valid scene"),
         )
     }
 

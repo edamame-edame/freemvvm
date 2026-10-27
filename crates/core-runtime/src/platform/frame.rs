@@ -146,13 +146,19 @@ impl FrameTracker {
 #[cfg(test)]
 mod tests {
     use super::{FrameError, FramePhase, FrameTicket, FrameTracker};
-    use crate::platform::scene::{Damage, SceneSnapshot};
+    use crate::platform::scene::{Damage, DeviceScale, SceneSnapshot};
     use std::sync::Arc;
 
     fn scene(revision: u64) -> Arc<SceneSnapshot> {
         Arc::new(
-            SceneSnapshot::new(revision, Arc::from([]), Damage::Full)
-                .expect("empty immutable scene"),
+            SceneSnapshot::new(
+                revision,
+                DeviceScale::new(1.0, 1.0).expect("valid test scale"),
+                [0.0, 0.0, 0.0],
+                Arc::from([]),
+                Damage::Full,
+            )
+            .expect("empty immutable scene"),
         )
     }
 
