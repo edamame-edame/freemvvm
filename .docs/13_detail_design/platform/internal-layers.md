@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 1.4
+- 文書版: 1.5 改訂案
 - 文書ロール: detailed-design
-- 更新日: 2026-10-27
-- 状態: 1.4全文承認済み（利用者、2026-10-27）。DeviceScale・BackgroundColor・Clip rendering semanticsを含む。実装・試験状態は別管理
+- 更新日: 2026-10-29
+- 状態: 1.5全文承認済み（利用者、2026-10-29）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -61,8 +61,9 @@ v1.2ではLinux hardware profileの実画面・device accessをCore/CI fake結�
 | 型 | 提案責務・操作 | thread/owner/failure境界 |
 | --- | --- | --- |
 | `PlatformRuntimeFactory` | RuntimeごとにWindow peerを生成し、生成時にCore-owned completion sinkを渡す | DRM deviceはfactory生成時に開かない。native resourceはWindow openまで作らない |
-| `PlatformWindowPeer` | 既存`open/close`に`submit_frame(ticket, Arc<SceneSnapshot>)`を追加 | `submit_frame`は受付を返すだけでPresentedにしない。同期submit errorはFrame失敗とする |
+| `PlatformWindowPeer` | 既存`open/close`に`open() -> WindowOpenInfo { client_area_dip }`、generation付き`ClientAreaChanged`通知、`submit_frame(ticket, Arc<SceneSnapshot>)`を追加 | client areaは論理DIPのclient寸法。初期値受領前はsceneを作らない。`submit_frame`は受付を返すだけでPresentedにしない。同期submit errorはFrame失敗とする |
 | `PlatformFrameCompletionSink` | backendから`FrameTicket`とcomplete/failureをCoreへ通知する | backend threadからRuntime/Core/user callbackを直接呼ばず、Core Dispatcherへcopy/enqueueする。受付後の処理はUI threadで行う |
+| `PlatformWindowEnvironmentSink` | peer open時のclient areaと後続resize/environment変更をCoreへ通知する | backend callbackは値をcopyしてUI Dispatcherへenqueueする。CoreはUI thread上でfinite/nonnegative値とpeer generationを照合し、最新値をWindowへcommitしてroot Measure/Arrange dirtyを立てる。古いgenerationは無視 |
 | Core `FrameTracker` / Window state | latest immutable scene、active ticket、surface generation、damageを保持しcompletionを照合する | exact generation/frame/revisionのみPresented。stale eventは破棄。描画失敗・resource loss後はCore UI stateを保ち次sceneをFull damageとして再試行可能にする |
 
 提案call flow: UI threadがlayout revisionとimmutable sceneを確定→FrameTrackerがgeneration/frame/revision付きticketを発行→Window peerがsceneをGLESへsubmit→DRM page-flip completionをbackendがcopy→sinkがCore Dispatcherへenqueue→次のUI turnがticketを照合→一致時のみPresentedを公開する。shutdown開始後のsink postはDispatcherの既存Closed/error境界へ従い、backend resource close後に遅延completionがCore stateを変更しない。
@@ -110,6 +111,20 @@ font assetをDRM profileへロードする場所、font package未配置時の�
 | native thread/lifecycle | DRM/EGL/GLES resourceはWindow workerだけが所有する。初回frameでCRTCを設定し、以降はpage-flip event完了後にticketをCore sinkへ返す。closeはpending flip完了後に実行し、以前のCRTC stateを復元してreleaseする | 旧generation eventはCore trackerが拒否。native errorはresourceを破棄し、Coreにfailureを返す。software fallbackなし |
 
 この提案はScene生成や公開PAINT eventを導入しない。要求[RQ-09-067](../../11_requirements/RQ-09_ui-scope.md#rq-09-067)の論理寸法/device scale分離と祖先clip、およびRQ-11-008/019/020/022のframe completion/loss契約を適用する。2026-10-27の利用者指示により、未描画領域はCore指定の正規化RGBで毎frame clearする案を反映した。文書全体レビュー前はv1.4 proposalとして扱う。
+
+### v1.5改訂案: Window client areaからCore Layoutへの入力（文書全体レビュー待ち）
+
+v1.4全文の承認範囲を維持し、既存の「Platformはroot領域をCoreへ通知する」という責務を、Layout実装が利用できるpeer protocolとして具体化する提案である。Hardware profileの選択・DRM mode policy・DeviceScale/Clipの意味は変更しない。
+
+| 対象 | 1.5提案 | 失敗・境界 |
+| --- | --- | --- |
+| 初期領域 | Window peerのopen成功結果に、Window client領域の`width_dip`/`height_dip`を含める。値はfinite/nonnegative。初期領域とpeer generationはCore Windowのopen状態commitと一緒に記録する | native surface準備失敗または無効寸法ならWindow openをcommitせずCore Window/Tree/Propertyを維持。初期領域がないpeerからLayout/Sceneをsubmitしない |
+| resize | peerはclient-area changeをgeneration付き値recordとしてCore環境sinkへ渡す。sinkはbackend threadでCoreへ入らず、既存Runtime Dispatcherへcopy/enqueueする | UI threadで現generationを照合。stale eventは破棄。短時間に複数更新が来たら未開始Layout/frameには最新値を使ってよい |
+| Core適用 | Coreは値をWindow root入力として保持し、領域変更時にroot subtree Layoutとframeをdirtyにする。LayoutSnapshotとSceneSnapshotのclient-area/layout revisionを一致させる | device scaleをclient DIP値に再乗算しない。rendererはCore scaleをpixel変換に使う。invalid値で以前のcomplete layout/frame snapshotを成功扱いにしない |
+| close/reopen | close成功でpeer generationとenvironment sinkを失効させる。Core semantic tree/Propertyは保持する。再open時に新peerが返す最新client areaを使いLayoutを作り直す | 旧peerからのresize/present completionはCore stateを更新できない |
+| zero area | finite 0寸法は有効なempty client regionとしてLayoutへ渡す。祖先client clipはemptyとなる | native backendがzero extentでsurface operation不可ならSurface stateに従ってsubmitしない。Core geometryの不正値とは扱わない |
+
+このprotocolはRust内部SPIであり公開C ABI signatureやlanguage wrapper surfaceを増やさない。論理client areaのOS/native pixelからの換算と値の由来は各Adapterが提供するが、Coreが受け取る表現はDIPに統一する。SceneSnapshotのDeviceScaleは別のCore値として従来どおりRendererへ渡す。
 
 ## Text engine・IME・OS Accessibility
 
@@ -241,3 +256,5 @@ IMEとAXはWindowを強保持するための関連にせず、OS接続の失効�
 | 2026-10-26 | 1.3全文 | 利用者の「ok」によりCore render/completion seam、Linux device policy、GlyphRun境界、unit splitを含む文書全体を承認。実装開始・試験合格は別管理 |
 | 2026-10-27 | 1.4改訂案 | CoreからDeviceScale/BackgroundColorを渡す利用者指示とClip可視範囲の確認を反映し、GLES座標変換・clear・Clip置換・worker page-flip completion/closeの提案を追加。文書全体レビュー待ち |
 | 2026-10-27 | 1.4全文 | 利用者の「ok」によりDeviceScale・Core指定BackgroundColor・Clip可視範囲・DRM page-flip/lifecycleを含む文書全体を承認。実装・CI・実機確認は別管理 |
+| 2026-10-29 | 1.5改訂案 | Window open時の初期client area、resizeのUI Dispatcher配送、generation検証、DIP/DeviceScale分離を提案。文書全体レビュー待ち。1.4承認範囲を維持 |
+| 2026-10-29 | 1.5全文 | 利用者の「ok」によりclient-area通知・generation・DIP/DeviceScale契約を含む文書全体を承認。実装・試験・実機確認は別管理 |

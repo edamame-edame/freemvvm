@@ -1,9 +1,9 @@
 # UIクラス：Tree・Layout・Geometry
 
-- 文書版: 1.2
+- 文書版: 1.3 改訂案
 - 文書ロール: detailed-design
-- 更新日: 2026-10-24
-- 状態: 1.2全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
+- 更新日: 2026-10-29
+- 状態: 1.3全文承認済み（利用者、2026-10-29）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -201,15 +201,43 @@ Horizontalでは横幅合計・最大高さで対称に扱う。具体化はUI�
 ### 状態フロー
 
 入力変更/root領域変更/Visual構造変更
-→ Measure dirty を記録
+→ Measure/Arrange dirty を記録
 → Visual Tree上でMeasure（childrenからparent）
-→ DesiredSizeをcommit
-→ Arrange dirty を記録
+→ candidate DesiredSizeを保持
 → Visual Tree上でArrange（rootからchildren）
-→ FinalBoundsをcommit
-→ Renderer/Input側が共通boundsを参照
+→ candidate FinalBoundsを保持
+→ revision検証後、LayoutSnapshot全体を一括commit
+→ Renderer/Input側が同一snapshot revisionのboundsを参照
 
 Measure/Arrange中に失敗した場合は今回の結果を部分commitせず、以前のcomplete layout snapshotを保持する。dirty状態は失敗診断または後続retryが可能なように残す。再試行方針と公開診断は後続設計で扱う。
+
+### 1.3改訂案：Layout実行入力・出力契約（レビュー待ち）
+
+以下は承認済み1.2のMeasure/Arrange意味論を実行可能な内部契約へ具体化する提案であり、1.3全文の承認前に確定仕様・実装済み機能として扱わない。
+
+| 契約 | 1.3実現案 | 失敗・境界 |
+| --- | --- | --- |
+| Window root入力 | `WindowClientArea { width_dip, height_dip }`をWindow peerからCoreへ渡す。値はWindow client左上原点の論理DIP寸法で、各軸finite/nonnegative。open成功時に初期値を一度通知し、surface client area変更ごとにgeneration付き更新をenqueueする。DeviceScaleは別値として保持し、DIP寸法へ二重適用しない | 初期値確定前はLayout/Sceneを作らない。非有限/負寸法は拒否し、最後のcomplete snapshotを維持してdirtyを残す。古いpeer generationの更新は無視。0寸法は有効な空領域とし、Platform側のsurface停止・present条件はPlatform文書に従う |
+| Root計算 | Window content rootを`Constraints(0..client_width, 0..client_height)`でMeasureし、Arrangeでは`Rect(0, 0, client_width, client_height)`を割当てる。root自体のDesiredSizeとFinalBoundsは別々にsnapshotへ保持する | content rootなしなら空LayoutSnapshotを確定可能。Window閉鎖中は新たなLayout/frameを提出せず、再open後に新generation/領域で再計算 |
+| Widget constraint | 内部`LayoutConstraints`は各軸min/maxを持ち、初期値はmin=0/max=unbounded。組込みControlが内部条件を追加できる。初期公開C ABIに任意Widgetサイズ制約setter/getterは追加しない | RQ-09の初期公開保証にないAPIをDDだけで追加しない。明示サイズAPIが必要になった場合は要求差分とABI全体レビューを先行 |
+| Leaf測定 | `IntrinsicMeasureProvider.measure(control_snapshot, constraints)`がControl表示内容に対応するDesiredSizeを返す。StackPanelは既承認アルゴリズムで子結果を集約。TextはContent、TextBoxは現在の表示用編集snapshot、ButtonはLabelをTextServiceへ渡し、同じfont profile/metricsが測定と描画で使われる | TextService未接続・font解決失敗・不正metricsはpass失敗。仮font、固定placeholder寸法、描画不能時の成功扱いを作らない。providerは初期内部境界であり利用者callback APIにしない |
+| LayoutEngine | UI thread上で`run(window, client_area, visual_snapshot) -> LayoutSnapshot`を実行。candidateはtree/property revisionを開始時に固定し、DesiredSize・FinalBounds全件を計算後、入力revisionが同じ場合のみ一括commit | wrong thread、閉鎖Runtime、tree変更、invalid geometry、checked arithmetic overflow、provider errorではsnapshotを部分公開せず、旧complete snapshotとdirtyを保持 |
+| LayoutSnapshot | window/peer generation、tree revision、layout revision、client area、各Visual identityのDesiredSize/FinalBoundsを不変値で所有。Renderer/Inputは同じsnapshot revisionを参照 | Logical/Visual対応が欠落・重複・staleなら作成失敗。ControlやPropertyをRendererへ強参照しない |
+| Layout入力変更 | root領域変更はroot subtreeのMeasure/Arrangeをdirty化。Content/Label/edit snapshot変更など測定値に影響する場合は対象Controlから祖先Measureと配下Arrangeをdirty化。Orientation/Align/Tree変更は既存invalidation規則へ接続 | 同一dispatch turn内のresizeは最新値にcoalesceしてよいが、途中のCore値やrevisionを混在させない |
+
+この契約でLayout計算自体はCoreのみが行い、Platformはclient areaと環境scaleを通知する。TextServiceの実装・font profile/package・GlyphRun描画は独立依存であり、本Layout unitの完了条件へ含めない。一方、実際のText/Button/TextBoxをsceneへ接続する前には、同じfont metricsを供給できるTextService経路が必須となる。
+
+### 1.3改訂案：Layoutクラス責務
+
+| 型 | 責務・主要操作案 | 所有・thread/failure境界 |
+| --- | --- | --- |
+| `LayoutConstraints` / `Size` / `Rect` | 検証済み内部寸法とfinite boundsを表す。maxのunboundedは内部意味値とする | 値型。ABIで直接公開しない |
+| `IntrinsicMeasureProvider` | Control immutable snapshotとconstraintからleaf DesiredSizeを返す。Text familyはTextServiceへ委譲 | Core-owned service boundary。UI thread内同期計算、利用者callbackなし |
+| `LayoutEngine` | `invalidate`; `run(root, client_area, tree_revision)`; candidate全体を検証しLayoutSnapshotを原子的に公開 | RuntimeごとにCoreが所有。UI thread専用。失敗では旧snapshot維持 |
+| `Sizer` / `Locationer` | Control kind別Measure集約とArrange配分。StackPanel規則は承認済み表に従う | LayoutEngineの作業責務。単独公開しない |
+| `LayoutSnapshot` | 一つのtree/layout revisionに属するDesiredSizeとFinalBoundsを保持 | immutable。Renderer/Inputは読取のみ |
+
+Call flow: `Platform WindowPeer -> WindowClientArea update -> Runtime UI queue -> LayoutEngine.measure -> LayoutEngine.arrange -> revision検証 -> LayoutSnapshot commit -> Scene producer / Input`。本稿ではScene producerの描画変換・GlyphRun生成を追加しない。
 
 ## 座標・Tree所属・操作API
 
@@ -336,3 +364,5 @@ LayoutSnapshotは内部の整合読取り用で、新しい公開snapshot APIや
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
 | 2026-10-24 | 1.2改訂案 | A案に基づきLogical childのTreeOwner、attach予約、detach/parent破棄、shutdown順序を明記。全文レビュー待ち |
 | 2026-10-24 | 1.2全文 | 利用者の承認により、TreeOwnerを含む本版全文を承認。実装・試験合格とは区別 |
+| 2026-10-29 | 1.3改訂案 | Core Layout pass、Window client area input、leaf measurement provider、revision付きatomic LayoutSnapshotを追記。文書全体レビュー待ち。1.2承認範囲を維持 |
+| 2026-10-29 | 1.3全文 | 利用者の「ok」によりLayout実行入力/出力・クラス責務案を含む文書全体を承認。実装・試験合格とは別管理 |

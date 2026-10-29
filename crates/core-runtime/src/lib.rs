@@ -18,6 +18,8 @@ mod runtime;
 mod runtime_handles;
 mod ui_controls;
 mod ui_focus;
+#[allow(dead_code)]
+mod ui_layout;
 // Typed value semantics back the internal Property state; ABI validation remains a later unit.
 mod ui_tree;
 mod ui_window;

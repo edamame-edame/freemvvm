@@ -3643,6 +3643,35 @@
           "command": ["cargo", "test", "-p", "freemvvm-core", "platform_frame_scene_snapshot_", "--locked"]
         }
       ]
+    },
+    {
+      "id": "UNIT-CORE-076",
+      "state": "complete",
+      "scope": "core-layout-measure-arrange-kernel-and-atomic-layout-snapshot",
+      "sources": ["crates/core-runtime/src/ui_layout.rs", "crates/core-runtime/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-072"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.3 approved",
+          "section": "Measure / Arrange / LayoutSnapshot"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.2 approved",
+          "section": "LayoutEngine / IntrinsicMeasureProvider"
+        }
+      ],
+      "requirements": ["RQ-09-007", "RQ-09-008", "RQ-09-045", "RQ-09-057", "RQ-09-067"],
+      "cases": ["TC-LAYOUT-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-LAYOUT-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "ui_layout::tests", "--locked"]
+        }
+      ]
     }
   ]
 }

@@ -1,6 +1,10 @@
 # Scope: Core UI scene production
 
 - The current Core has Logical Tree, Control/Layout state, `SceneSnapshot`, and frame submission/completion contracts, but the production path from a Window/Visual tree to a `SceneSnapshot` is not implemented; current scenes are constructed directly in tests.
+- `UNIT-CORE-076` adds a pure `ui_layout` Measure/Arrange kernel accepting immutable `LayoutNodeSnapshot` input and returning a complete immutable `LayoutSnapshot`; it is not yet wired to the live Control tree, Window client-area updates, TextService, or Scene production.
+- The approved tree-layout DD describes Measure/Arrange, but current `core-runtime` only implements layout dirty flags and orientation/align state; there is no LayoutEngine, DesiredSize, FinalBounds, or LayoutSnapshot implementation. Before scene production, settle the missing Window client-area input path and leaf intrinsic measurement contract.
+- The current public C ABI exposes StackPanel orientation/child alignment and layout dirty inspection, but no public size constraints, root client-size delivery, or bounds query. Do not invent an ABI surface or intrinsic Text sizing rule during implementation; review DD and UT contracts first.
+- A reviewed Layout proposal can keep client-area delivery and immutable layout snapshots inside the Rust Core/Platform SPI; it does not need public bounds or measurement callback APIs. Text-family measurement must use a TextService metrics boundary; a fake provider can verify the generic Layout kernel without claiming Text rendering is implemented.
 - Platform DD explicitly leaves Visual-tree traversal and scene construction to a later unit. Keep layout/hit-test bounds and renderer geometry on one revision, and preserve Core ownership of immutable snapshots.
 - The Linux GLES backend currently renders Clip/FillRect and rejects GlyphRun. A Text UI path needs an explicit TextService/glyph data/render dependency; do not silently drop text or mark unsupported operations presented.
 - Keep hardware DRM/KMS confirmation separate from Core scene construction; Docker llvmpipe tests establish only software rendering for the exercised pixels.

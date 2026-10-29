@@ -1,7 +1,9 @@
 # Core UI Scene生成の次工程
 
-- 計画版: 0.1 review draft
-- 状態: 利用者レビュー待ち。新しいDD/test全文レビューと実装は未開始。未commit
+- 2026-10-29 progress: Core Layout kernel (`UNIT-CORE-076`) is complete. Continue with Window client-area input and real Control-tree integration before scene production; see [Core UI Layout plan](core-ui-layout-engine.md).
+
+- 計画版: 0.1
+- 状態: Layout kernel (`UNIT-CORE-076`) 完了。Window client-area入力と実Control tree接続を次unitとして計画
 - 作成日: 2026-10-29
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/core-scene-producer`（現Platform/Core branchにあるSceneSnapshot/Renderer seamへ依存する子branch）
@@ -56,3 +58,4 @@ Platform Adapterの実機確認は保留し、既存のWindow/Control/Logical Tr
 | 日付 | 対象 | 状態 | 備考 |
 |---|---|---|---|
 | 2026-10-29 | 計画0.1 | review draft | Platform Adapter確認を後回しにし、次の非Platform製品課題としてCore UI scene producer/Text描画依存を提案。利用者レビュー待ち |
+| 2026-10-29 | 計画0.1 | 利用者承認・監査完了 | 承認された範囲の読取監査で、Measure/Arrange未実装とlayout inputsの不足を確認。scene producerより先にLayout契約・実装を扱う改訂計画を作成 |
