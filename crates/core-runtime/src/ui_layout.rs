@@ -257,6 +257,7 @@ pub(crate) struct NodeLayout {
 /// A complete immutable result. Callers replace the currently published snapshot only on `Ok`.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct LayoutSnapshot {
+    pub(crate) window_generation: u64,
     pub(crate) tree_revision: u64,
     pub(crate) layout_revision: u64,
     pub(crate) client_area: Size,
@@ -266,6 +267,20 @@ pub(crate) struct LayoutSnapshot {
 impl LayoutSnapshot {
     pub(crate) fn node(&self, identity: ObjectIdentity) -> Option<NodeLayout> {
         self.nodes.get(&identity).copied()
+    }
+
+    pub(crate) fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    pub(crate) fn empty(tree_revision: u64, layout_revision: u64, client_area: Size) -> Self {
+        Self {
+            window_generation: 0,
+            tree_revision,
+            layout_revision,
+            client_area,
+            nodes: HashMap::new(),
+        }
     }
 }
 
@@ -290,6 +305,7 @@ impl LayoutEngine {
             return Err(LayoutError::InvalidTree);
         }
         Ok(LayoutSnapshot {
+            window_generation: 0,
             tree_revision,
             layout_revision,
             client_area,

@@ -1,9 +1,9 @@
 # Core UI Scene生成の次工程
 
-- 2026-10-29 progress: Core Layout kernel (`UNIT-CORE-076`) and generation-checked Window client-area input (`UNIT-CORE-077`) are complete. Continue with real Control-tree snapshot/LayoutSnapshot integration before scene production; see [Core UI Layout plan](core-ui-layout-engine.md).
+- 2026-10-29 progress: Core Layout kernel (`UNIT-CORE-076`), generation-checked Window client-area input (`UNIT-CORE-077`), and real Control-tree LayoutSnapshot integration (`UNIT-CORE-078`) are complete. The remaining work in this plan is the Scene producer dependency/design audit; see [Core UI Layout plan](core-ui-layout-engine.md).
 
 - 計画版: 0.1
-- 状態: Layout kernel (`UNIT-CORE-076`) とWindow client-area入力 (`UNIT-CORE-077`) 完了。実Control tree接続を次unitとして計画
+- 状態: Layout kernel (`UNIT-CORE-076`)、Window client-area入力 (`UNIT-CORE-077`)、Control tree/LayoutSnapshot接続 (`UNIT-CORE-078`) 完了。Scene producer着手前の依存・設計監査が残件
 - 作成日: 2026-10-29
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/core-scene-producer`（現Platform/Core branchにあるSceneSnapshot/Renderer seamへ依存する子branch）

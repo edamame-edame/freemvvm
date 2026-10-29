@@ -54,6 +54,10 @@ pub mod abi_support {
     use crate::ui_controls::{
         UiControlKind, UiControlProperty, UiControlPropertyOwner, UiControlState,
     };
+    #[cfg(test)]
+    use crate::ui_layout::{
+        IntrinsicMeasureProvider, LayoutConstraints, LayoutError, LayoutSnapshot, Size,
+    };
     use crate::ui_tree::TreeError;
     use crate::ui_window::WindowLifecycleError;
     pub use crate::ui_window::{
@@ -2286,6 +2290,74 @@ pub mod abi_support {
         runtime
             .window_client_area(identity)
             .map_err(map_ui_control_property_error)
+    }
+
+    #[cfg(test)]
+    struct FixedLayoutMeasurer {
+        size: Size,
+        fail: bool,
+        on_measure: Option<Box<dyn Fn()>>,
+    }
+
+    #[cfg(test)]
+    impl IntrinsicMeasureProvider for FixedLayoutMeasurer {
+        fn measure(&self, _: ObjectIdentity, _: LayoutConstraints) -> Result<Size, LayoutError> {
+            if let Some(on_measure) = &self.on_measure {
+                on_measure();
+            }
+            if self.fail {
+                Err(LayoutError::MeasurementFailed)
+            } else {
+                Ok(self.size)
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_calculate_layout_for_test(
+        window: u64,
+        width: f64,
+        height: f64,
+        fail: bool,
+    ) -> Result<Arc<LayoutSnapshot>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let measurer = FixedLayoutMeasurer {
+            size: Size::new(width, height).map_err(|_| UiControlApiError::InvalidArgument)?,
+            fail,
+            on_measure: None,
+        };
+        runtime
+            .calculate_window_layout(identity, &measurer)
+            .map_err(|_| UiControlApiError::Internal)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_calculate_layout_with_orientation_change_for_test(
+        window: u64,
+        panel: u64,
+        orientation: u32,
+    ) -> Result<Arc<LayoutSnapshot>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let measurer = FixedLayoutMeasurer {
+            size: Size::new(24.0, 12.0).expect("valid fixed test measure"),
+            fail: false,
+            on_measure: Some(Box::new(move || {
+                let _ = stack_panel_set_orientation(panel, orientation);
+            })),
+        };
+        runtime
+            .calculate_window_layout(identity, &measurer)
+            .map_err(|_| UiControlApiError::Internal)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_layout_snapshot_for_test(
+        window: u64,
+    ) -> Result<Option<Arc<LayoutSnapshot>>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_layout_snapshot(identity)
+            .map_err(|_| UiControlApiError::Internal)
     }
 
     /// Internal Core/Renderer bridge; not part of the public C ABI.

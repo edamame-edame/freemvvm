@@ -60,6 +60,14 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 
 実行記録: 実装SHA `64486e8aa1f63e641839da4bda53e03487045de6` で `cargo test -p freemvvm-core client_area_ --locked`、`cargo test -p freemvvm-core --locked`（167 tests）、`cargo test --workspace --all-targets --locked`、`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check` がpass。Docker Debian 12検証も同SHAで `provisional_pass`: Core 167 tests、Linux Platform 14 tests、ignored headless GLES llvmpipe test 1件、Linux check/Clippy/Rust 1.85 checkがpass。image `sha256:23e361da2d94948929b036cb44b0b15a46b20ec09261559a4e6177a7b19fbc3f`、report `.local/verification/linux-platform-docker.json`。これはDockerソフトウェア環境の暫定検証であり、DRM/GPU実機・物理scale・実機resize挙動を検証していない。
 
+#### Core Control tree LayoutSnapshot integration unit（DD 1.3 / Control DD 1.2 / test design 0.7承認済み）
+
+| unit | 責務 | test設計 | 状態 |
+| --- | --- | --- | --- |
+| `UNIT-CORE-078` | Window client areaと実Control tree/StackPanel設定からimmutable LayoutNodeSnapshotを構築し、LayoutEngine成功時のみWindowのcomplete LayoutSnapshotを交換する。failureでは旧snapshotとdirtyを保持する | `UT-LAYOUT-ABI-001`、`UT-LAYOUT-ATOMIC-001` | ready / 実装・local検証完了、source commit SHA記録待ち |
+
+TextServiceは未実装のため、本番のText/TextBox/Button intrinsic measurementを創作しない。providerを内部入力境界に保ち、試験ではfake providerを使う。TextServiceを必要とする実Leafの測定不能はpass全体を失敗させ、scene producer/public ABIは本unitに含めない。
+
 `UNIT-CORE-075`の実装はCore `WindowLifecycle`へFrameTrackerを接続し、peer submit後はcompletionをCore Dispatcherへ投稿してUI turnでticket照合する。focused test、全体check、最低Rust toolchainがlocal pass。同実装SHA `e3d3acdd56d501c208505719b7d7d340e6314454` の[Windows/Linux CI run 40326835471](https://github.com/edamame-edame/freemvvm/actions/runs/40326835471)もsuccess。
 
 `UNIT-PLATFORM-001`は`crates/platform-linux`を追加し、Linux C ABI Runtimeだけがlazy Platform factoryを注入する。DRM nodeはnumeric suffix順、接続済みconnectorではpreferred modeの最小ID、preferredなしなら最大pixel area・同値最小IDを選ぶ。GBM/EGL surface failureはopen failureとして返し、別rendererへのfallbackはしない。Linux CIで`UT-PLATFORM-DEVICE-001`の5 tests、`tools/dev.py check/minimum`がpass。同実装SHA `b53f0f59cdc3569094ab770d719dff20b00ae6ed` の[Windows/Linux CI run 40330710176](https://github.com/edamame-edame/freemvvm/actions/runs/40330710176)もsuccess。CI runnerに`libdrm-dev`と`libgbm-dev`が必要。実機表示・描画/presentは検証していない。

@@ -17,6 +17,10 @@ use crate::property::{
 };
 use crate::ui_controls::{UiControlKind, UiControlProperty, UiControlState};
 use crate::ui_focus::FocusManager;
+use crate::ui_layout::{
+    Align, IntrinsicMeasureProvider, LayoutEngine, LayoutError, LayoutNodeSnapshot, LayoutSnapshot,
+    Orientation, Size,
+};
 use crate::ui_tree::{LogicalNode, RuntimeTreeStore, TreeError};
 use crate::ui_window::{
     CloseDecision, FactoryWindowPeer, PlatformFrameCompletionSink, PlatformOperationError,
@@ -1128,6 +1132,91 @@ pub(crate) struct RuntimeCore {
     host: HostRegistration,
     dispatcher: Mutex<Option<Dispatcher>>,
     shutdown_completion: Mutex<Option<ShutdownCompletion>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct LayoutTreeInput {
+    identity: ObjectIdentity,
+    children: Vec<Self>,
+}
+
+fn capture_layout_tree(
+    tree: &RuntimeTreeStore<RuntimeIdentity>,
+    identity: ObjectIdentity,
+) -> Result<LayoutTreeInput, LayoutError> {
+    let count = tree
+        .child_count(identity)
+        .map_err(|_| LayoutError::InvalidTree)?;
+    let mut children = Vec::new();
+    children
+        .try_reserve(count)
+        .map_err(|_| LayoutError::AllocationFailed)?;
+    for index in 0..count {
+        let child = tree
+            .child_identity_at(identity, index)
+            .map_err(|_| LayoutError::InvalidTree)?;
+        children.push(capture_layout_tree(tree, child)?);
+    }
+    Ok(LayoutTreeInput { identity, children })
+}
+
+fn layout_node_from_tree(
+    input: &LayoutTreeInput,
+    controls: &UiObjectStore<Box<dyn Any + Send>>,
+    align: Align,
+    identities: &mut Vec<ObjectIdentity>,
+) -> Result<LayoutNodeSnapshot, LayoutError> {
+    identities
+        .try_reserve(1)
+        .map_err(|_| LayoutError::AllocationFailed)?;
+    identities.push(input.identity);
+    let control = controls
+        .resolve(input.identity)
+        .map_err(|_| LayoutError::InvalidTree)?
+        .downcast_ref::<UiControlState>()
+        .ok_or(LayoutError::InvalidTree)?;
+    match control.kind {
+        UiControlKind::StackPanel => {
+            let orientation = match control.orientation {
+                1 => Orientation::Vertical,
+                2 => Orientation::Horizontal,
+                _ => return Err(LayoutError::InvalidTree),
+            };
+            let mut children = Vec::new();
+            children
+                .try_reserve(input.children.len())
+                .map_err(|_| LayoutError::AllocationFailed)?;
+            for child in &input.children {
+                let child_align = match control.child_align(child.identity) {
+                    1 => Align::Start,
+                    2 => Align::Center,
+                    3 => Align::End,
+                    4 => Align::Stretch,
+                    _ => return Err(LayoutError::InvalidTree),
+                };
+                children.push(layout_node_from_tree(
+                    child,
+                    controls,
+                    child_align,
+                    identities,
+                )?);
+            }
+            let mut node = LayoutNodeSnapshot::stack_panel(input.identity, orientation, children);
+            node.align = align;
+            Ok(node)
+        }
+        UiControlKind::Text | UiControlKind::TextBox | UiControlKind::Button
+            if input.children.is_empty() =>
+        {
+            let mut node = LayoutNodeSnapshot::leaf(input.identity);
+            node.align = align;
+            Ok(node)
+        }
+        UiControlKind::Window
+        | UiControlKind::Text
+        | UiControlKind::TextBox
+        | UiControlKind::Button => Err(LayoutError::InvalidTree),
+    }
 }
 
 struct RuntimeFrameCompletionSink {
@@ -2743,6 +2832,174 @@ impl RuntimeCore {
         focus.clear_detached_subtree(root, |candidate| {
             tree.is_in_subtree(root, candidate).unwrap_or(false)
         });
+    }
+
+    pub(crate) fn calculate_window_layout(
+        &self,
+        identity: ObjectIdentity,
+        measurer: &impl IntrinsicMeasureProvider,
+    ) -> Result<Arc<LayoutSnapshot>, LayoutError> {
+        if !self.is_ui_thread() || self.cleanup.state() != RuntimeState::Running {
+            return Err(LayoutError::InvalidTree);
+        }
+
+        let (generation, client_area, current_layout_revision) = {
+            let controls = self
+                .ui_objects
+                .lock()
+                .map_err(|_| LayoutError::InvalidTree)?;
+            controls
+                .resolve(identity)
+                .map_err(|_| LayoutError::InvalidTree)?
+                .downcast_ref::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .and_then(|state| state.window.as_ref())
+                .and_then(|window| window.layout_input())
+                .ok_or(LayoutError::InvalidTree)?
+        };
+        let (tree_revision, root_input) = {
+            let tree = self.ui_tree.lock().map_err(|_| LayoutError::InvalidTree)?;
+            let count = tree
+                .child_count(identity)
+                .map_err(|_| LayoutError::InvalidTree)?;
+            if count > 1 {
+                return Err(LayoutError::InvalidTree);
+            }
+            let root = if count == 0 {
+                None
+            } else {
+                let content = tree
+                    .child_identity_at(identity, 0)
+                    .map_err(|_| LayoutError::InvalidTree)?;
+                Some(capture_layout_tree(&tree, content)?)
+            };
+            (tree.revision(), root)
+        };
+        let (root_snapshot, identities) = {
+            let controls = self
+                .ui_objects
+                .lock()
+                .map_err(|_| LayoutError::InvalidTree)?;
+            let mut identities = Vec::new();
+            identities
+                .try_reserve(1)
+                .map_err(|_| LayoutError::AllocationFailed)?;
+            identities.push(identity);
+            let root = root_input
+                .as_ref()
+                .map(|input| {
+                    layout_node_from_tree(input, &controls, Align::Stretch, &mut identities)
+                })
+                .transpose()?;
+            (root, identities)
+        };
+        let size = Size::new(client_area.width_dip, client_area.height_dip)?;
+        let next_layout_revision = current_layout_revision
+            .checked_add(1)
+            .ok_or(LayoutError::ArithmeticOverflow)?;
+        let mut candidate = match root_snapshot.as_ref() {
+            Some(root) => {
+                LayoutEngine::calculate(root, tree_revision, next_layout_revision, size, measurer)?
+            }
+            None => LayoutSnapshot::empty(tree_revision, next_layout_revision, size),
+        };
+        candidate.window_generation = generation;
+
+        let (current_tree_revision, current_root_input) = {
+            let tree = self.ui_tree.lock().map_err(|_| LayoutError::InvalidTree)?;
+            let count = tree
+                .child_count(identity)
+                .map_err(|_| LayoutError::InvalidTree)?;
+            if count > 1 {
+                return Err(LayoutError::InvalidTree);
+            }
+            let root = if count == 0 {
+                None
+            } else {
+                let content = tree
+                    .child_identity_at(identity, 0)
+                    .map_err(|_| LayoutError::InvalidTree)?;
+                Some(capture_layout_tree(&tree, content)?)
+            };
+            (tree.revision(), root)
+        };
+        if current_tree_revision != tree_revision || current_root_input != root_input {
+            return Err(LayoutError::InvalidTree);
+        }
+        let (current_root_snapshot, current_identities, current_window_input) = {
+            let controls = self
+                .ui_objects
+                .lock()
+                .map_err(|_| LayoutError::InvalidTree)?;
+            let window_input = controls
+                .resolve(identity)
+                .map_err(|_| LayoutError::InvalidTree)?
+                .downcast_ref::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .and_then(|state| state.window.as_ref())
+                .and_then(|window| window.layout_input());
+            let mut identities = Vec::new();
+            identities
+                .try_reserve(1)
+                .map_err(|_| LayoutError::AllocationFailed)?;
+            identities.push(identity);
+            let root = current_root_input
+                .as_ref()
+                .map(|input| {
+                    layout_node_from_tree(input, &controls, Align::Stretch, &mut identities)
+                })
+                .transpose()?;
+            (root, identities, window_input)
+        };
+        if current_root_snapshot != root_snapshot
+            || current_identities != identities
+            || current_window_input != Some((generation, client_area, current_layout_revision))
+        {
+            return Err(LayoutError::InvalidTree);
+        }
+        let mut controls = self
+            .ui_objects
+            .lock()
+            .map_err(|_| LayoutError::InvalidTree)?;
+        let window = controls
+            .resolve_mut(identity)
+            .map_err(|_| LayoutError::InvalidTree)?
+            .downcast_mut::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_mut())
+            .ok_or(LayoutError::InvalidTree)?;
+        if window.layout_input() != Some((generation, client_area, current_layout_revision)) {
+            return Err(LayoutError::InvalidTree);
+        }
+        let published = window
+            .publish_layout(generation, client_area, candidate)
+            .ok_or(LayoutError::InvalidTree)?;
+        for control_identity in identities {
+            if let Ok(object) = controls.resolve_mut(control_identity) {
+                if let Some(state) = object.downcast_mut::<UiControlState>() {
+                    state.layout_dirty = false;
+                }
+            }
+        }
+        Ok(published)
+    }
+
+    pub(crate) fn window_layout_snapshot(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<Option<Arc<LayoutSnapshot>>, LayoutError> {
+        let controls = self
+            .ui_objects
+            .lock()
+            .map_err(|_| LayoutError::InvalidTree)?;
+        controls
+            .resolve(identity)
+            .map_err(|_| LayoutError::InvalidTree)?
+            .downcast_ref::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_ref())
+            .map(|window| window.layout_snapshot())
+            .ok_or(LayoutError::InvalidTree)
     }
 
     fn mark_layout_dirty(&self, identity: ObjectIdentity) {

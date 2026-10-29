@@ -107,11 +107,13 @@ mod tests {
         ui_control_is_enabled_property, ui_control_layout_clean, ui_control_layout_dirty,
         ui_control_text_box_value_property, ui_control_text_content_property,
         ui_control_window_title_property, widget_has_focus, widget_request_focus,
+        window_calculate_layout_for_test, window_calculate_layout_with_orientation_change_for_test,
         window_clear_content, window_client_area_for_test, window_close, window_close_intent,
         window_close_intent_subscribed, window_close_request_current, window_close_request_defer,
         window_close_request_resolve, window_close_request_subscribe, window_content,
-        window_frame_phase, window_install_test_peer, window_open, window_platform_activation,
-        window_set_content, window_set_content_with_peer, window_submit_frame,
+        window_frame_phase, window_install_test_peer, window_layout_snapshot_for_test, window_open,
+        window_platform_activation, window_set_content, window_set_content_with_peer,
+        window_submit_frame,
     };
     use crate::ui_window::CloseDecision;
     use std::ffi::c_void;
@@ -347,6 +349,77 @@ mod tests {
                 }
             )))
         );
+        runtime_shutdown(runtime).expect("shutdown test Runtime");
+    }
+
+    #[test]
+    fn runtime_layout_snapshot_failure_preserves_control_tree_snapshot_and_dirty_state() {
+        let probe = Arc::new(PlatformProbe::default());
+        let factory: Arc<dyn crate::abi_support::PlatformRuntimeFactory> =
+            Arc::new(TestPlatformFactory(Arc::clone(&probe)));
+        let runtime = runtime_create_handle_with_platform_factory(factory)
+            .expect("create Runtime with fake peer");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let root = ui_control_create_stack_panel(runtime).expect("create root panel");
+        let nested = ui_control_create_stack_panel(runtime).expect("create nested panel");
+        let leaf = ui_control_create_button(runtime, b"leaf").expect("create leaf Button");
+        window_set_content(window, root).expect("attach root content");
+        stack_panel_insert(root, 0, nested).expect("attach nested panel");
+        stack_panel_insert(nested, 0, leaf).expect("attach Button leaf");
+        assert_eq!(window_open(window), Ok(1));
+
+        let first = window_calculate_layout_for_test(window, 24.0, 12.0, false)
+            .expect("calculate from the live Control tree");
+        assert_eq!(first.window_generation, 1);
+        assert_eq!(first.tree_revision, 7);
+        assert_eq!(first.layout_revision, 1);
+        assert_eq!(first.client_area.width, 640.0);
+        assert_eq!(first.client_area.height, 480.0);
+        assert_eq!(first.node_count(), 3);
+        assert_eq!(
+            window_layout_snapshot_for_test(window),
+            Ok(Some(first.clone()))
+        );
+        for control in [window, root, nested, leaf] {
+            assert!(!ui_control_layout_dirty(control).expect("successful pass clears dirty"));
+        }
+
+        assert_eq!(
+            window_calculate_layout_with_orientation_change_for_test(window, nested, 2),
+            Err(UiControlApiError::Internal)
+        );
+        assert_eq!(
+            window_layout_snapshot_for_test(window),
+            Ok(Some(first.clone()))
+        );
+        assert!(ui_control_layout_dirty(nested).expect("configuration dirties Layout"));
+        assert_eq!(
+            window_calculate_layout_for_test(window, 24.0, 12.0, true),
+            Err(UiControlApiError::Internal)
+        );
+        assert_eq!(window_layout_snapshot_for_test(window), Ok(Some(first)));
+        assert!(ui_control_layout_dirty(nested).expect("failed pass retains dirty state"));
+
+        let second =
+            window_calculate_layout_for_test(window, 24.0, 12.0, false).expect("retry succeeds");
+        assert_eq!(second.layout_revision, 2);
+        assert_eq!(second.tree_revision, 7);
+        assert!(!ui_control_layout_dirty(nested).expect("retry clears dirty state"));
+
+        window_close(window).expect("close Window");
+        assert_eq!(window_layout_snapshot_for_test(window), Ok(None));
+        assert_eq!(window_open(window), Ok(2));
+        let reopened =
+            window_calculate_layout_for_test(window, 24.0, 12.0, false).expect("reopened layout");
+        assert_eq!(reopened.window_generation, 2);
+        assert_eq!(reopened.layout_revision, 3);
+
+        let empty_window = ui_control_create_window(runtime).expect("create empty Window");
+        assert_eq!(window_open(empty_window), Ok(1));
+        let empty = window_calculate_layout_for_test(empty_window, 24.0, 12.0, false)
+            .expect("empty content produces complete empty snapshot");
+        assert_eq!(empty.node_count(), 0);
         runtime_shutdown(runtime).expect("shutdown test Runtime");
     }
 

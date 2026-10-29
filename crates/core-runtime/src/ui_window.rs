@@ -1,6 +1,7 @@
 use crate::handle_registry::registry::ObjectIdentity;
 use crate::platform::frame::{FrameError, FramePhase, FrameTicket, FrameTracker};
 use crate::platform::scene::{Damage, SceneSnapshot};
+use crate::ui_layout::LayoutSnapshot;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -120,6 +121,8 @@ pub(crate) struct WindowLifecycle {
     frames: FrameTracker,
     force_full_damage: bool,
     client_area: Option<(u64, WindowClientArea)>,
+    layout_revision: u64,
+    layout_snapshot: Option<Arc<LayoutSnapshot>>,
 }
 
 pub(crate) struct PreparedWindowFrame {
@@ -159,6 +162,39 @@ impl WindowLifecycle {
         }
         self.client_area = Some((generation, area));
         true
+    }
+
+    pub(crate) fn layout_input(&self) -> Option<(u64, WindowClientArea, u64)> {
+        if !self.open {
+            return None;
+        }
+        let (generation, area) = self.client_area?;
+        (generation == self.generation).then_some((generation, area, self.layout_revision))
+    }
+
+    pub(crate) fn layout_snapshot(&self) -> Option<Arc<LayoutSnapshot>> {
+        self.layout_snapshot.clone()
+    }
+
+    pub(crate) fn publish_layout(
+        &mut self,
+        generation: u64,
+        area: WindowClientArea,
+        mut snapshot: LayoutSnapshot,
+    ) -> Option<Arc<LayoutSnapshot>> {
+        if !self.open
+            || self.generation != generation
+            || self.client_area != Some((generation, area))
+        {
+            return None;
+        }
+        let revision = self.layout_revision.checked_add(1)?;
+        snapshot.window_generation = generation;
+        snapshot.layout_revision = revision;
+        let snapshot = Arc::new(snapshot);
+        self.layout_revision = revision;
+        self.layout_snapshot = Some(Arc::clone(&snapshot));
+        Some(snapshot)
     }
 
     #[cfg(test)]
@@ -210,6 +246,7 @@ impl WindowLifecycle {
         self.frames.reset();
         self.force_full_damage = true;
         self.client_area = Some((generation, area));
+        self.layout_snapshot = None;
         Ok(())
     }
 
@@ -250,6 +287,7 @@ impl WindowLifecycle {
         result.map_err(|()| WindowLifecycleError::PeerFailure)?;
         self.open = false;
         self.client_area = None;
+        self.layout_snapshot = None;
         self.pending.clear();
         self.in_flight = None;
         self.frames.reset();
@@ -381,6 +419,7 @@ impl WindowLifecycle {
         result.map_err(|()| WindowLifecycleError::PeerFailure)?;
         self.open = false;
         self.client_area = None;
+        self.layout_snapshot = None;
         self.pending.clear();
         self.frames.reset();
         self.force_full_damage = true;
@@ -452,6 +491,7 @@ impl WindowLifecycle {
         }
         self.open = false;
         self.client_area = None;
+        self.layout_snapshot = None;
         self.pending.clear();
         self.in_flight = None;
     }

@@ -95,6 +95,7 @@ pub(crate) struct TreeCoordinator;
 pub(crate) struct RuntimeTreeStore<R> {
     ui_thread: UiThreadContext,
     nodes: HashMap<ObjectIdentity, LogicalNode<R>>,
+    revision: u64,
 }
 
 impl<R> RuntimeTreeStore<R> {
@@ -102,7 +103,12 @@ impl<R> RuntimeTreeStore<R> {
         Self {
             ui_thread,
             nodes: HashMap::new(),
+            revision: 0,
         }
+    }
+
+    pub(crate) fn revision(&self) -> u64 {
+        self.revision
     }
 
     pub(crate) fn insert(&mut self, node: LogicalNode<R>) -> Result<(), TreeError> {
@@ -114,6 +120,7 @@ impl<R> RuntimeTreeStore<R> {
             .try_reserve(1)
             .map_err(|_| TreeError::AllocationFailed)?;
         self.nodes.insert(node.identity, node);
+        self.revision = self.revision.saturating_add(1);
         Ok(())
     }
 
@@ -146,6 +153,10 @@ impl<R> RuntimeTreeStore<R> {
         F: FnOnce() -> Result<(), ()>,
     {
         self.ensure_ui_thread()?;
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(TreeError::RevisionExhausted)?;
         let parent_id = parent_pin.identity();
         let child_id = child_pin.identity();
         if parent_id == child_id {
@@ -174,6 +185,9 @@ impl<R> RuntimeTreeStore<R> {
 
         self.nodes.insert(parent_id, parent);
         self.nodes.insert(child_id, child);
+        if result.is_ok() {
+            self.revision = next_revision;
+        }
         result
     }
 
@@ -188,6 +202,10 @@ impl<R> RuntimeTreeStore<R> {
         F: FnOnce() -> Result<(), ()>,
     {
         self.ensure_ui_thread()?;
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(TreeError::RevisionExhausted)?;
         let parent_id = parent_pin.identity();
         let child_id = child_pin.identity();
         if parent_id == child_id {
@@ -304,6 +322,7 @@ impl<R> RuntimeTreeStore<R> {
         if let (Some(identity), Some(old)) = (old_identity, old_child) {
             self.nodes.insert(identity, old);
         }
+        self.revision = next_revision;
         Ok(removed_owner)
     }
 
@@ -313,6 +332,10 @@ impl<R> RuntimeTreeStore<R> {
         child: ObjectIdentity,
     ) -> Result<TreeOwner<R>, TreeError> {
         self.ensure_ui_thread()?;
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(TreeError::RevisionExhausted)?;
         let mut parent_node = self
             .nodes
             .remove(&parent)
@@ -324,6 +347,9 @@ impl<R> RuntimeTreeStore<R> {
         let result = TreeCoordinator::detach(&mut parent_node, &mut child_node);
         self.nodes.insert(parent, parent_node);
         self.nodes.insert(child, child_node);
+        if result.is_ok() {
+            self.revision = next_revision;
+        }
         result
     }
 
@@ -428,6 +454,10 @@ impl<R> RuntimeTreeStore<R> {
         if from_index == to_index {
             return Ok(());
         }
+        let next_tree_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(TreeError::RevisionExhausted)?;
         let revision = node
             .revision
             .checked_add(1)
@@ -435,6 +465,7 @@ impl<R> RuntimeTreeStore<R> {
         let child = node.children.remove(from_index);
         node.children.insert(to_index, child);
         node.revision = revision;
+        self.revision = next_tree_revision;
         Ok(())
     }
 
@@ -447,6 +478,7 @@ impl<R> RuntimeTreeStore<R> {
         let Some(parent) = self.nodes.remove(&identity) else {
             return Ok(None);
         };
+        self.revision = self.revision.saturating_add(1);
         for index in 0..parent.children.len() {
             let child_identity = parent.children[index].identity;
             if let Some(mut child) = self.nodes.remove(&child_identity) {
@@ -469,6 +501,9 @@ impl<R> RuntimeTreeStore<R> {
         &mut self,
     ) -> Result<HashMap<ObjectIdentity, LogicalNode<R>>, TreeError> {
         self.ensure_ui_thread()?;
+        if !self.nodes.is_empty() {
+            self.revision = self.revision.saturating_add(1);
+        }
         Ok(std::mem::take(&mut self.nodes))
     }
 

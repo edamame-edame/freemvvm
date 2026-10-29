@@ -1,7 +1,7 @@
 # Core UI Layout実行基盤
 
 - 計画版: 0.1
-- 状態: 承認済み。UNIT-CORE-076/077完了。次はControl tree/LayoutSnapshot統合
+- 状態: 承認済み。UNIT-CORE-076/077/078完了。Layout計算基盤は完了し、Scene producerは別計画へ移行
 - 作成日: 2026-10-29
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/core-ui-layout-engine`（現Core APIs branch `impl-rust/platform-adapter-first-backend` の子。Rust Core/C ABIだけを対象）
@@ -62,7 +62,7 @@
 
 ## 承認境界
 
-- 本文は次の作業計画案であり、未commit。承認はDD/UTの全文改訂案の作成開始までを許可する。
+- 本文はLayout基盤の作業計画であり、0.1全文承認済み。DD/UT改訂案の承認、各unitの実装承認はそれぞれ別の履歴として管理する。
 - DD/UT改訂案は文書全体のレビュー・承認後に実装へ進む。C ABI追加やRQ改訂が必要と判明した場合は根拠と差分を同じレビューへ提示し、設計だけで要求を拡張しない。
 - 計画のcommit/pushは利用者レビュー後。実装commitは承認済みunit完了後に既定運用で行う。
 
@@ -79,3 +79,4 @@
 - focused 4 tests、Core全164 tests、Clippy、Rust 1.85 check、format checkがpass。実行SHAと詳細はunit完了記録に登録する。
 - 次はWindow client-area入力を独立unit化し、その後に実Control tree snapshot構築・LayoutSnapshot生成をつなぐ。TextService計測とScene producerは別境界とし、Platform Adapter実機確認は保留を維持する。
 - 2026-10-29: 大きな統合範囲を実装確認可能な単位に分け、`UNIT-CORE-077`ではWindow client-area初期値とgeneration付き更新のCore input protocolを先行する。実Control tree snapshot統合はこの単位の外とし、設計範囲は変えない。
+- 2026-10-29: `UNIT-CORE-078`で実Control treeからのLayout入力構築、Window単位のimmutable snapshot公開、測定失敗/測定中入力変更時の旧snapshot保持を実装・検証した。TextService/production leaf metricsとScene producerは未実装で、別計画の依存として維持する。
