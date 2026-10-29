@@ -320,6 +320,135 @@ mod tests {
         .expect("valid test scene")
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires headless EGL/GLES software rendering"]
+    fn headless_gles_renders_core_scale_background_clip_and_fill_pixels() {
+        use freemvvm_core::abi_support::{Damage, DeviceScale, DrawOp, Rect, SceneSnapshot};
+
+        // SAFETY: the dynamic EGL loader resolves the process EGL implementation.
+        let egl = unsafe { khronos_egl::DynamicInstance::<khronos_egl::EGL1_5>::load_required() }
+            .expect("load EGL");
+        // SAFETY: a null native display requests the platform's default EGL display; the
+        // Docker test sets EGL_PLATFORM=surfaceless before the process starts.
+        let display = unsafe { egl.get_display(std::ptr::null_mut()) }.expect("EGL display");
+        egl.initialize(display).expect("initialize EGL");
+        egl.bind_api(khronos_egl::OPENGL_ES_API)
+            .expect("bind GLES API");
+        let config = egl
+            .choose_first_config(
+                display,
+                &[
+                    khronos_egl::SURFACE_TYPE,
+                    khronos_egl::PBUFFER_BIT,
+                    khronos_egl::RENDERABLE_TYPE,
+                    khronos_egl::OPENGL_ES3_BIT,
+                    khronos_egl::RED_SIZE,
+                    8,
+                    khronos_egl::GREEN_SIZE,
+                    8,
+                    khronos_egl::BLUE_SIZE,
+                    8,
+                    khronos_egl::NONE,
+                ],
+            )
+            .expect("choose pbuffer config")
+            .expect("available pbuffer config");
+        let surface = egl
+            .create_pbuffer_surface(
+                display,
+                config,
+                &[
+                    khronos_egl::WIDTH,
+                    8,
+                    khronos_egl::HEIGHT,
+                    8,
+                    khronos_egl::NONE,
+                ],
+            )
+            .expect("create pbuffer");
+        let context = egl
+            .create_context(
+                display,
+                config,
+                None,
+                &[khronos_egl::CONTEXT_CLIENT_VERSION, 3, khronos_egl::NONE],
+            )
+            .expect("create GLES 3 context");
+        egl.make_current(display, Some(surface), Some(surface), Some(context))
+            .expect("make GLES context current");
+        // SAFETY: this EGL context is current and provides the GLES entrypoints.
+        let renderer = unsafe {
+            GlesRenderer::new(|name| {
+                egl.get_proc_address(name)
+                    .map_or(std::ptr::null(), |function| {
+                        function as *const () as *const std::ffi::c_void
+                    })
+            })
+        }
+        .expect("create renderer");
+        // SAFETY: the current context is valid and the renderer string is a GLES parameter.
+        let renderer_name = unsafe { renderer.gl.get_parameter_string(glow::RENDERER) };
+        println!("headless GLES renderer: {renderer_name}");
+        let renderer_name_lower = renderer_name.to_ascii_lowercase();
+        assert!(
+            ["llvmpipe", "softpipe", "swrast"]
+                .iter()
+                .any(|name| renderer_name_lower.contains(name)),
+            "expected a Mesa software renderer, got {renderer_name}"
+        );
+        let scene = SceneSnapshot::new(
+            1,
+            DeviceScale::new(2.0, 2.0).expect("scale"),
+            [0.0, 0.0, 1.0],
+            Arc::from([
+                DrawOp::Clip(Rect::new(1.0, 1.0, 2.0, 2.0).expect("clip")),
+                DrawOp::FillRect {
+                    bounds: Rect::new(0.0, 0.0, 4.0, 4.0).expect("fill bounds"),
+                    rgba: [1.0, 0.0, 0.0, 1.0],
+                },
+            ]),
+            Damage::Full,
+        )
+        .expect("scene");
+        renderer.render(&scene, (8, 8)).expect("render scene");
+
+        let mut center = [0_u8; 4];
+        let mut outside_clip = [0_u8; 4];
+        // SAFETY: the EGL pbuffer is current and each destination is a writable RGBA pixel.
+        unsafe {
+            renderer.gl.read_pixels(
+                3,
+                3,
+                1,
+                1,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelPackData::Slice(Some(&mut center)),
+            );
+            renderer.gl.read_pixels(
+                1,
+                1,
+                1,
+                1,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelPackData::Slice(Some(&mut outside_clip)),
+            );
+        }
+        assert_eq!(center, [255, 0, 0, 255]);
+        assert_eq!(outside_clip, [0, 0, 255, 255]);
+
+        drop(renderer);
+        egl.make_current(display, None, None, None)
+            .expect("unbind GLES context");
+        egl.destroy_context(display, context)
+            .expect("destroy context");
+        egl.destroy_surface(display, surface)
+            .expect("destroy pbuffer");
+        egl.terminate(display).expect("terminate EGL");
+    }
+
     #[test]
     fn platform_present_scales_logical_edges_and_clamps_to_surface() {
         let snapshot = scene(
