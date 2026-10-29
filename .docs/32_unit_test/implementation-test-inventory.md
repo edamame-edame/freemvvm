@@ -64,9 +64,11 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 
 | unit | 責務 | test設計 | 状態 |
 | --- | --- | --- | --- |
-| `UNIT-CORE-078` | Window client areaと実Control tree/StackPanel設定からimmutable LayoutNodeSnapshotを構築し、LayoutEngine成功時のみWindowのcomplete LayoutSnapshotを交換する。failureでは旧snapshotとdirtyを保持する | `UT-LAYOUT-ABI-001`、`UT-LAYOUT-ATOMIC-001` | ready / 実装・local検証完了、source commit SHA記録待ち |
+| `UNIT-CORE-078` | Window client areaと実Control tree/StackPanel設定からimmutable LayoutNodeSnapshotを構築し、LayoutEngine成功時のみWindowのcomplete LayoutSnapshotを交換する。failureでは旧snapshotとdirtyを保持する | `UT-LAYOUT-ABI-001`、`UT-LAYOUT-ATOMIC-001` | complete / 同revision local検証pass |
 
 TextServiceは未実装のため、本番のText/TextBox/Button intrinsic measurementを創作しない。providerを内部入力境界に保ち、試験ではfake providerを使う。TextServiceを必要とする実Leafの測定不能はpass全体を失敗させ、scene producer/public ABIは本unitに含めない。
+
+実行記録: 実装SHA `162f333bfb6425f237bcfc2de306a5518f1aeff1` で `cargo test -p freemvvm-core runtime_layout_snapshot_ --locked`（1 test）、`cargo test --workspace --all-targets --locked`（Core 168 / C ABI 38 / Linux Platform 10 testsを含む全suite）、`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check` がpass。`.venv/Scripts/python.exe tools/check_docs.py`（76 documents / 6984 local links）、`tools/units.yaml` JSON parse、`git diff --check`もpass。実機・Docker検証は本unitで実施していない。fake measurementのみの確認であり、TextService/production leaf metrics、Scene producer、描画・実機表示の完了は意味しない。
 
 `UNIT-CORE-075`の実装はCore `WindowLifecycle`へFrameTrackerを接続し、peer submit後はcompletionをCore Dispatcherへ投稿してUI turnでticket照合する。focused test、全体check、最低Rust toolchainがlocal pass。同実装SHA `e3d3acdd56d501c208505719b7d7d340e6314454` の[Windows/Linux CI run 40326835471](https://github.com/edamame-edame/freemvvm/actions/runs/40326835471)もsuccess。
 
