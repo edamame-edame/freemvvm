@@ -3675,7 +3675,7 @@
     },
     {
       "id": "UNIT-CORE-077",
-      "state": "ready",
+      "state": "complete",
       "scope": "window-client-area-initial-and-generation-checked-updates",
       "sources": ["crates/core-runtime/src/ui_window.rs", "crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/lib.rs", "crates/platform-linux/src/lib.rs", "crates/platform-linux/src/device.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/platform-linux/Cargo.toml", "tools/units.yaml"],
