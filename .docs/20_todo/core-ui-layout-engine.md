@@ -1,7 +1,7 @@
 # Core UI Layout実行基盤
 
 - 計画版: 0.1
-- 状態: 承認済み。UNIT-CORE-076完了、次unitの着手待ち
+- 状態: 承認済み。UNIT-CORE-076/077完了。次はControl tree/LayoutSnapshot統合
 - 作成日: 2026-10-29
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/core-ui-layout-engine`（現Core APIs branch `impl-rust/platform-adapter-first-backend` の子。Rust Core/C ABIだけを対象）
@@ -77,4 +77,5 @@
 - 2026-10-29: 承認済みDD 1.3 / Control DD 1.2 / Platform internal-layers DD 1.5 / UT 0.7に基づき、計画unit 1のCore内純粋Layout kernel（`UNIT-CORE-076`）を実装・検証した。
 - immutable tree snapshotを入力にMeasure/Arrangeし、成功時にのみ新しいimmutable LayoutSnapshotを返す。失敗時は呼出し側が保持する既存snapshotを変更しない。
 - focused 4 tests、Core全164 tests、Clippy、Rust 1.85 check、format checkがpass。実行SHAと詳細はunit完了記録に登録する。
-- 次はWindow client-area入力・実Control tree snapshot構築・dirty consumeをつなぐunit。TextService計測とScene producerは別境界とし、Platform Adapter実機確認は保留を維持する。
+- 次はWindow client-area入力を独立unit化し、その後に実Control tree snapshot構築・LayoutSnapshot生成をつなぐ。TextService計測とScene producerは別境界とし、Platform Adapter実機確認は保留を維持する。
+- 2026-10-29: 大きな統合範囲を実装確認可能な単位に分け、`UNIT-CORE-077`ではWindow client-area初期値とgeneration付き更新のCore input protocolを先行する。実Control tree snapshot統合はこの単位の外とし、設計範囲は変えない。
