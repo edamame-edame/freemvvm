@@ -3,7 +3,7 @@
 use crate::renderer::PlanError;
 use freemvvm_core::abi_support::{
     FrameTicket, PlatformFrameCompletionSink, PlatformOperationError, PlatformRuntimeFactory,
-    PlatformWindowPeer, SceneSnapshot,
+    PlatformWindowPeer, SceneSnapshot, WindowClientArea,
 };
 use std::sync::{Arc, Mutex, mpsc};
 
@@ -51,6 +51,7 @@ enum SurfaceSubmission {
 }
 
 trait OpenedSurface {
+    fn client_area(&self) -> WindowClientArea;
     fn submit(
         &mut self,
         ticket: FrameTicket,
@@ -62,6 +63,10 @@ trait OpenedSurface {
 
 #[cfg(target_os = "linux")]
 impl OpenedSurface for device::NativeSurface {
+    fn client_area(&self) -> WindowClientArea {
+        device::NativeSurface::client_area(self)
+    }
+
     fn submit(
         &mut self,
         ticket: FrameTicket,
@@ -85,6 +90,13 @@ impl OpenedSurface for device::NativeSurface {
 
 #[cfg(not(target_os = "linux"))]
 impl OpenedSurface for device::NativeSurface {
+    fn client_area(&self) -> WindowClientArea {
+        WindowClientArea {
+            width_dip: 0.0,
+            height_dip: 0.0,
+        }
+    }
+
     fn submit(
         &mut self,
         _: FrameTicket,
@@ -122,7 +134,7 @@ struct LinuxPeer {
 }
 
 enum WorkerCommand {
-    Open(mpsc::SyncSender<Result<(), ()>>),
+    Open(u64, mpsc::SyncSender<Result<WindowClientArea, ()>>),
     Close(mpsc::SyncSender<Result<(), ()>>),
     Submit(
         FrameTicket,
@@ -175,8 +187,15 @@ impl Drop for LinuxPeer {
 }
 
 impl PlatformWindowPeer for LinuxPeer {
-    fn open(&self) -> Result<(), PlatformOperationError> {
-        self.request(WorkerCommand::Open)
+    fn open(&self, generation: u64) -> Result<WindowClientArea, PlatformOperationError> {
+        let (reply, result) = mpsc::sync_channel(0);
+        self.commands
+            .send(WorkerCommand::Open(generation, reply))
+            .map_err(|_| PlatformOperationError)?;
+        result
+            .recv()
+            .map_err(|_| PlatformOperationError)?
+            .map_err(|_| PlatformOperationError)
     }
 
     fn close(&self) -> Result<(), PlatformOperationError> {
@@ -225,8 +244,8 @@ fn surface_worker(
                 match commands.recv_timeout(std::time::Duration::from_millis(8)) {
                     Ok(WorkerCommand::Close(reply)) => deferred_closes.push(reply),
                     Ok(WorkerCommand::Shutdown) => shutting_down = true,
-                    Ok(WorkerCommand::Open(reply)) => {
-                        let _ = reply.send(Ok(()));
+                    Ok(WorkerCommand::Open(_, reply)) => {
+                        let _ = reply.send(Err(()));
                     }
                     Ok(WorkerCommand::Submit(_, _, reply)) => {
                         let _ = reply.send(Err(()));
@@ -261,11 +280,18 @@ fn surface_worker(
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         };
         match command {
-            WorkerCommand::Open(reply) => {
+            WorkerCommand::Open(_generation, reply) => {
                 let result = if surface.is_some() {
-                    Ok(())
+                    surface
+                        .as_ref()
+                        .map(|opened| opened.client_area())
+                        .ok_or(())
                 } else {
-                    opener.open().map(|opened| surface = Some(opened))
+                    opener.open().map(|opened| {
+                        let client_area = opened.client_area();
+                        surface = Some(opened);
+                        client_area
+                    })
                 };
                 let _ = reply.send(result);
             }
@@ -337,6 +363,13 @@ mod tests {
     }
 
     impl OpenedSurface for FakeSurface {
+        fn client_area(&self) -> WindowClientArea {
+            WindowClientArea {
+                width_dip: 800.0,
+                height_dip: 600.0,
+            }
+        }
+
         fn submit(
             &mut self,
             ticket: FrameTicket,
@@ -484,9 +517,15 @@ mod tests {
         let opener = fake_opener(Arc::clone(&closes), 1, false, false, false, 0);
         let (peer, _) = peer_and_completions(opener.clone());
 
-        assert!(peer.open().is_err());
-        assert!(peer.open().is_ok());
-        assert!(peer.open().is_ok());
+        assert!(peer.open(1).is_err());
+        assert_eq!(
+            peer.open(1).expect("open after retry"),
+            WindowClientArea {
+                width_dip: 800.0,
+                height_dip: 600.0,
+            }
+        );
+        assert!(peer.open(1).is_ok());
         assert_eq!(opener.attempts.load(Ordering::SeqCst), 2);
         assert_eq!(closes.load(Ordering::SeqCst), 0);
         peer.close().expect("close surface");
@@ -499,7 +538,7 @@ mod tests {
         let closes = Arc::new(AtomicUsize::new(0));
         let opener = fake_opener(Arc::clone(&closes), 0, false, false, false, 0);
         let (peer, completions) = peer_and_completions(opener);
-        peer.open().expect("open fake surface");
+        peer.open(1).expect("open fake surface");
         let scene = scene(7, vec![]);
         let ticket = ticket(Arc::clone(&scene));
         peer.submit_frame(ticket, scene)
@@ -515,7 +554,7 @@ mod tests {
         let closes = Arc::new(AtomicUsize::new(0));
         let opener = fake_opener(Arc::clone(&closes), 0, true, true, false, 0);
         let (peer, completions) = peer_and_completions(opener);
-        peer.open().expect("open fake surface");
+        peer.open(1).expect("open fake surface");
         let scene = scene(8, vec![]);
         let ticket = ticket(Arc::clone(&scene));
         peer.submit_frame(ticket, scene).expect("queue page flip");
@@ -531,7 +570,7 @@ mod tests {
         let closes = Arc::new(AtomicUsize::new(0));
         let opener = fake_opener(Arc::clone(&closes), 0, false, false, true, 0);
         let (peer, completions) = peer_and_completions(opener);
-        peer.open().expect("open fake surface");
+        peer.open(1).expect("open fake surface");
         let glyph = freemvvm_core::abi_support::GlyphRunSnapshot::new(
             [0; 32],
             12.0,
@@ -559,7 +598,7 @@ mod tests {
         let closes = Arc::new(AtomicUsize::new(0));
         let opener = fake_opener(Arc::clone(&closes), 0, true, false, false, 4);
         let (peer, completions) = peer_and_completions(opener);
-        peer.open().expect("open fake surface");
+        peer.open(1).expect("open fake surface");
         let scene = scene(11, vec![]);
         let ticket = ticket(Arc::clone(&scene));
         peer.submit_frame(ticket, scene).expect("queue page flip");

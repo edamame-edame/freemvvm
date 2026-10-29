@@ -7,9 +7,12 @@ use std::sync::Arc;
 /// Platform-facing peer contract exposed only through the private Core/C-ABI support surface.
 ///
 /// A peer owns one Window's native surface resources. Implementations must keep failed `open`
-/// attempts retryable and must not mutate Core UI state.
+/// attempts retryable, return the initial logical client area for the supplied generation, and
+/// must not mutate Core UI state.
 pub trait PlatformWindowPeer: Send + Sync {
-    fn open(&self) -> Result<(), PlatformOperationError>;
+    fn open(&self, generation: u64) -> Result<WindowClientArea, PlatformOperationError>;
+    /// Installs the UI-queue sink used by profiles that can change their client area after open.
+    fn set_client_area_sink(&self, _sink: Arc<dyn PlatformWindowClientAreaSink>) {}
     fn close(&self) -> Result<(), PlatformOperationError>;
     fn submit_frame(
         &self,
@@ -22,6 +25,31 @@ pub trait PlatformWindowPeer: Send + Sync {
 pub trait PlatformFrameCompletionSink: Send + Sync {
     fn complete_frame(&self, ticket: FrameTicket) -> Result<(), PlatformOperationError>;
     fn fail_frame(&self, ticket: FrameTicket) -> Result<(), PlatformOperationError>;
+}
+
+/// Logical client-area size supplied by a platform peer, in DIPs.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WindowClientArea {
+    pub width_dip: f64,
+    pub height_dip: f64,
+}
+
+impl WindowClientArea {
+    pub(crate) fn is_valid(self) -> bool {
+        self.width_dip.is_finite()
+            && self.height_dip.is_finite()
+            && self.width_dip >= 0.0
+            && self.height_dip >= 0.0
+    }
+}
+
+/// Enqueues a peer's client-area update for application on the Runtime UI thread.
+pub trait PlatformWindowClientAreaSink: Send + Sync {
+    fn client_area_changed(
+        &self,
+        generation: u64,
+        area: WindowClientArea,
+    ) -> Result<(), PlatformOperationError>;
 }
 
 /// Creates lightweight Window peers for one Runtime's selected platform profile.
@@ -40,7 +68,7 @@ pub trait PlatformRuntimeFactory: Send + Sync {
 pub struct PlatformOperationError;
 
 pub(crate) trait WindowPeerAdapter: Send + Sync {
-    fn open(&self, window: ObjectIdentity) -> Result<(), ()>;
+    fn open(&self, window: ObjectIdentity, generation: u64) -> Result<WindowClientArea, ()>;
     fn close(&self, window: ObjectIdentity) -> Result<(), ()>;
     fn submit_frame(&self, ticket: FrameTicket, scene: Arc<SceneSnapshot>) -> Result<(), ()>;
 }
@@ -48,8 +76,8 @@ pub(crate) trait WindowPeerAdapter: Send + Sync {
 pub(crate) struct FactoryWindowPeer(pub(crate) Arc<dyn PlatformWindowPeer>);
 
 impl WindowPeerAdapter for FactoryWindowPeer {
-    fn open(&self, _: ObjectIdentity) -> Result<(), ()> {
-        self.0.open().map_err(|_| ())
+    fn open(&self, _: ObjectIdentity, generation: u64) -> Result<WindowClientArea, ()> {
+        self.0.open(generation).map_err(|_| ())
     }
 
     fn close(&self, _: ObjectIdentity) -> Result<(), ()> {
@@ -91,6 +119,7 @@ pub(crate) struct WindowLifecycle {
     pending: HashMap<u64, u64>,
     frames: FrameTracker,
     force_full_damage: bool,
+    client_area: Option<(u64, WindowClientArea)>,
 }
 
 pub(crate) struct PreparedWindowFrame {
@@ -117,10 +146,26 @@ impl WindowLifecycle {
     }
 
     #[cfg(test)]
+    pub(crate) fn client_area(&self) -> Option<(u64, WindowClientArea)> {
+        self.client_area
+    }
+
+    pub(crate) fn update_client_area(&mut self, generation: u64, area: WindowClientArea) -> bool {
+        if !self.open || generation != self.generation || !area.is_valid() {
+            return false;
+        }
+        if self.client_area == Some((generation, area)) {
+            return false;
+        }
+        self.client_area = Some((generation, area));
+        true
+    }
+
+    #[cfg(test)]
     pub(crate) fn open(&mut self, identity: ObjectIdentity) -> Result<u64, WindowLifecycleError> {
         let (generation, peer) = self.prepare_open()?;
         if let Some(peer) = peer {
-            self.finish_open(generation, peer.open(identity))?;
+            self.finish_open(generation, peer.open(identity, generation))?;
         }
         Ok(generation)
     }
@@ -150,17 +195,21 @@ impl WindowLifecycle {
     pub(crate) fn finish_open(
         &mut self,
         generation: u64,
-        result: Result<(), ()>,
+        result: Result<WindowClientArea, ()>,
     ) -> Result<(), WindowLifecycleError> {
         if !self.opening || generation != self.generation.checked_add(1).unwrap_or(0) {
             return Err(WindowLifecycleError::StaleRequest);
         }
         self.opening = false;
-        result.map_err(|()| WindowLifecycleError::PeerFailure)?;
+        let area = result.map_err(|()| WindowLifecycleError::PeerFailure)?;
+        if !area.is_valid() {
+            return Err(WindowLifecycleError::PeerFailure);
+        }
         self.generation = generation;
         self.open = true;
         self.frames.reset();
         self.force_full_damage = true;
+        self.client_area = Some((generation, area));
         Ok(())
     }
 
@@ -200,6 +249,7 @@ impl WindowLifecycle {
         self.closing = false;
         result.map_err(|()| WindowLifecycleError::PeerFailure)?;
         self.open = false;
+        self.client_area = None;
         self.pending.clear();
         self.in_flight = None;
         self.frames.reset();
@@ -330,6 +380,7 @@ impl WindowLifecycle {
         self.closing = false;
         result.map_err(|()| WindowLifecycleError::PeerFailure)?;
         self.open = false;
+        self.client_area = None;
         self.pending.clear();
         self.frames.reset();
         self.force_full_damage = true;
@@ -400,6 +451,7 @@ impl WindowLifecycle {
             }
         }
         self.open = false;
+        self.client_area = None;
         self.pending.clear();
         self.in_flight = None;
     }
@@ -407,7 +459,9 @@ impl WindowLifecycle {
 
 #[cfg(test)]
 mod tests {
-    use super::{CloseDecision, WindowLifecycle, WindowLifecycleError, WindowPeerAdapter};
+    use super::{
+        CloseDecision, WindowClientArea, WindowLifecycle, WindowLifecycleError, WindowPeerAdapter,
+    };
     use crate::handle_registry::registry::ObjectIdentity;
     use crate::platform::frame::FrameTicket;
     use crate::platform::scene::SceneSnapshot;
@@ -423,9 +477,16 @@ mod tests {
     }
 
     impl WindowPeerAdapter for FakePeer {
-        fn open(&self, _: ObjectIdentity) -> Result<(), ()> {
+        fn open(&self, _: ObjectIdentity, _: u64) -> Result<WindowClientArea, ()> {
             self.opens.fetch_add(1, Ordering::Relaxed);
-            if self.fail_open { Err(()) } else { Ok(()) }
+            if self.fail_open {
+                Err(())
+            } else {
+                Ok(WindowClientArea {
+                    width_dip: 640.0,
+                    height_dip: 480.0,
+                })
+            }
         }
 
         fn close(&self, _: ObjectIdentity) -> Result<(), ()> {
@@ -474,6 +535,55 @@ mod tests {
         assert!(!lifecycle.is_open());
         assert_eq!(lifecycle.open(identity()), Ok(2));
         assert_eq!(working_peer.opens.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn client_area_is_committed_with_open_and_only_updated_for_current_generation() {
+        let mut lifecycle = WindowLifecycle::default();
+        lifecycle.set_peer(peer(false, false));
+        lifecycle.open(identity()).expect("open Window");
+        let first = WindowClientArea {
+            width_dip: 640.0,
+            height_dip: 480.0,
+        };
+        assert_eq!(lifecycle.client_area(), Some((1, first)));
+
+        let resized = WindowClientArea {
+            width_dip: 800.0,
+            height_dip: 600.0,
+        };
+        assert!(lifecycle.update_client_area(1, resized));
+        assert!(!lifecycle.update_client_area(1, resized));
+        assert!(!lifecycle.update_client_area(0, first));
+        assert_eq!(lifecycle.client_area(), Some((1, resized)));
+
+        lifecycle.close(identity()).expect("close Window");
+        assert_eq!(lifecycle.client_area(), None);
+        lifecycle.open(identity()).expect("reopen Window");
+        assert_eq!(lifecycle.client_area(), Some((2, first)));
+        assert!(!lifecycle.update_client_area(1, resized));
+        assert_eq!(lifecycle.client_area(), Some((2, first)));
+    }
+
+    #[test]
+    fn invalid_initial_client_area_does_not_commit_open_or_advance_generation() {
+        let mut lifecycle = WindowLifecycle::default();
+        lifecycle.set_peer(peer(false, false));
+        let (generation, _) = lifecycle.prepare_open().expect("prepare open");
+        assert_eq!(generation, 1);
+        assert_eq!(
+            lifecycle.finish_open(
+                generation,
+                Ok(WindowClientArea {
+                    width_dip: f64::INFINITY,
+                    height_dip: 100.0,
+                }),
+            ),
+            Err(WindowLifecycleError::PeerFailure)
+        );
+        assert!(!lifecycle.is_open());
+        assert_eq!(lifecycle.client_area(), None);
+        assert_eq!(lifecycle.open(identity()), Ok(1));
     }
 
     #[test]

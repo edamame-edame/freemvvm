@@ -1135,6 +1135,37 @@ struct RuntimeFrameCompletionSink {
     window: ObjectIdentity,
 }
 
+struct RuntimeWindowClientAreaSink {
+    runtime: Weak<RuntimeCore>,
+    window: ObjectIdentity,
+}
+
+impl crate::ui_window::PlatformWindowClientAreaSink for RuntimeWindowClientAreaSink {
+    fn client_area_changed(
+        &self,
+        generation: u64,
+        area: crate::ui_window::WindowClientArea,
+    ) -> Result<(), PlatformOperationError> {
+        if !area.is_valid() {
+            return Err(PlatformOperationError);
+        }
+        let runtime = self.runtime.upgrade().ok_or(PlatformOperationError)?;
+        let dispatcher = runtime
+            .dispatcher()
+            .map_err(|_| PlatformOperationError)?
+            .ok_or(PlatformOperationError)?;
+        let runtime = Arc::downgrade(&runtime);
+        let window = self.window;
+        dispatcher
+            .post_completion(PostedWork::callback(Box::new(move || {
+                if let Some(runtime) = runtime.upgrade() {
+                    runtime.window_client_area_changed(window, generation, area);
+                }
+            })))
+            .map_err(|_| PlatformOperationError)
+    }
+}
+
 impl RuntimeFrameCompletionSink {
     fn post(&self, ticket: FrameTicket, success: bool) -> Result<(), PlatformOperationError> {
         let runtime = self.runtime.upgrade().ok_or(PlatformOperationError)?;
@@ -2224,6 +2255,10 @@ impl RuntimeCore {
                     window: identity,
                 }))
                 .map_err(|_| WindowLifecycleError::PeerFailure)?;
+            peer.set_client_area_sink(Arc::new(RuntimeWindowClientAreaSink {
+                runtime: Arc::downgrade(self),
+                window: identity,
+            }));
             self.window_set_peer(identity, Arc::new(FactoryWindowPeer(peer)))
                 .map_err(|_| WindowLifecycleError::InvalidState)?;
         }
@@ -2245,7 +2280,11 @@ impl RuntimeCore {
                 .prepare_open()?
         };
         if let Some(peer) = peer {
-            let result = peer.open(identity);
+            let mut result = peer.open(identity, generation);
+            if result.as_ref().is_ok_and(|area| !area.is_valid()) {
+                let _ = peer.close(identity);
+                result = Err(());
+            }
             let mut store = self
                 .ui_objects
                 .lock()
@@ -2261,8 +2300,37 @@ impl RuntimeCore {
                 .as_mut()
                 .ok_or(WindowLifecycleError::StaleRequest)?
                 .finish_open(generation, result)?;
+            drop(store);
+            self.mark_layout_subtree_dirty(identity);
         }
         Ok(generation)
+    }
+
+    fn window_client_area_changed(
+        &self,
+        identity: ObjectIdentity,
+        generation: u64,
+        area: crate::ui_window::WindowClientArea,
+    ) {
+        if !self.is_ui_thread() || !area.is_valid() {
+            return;
+        }
+        let changed = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            store
+                .resolve_mut(identity)
+                .ok()
+                .and_then(|object| object.downcast_mut::<UiControlState>())
+                .filter(|state| state.kind == UiControlKind::Window)
+                .and_then(|state| state.window.as_mut())
+                .is_some_and(|window| window.update_client_area(generation, area))
+        };
+        if changed {
+            self.mark_layout_subtree_dirty(identity);
+        }
     }
 
     pub(crate) fn window_submit_frame(
@@ -2551,6 +2619,24 @@ impl RuntimeCore {
             .is_some_and(|window| window.is_open())
     }
 
+    #[cfg(test)]
+    pub(crate) fn window_client_area(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<Option<(u64, crate::ui_window::WindowClientArea)>, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        self.ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?
+            .resolve(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_ref())
+            .map(|window| window.client_area())
+            .ok_or(RuntimePropertyError::WrongObjectState)
+    }
+
     pub(crate) fn window_set_active(
         &self,
         identity: ObjectIdentity,
@@ -2680,6 +2766,38 @@ impl RuntimeCore {
                 .parent_identity(candidate)
                 .ok()
                 .flatten();
+        }
+    }
+
+    fn mark_layout_subtree_dirty(&self, root: ObjectIdentity) {
+        let mut pending = Vec::new();
+        if pending.try_reserve(1).is_err() {
+            self.mark_layout_dirty(root);
+            return;
+        }
+        pending.push(root);
+        while let Some(identity) = pending.pop() {
+            if let Ok(mut store) = self.ui_objects.lock() {
+                if let Ok(object) = store.resolve_mut(identity) {
+                    if let Some(state) = object.downcast_mut::<UiControlState>() {
+                        state.layout_dirty = true;
+                    }
+                }
+            }
+            let Ok(tree) = self.ui_tree.lock() else {
+                continue;
+            };
+            let Ok(child_count) = tree.child_count(identity) else {
+                continue;
+            };
+            if pending.try_reserve(child_count).is_err() {
+                continue;
+            }
+            for index in 0..child_count {
+                if let Ok(child) = tree.child_identity_at(identity, index) {
+                    pending.push(child);
+                }
+            }
         }
     }
 

@@ -91,7 +91,10 @@ impl UiControlState {
 
 #[cfg(test)]
 mod tests {
-    use crate::abi_support::{Damage, FramePhase, FrameTicket, Rect, SceneSnapshot};
+    use crate::abi_support::{
+        Damage, FramePhase, FrameTicket, PlatformWindowClientAreaSink, Rect, SceneSnapshot,
+        WindowClientArea,
+    };
     use crate::abi_support::{
         UiControlApiError, handle_release, property_get_bool, property_get_utf8, property_set_bool,
         runtime_create_handle, runtime_create_handle_with_platform_factory, runtime_dispatch_turn,
@@ -104,11 +107,11 @@ mod tests {
         ui_control_is_enabled_property, ui_control_layout_clean, ui_control_layout_dirty,
         ui_control_text_box_value_property, ui_control_text_content_property,
         ui_control_window_title_property, widget_has_focus, widget_request_focus,
-        window_clear_content, window_close, window_close_intent, window_close_intent_subscribed,
-        window_close_request_current, window_close_request_defer, window_close_request_resolve,
-        window_close_request_subscribe, window_content, window_frame_phase,
-        window_install_test_peer, window_open, window_platform_activation, window_set_content,
-        window_set_content_with_peer, window_submit_frame,
+        window_clear_content, window_client_area_for_test, window_close, window_close_intent,
+        window_close_intent_subscribed, window_close_request_current, window_close_request_defer,
+        window_close_request_resolve, window_close_request_subscribe, window_content,
+        window_frame_phase, window_install_test_peer, window_open, window_platform_activation,
+        window_set_content, window_set_content_with_peer, window_submit_frame,
     };
     use crate::ui_window::CloseDecision;
     use std::ffi::c_void;
@@ -118,9 +121,16 @@ mod tests {
     struct TestWindowPeer(AtomicUsize, AtomicUsize);
 
     impl crate::ui_window::WindowPeerAdapter for TestWindowPeer {
-        fn open(&self, _: crate::handle_registry::registry::ObjectIdentity) -> Result<(), ()> {
+        fn open(
+            &self,
+            _: crate::handle_registry::registry::ObjectIdentity,
+            _: u64,
+        ) -> Result<WindowClientArea, ()> {
             self.0.fetch_add(1, Ordering::Relaxed);
-            Ok(())
+            Ok(WindowClientArea {
+                width_dip: 640.0,
+                height_dip: 480.0,
+            })
         }
 
         fn close(&self, _: crate::handle_registry::registry::ObjectIdentity) -> Result<(), ()> {
@@ -141,6 +151,7 @@ mod tests {
         fail_next_create: std::sync::atomic::AtomicBool,
         completion_sink:
             std::sync::Mutex<Option<Arc<dyn crate::abi_support::PlatformFrameCompletionSink>>>,
+        client_area_sink: std::sync::Mutex<Option<Arc<dyn PlatformWindowClientAreaSink>>>,
         submitted: std::sync::Mutex<Vec<(FrameTicket, Arc<SceneSnapshot>)>>,
         fail_next_submit: std::sync::atomic::AtomicBool,
     }
@@ -174,9 +185,23 @@ mod tests {
     }
 
     impl crate::abi_support::PlatformWindowPeer for TestPlatformWindowPeer {
-        fn open(&self) -> Result<(), crate::abi_support::PlatformOperationError> {
+        fn open(
+            &self,
+            _: u64,
+        ) -> Result<WindowClientArea, crate::abi_support::PlatformOperationError> {
             self.probe.opened.fetch_add(1, Ordering::SeqCst);
-            Ok(())
+            Ok(WindowClientArea {
+                width_dip: 640.0,
+                height_dip: 480.0,
+            })
+        }
+
+        fn set_client_area_sink(&self, sink: Arc<dyn PlatformWindowClientAreaSink>) {
+            *self
+                .probe
+                .client_area_sink
+                .lock()
+                .expect("client-area sink lock") = Some(sink);
         }
 
         fn close(&self) -> Result<(), crate::abi_support::PlatformOperationError> {
@@ -215,6 +240,114 @@ mod tests {
             )
             .expect("valid scene"),
         )
+    }
+
+    #[test]
+    fn window_client_area_updates_are_dispatched_validated_and_generation_checked() {
+        let probe = Arc::new(PlatformProbe::default());
+        let factory: Arc<dyn crate::abi_support::PlatformRuntimeFactory> =
+            Arc::new(TestPlatformFactory(Arc::clone(&probe)));
+        let runtime = runtime_create_handle_with_platform_factory(factory)
+            .expect("create Runtime with fake peer");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let content = ui_control_create_stack_panel(runtime).expect("create Window content");
+        window_set_content(window, content).expect("attach Window content");
+        assert_eq!(window_open(window), Ok(1));
+        assert_eq!(
+            window_client_area_for_test(window),
+            Ok(Some((
+                1,
+                WindowClientArea {
+                    width_dip: 640.0,
+                    height_dip: 480.0,
+                }
+            )))
+        );
+        ui_control_layout_clean(window).expect("clear initial layout dirty");
+        ui_control_layout_clean(content).expect("clear content layout dirty");
+        let sink = probe
+            .client_area_sink
+            .lock()
+            .expect("client-area sink lock")
+            .as_ref()
+            .expect("Core client-area sink")
+            .clone();
+
+        let resized = WindowClientArea {
+            width_dip: 800.0,
+            height_dip: 600.0,
+        };
+        sink.client_area_changed(1, resized)
+            .expect("enqueue current-generation resize");
+        assert!(!ui_control_layout_dirty(window).expect("dirty before dispatch"));
+        runtime_dispatch_turn(runtime).expect("apply resize on UI thread");
+        assert!(ui_control_layout_dirty(window).expect("resize marks Layout dirty"));
+        assert!(ui_control_layout_dirty(content).expect("resize marks root subtree dirty"));
+        assert_eq!(window_client_area_for_test(window), Ok(Some((1, resized))));
+
+        ui_control_layout_clean(window).expect("clear resize dirty");
+        ui_control_layout_clean(content).expect("clear resize subtree dirty");
+        assert!(
+            sink.client_area_changed(
+                1,
+                WindowClientArea {
+                    width_dip: f64::NAN,
+                    height_dip: 300.0,
+                },
+            )
+            .is_err()
+        );
+        sink.client_area_changed(0, resized)
+            .expect("enqueue stale-generation resize for discard");
+        runtime_dispatch_turn(runtime).expect("discard stale resize on UI thread");
+        assert!(!ui_control_layout_dirty(window).expect("stale/invalid area leaves clean"));
+        assert!(!ui_control_layout_dirty(content).expect("stale area leaves subtree clean"));
+        assert_eq!(window_client_area_for_test(window), Ok(Some((1, resized))));
+
+        window_close(window).expect("close Window");
+        assert_eq!(window_client_area_for_test(window), Ok(None));
+        assert_eq!(window_open(window), Ok(2));
+        assert_eq!(
+            window_client_area_for_test(window),
+            Ok(Some((
+                2,
+                WindowClientArea {
+                    width_dip: 640.0,
+                    height_dip: 480.0,
+                }
+            )))
+        );
+        ui_control_layout_clean(window).expect("clear reopened Layout dirty");
+        ui_control_layout_clean(content).expect("clear reopened subtree dirty");
+        sink.client_area_changed(1, resized)
+            .expect("enqueue old peer resize");
+        runtime_dispatch_turn(runtime).expect("discard old peer resize");
+        assert!(!ui_control_layout_dirty(window).expect("old generation leaves clean"));
+        assert!(!ui_control_layout_dirty(content).expect("old generation leaves subtree clean"));
+
+        sink.client_area_changed(
+            2,
+            WindowClientArea {
+                width_dip: 0.0,
+                height_dip: 0.0,
+            },
+        )
+        .expect("enqueue valid empty client area");
+        runtime_dispatch_turn(runtime).expect("apply empty client area");
+        assert!(ui_control_layout_dirty(window).expect("empty area is a valid update"));
+        assert!(ui_control_layout_dirty(content).expect("empty area dirties root subtree"));
+        assert_eq!(
+            window_client_area_for_test(window),
+            Ok(Some((
+                2,
+                WindowClientArea {
+                    width_dip: 0.0,
+                    height_dip: 0.0,
+                }
+            )))
+        );
+        runtime_shutdown(runtime).expect("shutdown test Runtime");
     }
 
     #[test]

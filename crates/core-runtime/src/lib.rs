@@ -58,7 +58,7 @@ pub mod abi_support {
     use crate::ui_window::WindowLifecycleError;
     pub use crate::ui_window::{
         CloseDecision, PlatformFrameCompletionSink, PlatformOperationError, PlatformRuntimeFactory,
-        PlatformWindowPeer,
+        PlatformWindowClientAreaSink, PlatformWindowPeer, WindowClientArea,
     };
     use crate::value::{
         DecimalValue, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind,
@@ -2276,6 +2276,16 @@ pub mod abi_support {
         runtime
             .window_open(identity)
             .map_err(map_window_lifecycle_error)
+    }
+
+    #[cfg(test)]
+    pub fn window_client_area_for_test(
+        window: u64,
+    ) -> Result<Option<(u64, WindowClientArea)>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_client_area(identity)
+            .map_err(map_ui_control_property_error)
     }
 
     /// Internal Core/Renderer bridge; not part of the public C ABI.

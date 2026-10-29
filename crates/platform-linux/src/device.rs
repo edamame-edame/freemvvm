@@ -3,7 +3,7 @@ use drm::Device as DrmDevice;
 use drm::control::{
     Device as ControlDevice, Event, ModeTypeFlags, PageFlipFlags, connector, crtc, framebuffer,
 };
-use freemvvm_core::abi_support::{FrameTicket, SceneSnapshot};
+use freemvvm_core::abi_support::{FrameTicket, SceneSnapshot, WindowClientArea};
 use gbm::{AsRaw, BufferObject, BufferObjectFlags, Device as GbmDevice, Format};
 use khronos_egl as egl;
 use std::ffi::c_void;
@@ -164,6 +164,13 @@ impl Drop for NativeSurface {
 }
 
 impl NativeSurface {
+    pub(super) fn client_area(&self) -> WindowClientArea {
+        WindowClientArea {
+            width_dip: f64::from(self.size.0),
+            height_dip: f64::from(self.size.1),
+        }
+    }
+
     pub(super) fn close_surface(&mut self) -> Result<(), ()> {
         if self.master_acquired && (self.front_buffer.is_some() || self.pending_buffer.is_some()) {
             self.gbm_device
