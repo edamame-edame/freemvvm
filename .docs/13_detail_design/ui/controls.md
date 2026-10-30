@@ -1,9 +1,9 @@
 # UIクラス：Window・基本Control・次段階Control
 
-- 文書版: 1.1
+- 文書版: 1.2
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-10-30
+- 状態: 1.2全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -247,6 +247,32 @@ Button.activateはUI contextとenabledを確認し、現在のCommandをcall期�
 
 抽象viewの取得で別のWidget objectを生成しない。WindowとStackPanelが同じContainerStateを共有する図ではなく、各instanceが自分のstateを持つ。Text/TextBoxは表に示し、図は共通stateと所有の主要部分に限定した。次段階Controlは既存採用範囲のまま維持する。
 
+## Window background RGB API（1.2）
+
+要求根拠: [RQ-09-074](../../11_requirements/RQ-09_ui-scope.md#rq-09-074)（改訂案）。Window背景色はWindow固有の表示設定であり、Control common `Property`/Binding値にはしない。初期版ではopaque normalized RGBの3成分（各`f32` 0.0～1.0）を使い、alphaは扱わない。
+
+| 操作 | Core動作 | 失敗・副作用 |
+|---|---|---|
+| `background_rgb()` | overrideがあればその値、なければ`RgbColor(1,1,1)`を返す | UI thread/runtime/type validationに従う。getterはWindow stateを変更しない |
+| `set_background_rgb(r,g,b)` | 全成分のfinite・0.0～1.0を先に検証し、Window overrideを一括更新 | invalid入力では状態不変。effective値が変わる場合だけpaint/scene dirty。Layoutはdirtyにしない |
+| `reset_background_rgb()` | overrideをNoneへ戻し、規定値をeffective colorとする | 既に未指定ならno-op。effective colorが変わる場合だけpaint/scene dirty |
+
+getterは未指定かexplicit defaultかを区別せずeffective colorを返す。resetの意味は規定値への復帰である。Window close/reopenではoverrideを保持し、Runtime shutdown時は通常のWindow state cleanupで破棄する。Text/Button/StackPanelの個別背景、general Style/Theme、C ABI Property handleは本変更に含めない。
+
+### ABI / wrapper API案
+
+```c
+ui_status ui_abi_1_window_background_rgb(
+    ui_handle window, float *out_red, float *out_green, float *out_blue,
+    ui_handle *out_error);
+ui_status ui_abi_1_window_set_background_rgb(
+    ui_handle window, float red, float green, float blue, ui_handle *out_error);
+ui_status ui_abi_1_window_reset_background_rgb(
+    ui_handle window, ui_handle *out_error);
+```
+
+各言語wrapperは共通意味値`RgbColor`でgetter/setterを表現し、reset methodでdefaultへ戻す。詳細は各wrapper文書の改訂案へ記載する。signatureはレビュー案であり、配布header・実装済みAPIではない。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -255,3 +281,5 @@ Button.activateはUI contextとenabledを確認し、現在のCommandをcall期�
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-10-30 | 1.2改訂案 | RQ-09-074に基づきWindow background RGBのdefault/get/set/reset、paint-only invalidation、ABI/wrapper案を追加。1.1承認範囲を維持し全文レビュー待ち |
+| 2026-10-30 | 1.2全文 | 利用者の「ok」によりWindow背景色APIとCore状態・validation境界を含む全文を承認。実装・試験合格は別管理 |

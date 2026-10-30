@@ -1,7 +1,7 @@
 # Window背景色の規定値・利用者設定
 
 - 計画版: 0.1
-- 状態: 計画0.1利用者承認済み。requirements/design/test改訂案を作成中（本文未承認・未実装）
+- 状態: 計画0.1および要求・BD/DD・全wrapper・requirements test・unit test全文承認済み（利用者、2026-10-30）。Core/C ABI実装へ着手中
 - 作成日: 2026-10-30
 - 対象version: `0.0.1`
 - 対象branch案: `change/window-background-config` → `impl-rust/core-apis-window-background` → 各言語wrapper branch
@@ -46,9 +46,18 @@ Window背景色について、利用者が値を指定でき、未指定なら�
 - 要求・設計・test文書は全体レビュー・承認後に実装へ進む。計画承認・要求承認・設計承認・実装開始・unit完了・commit/pushを別状態として記録する。
 - 計画0.1は承認後にcommit/pushする。後続の新規・改訂計画は利用者レビュー前にcommit/pushしない。実装unitのcommitは承認済み実装計画とrepository Git規則に従う。
 
+## 現在の進捗
+
+- 要求: `RQ-09-074`をRQ-09 0.6改訂案へ追加。承認済み280件の承認状態は維持し、今回案は未承認として索引件数に混ぜない。
+- 設計: BD UI Tree/Layout/Control 1.1、Platform abstraction 1.1、DD UI controls 1.2、ABI 1.4、C++ 1.4、C# 1.5、Python 1.2、Rust 1.7をレビュー案として更新。
+- Test: requirement-test matrix 0.8 / assertions、および UI unit-test 0.4に候補caseを追加。未実装・未実行。
+- 実装・commit/push: Core/C ABI implementation branchへ着手。wrapper branchはCore API実装・検証後、各対象言語ごとにCore branchから作成する。
+
 ## レビュー履歴
 
 | 日付 | 対象 | 状態 | 備考 |
 |---|---|---|---|
 | 2026-10-30 | 計画0.1 | review draft | 未指定時に規定値、Windowごとの色指定、解除時の規定値復帰を追加する変更範囲を提案。初期色`#FFFFFF`はレビュー待ち。 |
 | 2026-10-30 | 計画0.1 | 利用者承認 | 「ok」により、規定値`#FFFFFF`案を含むWindow背景色設定の要求・設計・test改訂案作成を承認。実装は設計全文承認後。 |
+| 2026-10-30 | 要求・設計・test各改訂案 | review draft | RQ-09-074、各層の背景色状態/API/scene flow、test traceabilityを案として作成。各文書全体のレビュー・承認待ち。実装・test未開始。 |
+| 2026-10-30 | 要求・設計・test各全文 | 利用者承認 | 「ok」により更新対象文書全体を承認。実装・試験状態とは区別し、Core/C ABI実装へ進む。 |

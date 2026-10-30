@@ -1,7 +1,7 @@
 # 要求テストの観測・oracle
 
-- 文書版: 1.1
-- 状態: 観測設計承認済み（2026-10-17）。未実行
+- 文書版: 1.2
+- 状態: 1.2全文承認済み（利用者、2026-10-30）。未実行
 - 共通契約: [Requirements Test Manifest](requirements-test-manifest.md)
 
 期待結果はリンク先RQを正本とする。代表使用値は要求で決まらず実施に必要な場合に限って個別test計画に用途・選定理由・適用範囲とともに記載する。API/profile未設計のcaseはblockedとして詳細化する。
@@ -2806,6 +2806,22 @@
 - 後始末: 作成したowner・登録・host・stagingを各契約で解放し、fault fixture/仮想時計/設定を復元する。保証外の永久停止は隔離processの終了を管理する。
 - 状態: 観測設計済・次段階・未実装/未実行。実test ID・command・SHA・profile・reportは未登録。
 
+<a id="assert-rq-09-074"></a>
+## RQ-09-074
+
+- 根拠: [RQ-09-074](../11_requirements/RQ-09_ui-scope.md#rq-09-074)（RQ-09 v0.6承認済み）
+- case: [TC-WINDOW-BG-01](requirement-test-matrix.md#case-tc-window-bg-01)（case catalog 0.8承認済み）
+- 前提・操作・観測: Window背景色を未指定のまま表示し、有効色を取得する。Windowごとに異なるRGBを設定・取得し、設定解除後の値と次回frameのbackgroundを観測する。invalid値は既存ABI入力制約とRQ-04-025に従い拒否し、Window色・scene stateの変更有無を観測する。
+- 期待結果: 未指定時はopaque white `#FFFFFF`。明示設定は対象Windowだけに反映し、他Windowに波及しない。解除後は規定値に戻る。変更はLayout寸法や子Controlの意味値を変えず、次回のcomplete SceneSnapshot/frameに解決済みRGBを渡す。
+- 後始末: Window overrideを解除し、全Window/Runtime ownerを解放する。test profileとbackend fixtureを復元する。
+- 状態: 観測設計済み、文書全体承認済み。実装/実行、実test ID/command/SHA/profile/reportは未登録。
+
+## 承認履歴（今回）
+
+| 日付 | 対象版 | 承認者 | 結果 |
+| --- | --- | --- | --- |
+| 2026-10-30 | 1.2 / RQ-09-074 assertion | 利用者 | 「ok」によりWindow背景色のassertionを含む全文を承認。実装・実行は別管理 |
+
 ## 適用前の受入確認文の移管記録
 
 旧RQ-15の文は当時の確認文を保持する。現行期待結果は上記assertionとRQを優先する。
@@ -3002,6 +3018,7 @@
 | 版 | 日付 | 内容 | 作成者 |
 | --- | --- | --- | --- |
 | 1.0 | 2026-10-17 | 受入確認のRQからの分離と要求別assertion | Codex |
+| 1.2 | 2026-10-30 | RQ-09-074 Window背景色assertionを追加 | Codex |
 
 ## 承認履歴（具体化適用）
 
