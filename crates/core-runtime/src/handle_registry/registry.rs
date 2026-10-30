@@ -170,7 +170,7 @@ impl<R> ValidationPin<R> {
         })
     }
 
-    pub(crate) fn acquire_tree_owner(&self) -> Result<TreeOwner<R>, RegistryError>
+    pub(crate) fn acquire_internal_owner(&self) -> Result<InternalOwner<R>, RegistryError>
     where
         R: Send + Sync + 'static,
     {
@@ -196,26 +196,54 @@ impl<R> ValidationPin<R> {
         if let Some(reservation) = reservation {
             lifecycle.pending_cleanup = Some(reservation);
         }
-        Ok(TreeOwner {
+        Ok(InternalOwner {
+            control: Arc::clone(&self.control),
+        })
+    }
+
+    pub(crate) fn acquire_tree_owner(&self) -> Result<TreeOwner<R>, RegistryError>
+    where
+        R: Send + Sync + 'static,
+    {
+        self.acquire_internal_owner()
+    }
+}
+
+/// A Core-owned reference, distinct from public handles and call-duration pins.
+#[allow(dead_code)]
+pub(crate) struct InternalOwner<R> {
+    control: Arc<CoreObjectControl<R>>,
+}
+
+#[allow(dead_code)]
+impl<R> InternalOwner<R> {
+    pub(crate) fn identity(&self) -> ObjectIdentity {
+        self.control.identity()
+    }
+
+    pub(crate) fn try_clone(&self) -> Result<Self, RegistryError> {
+        let mut lifecycle = self
+            .control
+            .lifecycle
+            .lock()
+            .map_err(|_| RegistryError::SynchronizationPoisoned)?;
+        if !lifecycle.ui_state_alive || lifecycle.internal_owners == 0 {
+            return Err(RegistryError::InvalidToken);
+        }
+        lifecycle.internal_owners = lifecycle
+            .internal_owners
+            .checked_add(1)
+            .ok_or(RegistryError::ReferenceCountExhausted)?;
+        Ok(Self {
             control: Arc::clone(&self.control),
         })
     }
 }
 
 /// A logical-tree ownership reference, distinct from public handles and call pins.
-#[allow(dead_code)]
-pub(crate) struct TreeOwner<R> {
-    control: Arc<CoreObjectControl<R>>,
-}
+pub(crate) type TreeOwner<R> = InternalOwner<R>;
 
-#[allow(dead_code)]
-impl<R> TreeOwner<R> {
-    pub(crate) fn identity(&self) -> ObjectIdentity {
-        self.control.identity()
-    }
-}
-
-impl<R> Drop for TreeOwner<R> {
+impl<R> Drop for InternalOwner<R> {
     fn drop(&mut self) {
         let (activate, discard) = {
             let mut lifecycle = match self.control.lifecycle.lock() {
@@ -410,11 +438,11 @@ where
         Ok(token)
     }
 
-    pub(crate) fn register_from_tree_owner(
+    pub(crate) fn register_from_internal_owner(
         &self,
         kind: K,
         runtime_id: R,
-        owner: &TreeOwner<R>,
+        owner: &InternalOwner<R>,
     ) -> Result<HandleToken, RegistryError> {
         if owner.control.runtime_id() != &runtime_id {
             return Err(RegistryError::WrongRuntime);
@@ -436,6 +464,15 @@ where
         );
         lifecycle.public_refs = next_ref_count;
         Ok(token)
+    }
+
+    pub(crate) fn register_from_tree_owner(
+        &self,
+        kind: K,
+        runtime_id: R,
+        owner: &TreeOwner<R>,
+    ) -> Result<HandleToken, RegistryError> {
+        self.register_from_internal_owner(kind, runtime_id, owner)
     }
 
     pub(crate) fn validate(
@@ -1000,6 +1037,7 @@ mod tests {
             &child,
             &child_pin,
             &[parent_id],
+            0,
             || Ok(()),
         )
         .expect("prepare attach");
@@ -1087,6 +1125,7 @@ mod tests {
             &middle,
             &middle_pin,
             &[root_id],
+            0,
             || Ok(()),
         )
         .expect("prepare root-middle");
@@ -1098,6 +1137,7 @@ mod tests {
             &leaf,
             &leaf_pin,
             &[root_id, middle_id],
+            0,
             || Ok(()),
         )
         .expect("prepare middle-leaf");
@@ -1153,6 +1193,7 @@ mod tests {
                 &child,
                 &child_pin,
                 &[parent_id],
+                0,
                 || Ok(()),
             )
             .err(),
@@ -1165,6 +1206,7 @@ mod tests {
                 &child,
                 &child_pin,
                 &[parent_id],
+                0,
                 || Err(()),
             )
             .err(),
@@ -1177,6 +1219,7 @@ mod tests {
                 &child,
                 &child_pin,
                 &[parent_id, child_id],
+                0,
                 || Ok(()),
             )
             .err(),
@@ -1199,6 +1242,7 @@ mod tests {
                 &child,
                 &child_pin,
                 &[not_container.identity()],
+                0,
                 || Ok(()),
             )
             .err(),
@@ -1235,6 +1279,7 @@ mod tests {
                 &child,
                 &child_pin,
                 &[parent_id],
+                0,
                 || Ok(()),
             );
             (result, parent, child)

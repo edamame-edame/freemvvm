@@ -9,6 +9,11 @@ static void smoke_wake(void *userdata, uint32_t priority) {
 
 static void smoke_destroy(void *userdata) { (void)userdata; }
 
+static void smoke_close_request(void *userdata, ui_handle borrowed_request) {
+  (void)userdata;
+  (void)borrowed_request;
+}
+
 int main(void) {
   uint32_t major = 0;
   uint32_t minor = 0;
@@ -30,6 +35,82 @@ int main(void) {
     (void)ui_abi_1_handle_release(runtime);
     return 3;
   }
+
+  ui_handle window = 0;
+  ui_handle panel = 0;
+  ui_handle text = 0;
+  ui_handle text_box = 0;
+  ui_handle button = 0;
+  ui_handle property = 0;
+  if (ui_abi_1_window_create(runtime, &window, 0) != UI_OK ||
+      ui_abi_1_stack_panel_create(runtime, &panel, 0) != UI_OK ||
+      ui_abi_1_text_create(runtime, (const uint8_t *)"hello", 5, &text, 0) !=
+          UI_OK ||
+      ui_abi_1_text_box_create(runtime, 0, 0, &text_box, 0) != UI_OK ||
+      ui_abi_1_button_create(runtime, (const uint8_t *)"run", 3, &button, 0) !=
+          UI_OK ||
+      ui_abi_1_text_content_property(text, &property) != UI_OK || property == 0 ||
+      ui_abi_1_window_set_content(window, panel, 0) != UI_OK ||
+      ui_abi_1_container_insert(panel, text, 0, 0) != UI_OK ||
+      ui_abi_1_container_insert(panel, button, 1, 0) != UI_OK) {
+    fputs("UI Control creation/property/Tree operation failed\n", stderr);
+    return 9;
+  }
+  ui_bool controls_supported = 0;
+#if defined(__linux__)
+  ui_status window_open_status = ui_abi_1_window_open(window, 0);
+  if (ui_abi_1_has_feature(8, &controls_supported) != UI_OK ||
+      controls_supported != 1 ||
+      (window_open_status != UI_OK && window_open_status != UI_INTERNAL_ERROR) ||
+      ui_abi_1_window_close(window, 0) != UI_OK) {
+#else
+  if (ui_abi_1_has_feature(8, &controls_supported) != UI_OK ||
+      controls_supported != 1 ||
+      ui_abi_1_window_open(window, 0) != UI_UNSUPPORTED ||
+      ui_abi_1_window_close(window, 0) != UI_OK) {
+#endif
+    fputs("Window lifecycle/feature query failed\n", stderr);
+    return 13;
+  }
+  ui_handle close_subscription = 0;
+  if (ui_abi_1_window_close_request_subscribe(
+          window, smoke_close_request, 0, smoke_destroy,
+          &close_subscription, 0) != UI_OK ||
+      close_subscription == 0 ||
+      ui_abi_1_subscription_cancel(close_subscription, 0) != UI_OK ||
+      ui_abi_1_handle_release(close_subscription) != UI_OK) {
+    fputs("Window close-request subscription lifecycle failed\n", stderr);
+    return 14;
+  }
+  uint64_t child_count = 0;
+  uint32_t orientation = 0;
+  if (ui_abi_1_container_child_count(panel, &child_count) != UI_OK ||
+      child_count != 2 ||
+      ui_abi_1_stack_panel_orientation(panel, &orientation) != UI_OK ||
+      orientation != UI_ORIENTATION_VERTICAL ||
+      ui_abi_1_stack_panel_set_orientation(panel, UI_ORIENTATION_HORIZONTAL,
+                                           0) != UI_OK ||
+      ui_abi_1_stack_panel_set_child_align(panel, button, UI_ALIGN_CENTER, 0) !=
+          UI_OK) {
+    fputs("UI Control layout operation failed\n", stderr);
+    return 10;
+  }
+  ui_handle command = 0;
+  if (ui_abi_1_button_command(button, &command, 0) != UI_OK || command != 0 ||
+      ui_abi_1_window_clear_content(window, 0) != UI_OK) {
+    fputs("UI Control optional state operation failed\n", stderr);
+    return 11;
+  }
+  if (ui_abi_1_handle_release(property) != UI_OK ||
+      ui_abi_1_handle_release(window) != UI_OK ||
+      ui_abi_1_handle_release(panel) != UI_OK ||
+      ui_abi_1_handle_release(text) != UI_OK ||
+      ui_abi_1_handle_release(text_box) != UI_OK ||
+      ui_abi_1_handle_release(button) != UI_OK) {
+    fputs("UI Control handle release failed\n", stderr);
+    return 12;
+  }
+
   uint64_t host_scope = 0;
   if (ui_abi_1_runtime_host_begin_event(runtime, &host_scope) != UI_OK) {
     fputs("host event begin failed\n", stderr);

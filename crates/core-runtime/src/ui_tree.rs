@@ -82,6 +82,7 @@ pub(crate) struct PreparedAttach<R> {
     parent_revision: u64,
     child: ObjectIdentity,
     child_revision: u64,
+    index: usize,
     owner: TreeOwner<R>,
 }
 
@@ -94,6 +95,7 @@ pub(crate) struct TreeCoordinator;
 pub(crate) struct RuntimeTreeStore<R> {
     ui_thread: UiThreadContext,
     nodes: HashMap<ObjectIdentity, LogicalNode<R>>,
+    revision: u64,
 }
 
 impl<R> RuntimeTreeStore<R> {
@@ -101,7 +103,12 @@ impl<R> RuntimeTreeStore<R> {
         Self {
             ui_thread,
             nodes: HashMap::new(),
+            revision: 0,
         }
+    }
+
+    pub(crate) fn revision(&self) -> u64 {
+        self.revision
     }
 
     pub(crate) fn insert(&mut self, node: LogicalNode<R>) -> Result<(), TreeError> {
@@ -113,6 +120,7 @@ impl<R> RuntimeTreeStore<R> {
             .try_reserve(1)
             .map_err(|_| TreeError::AllocationFailed)?;
         self.nodes.insert(node.identity, node);
+        self.revision = self.revision.saturating_add(1);
         Ok(())
     }
 
@@ -126,7 +134,29 @@ impl<R> RuntimeTreeStore<R> {
         R: Clone + Eq + Send + Sync + 'static,
         F: FnOnce() -> Result<(), ()>,
     {
+        let parent = self
+            .nodes
+            .get(&parent_pin.identity())
+            .ok_or(TreeError::InvalidIdentity)?;
+        self.attach_at(parent_pin, child_pin, parent.children.len(), prepare_peer)
+    }
+
+    pub(crate) fn attach_at<F>(
+        &mut self,
+        parent_pin: &ValidationPin<R>,
+        child_pin: &ValidationPin<R>,
+        index: usize,
+        prepare_peer: F,
+    ) -> Result<(), TreeError>
+    where
+        R: Clone + Eq + Send + Sync + 'static,
+        F: FnOnce() -> Result<(), ()>,
+    {
         self.ensure_ui_thread()?;
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(TreeError::RevisionExhausted)?;
         let parent_id = parent_pin.identity();
         let child_id = child_pin.identity();
         if parent_id == child_id {
@@ -148,13 +178,152 @@ impl<R> RuntimeTreeStore<R> {
             &child,
             child_pin,
             &ancestry,
+            index,
             prepare_peer,
         )
         .and_then(|prepared| TreeCoordinator::commit_attach(&mut parent, &mut child, prepared));
 
         self.nodes.insert(parent_id, parent);
         self.nodes.insert(child_id, child);
+        if result.is_ok() {
+            self.revision = next_revision;
+        }
         result
+    }
+
+    pub(crate) fn replace_single_child<F>(
+        &mut self,
+        parent_pin: &ValidationPin<R>,
+        child_pin: &ValidationPin<R>,
+        prepare_peer: F,
+    ) -> Result<Option<TreeOwner<R>>, TreeError>
+    where
+        R: Clone + Eq + Send + Sync + 'static,
+        F: FnOnce() -> Result<(), ()>,
+    {
+        self.ensure_ui_thread()?;
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(TreeError::RevisionExhausted)?;
+        let parent_id = parent_pin.identity();
+        let child_id = child_pin.identity();
+        if parent_id == child_id {
+            return Err(TreeError::Cycle);
+        }
+        let ancestry = self.parent_ancestry(parent_id)?;
+        let mut parent = self
+            .nodes
+            .remove(&parent_id)
+            .ok_or(TreeError::InvalidIdentity)?;
+        if parent.children.len() > 1 {
+            self.nodes.insert(parent_id, parent);
+            return Err(TreeError::InvalidIdentity);
+        }
+
+        let Some(mut child) = self.nodes.remove(&child_id) else {
+            self.nodes.insert(parent_id, parent);
+            return Err(TreeError::InvalidIdentity);
+        };
+        let old_identity = parent.children.first().map(|edge| edge.identity);
+        if old_identity == Some(child_id) {
+            self.nodes.insert(parent_id, parent);
+            self.nodes.insert(child_id, child);
+            return Ok(None);
+        }
+
+        let mut old_child = if let Some(identity) = old_identity {
+            match self.nodes.remove(&identity) {
+                Some(node) => Some(node),
+                None => {
+                    self.nodes.insert(parent_id, parent);
+                    self.nodes.insert(child_id, child);
+                    return Err(TreeError::InvalidIdentity);
+                }
+            }
+        } else {
+            None
+        };
+        let old_child_revision = match old_child.as_ref() {
+            Some(node) if node.parent == Some(parent_id) => match node.revision.checked_add(1) {
+                Some(revision) => Some(revision),
+                None => {
+                    self.nodes.insert(parent_id, parent);
+                    self.nodes.insert(child_id, child);
+                    self.nodes.insert(
+                        old_identity.expect("old child identity"),
+                        old_child.take().expect("old child node"),
+                    );
+                    return Err(TreeError::RevisionExhausted);
+                }
+            },
+            Some(_) => {
+                self.nodes.insert(parent_id, parent);
+                self.nodes.insert(child_id, child);
+                self.nodes.insert(
+                    old_identity.expect("old child identity"),
+                    old_child.take().expect("old child node"),
+                );
+                return Err(TreeError::InvalidIdentity);
+            }
+            None => None,
+        };
+        let final_parent_revision = match parent.revision.checked_add(1) {
+            Some(revision) => revision,
+            None => {
+                self.nodes.insert(parent_id, parent);
+                self.nodes.insert(child_id, child);
+                if let Some(old) = old_child.take() {
+                    self.nodes.insert(old.identity, old);
+                }
+                return Err(TreeError::RevisionExhausted);
+            }
+        };
+
+        let prepared = match TreeCoordinator::prepare_attach(
+            &parent,
+            parent_pin,
+            &child,
+            child_pin,
+            &ancestry,
+            0,
+            prepare_peer,
+        ) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                self.nodes.insert(parent_id, parent);
+                self.nodes.insert(child_id, child);
+                if let Some(old) = old_child.take() {
+                    self.nodes.insert(old.identity, old);
+                }
+                return Err(error);
+            }
+        };
+        if let Err(error) = TreeCoordinator::commit_attach(&mut parent, &mut child, prepared) {
+            self.nodes.insert(parent_id, parent);
+            self.nodes.insert(child_id, child);
+            if let Some(old) = old_child.take() {
+                self.nodes.insert(old.identity, old);
+            }
+            return Err(error);
+        }
+
+        let removed_owner = if let Some(old) = old_child.as_mut() {
+            let old_link = parent.children.remove(1);
+            old.parent = None;
+            old.revision = old_child_revision.expect("old child revision was checked");
+            debug_assert_eq!(parent.revision, final_parent_revision);
+            Some(old_link._owner)
+        } else {
+            None
+        };
+        self.nodes.insert(parent_id, parent);
+        self.nodes.insert(child_id, child);
+        if let (Some(identity), Some(old)) = (old_identity, old_child) {
+            self.nodes.insert(identity, old);
+        }
+        self.revision = next_revision;
+        Ok(removed_owner)
     }
 
     pub(crate) fn detach(
@@ -163,6 +332,10 @@ impl<R> RuntimeTreeStore<R> {
         child: ObjectIdentity,
     ) -> Result<TreeOwner<R>, TreeError> {
         self.ensure_ui_thread()?;
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(TreeError::RevisionExhausted)?;
         let mut parent_node = self
             .nodes
             .remove(&parent)
@@ -174,6 +347,9 @@ impl<R> RuntimeTreeStore<R> {
         let result = TreeCoordinator::detach(&mut parent_node, &mut child_node);
         self.nodes.insert(parent, parent_node);
         self.nodes.insert(child, child_node);
+        if result.is_ok() {
+            self.revision = next_revision;
+        }
         result
     }
 
@@ -193,6 +369,106 @@ impl<R> RuntimeTreeStore<R> {
         TreeCoordinator::child_handle(registry, parent_node, child, kind)
     }
 
+    pub(crate) fn child_count(&self, parent: ObjectIdentity) -> Result<usize, TreeError> {
+        self.ensure_ui_thread()?;
+        self.nodes
+            .get(&parent)
+            .map(|node| node.children.len())
+            .ok_or(TreeError::InvalidIdentity)
+    }
+
+    pub(crate) fn parent_identity(
+        &self,
+        child: ObjectIdentity,
+    ) -> Result<Option<ObjectIdentity>, TreeError> {
+        self.ensure_ui_thread()?;
+        self.nodes
+            .get(&child)
+            .map(|node| node.parent)
+            .ok_or(TreeError::InvalidIdentity)
+    }
+
+    pub(crate) fn root_identity(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<ObjectIdentity, TreeError> {
+        self.ensure_ui_thread()?;
+        let mut current = identity;
+        loop {
+            let node = self.nodes.get(&current).ok_or(TreeError::InvalidIdentity)?;
+            let Some(parent) = node.parent else {
+                return Ok(current);
+            };
+            current = parent;
+        }
+    }
+
+    pub(crate) fn is_in_subtree(
+        &self,
+        root: ObjectIdentity,
+        identity: ObjectIdentity,
+    ) -> Result<bool, TreeError> {
+        self.ensure_ui_thread()?;
+        let mut current = identity;
+        loop {
+            if current == root {
+                return Ok(true);
+            }
+            let node = self.nodes.get(&current).ok_or(TreeError::InvalidIdentity)?;
+            let Some(parent) = node.parent else {
+                return Ok(false);
+            };
+            current = parent;
+        }
+    }
+
+    pub(crate) fn child_identity_at(
+        &self,
+        parent: ObjectIdentity,
+        index: usize,
+    ) -> Result<ObjectIdentity, TreeError> {
+        self.ensure_ui_thread()?;
+        self.nodes
+            .get(&parent)
+            .ok_or(TreeError::InvalidIdentity)?
+            .children
+            .get(index)
+            .map(|child| child.identity)
+            .ok_or(TreeError::ChildNotFound)
+    }
+
+    pub(crate) fn move_child(
+        &mut self,
+        parent: ObjectIdentity,
+        from_index: usize,
+        to_index: usize,
+    ) -> Result<(), TreeError> {
+        self.ensure_ui_thread()?;
+        let node = self
+            .nodes
+            .get_mut(&parent)
+            .ok_or(TreeError::InvalidIdentity)?;
+        if from_index >= node.children.len() || to_index >= node.children.len() {
+            return Err(TreeError::ChildNotFound);
+        }
+        if from_index == to_index {
+            return Ok(());
+        }
+        let next_tree_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(TreeError::RevisionExhausted)?;
+        let revision = node
+            .revision
+            .checked_add(1)
+            .ok_or(TreeError::RevisionExhausted)?;
+        let child = node.children.remove(from_index);
+        node.children.insert(to_index, child);
+        node.revision = revision;
+        self.revision = next_tree_revision;
+        Ok(())
+    }
+
     /// Removes a node during its UI-state finalizer and detaches surviving child subtrees.
     pub(crate) fn remove_for_cleanup(
         &mut self,
@@ -202,6 +478,7 @@ impl<R> RuntimeTreeStore<R> {
         let Some(parent) = self.nodes.remove(&identity) else {
             return Ok(None);
         };
+        self.revision = self.revision.saturating_add(1);
         for index in 0..parent.children.len() {
             let child_identity = parent.children[index].identity;
             if let Some(mut child) = self.nodes.remove(&child_identity) {
@@ -224,6 +501,9 @@ impl<R> RuntimeTreeStore<R> {
         &mut self,
     ) -> Result<HashMap<ObjectIdentity, LogicalNode<R>>, TreeError> {
         self.ensure_ui_thread()?;
+        if !self.nodes.is_empty() {
+            self.revision = self.revision.saturating_add(1);
+        }
         Ok(std::mem::take(&mut self.nodes))
     }
 
@@ -293,6 +573,7 @@ impl TreeCoordinator {
         child: &LogicalNode<R>,
         child_pin: &ValidationPin<R>,
         parent_ancestry: &[ObjectIdentity],
+        index: usize,
         prepare_peer: impl FnOnce() -> Result<(), ()>,
     ) -> Result<PreparedAttach<R>, TreeError>
     where
@@ -330,6 +611,9 @@ impl TreeCoordinator {
         {
             return Err(TreeError::AlreadyParented);
         }
+        if index > parent.children.len() {
+            return Err(TreeError::ChildNotFound);
+        }
 
         let parent_revision = parent
             .revision
@@ -347,6 +631,7 @@ impl TreeCoordinator {
             parent_revision,
             child: child.identity,
             child_revision,
+            index,
             owner,
         })
     }
@@ -376,10 +661,13 @@ impl TreeCoordinator {
             .try_reserve(1)
             .map_err(|_| TreeError::AllocationFailed)?;
 
-        parent.children.push(ChildLink {
-            identity: child.identity,
-            _owner: prepared.owner,
-        });
+        parent.children.insert(
+            prepared.index,
+            ChildLink {
+                identity: child.identity,
+                _owner: prepared.owner,
+            },
+        );
         child.parent = Some(parent.identity);
         parent.revision = prepared.parent_revision;
         child.revision = prepared.child_revision;

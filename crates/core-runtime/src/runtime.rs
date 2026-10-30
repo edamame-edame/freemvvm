@@ -1,17 +1,31 @@
 use crate::binding::{BindingConnectionId, BindingGraph, BindingGraphError};
 use crate::command::{CommandError, OperationIdIssuer};
-use crate::dispatcher::{DispatchError, Dispatcher, ShutdownRequestAdmission, UiLoopBridge};
+use crate::dispatcher::{
+    DispatchError, Dispatcher, PostedWork, ShutdownRequestAdmission, UiLoopBridge,
+};
 use crate::handle_registry::HandleToken;
 use crate::handle_registry::registry::{
-    CleanupQueue, CleanupReservation, CoreObjectControl, HandleRegistry, ObjectIdentity,
-    RegistryError, ValidationPin,
+    CleanupQueue, CleanupReservation, CoreObjectControl, HandleRegistry, InternalOwner,
+    ObjectIdentity, RegistryError, ValidationPin,
 };
 use crate::object_store::{UiObjectStore, UiObjectStoreError};
+use crate::platform::frame::{FramePhase, FrameTicket};
+use crate::platform::scene::SceneSnapshot;
 use crate::property::{
     PropertyChangeQueue, PropertyHandleKind, PropertyState, PropertyValidator, Subscription,
     ValidationError, ValidatorResult,
 };
+use crate::ui_controls::{UiControlKind, UiControlProperty, UiControlState};
+use crate::ui_focus::FocusManager;
+use crate::ui_layout::{
+    Align, IntrinsicMeasureProvider, LayoutEngine, LayoutError, LayoutNodeSnapshot, LayoutSnapshot,
+    Orientation, Size,
+};
 use crate::ui_tree::{LogicalNode, RuntimeTreeStore, TreeError};
+use crate::ui_window::{
+    CloseDecision, FactoryWindowPeer, PlatformFrameCompletionSink, PlatformOperationError,
+    PlatformRuntimeFactory, WindowLifecycleError, WindowPeerAdapter,
+};
 use crate::value::{
     BindingCopyError, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
 };
@@ -20,7 +34,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroU64;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::thread::ThreadId;
 
 type Finalizer = Box<dyn FnOnce() + Send>;
@@ -153,7 +167,14 @@ impl CleanupQueue for RuntimeObjectCleanupQueue {
                 store.destroy(identity)
             };
             match state {
-                Ok(state) => drop(state),
+                Ok(mut state) => {
+                    if let Some(control) = state.downcast_mut::<UiControlState>() {
+                        if let Some(window) = &mut control.window {
+                            window.shutdown(identity);
+                        }
+                    }
+                    drop(state);
+                }
                 // Shutdown may clear the store before a racing release ticket is drained.
                 Err(UiObjectStoreError::InvalidIdentity)
                     if ui_state_cleared.load(Ordering::Acquire) => {}
@@ -1092,11 +1113,13 @@ impl RuntimeIdentity {
 #[allow(dead_code)]
 pub(crate) struct RuntimeCore {
     identity: RuntimeIdentity,
+    platform_factory: Option<Arc<dyn PlatformRuntimeFactory>>,
     command_operation_ids: OperationIdIssuer,
     ui_thread: UiThreadContext,
     cleanup: Arc<RuntimeCleanupQueue>,
     ui_objects: Arc<Mutex<UiObjectStore<Box<dyn Any + Send>>>>,
     ui_tree: Arc<Mutex<RuntimeTreeStore<RuntimeIdentity>>>,
+    focus: Mutex<FocusManager>,
     binding_graph: Arc<Mutex<BindingGraph>>,
     active_bindings: Arc<Mutex<HashMap<BindingConnectionId, RuntimeBindingOwner>>>,
     binding_error_delivery: Arc<Mutex<VecDeque<BindingErrorDeliveryItem>>>,
@@ -1109,6 +1132,156 @@ pub(crate) struct RuntimeCore {
     host: HostRegistration,
     dispatcher: Mutex<Option<Dispatcher>>,
     shutdown_completion: Mutex<Option<ShutdownCompletion>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct LayoutTreeInput {
+    identity: ObjectIdentity,
+    children: Vec<Self>,
+}
+
+fn capture_layout_tree(
+    tree: &RuntimeTreeStore<RuntimeIdentity>,
+    identity: ObjectIdentity,
+) -> Result<LayoutTreeInput, LayoutError> {
+    let count = tree
+        .child_count(identity)
+        .map_err(|_| LayoutError::InvalidTree)?;
+    let mut children = Vec::new();
+    children
+        .try_reserve(count)
+        .map_err(|_| LayoutError::AllocationFailed)?;
+    for index in 0..count {
+        let child = tree
+            .child_identity_at(identity, index)
+            .map_err(|_| LayoutError::InvalidTree)?;
+        children.push(capture_layout_tree(tree, child)?);
+    }
+    Ok(LayoutTreeInput { identity, children })
+}
+
+fn layout_node_from_tree(
+    input: &LayoutTreeInput,
+    controls: &UiObjectStore<Box<dyn Any + Send>>,
+    align: Align,
+    identities: &mut Vec<ObjectIdentity>,
+) -> Result<LayoutNodeSnapshot, LayoutError> {
+    identities
+        .try_reserve(1)
+        .map_err(|_| LayoutError::AllocationFailed)?;
+    identities.push(input.identity);
+    let control = controls
+        .resolve(input.identity)
+        .map_err(|_| LayoutError::InvalidTree)?
+        .downcast_ref::<UiControlState>()
+        .ok_or(LayoutError::InvalidTree)?;
+    match control.kind {
+        UiControlKind::StackPanel => {
+            let orientation = match control.orientation {
+                1 => Orientation::Vertical,
+                2 => Orientation::Horizontal,
+                _ => return Err(LayoutError::InvalidTree),
+            };
+            let mut children = Vec::new();
+            children
+                .try_reserve(input.children.len())
+                .map_err(|_| LayoutError::AllocationFailed)?;
+            for child in &input.children {
+                let child_align = match control.child_align(child.identity) {
+                    1 => Align::Start,
+                    2 => Align::Center,
+                    3 => Align::End,
+                    4 => Align::Stretch,
+                    _ => return Err(LayoutError::InvalidTree),
+                };
+                children.push(layout_node_from_tree(
+                    child,
+                    controls,
+                    child_align,
+                    identities,
+                )?);
+            }
+            let mut node = LayoutNodeSnapshot::stack_panel(input.identity, orientation, children);
+            node.align = align;
+            Ok(node)
+        }
+        UiControlKind::Text | UiControlKind::TextBox | UiControlKind::Button
+            if input.children.is_empty() =>
+        {
+            let mut node = LayoutNodeSnapshot::leaf(input.identity);
+            node.align = align;
+            Ok(node)
+        }
+        UiControlKind::Window
+        | UiControlKind::Text
+        | UiControlKind::TextBox
+        | UiControlKind::Button => Err(LayoutError::InvalidTree),
+    }
+}
+
+struct RuntimeFrameCompletionSink {
+    runtime: Weak<RuntimeCore>,
+    window: ObjectIdentity,
+}
+
+struct RuntimeWindowClientAreaSink {
+    runtime: Weak<RuntimeCore>,
+    window: ObjectIdentity,
+}
+
+impl crate::ui_window::PlatformWindowClientAreaSink for RuntimeWindowClientAreaSink {
+    fn client_area_changed(
+        &self,
+        generation: u64,
+        area: crate::ui_window::WindowClientArea,
+    ) -> Result<(), PlatformOperationError> {
+        if !area.is_valid() {
+            return Err(PlatformOperationError);
+        }
+        let runtime = self.runtime.upgrade().ok_or(PlatformOperationError)?;
+        let dispatcher = runtime
+            .dispatcher()
+            .map_err(|_| PlatformOperationError)?
+            .ok_or(PlatformOperationError)?;
+        let runtime = Arc::downgrade(&runtime);
+        let window = self.window;
+        dispatcher
+            .post_completion(PostedWork::callback(Box::new(move || {
+                if let Some(runtime) = runtime.upgrade() {
+                    runtime.window_client_area_changed(window, generation, area);
+                }
+            })))
+            .map_err(|_| PlatformOperationError)
+    }
+}
+
+impl RuntimeFrameCompletionSink {
+    fn post(&self, ticket: FrameTicket, success: bool) -> Result<(), PlatformOperationError> {
+        let runtime = self.runtime.upgrade().ok_or(PlatformOperationError)?;
+        let dispatcher = runtime
+            .dispatcher()
+            .map_err(|_| PlatformOperationError)?
+            .ok_or(PlatformOperationError)?;
+        let runtime = Arc::downgrade(&runtime);
+        let window = self.window;
+        dispatcher
+            .post_completion(PostedWork::callback(Box::new(move || {
+                if let Some(runtime) = runtime.upgrade() {
+                    runtime.window_frame_completion(window, ticket, success);
+                }
+            })))
+            .map_err(|_| PlatformOperationError)
+    }
+}
+
+impl PlatformFrameCompletionSink for RuntimeFrameCompletionSink {
+    fn complete_frame(&self, ticket: FrameTicket) -> Result<(), PlatformOperationError> {
+        self.post(ticket, true)
+    }
+
+    fn fail_frame(&self, ticket: FrameTicket) -> Result<(), PlatformOperationError> {
+        self.post(ticket, false)
+    }
 }
 
 struct RuntimeBindingOwner {
@@ -1182,6 +1355,12 @@ impl Drop for PropertyDeliveryGuard<'_> {
 #[allow(dead_code)]
 impl RuntimeCore {
     pub(crate) fn new() -> Result<Self, RuntimeCoreError> {
+        Self::new_with_platform_factory(None)
+    }
+
+    pub(crate) fn new_with_platform_factory(
+        platform_factory: Option<Arc<dyn PlatformRuntimeFactory>>,
+    ) -> Result<Self, RuntimeCoreError> {
         let identity = RuntimeIdentity::issue().ok_or(RuntimeCoreError::IdentityUnavailable)?;
         let ui_thread = UiThreadContext::capture();
         let cleanup = RuntimeCleanupQueue::new_for_ui_thread(ui_thread);
@@ -1275,24 +1454,42 @@ impl RuntimeCore {
         let shutdown_cleared = Arc::clone(&ui_state_cleared);
         cleanup
             .track_ui_state(Box::new(move || {
-                let mut store = shutdown_objects
+                let objects = shutdown_objects
                     .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                if store.clear().is_ok() {
-                    shutdown_cleared.store(true, Ordering::Release);
-                } else {
-                    debug_assert!(false, "Runtime store cleanup must run on its UI thread");
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .take_all();
+                match objects {
+                    Ok(objects) => {
+                        // Cleanup tickets racing with reentrant peer teardown now observe the
+                        // store as cleared even though external close callbacks are still running.
+                        shutdown_cleared.store(true, Ordering::Release);
+                        for (identity, mut object) in objects {
+                            if let Some(state) = object.downcast_mut::<UiControlState>() {
+                                if let Some(window) = &mut state.window {
+                                    window.shutdown(identity);
+                                }
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        debug_assert!(
+                            false,
+                            "Runtime store cleanup must run on its UI thread: {error:?}"
+                        );
+                    }
                 }
             }))
             .map_err(|()| RuntimeCoreError::CleanupRegistrationFailed)?;
 
         Ok(Self {
             identity,
+            platform_factory,
             command_operation_ids: OperationIdIssuer::new(),
             ui_thread,
             cleanup,
             ui_objects,
             ui_tree,
+            focus: Mutex::new(FocusManager::default()),
             binding_graph,
             active_bindings,
             binding_error_delivery,
@@ -1445,11 +1642,99 @@ impl RuntimeCore {
         let child_pin = registry
             .validate(child_token, &kind, &self.identity)
             .map_err(RuntimeTreeError::Registry)?;
+        let parent_identity = parent_pin.identity();
         self.ui_tree
             .lock()
             .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
             .attach(&parent_pin, &child_pin, prepare_peer)
-            .map_err(RuntimeTreeError::Tree)
+            .map_err(RuntimeTreeError::Tree)?;
+        self.mark_layout_dirty(parent_identity);
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn attach_tree_child_at<K, F>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        child_token: HandleToken,
+        child_kind: K,
+        index: usize,
+        prepare_peer: F,
+    ) -> Result<(), RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+        F: FnOnce() -> Result<(), ()>,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let child_pin = registry
+            .validate(child_token, &child_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let parent_identity = parent_pin.identity();
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .attach_at(&parent_pin, &child_pin, index, prepare_peer)
+            .map_err(RuntimeTreeError::Tree)?;
+        self.mark_layout_dirty(parent_identity);
+        Ok(())
+    }
+
+    pub(crate) fn replace_tree_single_child<K, F>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        child_token: HandleToken,
+        child_kind: K,
+        prepare_peer: F,
+    ) -> Result<(), RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+        F: FnOnce() -> Result<(), ()>,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let child_pin = registry
+            .validate(child_token, &child_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let parent_identity = parent_pin.identity();
+        let previous_child = self
+            .ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .child_identity_at(parent_identity, 0)
+            .ok();
+        let detached_owner = self
+            .ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .replace_single_child(&parent_pin, &child_pin, prepare_peer)
+            .map_err(RuntimeTreeError::Tree)?;
+        drop(detached_owner);
+        self.mark_layout_dirty(parent_identity);
+        if let Some(previous) = previous_child.filter(|previous| *previous != child_pin.identity())
+        {
+            self.stack_panel_clear_child_align(parent_identity, previous);
+            self.clear_focus_for_detached_subtree(previous);
+        }
+        Ok(())
     }
 
     pub(crate) fn detach_tree_child<K>(
@@ -1474,6 +1759,8 @@ impl RuntimeCore {
         let child_pin = registry
             .validate(child_token, &kind, &self.identity)
             .map_err(RuntimeTreeError::Registry)?;
+        let parent_identity = parent_pin.identity();
+        let child_identity = child_pin.identity();
         let detached = self
             .ui_tree
             .lock()
@@ -1481,6 +1768,80 @@ impl RuntimeCore {
             .detach(parent_pin.identity(), child_pin.identity())
             .map_err(RuntimeTreeError::Tree)?;
         drop(detached);
+        self.mark_layout_dirty(parent_identity);
+        self.stack_panel_clear_child_align(parent_identity, child_identity);
+        self.clear_focus_for_detached_subtree(child_identity);
+        Ok(())
+    }
+
+    pub(crate) fn detach_tree_child_of_kinds<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        child_token: HandleToken,
+        child_kind: K,
+    ) -> Result<(), RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let child_pin = registry
+            .validate(child_token, &child_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let parent_identity = parent_pin.identity();
+        let child_identity = child_pin.identity();
+        let detached = self
+            .ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .detach(parent_pin.identity(), child_pin.identity())
+            .map_err(RuntimeTreeError::Tree)?;
+        drop(detached);
+        self.mark_layout_dirty(parent_identity);
+        self.stack_panel_clear_child_align(parent_identity, child_identity);
+        self.clear_focus_for_detached_subtree(child_identity);
+        Ok(())
+    }
+
+    pub(crate) fn detach_tree_child_identity<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        child: ObjectIdentity,
+    ) -> Result<(), RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let parent_identity = parent_pin.identity();
+        let detached = self
+            .ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .detach(parent_pin.identity(), child)
+            .map_err(RuntimeTreeError::Tree)?;
+        drop(detached);
+        self.mark_layout_dirty(parent_identity);
+        self.stack_panel_clear_child_align(parent_identity, child);
+        self.clear_focus_for_detached_subtree(child);
         Ok(())
     }
 
@@ -1510,6 +1871,114 @@ impl RuntimeCore {
             .map_err(RuntimeTreeError::Tree)
     }
 
+    pub(crate) fn tree_child_handle_of_kinds<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        child: ObjectIdentity,
+        child_kind: K,
+    ) -> Result<HandleToken, RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .child_handle(registry, parent_pin.identity(), child, child_kind)
+            .map_err(RuntimeTreeError::Tree)
+    }
+
+    pub(crate) fn tree_child_count<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+    ) -> Result<usize, RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .child_count(parent_pin.identity())
+            .map_err(RuntimeTreeError::Tree)
+    }
+
+    pub(crate) fn tree_child_identity_at<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        index: usize,
+    ) -> Result<ObjectIdentity, RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .child_identity_at(parent_pin.identity(), index)
+            .map_err(RuntimeTreeError::Tree)
+    }
+
+    pub(crate) fn tree_move_child<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        parent_token: HandleToken,
+        parent_kind: K,
+        from_index: usize,
+        to_index: usize,
+    ) -> Result<(), RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        let parent_pin = registry
+            .validate(parent_token, &parent_kind, &self.identity)
+            .map_err(RuntimeTreeError::Registry)?;
+        let parent_identity = parent_pin.identity();
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .move_child(parent_pin.identity(), from_index, to_index)
+            .map_err(RuntimeTreeError::Tree)?;
+        self.mark_layout_dirty(parent_identity);
+        Ok(())
+    }
+
     /// Registers a Property with its initial typed value in this Runtime.
     pub(crate) fn register_property(
         &self,
@@ -1530,6 +1999,1063 @@ impl RuntimeCore {
         self.register_ui_object(registry, PropertyHandleKind::Property, move || {
             PropertyState::new_read_only(initial)
         })
+    }
+
+    /// Returns an independent internal owner for a Property attached to one Core Control.
+    pub(crate) fn ui_control_property_owner(
+        &self,
+        identity: ObjectIdentity,
+        property: UiControlProperty,
+    ) -> Result<InternalOwner<RuntimeIdentity>, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<UiControlState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        if !state.kind.supports_property(property) {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        state
+            .property_owner(property)
+            .ok_or(RuntimePropertyError::WrongObjectState)?
+            .try_clone()
+            .map_err(RuntimePropertyError::Registry)
+    }
+
+    pub(crate) fn ui_control_kind(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<UiControlKind, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        store
+            .resolve(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<UiControlState>()
+            .map(|state| state.kind)
+            .ok_or(RuntimePropertyError::WrongObjectState)
+    }
+
+    pub(crate) fn button_set_command_entry(
+        &self,
+        identity: ObjectIdentity,
+        command: Option<Arc<crate::abi_support::CommandHandleEntry>>,
+    ) -> Result<(), RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let previous = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+            let state = store
+                .resolve_mut(identity)
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Button)
+                .ok_or(RuntimePropertyError::WrongObjectState)?;
+            std::mem::replace(&mut state.button_command, command)
+        };
+        drop(previous);
+        Ok(())
+    }
+
+    pub(crate) fn button_command_entry(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<Option<Arc<crate::abi_support::CommandHandleEntry>>, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Button)
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        Ok(state.button_command.clone())
+    }
+
+    pub(crate) fn stack_panel_config(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<(u32, bool), RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::StackPanel)
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        Ok((state.orientation, state.layout_dirty))
+    }
+
+    pub(crate) fn stack_panel_set_orientation(
+        &self,
+        identity: ObjectIdentity,
+        orientation: u32,
+    ) -> Result<bool, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        if !matches!(orientation, 1 | 2) {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        let changed = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+            let state = store
+                .resolve_mut(identity)
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::StackPanel)
+                .ok_or(RuntimePropertyError::WrongObjectState)?;
+            if state.orientation == orientation {
+                false
+            } else {
+                state.orientation = orientation;
+                state.layout_dirty = true;
+                true
+            }
+        };
+        if changed {
+            self.mark_layout_dirty(identity);
+        }
+        Ok(changed)
+    }
+
+    pub(crate) fn tree_parent_identity(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<Option<ObjectIdentity>, RuntimeTreeError> {
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .parent_identity(identity)
+            .map_err(RuntimeTreeError::Tree)
+    }
+
+    pub(crate) fn stack_panel_child_align(
+        &self,
+        panel: ObjectIdentity,
+        child: ObjectIdentity,
+    ) -> Result<u32, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let parent = self
+            .tree_parent_identity(child)
+            .map_err(|error| match error {
+                RuntimeTreeError::WrongThread => RuntimePropertyError::WrongThread,
+                RuntimeTreeError::Closed => RuntimePropertyError::Closed,
+                _ => RuntimePropertyError::WrongObjectState,
+            })?;
+        if parent != Some(panel) {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve(panel)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::StackPanel)
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        Ok(state.child_align(child))
+    }
+
+    pub(crate) fn stack_panel_set_child_align(
+        &self,
+        panel: ObjectIdentity,
+        child: ObjectIdentity,
+        align: u32,
+    ) -> Result<bool, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        if !matches!(align, 1..=4) {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        let parent = self
+            .tree_parent_identity(child)
+            .map_err(|error| match error {
+                RuntimeTreeError::WrongThread => RuntimePropertyError::WrongThread,
+                RuntimeTreeError::Closed => RuntimePropertyError::Closed,
+                _ => RuntimePropertyError::WrongObjectState,
+            })?;
+        if parent != Some(panel) {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        let changed = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+            let state = store
+                .resolve_mut(panel)
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::StackPanel)
+                .ok_or(RuntimePropertyError::WrongObjectState)?;
+            if state.child_align(child) == align {
+                false
+            } else {
+                state
+                    .child_align
+                    .try_reserve(1)
+                    .map_err(|_| RuntimePropertyError::NotificationQueueOutOfMemory)?;
+                state.child_align.insert(child, align);
+                state.layout_dirty = true;
+                true
+            }
+        };
+        if changed {
+            self.mark_layout_dirty(panel);
+        }
+        Ok(changed)
+    }
+
+    fn stack_panel_clear_child_align(&self, panel: ObjectIdentity, child: ObjectIdentity) {
+        let changed = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Ok(object) = store.resolve_mut(panel) {
+                if let Some(state) = object
+                    .downcast_mut::<UiControlState>()
+                    .filter(|state| state.kind == UiControlKind::StackPanel)
+                {
+                    state.child_align.remove(&child).is_some()
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        };
+        if changed {
+            self.mark_layout_dirty(panel);
+        }
+    }
+
+    pub(crate) fn ui_control_layout_dirty(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<bool, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        store
+            .resolve(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<UiControlState>()
+            .map(|state| state.layout_dirty)
+            .ok_or(RuntimePropertyError::WrongObjectState)
+    }
+
+    pub(crate) fn ui_control_layout_clean(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<(), RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let mut store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve_mut(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_mut::<UiControlState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        state.layout_dirty = false;
+        Ok(())
+    }
+
+    pub(crate) fn window_set_peer(
+        &self,
+        identity: ObjectIdentity,
+        peer: Arc<dyn WindowPeerAdapter>,
+    ) -> Result<(), RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let mut store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        let state = store
+            .resolve_mut(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_mut::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .ok_or(RuntimePropertyError::WrongObjectState)?;
+        state
+            .window
+            .as_mut()
+            .ok_or(RuntimePropertyError::WrongObjectState)?
+            .set_peer(peer);
+        Ok(())
+    }
+
+    pub(crate) fn window_open(
+        self: &Arc<Self>,
+        identity: ObjectIdentity,
+    ) -> Result<u64, WindowLifecycleError> {
+        self.ensure_property_access_thread()
+            .map_err(|error| match error {
+                RuntimePropertyError::WrongThread => WindowLifecycleError::InvalidState,
+                RuntimePropertyError::Closed => WindowLifecycleError::InvalidState,
+                _ => WindowLifecycleError::InvalidState,
+            })?;
+        let has_peer = {
+            let store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            store
+                .resolve(identity)
+                .map_err(|_| WindowLifecycleError::InvalidState)?
+                .downcast_ref::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .and_then(|state| state.window.as_ref())
+                .ok_or(WindowLifecycleError::InvalidState)?
+                .has_peer()
+        };
+        if !has_peer {
+            let factory = self
+                .platform_factory
+                .as_ref()
+                .ok_or(WindowLifecycleError::Unsupported)?;
+            let peer = factory
+                .create_window_peer(Arc::new(RuntimeFrameCompletionSink {
+                    runtime: Arc::downgrade(self),
+                    window: identity,
+                }))
+                .map_err(|_| WindowLifecycleError::PeerFailure)?;
+            peer.set_client_area_sink(Arc::new(RuntimeWindowClientAreaSink {
+                runtime: Arc::downgrade(self),
+                window: identity,
+            }));
+            self.window_set_peer(identity, Arc::new(FactoryWindowPeer(peer)))
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+        }
+        let (generation, peer) = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            let state = store
+                .resolve_mut(identity)
+                .map_err(|_| WindowLifecycleError::InvalidState)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .ok_or(WindowLifecycleError::InvalidState)?;
+            state
+                .window
+                .as_mut()
+                .ok_or(WindowLifecycleError::InvalidState)?
+                .prepare_open()?
+        };
+        if let Some(peer) = peer {
+            let mut result = peer.open(identity, generation);
+            if result.as_ref().is_ok_and(|area| !area.is_valid()) {
+                let _ = peer.close(identity);
+                result = Err(());
+            }
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            let state = store
+                .resolve_mut(identity)
+                .map_err(|_| WindowLifecycleError::StaleRequest)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .ok_or(WindowLifecycleError::StaleRequest)?;
+            state
+                .window
+                .as_mut()
+                .ok_or(WindowLifecycleError::StaleRequest)?
+                .finish_open(generation, result)?;
+            drop(store);
+            self.mark_layout_subtree_dirty(identity);
+        }
+        Ok(generation)
+    }
+
+    fn window_client_area_changed(
+        &self,
+        identity: ObjectIdentity,
+        generation: u64,
+        area: crate::ui_window::WindowClientArea,
+    ) {
+        if !self.is_ui_thread() || !area.is_valid() {
+            return;
+        }
+        let changed = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            store
+                .resolve_mut(identity)
+                .ok()
+                .and_then(|object| object.downcast_mut::<UiControlState>())
+                .filter(|state| state.kind == UiControlKind::Window)
+                .and_then(|state| state.window.as_mut())
+                .is_some_and(|window| window.update_client_area(generation, area))
+        };
+        if changed {
+            self.mark_layout_subtree_dirty(identity);
+        }
+    }
+
+    pub(crate) fn window_submit_frame(
+        &self,
+        identity: ObjectIdentity,
+        scene: Arc<SceneSnapshot>,
+    ) -> Result<FrameTicket, WindowLifecycleError> {
+        self.ensure_property_access_thread()
+            .map_err(|_| WindowLifecycleError::InvalidState)?;
+        let prepared = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            store
+                .resolve_mut(identity)
+                .map_err(|_| WindowLifecycleError::InvalidState)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .and_then(|state| state.window.as_mut())
+                .ok_or(WindowLifecycleError::InvalidState)?
+                .begin_frame(scene)
+                .map_err(WindowLifecycleError::Frame)?
+        };
+        if prepared
+            .peer
+            .submit_frame(prepared.ticket, prepared.scene)
+            .is_err()
+        {
+            self.window_frame_completion(identity, prepared.ticket, false);
+            return Err(WindowLifecycleError::PeerFailure);
+        }
+        Ok(prepared.ticket)
+    }
+
+    pub(crate) fn window_frame_phase(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<FramePhase, WindowLifecycleError> {
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| WindowLifecycleError::InvalidState)?;
+        store
+            .resolve(identity)
+            .map_err(|_| WindowLifecycleError::InvalidState)?
+            .downcast_ref::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_ref())
+            .map(|window| window.frame_phase())
+            .ok_or(WindowLifecycleError::InvalidState)
+    }
+
+    fn window_frame_completion(
+        &self,
+        identity: ObjectIdentity,
+        ticket: FrameTicket,
+        success: bool,
+    ) {
+        let Ok(mut store) = self.ui_objects.lock() else {
+            return;
+        };
+        let Ok(state) = store.resolve_mut(identity) else {
+            return;
+        };
+        let Some(window) = state
+            .downcast_mut::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_mut())
+        else {
+            return;
+        };
+        if success {
+            window.complete_frame(ticket);
+        } else {
+            window.fail_frame(ticket);
+        }
+    }
+
+    pub(crate) fn window_close(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<(), WindowLifecycleError> {
+        let (generation, peer) = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            let state = store
+                .resolve_mut(identity)
+                .map_err(|_| WindowLifecycleError::InvalidState)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .ok_or(WindowLifecycleError::InvalidState)?;
+            let window = state
+                .window
+                .as_mut()
+                .ok_or(WindowLifecycleError::InvalidState)?;
+            if !window.is_open() {
+                return Ok(());
+            }
+            let generation = window.generation();
+            let peer = window.prepare_close()?;
+            (generation, peer)
+        };
+        let result = peer.close(identity);
+        {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            let state = store
+                .resolve_mut(identity)
+                .map_err(|_| WindowLifecycleError::StaleRequest)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .ok_or(WindowLifecycleError::StaleRequest)?;
+            state
+                .window
+                .as_mut()
+                .ok_or(WindowLifecycleError::StaleRequest)?
+                .finish_close(generation, result)?;
+        }
+        self.focus
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear_for_window(identity);
+        Ok(())
+    }
+
+    pub(crate) fn window_close_intent(
+        &self,
+        identity: ObjectIdentity,
+        callback: Option<Box<dyn FnOnce(u64, u64) -> CloseDecision>>,
+    ) -> Result<Option<(u64, u64)>, WindowLifecycleError> {
+        let request = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            let state = store
+                .resolve_mut(identity)
+                .map_err(|_| WindowLifecycleError::InvalidState)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .ok_or(WindowLifecycleError::InvalidState)?;
+            state
+                .window
+                .as_mut()
+                .ok_or(WindowLifecycleError::InvalidState)?
+                .begin_close_intent()?
+        };
+        let decision = callback.map_or(CloseDecision::Accept, |callback| {
+            callback(request.0, request.1)
+        });
+        let peer = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            let state = store
+                .resolve_mut(identity)
+                .map_err(|_| WindowLifecycleError::StaleRequest)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .ok_or(WindowLifecycleError::StaleRequest)?;
+            state
+                .window
+                .as_mut()
+                .ok_or(WindowLifecycleError::StaleRequest)?
+                .complete_close_intent(request.0, request.1, decision)?
+        };
+        if let Some(peer) = peer {
+            let result = peer.close(identity);
+            let finish = {
+                let mut store = self
+                    .ui_objects
+                    .lock()
+                    .map_err(|_| WindowLifecycleError::InvalidState)?;
+                let state = store
+                    .resolve_mut(identity)
+                    .map_err(|_| WindowLifecycleError::StaleRequest)?
+                    .downcast_mut::<UiControlState>()
+                    .filter(|state| state.kind == UiControlKind::Window)
+                    .ok_or(WindowLifecycleError::StaleRequest)?;
+                state
+                    .window
+                    .as_mut()
+                    .ok_or(WindowLifecycleError::StaleRequest)?
+                    .finish_close_intent(request.1, result)
+            };
+            finish?;
+            self.focus
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clear_for_window(identity);
+            Ok(None)
+        } else if decision == CloseDecision::Defer {
+            Ok(Some(request))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(crate) fn window_close_resolve(
+        &self,
+        identity: ObjectIdentity,
+        request: u64,
+        generation: u64,
+        decision: CloseDecision,
+    ) -> Result<(), WindowLifecycleError> {
+        let peer = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            let state = store
+                .resolve_mut(identity)
+                .map_err(|_| WindowLifecycleError::InvalidState)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .ok_or(WindowLifecycleError::InvalidState)?;
+            state
+                .window
+                .as_mut()
+                .ok_or(WindowLifecycleError::InvalidState)?
+                .prepare_resolve(request, generation, decision)?
+        };
+        if let Some(peer) = peer {
+            let result = peer.close(identity);
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            let state = store
+                .resolve_mut(identity)
+                .map_err(|_| WindowLifecycleError::StaleRequest)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .ok_or(WindowLifecycleError::StaleRequest)?;
+            state
+                .window
+                .as_mut()
+                .ok_or(WindowLifecycleError::StaleRequest)?
+                .finish_close_intent(generation, result)?;
+            self.focus
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clear_for_window(identity);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn window_close_request_release(
+        &self,
+        identity: ObjectIdentity,
+        request: u64,
+        generation: u64,
+    ) -> Result<(), WindowLifecycleError> {
+        let mut store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| WindowLifecycleError::InvalidState)?;
+        let state = store
+            .resolve_mut(identity)
+            .map_err(|_| WindowLifecycleError::InvalidState)?
+            .downcast_mut::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .ok_or(WindowLifecycleError::InvalidState)?;
+        state
+            .window
+            .as_mut()
+            .ok_or(WindowLifecycleError::InvalidState)?
+            .release_unresolved(request, generation)
+    }
+
+    pub(crate) fn window_is_open(&self, identity: ObjectIdentity) -> bool {
+        let Ok(store) = self.ui_objects.lock() else {
+            return false;
+        };
+        store
+            .resolve(identity)
+            .ok()
+            .and_then(|object| object.downcast_ref::<UiControlState>())
+            .and_then(|state| state.window.as_ref())
+            .is_some_and(|window| window.is_open())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_client_area(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<Option<(u64, crate::ui_window::WindowClientArea)>, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        self.ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?
+            .resolve(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_ref::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_ref())
+            .map(|window| window.client_area())
+            .ok_or(RuntimePropertyError::WrongObjectState)
+    }
+
+    pub(crate) fn window_set_active(
+        &self,
+        identity: ObjectIdentity,
+        active: bool,
+    ) -> Result<(), RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        if self.ui_control_kind(identity)? != UiControlKind::Window {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        if active && !self.window_is_open(identity) {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        let mut focus = self
+            .focus
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        if active {
+            let candidate = focus
+                .candidate(identity)
+                .filter(|candidate| self.focus_target_is_eligible(identity, *candidate));
+            focus.activate(identity, candidate);
+        } else {
+            focus.deactivate(identity);
+        }
+        Ok(())
+    }
+
+    fn focus_target_is_eligible(&self, window: ObjectIdentity, target: ObjectIdentity) -> bool {
+        let Ok(root) = self
+            .ui_tree
+            .lock()
+            .map_err(|_| ())
+            .and_then(|tree| tree.root_identity(target).map_err(|_| ()))
+        else {
+            return false;
+        };
+        if root != window {
+            return false;
+        }
+        let Ok(store) = self.ui_objects.lock() else {
+            return false;
+        };
+        let Ok(object) = store.resolve(target) else {
+            return false;
+        };
+        let Some(state) = object.downcast_ref::<UiControlState>() else {
+            return false;
+        };
+        if !state.is_focusable_by_default() {
+            return false;
+        }
+        let Some(owner) = state.property_owner(UiControlProperty::IsEnabled) else {
+            return false;
+        };
+        store
+            .resolve(owner.identity())
+            .ok()
+            .and_then(|value| value.downcast_ref::<PropertyState>())
+            .is_some_and(|property| matches!(property.read(), TypedValue::Bool(true)))
+    }
+
+    pub(crate) fn widget_request_focus(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<(), RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let root = self
+            .ui_tree
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?
+            .root_identity(identity)
+            .map_err(|_| RuntimePropertyError::WrongObjectState)?;
+        if !self.focus_target_is_eligible(root, identity) {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        let mut focus = self
+            .focus
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        if focus.active_window() != Some(root) {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        focus.request(root, identity);
+        Ok(())
+    }
+
+    pub(crate) fn focus_state(
+        &self,
+    ) -> Result<(Option<ObjectIdentity>, Option<ObjectIdentity>), RuntimePropertyError> {
+        let focus = self
+            .focus
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        Ok((focus.active_window(), focus.focused()))
+    }
+
+    fn clear_focus_for_detached_subtree(&self, root: ObjectIdentity) {
+        let Ok(tree) = self.ui_tree.lock() else {
+            return;
+        };
+        let Ok(mut focus) = self.focus.lock() else {
+            return;
+        };
+        focus.clear_detached_subtree(root, |candidate| {
+            tree.is_in_subtree(root, candidate).unwrap_or(false)
+        });
+    }
+
+    pub(crate) fn calculate_window_layout(
+        &self,
+        identity: ObjectIdentity,
+        measurer: &impl IntrinsicMeasureProvider,
+    ) -> Result<Arc<LayoutSnapshot>, LayoutError> {
+        if !self.is_ui_thread() || self.cleanup.state() != RuntimeState::Running {
+            return Err(LayoutError::InvalidTree);
+        }
+
+        let (generation, client_area, current_layout_revision) = {
+            let controls = self
+                .ui_objects
+                .lock()
+                .map_err(|_| LayoutError::InvalidTree)?;
+            controls
+                .resolve(identity)
+                .map_err(|_| LayoutError::InvalidTree)?
+                .downcast_ref::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .and_then(|state| state.window.as_ref())
+                .and_then(|window| window.layout_input())
+                .ok_or(LayoutError::InvalidTree)?
+        };
+        let (tree_revision, root_input) = {
+            let tree = self.ui_tree.lock().map_err(|_| LayoutError::InvalidTree)?;
+            let count = tree
+                .child_count(identity)
+                .map_err(|_| LayoutError::InvalidTree)?;
+            if count > 1 {
+                return Err(LayoutError::InvalidTree);
+            }
+            let root = if count == 0 {
+                None
+            } else {
+                let content = tree
+                    .child_identity_at(identity, 0)
+                    .map_err(|_| LayoutError::InvalidTree)?;
+                Some(capture_layout_tree(&tree, content)?)
+            };
+            (tree.revision(), root)
+        };
+        let (root_snapshot, identities) = {
+            let controls = self
+                .ui_objects
+                .lock()
+                .map_err(|_| LayoutError::InvalidTree)?;
+            let mut identities = Vec::new();
+            identities
+                .try_reserve(1)
+                .map_err(|_| LayoutError::AllocationFailed)?;
+            identities.push(identity);
+            let root = root_input
+                .as_ref()
+                .map(|input| {
+                    layout_node_from_tree(input, &controls, Align::Stretch, &mut identities)
+                })
+                .transpose()?;
+            (root, identities)
+        };
+        let size = Size::new(client_area.width_dip, client_area.height_dip)?;
+        let next_layout_revision = current_layout_revision
+            .checked_add(1)
+            .ok_or(LayoutError::ArithmeticOverflow)?;
+        let mut candidate = match root_snapshot.as_ref() {
+            Some(root) => {
+                LayoutEngine::calculate(root, tree_revision, next_layout_revision, size, measurer)?
+            }
+            None => LayoutSnapshot::empty(tree_revision, next_layout_revision, size),
+        };
+        candidate.window_generation = generation;
+
+        let (current_tree_revision, current_root_input) = {
+            let tree = self.ui_tree.lock().map_err(|_| LayoutError::InvalidTree)?;
+            let count = tree
+                .child_count(identity)
+                .map_err(|_| LayoutError::InvalidTree)?;
+            if count > 1 {
+                return Err(LayoutError::InvalidTree);
+            }
+            let root = if count == 0 {
+                None
+            } else {
+                let content = tree
+                    .child_identity_at(identity, 0)
+                    .map_err(|_| LayoutError::InvalidTree)?;
+                Some(capture_layout_tree(&tree, content)?)
+            };
+            (tree.revision(), root)
+        };
+        if current_tree_revision != tree_revision || current_root_input != root_input {
+            return Err(LayoutError::InvalidTree);
+        }
+        let (current_root_snapshot, current_identities, current_window_input) = {
+            let controls = self
+                .ui_objects
+                .lock()
+                .map_err(|_| LayoutError::InvalidTree)?;
+            let window_input = controls
+                .resolve(identity)
+                .map_err(|_| LayoutError::InvalidTree)?
+                .downcast_ref::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .and_then(|state| state.window.as_ref())
+                .and_then(|window| window.layout_input());
+            let mut identities = Vec::new();
+            identities
+                .try_reserve(1)
+                .map_err(|_| LayoutError::AllocationFailed)?;
+            identities.push(identity);
+            let root = current_root_input
+                .as_ref()
+                .map(|input| {
+                    layout_node_from_tree(input, &controls, Align::Stretch, &mut identities)
+                })
+                .transpose()?;
+            (root, identities, window_input)
+        };
+        if current_root_snapshot != root_snapshot
+            || current_identities != identities
+            || current_window_input != Some((generation, client_area, current_layout_revision))
+        {
+            return Err(LayoutError::InvalidTree);
+        }
+        let mut controls = self
+            .ui_objects
+            .lock()
+            .map_err(|_| LayoutError::InvalidTree)?;
+        let window = controls
+            .resolve_mut(identity)
+            .map_err(|_| LayoutError::InvalidTree)?
+            .downcast_mut::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_mut())
+            .ok_or(LayoutError::InvalidTree)?;
+        if window.layout_input() != Some((generation, client_area, current_layout_revision)) {
+            return Err(LayoutError::InvalidTree);
+        }
+        let published = window
+            .publish_layout(generation, client_area, candidate)
+            .ok_or(LayoutError::InvalidTree)?;
+        for control_identity in identities {
+            if let Ok(object) = controls.resolve_mut(control_identity) {
+                if let Some(state) = object.downcast_mut::<UiControlState>() {
+                    state.layout_dirty = false;
+                }
+            }
+        }
+        Ok(published)
+    }
+
+    pub(crate) fn window_layout_snapshot(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<Option<Arc<LayoutSnapshot>>, LayoutError> {
+        let controls = self
+            .ui_objects
+            .lock()
+            .map_err(|_| LayoutError::InvalidTree)?;
+        controls
+            .resolve(identity)
+            .map_err(|_| LayoutError::InvalidTree)?
+            .downcast_ref::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_ref())
+            .map(|window| window.layout_snapshot())
+            .ok_or(LayoutError::InvalidTree)
+    }
+
+    fn mark_layout_dirty(&self, identity: ObjectIdentity) {
+        let mut current = Some(identity);
+        while let Some(candidate) = current {
+            {
+                let mut store = self
+                    .ui_objects
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if let Ok(object) = store.resolve_mut(candidate) {
+                    if let Some(state) = object.downcast_mut::<UiControlState>() {
+                        state.layout_dirty = true;
+                    }
+                }
+            }
+            current = self
+                .ui_tree
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .parent_identity(candidate)
+                .ok()
+                .flatten();
+        }
+    }
+
+    fn mark_layout_subtree_dirty(&self, root: ObjectIdentity) {
+        let mut pending = Vec::new();
+        if pending.try_reserve(1).is_err() {
+            self.mark_layout_dirty(root);
+            return;
+        }
+        pending.push(root);
+        while let Some(identity) = pending.pop() {
+            if let Ok(mut store) = self.ui_objects.lock() {
+                if let Ok(object) = store.resolve_mut(identity) {
+                    if let Some(state) = object.downcast_mut::<UiControlState>() {
+                        state.layout_dirty = true;
+                    }
+                }
+            }
+            let Ok(tree) = self.ui_tree.lock() else {
+                continue;
+            };
+            let Ok(child_count) = tree.child_count(identity) else {
+                continue;
+            };
+            if pending.try_reserve(child_count).is_err() {
+                continue;
+            }
+            for index in 0..child_count {
+                if let Ok(child) = tree.child_identity_at(identity, index) {
+                    pending.push(child);
+                }
+            }
+        }
     }
 
     /// Installs the single synchronous validator for a Property without validating its current value.
@@ -3215,11 +4741,21 @@ impl RuntimeCore {
             .ui_objects
             .lock()
             .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
-        let property = store
+        let owner_is_property = store
             .resolve_mut(identity)
             .map_err(RuntimePropertyError::Store)?
             .downcast_mut::<PropertyState>()
-            .ok_or(RuntimePropertyError::WrongObjectState)?;
+            .is_some();
+        if !owner_is_property {
+            let is_window = store
+                .resolve(identity)
+                .ok()
+                .and_then(|object| object.downcast_ref::<UiControlState>())
+                .is_some_and(|state| state.kind == UiControlKind::Window);
+            if !is_window {
+                return Err(RuntimePropertyError::WrongObjectState);
+            }
+        }
 
         let mut owners = self
             .subscription_owners
@@ -3229,6 +4765,13 @@ impl RuntimeCore {
             .values()
             .flatten()
             .any(|owner| Arc::ptr_eq(owner, subscription))
+        {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        if !owner_is_property
+            && owners
+                .get(&identity)
+                .is_some_and(|bucket| !bucket.is_empty())
         {
             return Err(RuntimePropertyError::WrongObjectState);
         }
@@ -3248,9 +4791,15 @@ impl RuntimeCore {
                 .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
             new_bucket = Some(bucket);
         }
-        property
-            .add_subscription(subscription)
-            .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
+        if owner_is_property {
+            store
+                .resolve_mut(identity)
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_mut::<PropertyState>()
+                .ok_or(RuntimePropertyError::WrongObjectState)?
+                .add_subscription(subscription)
+                .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
+        }
         let owner = Arc::clone(subscription);
         if let Some(bucket) = owners.get_mut(&identity) {
             bucket.push(owner);
@@ -3259,6 +4808,33 @@ impl RuntimeCore {
             owners.insert(identity, bucket);
         }
         Ok(())
+    }
+
+    pub(crate) fn snapshot_window_close_subscription(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<Option<Arc<Subscription>>, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        let is_window = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?
+            .resolve(identity)
+            .ok()
+            .and_then(|object| object.downcast_ref::<UiControlState>())
+            .is_some_and(|state| state.kind == UiControlKind::Window);
+        if !is_window {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        let owners = self
+            .subscription_owners
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        Ok(owners
+            .get(&identity)
+            .and_then(|bucket| bucket.first())
+            .filter(|subscription| subscription.is_active())
+            .cloned())
     }
 
     /// Pins the Property's active subscriptions in registration order.

@@ -1,0 +1,21 @@
+[package]
+name = "freemvvm-platform-linux"
+description = "Linux DRM/GBM/EGL Platform Adapter for FreeMvvm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+freemvvm-core = { path = "../core-runtime" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+drm = "0.14"
+gbm = { version = "0.18", default-features = false, features = ["drm-support"] }
+glow = "0.16"
+khronos-egl = { version = "6.0", default-features = false, features = ["dynamic", "1_5"] }
+libc = "0.2"
+
+[lints]
+workspace = true

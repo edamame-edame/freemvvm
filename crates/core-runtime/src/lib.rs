@@ -11,12 +11,18 @@ mod handle_registry;
 pub mod numeric;
 #[allow(dead_code)]
 mod object_store;
+mod platform;
 mod property;
 pub use property::ValidationError;
 mod runtime;
 mod runtime_handles;
+mod ui_controls;
+mod ui_focus;
+#[allow(dead_code)]
+mod ui_layout;
 // Typed value semantics back the internal Property state; ABI validation remains a later unit.
 mod ui_tree;
+mod ui_window;
 #[allow(dead_code)]
 mod value;
 
@@ -26,24 +32,44 @@ pub mod abi_support {
     use crate::command::{AsyncCommand, CancelToken, CommandError, CommandSnapshot};
     use crate::dispatcher::{PostErrorKind, PostedWork, UiLoopBridge, WakePriority};
     use crate::handle_registry::HandleToken;
-    use crate::handle_registry::registry::{HandleRegistry, RegistryError};
+    use crate::handle_registry::registry::{
+        HandleRegistry, InternalOwner, ObjectIdentity, RegistryError,
+    };
     use crate::object_store::UiObjectStoreError;
+    pub use crate::platform::frame::{FrameError, FramePhase, FrameTicket, FrameTracker};
+    pub use crate::platform::scene::{
+        Damage, DeviceScale, DrawOp, GlyphPlacement, GlyphRunSnapshot, Rect, SceneError,
+        SceneSnapshot,
+    };
     use crate::property::{
         PropertyHandleKind, PropertyValidator, Subscription, SubscriptionCallback, ValidationError,
         ValidatorResult,
     };
     use crate::runtime::{
         RuntimeBindingError, RuntimeCore, RuntimeCoreError, RuntimeIdentity,
-        RuntimeObjectRegistrationError, RuntimePropertyError, ShutdownCompletionState,
-        ShutdownRequest, ShutdownRequestMode, ShutdownRequestOutcome,
+        RuntimeObjectRegistrationError, RuntimePropertyError, RuntimeTreeError,
+        ShutdownCompletionState, ShutdownRequest, ShutdownRequestMode, ShutdownRequestOutcome,
     };
     use crate::runtime_handles::{RuntimeHandleError, process_runtime_handles};
+    use crate::ui_controls::{
+        UiControlKind, UiControlProperty, UiControlPropertyOwner, UiControlState,
+    };
+    #[cfg(test)]
+    use crate::ui_layout::{
+        IntrinsicMeasureProvider, LayoutConstraints, LayoutError, LayoutSnapshot, Size,
+    };
+    use crate::ui_tree::TreeError;
+    use crate::ui_window::WindowLifecycleError;
+    pub use crate::ui_window::{
+        CloseDecision, PlatformFrameCompletionSink, PlatformOperationError, PlatformRuntimeFactory,
+        PlatformWindowClientAreaSink, PlatformWindowPeer, WindowClientArea,
+    };
     use crate::value::{
         DecimalValue, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind,
     };
     use std::collections::HashMap;
     use std::ffi::c_void;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Condvar, Mutex, OnceLock, Weak};
 
     /// Failure categories needed by the versioned C ABI Runtime creation entrypoint.
@@ -139,6 +165,19 @@ pub mod abi_support {
         Internal,
     }
 
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum UiControlApiError {
+        InvalidHandle,
+        InvalidArgument,
+        WrongType,
+        WrongRuntime,
+        WrongThread,
+        Closed,
+        Unsupported,
+        OutOfMemory,
+        Internal,
+    }
+
     pub type ValidateBoolCallback = unsafe extern "C" fn(*mut c_void, u8, *mut u64) -> u32;
     pub type ValidateI64Callback = unsafe extern "C" fn(*mut c_void, i64, *mut u64) -> u32;
     pub type ValidateUtf8Callback =
@@ -155,6 +194,31 @@ pub mod abi_support {
 
     thread_local! {
         static VALIDATOR_CALLBACK_ACTIVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        static CURRENT_WINDOW_CLOSE_REQUEST: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    }
+
+    struct CloseRequestState {
+        callback_active: AtomicBool,
+        owned_handles: AtomicUsize,
+        release_requested: AtomicBool,
+        resolved: AtomicBool,
+        decision: Mutex<Option<CloseDecision>>,
+    }
+
+    struct CloseRequestHandleEntry {
+        runtime: Arc<RuntimeCore>,
+        identity: ObjectIdentity,
+        request: u64,
+        generation: u64,
+        state: Arc<CloseRequestState>,
+        owned: bool,
+    }
+
+    static CLOSE_REQUEST_HANDLES: OnceLock<Mutex<HashMap<HandleToken, CloseRequestHandleEntry>>> =
+        OnceLock::new();
+
+    fn close_request_handles() -> &'static Mutex<HashMap<HandleToken, CloseRequestHandleEntry>> {
+        CLOSE_REQUEST_HANDLES.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
     struct ValidatorCallbackScope;
@@ -385,7 +449,7 @@ pub mod abi_support {
         }
     }
 
-    struct CommandHandleEntry {
+    pub(crate) struct CommandHandleEntry {
         runtime: Arc<RuntimeCore>,
         command: Arc<AsyncCommand>,
         state_property: HandleToken,
@@ -541,6 +605,17 @@ pub mod abi_support {
         owners: Mutex<HashMap<HandleToken, Arc<RuntimeCore>>>,
     }
 
+    struct UiControlHandleEntry {
+        runtime: Arc<RuntimeCore>,
+        kind: UiControlKind,
+        identity: ObjectIdentity,
+    }
+
+    struct UiControlHandles {
+        registry: HandleRegistry<UiControlKind, RuntimeIdentity>,
+        owners: Mutex<HashMap<HandleToken, UiControlHandleEntry>>,
+    }
+
     struct SubscriptionHandleEntry {
         runtime: Arc<RuntimeCore>,
         owner: SubscriptionOwner,
@@ -551,6 +626,7 @@ pub mod abi_support {
     enum SubscriptionOwner {
         Property(crate::handle_registry::registry::ObjectIdentity),
         Binding(crate::binding::BindingConnectionId),
+        Window(ObjectIdentity),
     }
 
     struct BindingHandleEntry {
@@ -559,6 +635,7 @@ pub mod abi_support {
     }
 
     static PROPERTY_HANDLES: OnceLock<PropertyHandles> = OnceLock::new();
+    static UI_CONTROL_HANDLES: OnceLock<UiControlHandles> = OnceLock::new();
     static SUBSCRIPTION_HANDLES: OnceLock<
         Mutex<HashMap<HandleToken, Arc<SubscriptionHandleEntry>>>,
     > = OnceLock::new();
@@ -567,6 +644,13 @@ pub mod abi_support {
 
     fn property_handles() -> &'static PropertyHandles {
         PROPERTY_HANDLES.get_or_init(|| PropertyHandles {
+            registry: HandleRegistry::new(),
+            owners: Mutex::new(HashMap::new()),
+        })
+    }
+
+    fn ui_control_handles() -> &'static UiControlHandles {
+        UI_CONTROL_HANDLES.get_or_init(|| UiControlHandles {
             registry: HandleRegistry::new(),
             owners: Mutex::new(HashMap::new()),
         })
@@ -1129,7 +1213,23 @@ pub mod abi_support {
 
     /// Creates one Runtime and registers its owning opaque handle.
     pub fn runtime_create_handle() -> Result<u64, RuntimeCreateError> {
-        let runtime = Arc::new(RuntimeCore::new().map_err(|_| RuntimeCreateError::Internal)?);
+        register_runtime_handle(None)
+    }
+
+    /// Creates one Runtime bound to a private platform factory without changing the public C ABI.
+    pub fn runtime_create_handle_with_platform_factory(
+        factory: Arc<dyn PlatformRuntimeFactory>,
+    ) -> Result<u64, RuntimeCreateError> {
+        register_runtime_handle(Some(factory))
+    }
+
+    fn register_runtime_handle(
+        factory: Option<Arc<dyn PlatformRuntimeFactory>>,
+    ) -> Result<u64, RuntimeCreateError> {
+        let runtime = Arc::new(
+            RuntimeCore::new_with_platform_factory(factory)
+                .map_err(|_| RuntimeCreateError::Internal)?,
+        );
         process_runtime_handles()
             .insert(&runtime)
             .map(HandleToken::into_abi)
@@ -1158,6 +1258,43 @@ pub mod abi_support {
     /// Creates an independent owner token for an existing Runtime handle.
     pub fn runtime_retain_handle(handle: u64) -> Result<u64, RuntimeRetainError> {
         let token = HandleToken::from_abi(handle).ok_or(RuntimeRetainError::InvalidHandle)?;
+        {
+            let mut requests = close_request_handles()
+                .lock()
+                .map_err(|_| RuntimeRetainError::Internal)?;
+            if let Some((runtime, identity, request, generation, state, owned)) =
+                requests.get(&token).map(|entry| {
+                    (
+                        Arc::clone(&entry.runtime),
+                        entry.identity,
+                        entry.request,
+                        entry.generation,
+                        Arc::clone(&entry.state),
+                        entry.owned,
+                    )
+                })
+            {
+                if !owned {
+                    return Err(RuntimeRetainError::InvalidHandle);
+                }
+                requests
+                    .try_reserve(1)
+                    .map_err(|_| RuntimeRetainError::OutOfMemory)?;
+                let retained = crate::handle_registry::issue_handle_token()
+                    .ok_or(RuntimeRetainError::Internal)?;
+                let entry = CloseRequestHandleEntry {
+                    runtime,
+                    identity,
+                    request,
+                    generation,
+                    state: Arc::clone(&state),
+                    owned: true,
+                };
+                state.owned_handles.fetch_add(1, Ordering::AcqRel);
+                requests.insert(retained, entry);
+                return Ok(retained.into_abi());
+            }
+        }
         {
             let mut errors = error_handles()
                 .lock()
@@ -1268,6 +1405,38 @@ pub mod abi_support {
                         _ => RuntimeRetainError::Internal,
                     })?;
                 owners.insert(retained, runtime);
+                return Ok(retained.into_abi());
+            }
+        }
+        {
+            let handles = ui_control_handles();
+            let mut owners = handles
+                .owners
+                .lock()
+                .map_err(|_| RuntimeRetainError::Internal)?;
+            if let Some((runtime, kind, identity)) = owners
+                .get(&token)
+                .map(|entry| (Arc::clone(&entry.runtime), entry.kind, entry.identity))
+            {
+                owners
+                    .try_reserve(1)
+                    .map_err(|_| RuntimeRetainError::OutOfMemory)?;
+                let retained = handles
+                    .registry
+                    .retain(token)
+                    .map_err(|error| match error {
+                        RegistryError::OutOfMemory => RuntimeRetainError::OutOfMemory,
+                        RegistryError::InvalidToken => RuntimeRetainError::InvalidHandle,
+                        _ => RuntimeRetainError::Internal,
+                    })?;
+                owners.insert(
+                    retained,
+                    UiControlHandleEntry {
+                        runtime,
+                        kind,
+                        identity,
+                    },
+                );
                 return Ok(retained.into_abi());
             }
         }
@@ -1415,6 +1584,1197 @@ pub mod abi_support {
             .map_err(map_property_registration_error)?;
         owners.insert(token, runtime);
         Ok(token.into_abi())
+    }
+
+    fn map_ui_control_registry_error(error: RegistryError) -> UiControlApiError {
+        match error {
+            RegistryError::InvalidToken => UiControlApiError::InvalidHandle,
+            RegistryError::WrongKind => UiControlApiError::WrongType,
+            RegistryError::WrongRuntime => UiControlApiError::WrongRuntime,
+            RegistryError::OutOfMemory => UiControlApiError::OutOfMemory,
+            RegistryError::TokenExhausted
+            | RegistryError::CleanupUnavailable
+            | RegistryError::SynchronizationPoisoned
+            | RegistryError::ReferenceCountExhausted => UiControlApiError::Internal,
+        }
+    }
+
+    fn map_ui_control_registration_error(
+        error: RuntimeObjectRegistrationError,
+    ) -> UiControlApiError {
+        match error {
+            RuntimeObjectRegistrationError::WrongThread => UiControlApiError::WrongThread,
+            RuntimeObjectRegistrationError::Closed => UiControlApiError::Closed,
+            RuntimeObjectRegistrationError::Store(UiObjectStoreError::OutOfMemory)
+            | RuntimeObjectRegistrationError::Registry(RegistryError::OutOfMemory) => {
+                UiControlApiError::OutOfMemory
+            }
+            RuntimeObjectRegistrationError::Registry(error) => map_ui_control_registry_error(error),
+            RuntimeObjectRegistrationError::SynchronizationPoisoned
+            | RuntimeObjectRegistrationError::Store(_) => UiControlApiError::Internal,
+        }
+    }
+
+    fn map_ui_control_tree_error(error: RuntimeTreeError) -> UiControlApiError {
+        match error {
+            RuntimeTreeError::WrongThread => UiControlApiError::WrongThread,
+            RuntimeTreeError::Closed => UiControlApiError::Closed,
+            RuntimeTreeError::Registry(error) => map_ui_control_registry_error(error),
+            RuntimeTreeError::Registration(error) => map_ui_control_registration_error(error),
+            RuntimeTreeError::Tree(TreeError::WrongThread) => UiControlApiError::WrongThread,
+            RuntimeTreeError::Tree(TreeError::RuntimeMismatch) => UiControlApiError::WrongRuntime,
+            RuntimeTreeError::Tree(
+                TreeError::ParentNotContainer
+                | TreeError::AlreadyParented
+                | TreeError::Cycle
+                | TreeError::ChildNotFound,
+            ) => UiControlApiError::InvalidArgument,
+            RuntimeTreeError::Tree(TreeError::AllocationFailed) => UiControlApiError::OutOfMemory,
+            RuntimeTreeError::SynchronizationPoisoned | RuntimeTreeError::Tree(_) => {
+                UiControlApiError::Internal
+            }
+        }
+    }
+
+    fn map_ui_control_runtime_error(error: ShutdownApiError) -> UiControlApiError {
+        match error {
+            ShutdownApiError::InvalidHandle => UiControlApiError::InvalidHandle,
+            ShutdownApiError::InvalidArgument => UiControlApiError::InvalidArgument,
+            ShutdownApiError::WrongThread => UiControlApiError::WrongThread,
+            ShutdownApiError::Closed => UiControlApiError::Closed,
+            ShutdownApiError::Unsupported | ShutdownApiError::HostUnavailable { .. } => {
+                UiControlApiError::Unsupported
+            }
+            ShutdownApiError::OutOfMemory => UiControlApiError::OutOfMemory,
+            ShutdownApiError::Internal => UiControlApiError::Internal,
+        }
+    }
+
+    fn map_window_lifecycle_error(error: WindowLifecycleError) -> UiControlApiError {
+        match error {
+            WindowLifecycleError::Unsupported => UiControlApiError::Unsupported,
+            WindowLifecycleError::InvalidState | WindowLifecycleError::StaleRequest => {
+                UiControlApiError::InvalidArgument
+            }
+            WindowLifecycleError::OutOfMemory => UiControlApiError::OutOfMemory,
+            WindowLifecycleError::IdentifierExhausted | WindowLifecycleError::PeerFailure => {
+                UiControlApiError::Internal
+            }
+            WindowLifecycleError::Frame(crate::platform::frame::FrameError::Busy)
+            | WindowLifecycleError::Frame(crate::platform::frame::FrameError::InvalidTransition)
+            | WindowLifecycleError::Frame(crate::platform::frame::FrameError::InvalidGeneration)
+            | WindowLifecycleError::Frame(crate::platform::frame::FrameError::StaleTicket) => {
+                UiControlApiError::InvalidArgument
+            }
+            WindowLifecycleError::Frame(
+                crate::platform::frame::FrameError::IdentifierExhausted,
+            ) => UiControlApiError::Internal,
+        }
+    }
+
+    fn register_internal_control_property(
+        runtime: &Arc<RuntimeCore>,
+        initial: TypedValue,
+    ) -> Result<InternalOwner<RuntimeIdentity>, UiControlApiError> {
+        let handles = property_handles();
+        let token = {
+            let mut owners = handles
+                .owners
+                .lock()
+                .map_err(|_| UiControlApiError::Internal)?;
+            owners
+                .try_reserve(1)
+                .map_err(|_| UiControlApiError::OutOfMemory)?;
+            let token = runtime
+                .register_property(&handles.registry, initial)
+                .map_err(map_ui_control_registration_error)?;
+            owners.insert(token, Arc::clone(runtime));
+            token
+        };
+
+        let owner = (|| {
+            let pin = handles
+                .registry
+                .validate(token, &PropertyHandleKind::Property, &runtime.identity())
+                .map_err(map_ui_control_registry_error)?;
+            pin.acquire_internal_owner()
+                .map_err(map_ui_control_registry_error)
+        })();
+        let released = property_release(token).map_err(map_ui_control_runtime_error)?;
+        if !released {
+            return Err(UiControlApiError::Internal);
+        }
+        owner
+    }
+
+    fn empty_utf8_value() -> Result<TypedValue, UiControlApiError> {
+        OwnedUtf8::copy_from_bytes(b"")
+            .map(TypedValue::Utf8)
+            .map_err(|error| match error {
+                OwnedUtf8Error::InvalidUtf8 => UiControlApiError::InvalidArgument,
+                OwnedUtf8Error::OutOfMemory => UiControlApiError::OutOfMemory,
+            })
+    }
+
+    fn input_utf8_value(bytes: &[u8]) -> Result<TypedValue, UiControlApiError> {
+        OwnedUtf8::copy_from_bytes(bytes)
+            .map(TypedValue::Utf8)
+            .map_err(|error| match error {
+                OwnedUtf8Error::InvalidUtf8 => UiControlApiError::InvalidArgument,
+                OwnedUtf8Error::OutOfMemory => UiControlApiError::OutOfMemory,
+            })
+    }
+
+    fn create_ui_control(
+        runtime_handle: u64,
+        kind: UiControlKind,
+        initial_text: Option<&[u8]>,
+    ) -> Result<u64, UiControlApiError> {
+        let runtime = resolve_runtime(runtime_handle).map_err(map_ui_control_runtime_error)?;
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        let initial_text = match kind {
+            UiControlKind::Text | UiControlKind::TextBox | UiControlKind::Button => {
+                Some(input_utf8_value(initial_text.unwrap_or_default())?)
+            }
+            UiControlKind::Window | UiControlKind::StackPanel if initial_text.is_none() => None,
+            UiControlKind::Window | UiControlKind::StackPanel => {
+                return Err(UiControlApiError::InvalidArgument);
+            }
+        };
+
+        let controls = ui_control_handles();
+        let mut entries = controls
+            .owners
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        entries
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+
+        let mut properties = Vec::new();
+        let property_count = match kind {
+            UiControlKind::Window => 3,
+            UiControlKind::StackPanel => 2,
+            UiControlKind::Text | UiControlKind::TextBox | UiControlKind::Button => 3,
+        };
+        properties
+            .try_reserve_exact(property_count)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        properties.push(UiControlPropertyOwner {
+            property: UiControlProperty::IsEnabled,
+            owner: register_internal_control_property(&runtime, TypedValue::Bool(true))?,
+        });
+        properties.push(UiControlPropertyOwner {
+            property: UiControlProperty::AccessibleName,
+            owner: register_internal_control_property(&runtime, empty_utf8_value()?)?,
+        });
+        let text_property = match kind {
+            UiControlKind::Window => Some((UiControlProperty::WindowTitle, empty_utf8_value()?)),
+            UiControlKind::Text => Some((
+                UiControlProperty::TextContent,
+                initial_text.expect("Text requires initialized UTF-8 content"),
+            )),
+            UiControlKind::TextBox => Some((
+                UiControlProperty::TextBoxValue,
+                initial_text.expect("TextBox requires initialized UTF-8 value"),
+            )),
+            UiControlKind::Button => Some((
+                UiControlProperty::ButtonLabel,
+                initial_text.expect("Button requires initialized UTF-8 label"),
+            )),
+            UiControlKind::StackPanel => None,
+        };
+        if let Some((property, value)) = text_property {
+            properties.push(UiControlPropertyOwner {
+                property,
+                owner: register_internal_control_property(&runtime, value)?,
+            });
+        }
+
+        let token = runtime
+            .register_tree_ui_object::<_, UiControlState, _>(
+                &controls.registry,
+                kind,
+                kind.is_container(),
+                move || UiControlState::new(kind, properties),
+            )
+            .map_err(map_ui_control_tree_error)?;
+        let identity = controls
+            .registry
+            .validate(token, &kind, &runtime.identity())
+            .map_err(map_ui_control_registry_error)?
+            .identity();
+        entries.insert(
+            token,
+            UiControlHandleEntry {
+                runtime,
+                kind,
+                identity,
+            },
+        );
+        Ok(token.into_abi())
+    }
+
+    fn ui_control_property(
+        control: u64,
+        property: UiControlProperty,
+    ) -> Result<u64, UiControlApiError> {
+        let token = HandleToken::from_abi(control).ok_or(UiControlApiError::InvalidHandle)?;
+        let controls = ui_control_handles();
+        let (runtime, kind) = {
+            let entries = controls
+                .owners
+                .lock()
+                .map_err(|_| UiControlApiError::Internal)?;
+            let entry = entries
+                .get(&token)
+                .ok_or(UiControlApiError::InvalidHandle)?;
+            (Arc::clone(&entry.runtime), entry.kind)
+        };
+        if !kind.supports_property(property) {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        let pin = controls
+            .registry
+            .validate(token, &kind, &runtime.identity())
+            .map_err(map_ui_control_registry_error)?;
+        let owner = runtime
+            .ui_control_property_owner(pin.identity(), property)
+            .map_err(|error| match error {
+                RuntimePropertyError::WrongThread => UiControlApiError::WrongThread,
+                RuntimePropertyError::Closed => UiControlApiError::Closed,
+                RuntimePropertyError::Store(UiObjectStoreError::OutOfMemory) => {
+                    UiControlApiError::OutOfMemory
+                }
+                RuntimePropertyError::Registry(error) => map_ui_control_registry_error(error),
+                _ => UiControlApiError::Internal,
+            })?;
+        let properties = property_handles();
+        let mut property_owners = properties
+            .owners
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        property_owners
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        let property_token = properties
+            .registry
+            .register_from_internal_owner(PropertyHandleKind::Property, runtime.identity(), &owner)
+            .map_err(map_ui_control_registry_error)?;
+        property_owners.insert(property_token, runtime);
+        Ok(property_token.into_abi())
+    }
+
+    fn ui_control_entry(
+        control: u64,
+    ) -> Result<(HandleToken, Arc<RuntimeCore>, UiControlKind, ObjectIdentity), UiControlApiError>
+    {
+        let token = HandleToken::from_abi(control).ok_or(UiControlApiError::InvalidHandle)?;
+        let controls = ui_control_handles();
+        let entries = controls
+            .owners
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        let entry = entries
+            .get(&token)
+            .ok_or(UiControlApiError::InvalidHandle)?;
+        Ok((
+            token,
+            Arc::clone(&entry.runtime),
+            entry.kind,
+            entry.identity,
+        ))
+    }
+
+    fn validate_ui_control(
+        control: u64,
+        expected_kind: UiControlKind,
+    ) -> Result<(HandleToken, Arc<RuntimeCore>, ObjectIdentity), UiControlApiError> {
+        let (token, runtime, kind, identity) = ui_control_entry(control)?;
+        if kind != expected_kind {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        ui_control_handles()
+            .registry
+            .validate(token, &kind, &runtime.identity())
+            .map_err(map_ui_control_registry_error)?;
+        Ok((token, runtime, identity))
+    }
+
+    fn tree_child_handle(
+        parent_token: HandleToken,
+        runtime: &Arc<RuntimeCore>,
+        parent_kind: UiControlKind,
+        child_identity: ObjectIdentity,
+    ) -> Result<u64, UiControlApiError> {
+        let child_kind = runtime
+            .ui_control_kind(child_identity)
+            .map_err(|error| match error {
+                RuntimePropertyError::WrongThread => UiControlApiError::WrongThread,
+                RuntimePropertyError::Closed => UiControlApiError::Closed,
+                RuntimePropertyError::Store(UiObjectStoreError::OutOfMemory) => {
+                    UiControlApiError::OutOfMemory
+                }
+                RuntimePropertyError::Store(UiObjectStoreError::InvalidIdentity)
+                | RuntimePropertyError::WrongObjectState => UiControlApiError::InvalidHandle,
+                _ => UiControlApiError::Internal,
+            })?;
+        let controls = ui_control_handles();
+        let mut owners = controls
+            .owners
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        owners
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        let token = runtime
+            .tree_child_handle_of_kinds(
+                &controls.registry,
+                parent_token,
+                parent_kind,
+                child_identity,
+                child_kind,
+            )
+            .map_err(map_ui_control_tree_error)?;
+        owners.insert(
+            token,
+            UiControlHandleEntry {
+                runtime: Arc::clone(runtime),
+                kind: child_kind,
+                identity: child_identity,
+            },
+        );
+        Ok(token.into_abi())
+    }
+
+    pub fn window_content(window: u64) -> Result<Option<u64>, UiControlApiError> {
+        let (token, runtime, _) = validate_ui_control(window, UiControlKind::Window)?;
+        let count = runtime
+            .tree_child_count(&ui_control_handles().registry, token, UiControlKind::Window)
+            .map_err(map_ui_control_tree_error)?;
+        if count == 0 {
+            return Ok(None);
+        }
+        let identity = runtime
+            .tree_child_identity_at(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::Window,
+                0,
+            )
+            .map_err(map_ui_control_tree_error)?;
+        tree_child_handle(token, &runtime, UiControlKind::Window, identity).map(Some)
+    }
+
+    pub fn window_set_content(window: u64, child: u64) -> Result<(), UiControlApiError> {
+        window_set_content_with_peer(window, child, || Ok(()))
+    }
+
+    pub(crate) fn window_set_content_with_peer<F>(
+        window: u64,
+        child: u64,
+        prepare_peer: F,
+    ) -> Result<(), UiControlApiError>
+    where
+        F: FnOnce() -> Result<(), ()>,
+    {
+        let (window_token, runtime, _) = validate_ui_control(window, UiControlKind::Window)?;
+        let (child_token, child_runtime, child_kind, _) = ui_control_entry(child)?;
+        if child_kind == UiControlKind::Window {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !Arc::ptr_eq(&runtime, &child_runtime) {
+            return Err(UiControlApiError::WrongRuntime);
+        }
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        runtime
+            .replace_tree_single_child(
+                &ui_control_handles().registry,
+                window_token,
+                UiControlKind::Window,
+                child_token,
+                child_kind,
+                prepare_peer,
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
+    pub fn window_clear_content(window: u64) -> Result<(), UiControlApiError> {
+        let (token, runtime, _) = validate_ui_control(window, UiControlKind::Window)?;
+        let count = runtime
+            .tree_child_count(&ui_control_handles().registry, token, UiControlKind::Window)
+            .map_err(map_ui_control_tree_error)?;
+        if count == 0 {
+            return Ok(());
+        }
+        let child = runtime
+            .tree_child_identity_at(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::Window,
+                0,
+            )
+            .map_err(map_ui_control_tree_error)?;
+        runtime
+            .detach_tree_child_identity(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::Window,
+                child,
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
+    pub fn stack_panel_insert(
+        panel: u64,
+        index: usize,
+        child: u64,
+    ) -> Result<(), UiControlApiError> {
+        let (panel_token, runtime, _) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        let (child_token, child_runtime, child_kind, _) = ui_control_entry(child)?;
+        if child_kind == UiControlKind::Window {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !Arc::ptr_eq(&runtime, &child_runtime) {
+            return Err(UiControlApiError::WrongRuntime);
+        }
+        runtime
+            .attach_tree_child_at(
+                &ui_control_handles().registry,
+                panel_token,
+                UiControlKind::StackPanel,
+                child_token,
+                child_kind,
+                index,
+                || Ok(()),
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
+    pub fn stack_panel_remove(panel: u64, index: usize) -> Result<(), UiControlApiError> {
+        let (token, runtime, _) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        let child = runtime
+            .tree_child_identity_at(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::StackPanel,
+                index,
+            )
+            .map_err(map_ui_control_tree_error)?;
+        runtime
+            .detach_tree_child_identity(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::StackPanel,
+                child,
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
+    pub fn container_remove(container: u64, child: u64) -> Result<(), UiControlApiError> {
+        let (container_token, runtime, container_identity) =
+            validate_ui_control(container, UiControlKind::StackPanel)?;
+        let (child_token, child_runtime, child_kind, child_identity) = ui_control_entry(child)?;
+        if child_kind == UiControlKind::Window {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !Arc::ptr_eq(&runtime, &child_runtime) {
+            return Err(UiControlApiError::WrongRuntime);
+        }
+        ui_control_handles()
+            .registry
+            .validate(child_token, &child_kind, &runtime.identity())
+            .map_err(map_ui_control_registry_error)?;
+        if runtime
+            .tree_parent_identity(child_identity)
+            .map_err(map_ui_control_tree_error)?
+            != Some(container_identity)
+        {
+            return Err(UiControlApiError::InvalidArgument);
+        }
+        runtime
+            .detach_tree_child_identity(
+                &ui_control_handles().registry,
+                container_token,
+                UiControlKind::StackPanel,
+                child_identity,
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
+    pub fn stack_panel_move(
+        panel: u64,
+        from_index: usize,
+        to_index: usize,
+    ) -> Result<(), UiControlApiError> {
+        let (token, runtime, _) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        runtime
+            .tree_move_child(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::StackPanel,
+                from_index,
+                to_index,
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
+    pub fn stack_panel_child_count(panel: u64) -> Result<usize, UiControlApiError> {
+        let (token, runtime, _) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        runtime
+            .tree_child_count(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::StackPanel,
+            )
+            .map_err(map_ui_control_tree_error)
+    }
+
+    pub fn stack_panel_child_at(panel: u64, index: usize) -> Result<u64, UiControlApiError> {
+        let (token, runtime, _) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        let identity = runtime
+            .tree_child_identity_at(
+                &ui_control_handles().registry,
+                token,
+                UiControlKind::StackPanel,
+                index,
+            )
+            .map_err(map_ui_control_tree_error)?;
+        tree_child_handle(token, &runtime, UiControlKind::StackPanel, identity)
+    }
+
+    fn map_ui_control_property_error(error: RuntimePropertyError) -> UiControlApiError {
+        match error {
+            RuntimePropertyError::WrongThread => UiControlApiError::WrongThread,
+            RuntimePropertyError::Closed => UiControlApiError::Closed,
+            RuntimePropertyError::Store(UiObjectStoreError::OutOfMemory)
+            | RuntimePropertyError::NotificationQueueOutOfMemory => UiControlApiError::OutOfMemory,
+            RuntimePropertyError::Registry(error) => map_ui_control_registry_error(error),
+            RuntimePropertyError::WrongObjectState => UiControlApiError::InvalidArgument,
+            _ => UiControlApiError::Internal,
+        }
+    }
+
+    pub fn stack_panel_orientation(panel: u64) -> Result<u32, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        runtime
+            .stack_panel_config(identity)
+            .map(|(orientation, _)| orientation)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn stack_panel_set_orientation(
+        panel: u64,
+        orientation: u32,
+    ) -> Result<(), UiControlApiError> {
+        if !matches!(orientation, 1 | 2) {
+            return Err(UiControlApiError::InvalidArgument);
+        }
+        let (_, runtime, identity) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        runtime
+            .stack_panel_set_orientation(identity, orientation)
+            .map(|_| ())
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn stack_panel_child_align(panel: u64, child: u64) -> Result<u32, UiControlApiError> {
+        let (_, runtime, panel_identity) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        let (child_token, child_runtime, child_kind, child_identity) = ui_control_entry(child)?;
+        if child_kind == UiControlKind::Window {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !Arc::ptr_eq(&runtime, &child_runtime) {
+            return Err(UiControlApiError::WrongRuntime);
+        }
+        ui_control_handles()
+            .registry
+            .validate(child_token, &child_kind, &runtime.identity())
+            .map_err(map_ui_control_registry_error)?;
+        runtime
+            .stack_panel_child_align(panel_identity, child_identity)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn stack_panel_set_child_align(
+        panel: u64,
+        child: u64,
+        align: u32,
+    ) -> Result<(), UiControlApiError> {
+        if !matches!(align, 1..=4) {
+            return Err(UiControlApiError::InvalidArgument);
+        }
+        let (_, runtime, panel_identity) = validate_ui_control(panel, UiControlKind::StackPanel)?;
+        let (child_token, child_runtime, child_kind, child_identity) = ui_control_entry(child)?;
+        if child_kind == UiControlKind::Window {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !Arc::ptr_eq(&runtime, &child_runtime) {
+            return Err(UiControlApiError::WrongRuntime);
+        }
+        ui_control_handles()
+            .registry
+            .validate(child_token, &child_kind, &runtime.identity())
+            .map_err(map_ui_control_registry_error)?;
+        runtime
+            .stack_panel_set_child_align(panel_identity, child_identity, align)
+            .map(|_| ())
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn ui_control_layout_dirty(control: u64) -> Result<bool, UiControlApiError> {
+        let (_, runtime, _, identity) = ui_control_entry(control)?;
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        runtime
+            .ui_control_layout_dirty(identity)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn ui_control_layout_clean(control: u64) -> Result<(), UiControlApiError> {
+        let (_, runtime, _, identity) = ui_control_entry(control)?;
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        runtime
+            .ui_control_layout_clean(identity)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn widget_request_focus(widget: u64) -> Result<(), UiControlApiError> {
+        let (_, runtime, kind, identity) = ui_control_entry(widget)?;
+        if !matches!(kind, UiControlKind::TextBox | UiControlKind::Button) {
+            return Err(UiControlApiError::WrongType);
+        }
+        runtime
+            .widget_request_focus(identity)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn widget_has_focus(widget: u64) -> Result<bool, UiControlApiError> {
+        let (_, runtime, kind, identity) = ui_control_entry(widget)?;
+        if !matches!(kind, UiControlKind::TextBox | UiControlKind::Button) {
+            return Err(UiControlApiError::WrongType);
+        }
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        runtime
+            .focus_state()
+            .map(|(_, focused)| focused == Some(identity))
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn window_open(window: u64) -> Result<u64, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_open(identity)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    #[cfg(test)]
+    pub fn window_client_area_for_test(
+        window: u64,
+    ) -> Result<Option<(u64, WindowClientArea)>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_client_area(identity)
+            .map_err(map_ui_control_property_error)
+    }
+
+    #[cfg(test)]
+    struct FixedLayoutMeasurer {
+        size: Size,
+        fail: bool,
+        on_measure: Option<Box<dyn Fn()>>,
+    }
+
+    #[cfg(test)]
+    impl IntrinsicMeasureProvider for FixedLayoutMeasurer {
+        fn measure(&self, _: ObjectIdentity, _: LayoutConstraints) -> Result<Size, LayoutError> {
+            if let Some(on_measure) = &self.on_measure {
+                on_measure();
+            }
+            if self.fail {
+                Err(LayoutError::MeasurementFailed)
+            } else {
+                Ok(self.size)
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_calculate_layout_for_test(
+        window: u64,
+        width: f64,
+        height: f64,
+        fail: bool,
+    ) -> Result<Arc<LayoutSnapshot>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let measurer = FixedLayoutMeasurer {
+            size: Size::new(width, height).map_err(|_| UiControlApiError::InvalidArgument)?,
+            fail,
+            on_measure: None,
+        };
+        runtime
+            .calculate_window_layout(identity, &measurer)
+            .map_err(|_| UiControlApiError::Internal)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_calculate_layout_with_orientation_change_for_test(
+        window: u64,
+        panel: u64,
+        orientation: u32,
+    ) -> Result<Arc<LayoutSnapshot>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let measurer = FixedLayoutMeasurer {
+            size: Size::new(24.0, 12.0).expect("valid fixed test measure"),
+            fail: false,
+            on_measure: Some(Box::new(move || {
+                let _ = stack_panel_set_orientation(panel, orientation);
+            })),
+        };
+        runtime
+            .calculate_window_layout(identity, &measurer)
+            .map_err(|_| UiControlApiError::Internal)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_layout_snapshot_for_test(
+        window: u64,
+    ) -> Result<Option<Arc<LayoutSnapshot>>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_layout_snapshot(identity)
+            .map_err(|_| UiControlApiError::Internal)
+    }
+
+    /// Internal Core/Renderer bridge; not part of the public C ABI.
+    pub fn window_submit_frame(
+        window: u64,
+        scene: Arc<SceneSnapshot>,
+    ) -> Result<FrameTicket, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_submit_frame(identity, scene)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    /// Internal observation hook used by Core-side integration tests.
+    pub fn window_frame_phase(window: u64) -> Result<FramePhase, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_frame_phase(identity)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    pub fn window_close(window: u64) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_close(identity)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    pub fn window_platform_activation(window: u64, active: bool) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_set_active(identity, active)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn window_close_intent(
+        window: u64,
+        callback: Option<Box<dyn FnOnce(u64, u64) -> CloseDecision>>,
+    ) -> Result<Option<(u64, u64)>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_close_intent(identity, callback)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    /// Dispatches a native close intent through the Window's active close subscription.
+    pub fn window_close_intent_subscribed(
+        window: u64,
+    ) -> Result<Option<(u64, u64)>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let subscription = runtime
+            .snapshot_window_close_subscription(identity)
+            .map_err(map_ui_control_property_error)?;
+        let Some(subscription) = subscription else {
+            return runtime
+                .window_close_intent(identity, None)
+                .map_err(map_window_lifecycle_error);
+        };
+        let callback_runtime = Arc::clone(&runtime);
+        runtime
+            .window_close_intent(
+                identity,
+                Some(Box::new(move |request, generation| {
+                    let state = Arc::new(CloseRequestState {
+                        callback_active: AtomicBool::new(true),
+                        owned_handles: AtomicUsize::new(0),
+                        release_requested: AtomicBool::new(false),
+                        resolved: AtomicBool::new(false),
+                        decision: Mutex::new(None),
+                    });
+                    let borrowed_token = crate::handle_registry::issue_handle_token();
+                    let Some(borrowed_token) = borrowed_token else {
+                        return CloseDecision::Accept;
+                    };
+                    let entry = CloseRequestHandleEntry {
+                        runtime: Arc::clone(&callback_runtime),
+                        identity,
+                        request,
+                        generation,
+                        state: Arc::clone(&state),
+                        owned: false,
+                    };
+                    let inserted = close_request_handles()
+                        .lock()
+                        .map(|mut handles| {
+                            if handles.try_reserve(1).is_err() {
+                                false
+                            } else {
+                                handles.insert(borrowed_token, entry);
+                                true
+                            }
+                        })
+                        .unwrap_or(false);
+                    if !inserted {
+                        return CloseDecision::Accept;
+                    }
+                    CURRENT_WINDOW_CLOSE_REQUEST
+                        .with(|current| current.set(borrowed_token.into_abi()));
+                    let _ = subscription.invoke();
+                    CURRENT_WINDOW_CLOSE_REQUEST.with(|current| current.set(0));
+                    state.callback_active.store(false, Ordering::Release);
+                    if let Ok(mut handles) = close_request_handles().lock() {
+                        handles.remove(&borrowed_token);
+                    }
+                    if state.release_requested.load(Ordering::Acquire) {
+                        CloseDecision::Decline
+                    } else {
+                        let decision = state
+                            .decision
+                            .lock()
+                            .map(|decision| decision.unwrap_or(CloseDecision::Accept))
+                            .unwrap_or(CloseDecision::Decline);
+                        if decision != CloseDecision::Defer {
+                            state.resolved.store(true, Ordering::Release);
+                        }
+                        decision
+                    }
+                })),
+            )
+            .map_err(map_window_lifecycle_error)
+    }
+
+    /// Registers the Window's single close-request callback using the shared Subscription owner.
+    pub fn window_close_request_subscribe(
+        window: u64,
+        callback: PostCallback,
+        userdata: usize,
+        destroy: DestroyCallback,
+    ) -> Result<u64, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let mut subscriptions = subscription_handles()
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        subscriptions
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        let token =
+            crate::handle_registry::issue_handle_token().ok_or(UiControlApiError::Internal)?;
+        // SAFETY: the ABI caller transfers callback/userdata/destroy ownership on success.
+        let subscription =
+            Arc::new(unsafe { Subscription::new(callback, userdata as *mut c_void, destroy) });
+        runtime
+            .register_subscription_owner(identity, &subscription)
+            .map_err(map_ui_control_property_error)?;
+        subscriptions.insert(
+            token,
+            Arc::new(SubscriptionHandleEntry {
+                runtime,
+                owner: SubscriptionOwner::Window(identity),
+                subscription,
+            }),
+        );
+        Ok(token.into_abi())
+    }
+
+    /// Returns the borrowed request handle currently passed to a close callback, or zero.
+    pub fn window_close_request_current() -> u64 {
+        CURRENT_WINDOW_CLOSE_REQUEST.with(std::cell::Cell::get)
+    }
+
+    /// Explicitly defers the borrowed request received by the active close callback.
+    pub fn window_close_request_defer(request: u64) -> Result<u64, UiControlApiError> {
+        let token = HandleToken::from_abi(request).ok_or(UiControlApiError::InvalidHandle)?;
+        let mut handles = close_request_handles()
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        let entry = handles
+            .get(&token)
+            .map(|entry| CloseRequestHandleEntry {
+                runtime: Arc::clone(&entry.runtime),
+                identity: entry.identity,
+                request: entry.request,
+                generation: entry.generation,
+                state: Arc::clone(&entry.state),
+                owned: entry.owned,
+            })
+            .ok_or(UiControlApiError::InvalidHandle)?;
+        if entry.owned
+            || !entry.state.callback_active.load(Ordering::Acquire)
+            || entry.state.resolved.load(Ordering::Acquire)
+            || CURRENT_WINDOW_CLOSE_REQUEST.with(std::cell::Cell::get) != request
+        {
+            return Err(UiControlApiError::InvalidHandle);
+        }
+        if !entry.runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        handles
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        let owned_token =
+            crate::handle_registry::issue_handle_token().ok_or(UiControlApiError::Internal)?;
+        let mut decision = entry
+            .state
+            .decision
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        entry.state.owned_handles.fetch_add(1, Ordering::AcqRel);
+        *decision = Some(CloseDecision::Defer);
+        drop(decision);
+        let owned = CloseRequestHandleEntry {
+            runtime: entry.runtime,
+            identity: entry.identity,
+            request: entry.request,
+            generation: entry.generation,
+            state: entry.state,
+            owned: true,
+        };
+        handles.insert(owned_token, owned);
+        Ok(owned_token.into_abi())
+    }
+
+    /// Resolves an active borrowed request or a previously deferred owned request.
+    pub fn window_close_request_resolve(
+        request: u64,
+        decision: u32,
+    ) -> Result<(), UiControlApiError> {
+        let decision = match decision {
+            1 => CloseDecision::Accept,
+            2 => CloseDecision::Decline,
+            _ => return Err(UiControlApiError::InvalidArgument),
+        };
+        let token = HandleToken::from_abi(request).ok_or(UiControlApiError::InvalidHandle)?;
+        let entry = close_request_handles()
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?
+            .get(&token)
+            .map(|entry| CloseRequestHandleEntry {
+                runtime: Arc::clone(&entry.runtime),
+                identity: entry.identity,
+                request: entry.request,
+                generation: entry.generation,
+                state: Arc::clone(&entry.state),
+                owned: entry.owned,
+            })
+            .ok_or(UiControlApiError::InvalidHandle)?;
+        if !entry.runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        if entry.state.callback_active.load(Ordering::Acquire) {
+            if entry.state.resolved.load(Ordering::Acquire) {
+                return Err(UiControlApiError::InvalidArgument);
+            }
+            *entry
+                .state
+                .decision
+                .lock()
+                .map_err(|_| UiControlApiError::Internal)? = Some(decision);
+            entry.state.resolved.store(true, Ordering::Release);
+            return Ok(());
+        }
+        if !entry.owned || entry.state.resolved.load(Ordering::Acquire) {
+            return Err(UiControlApiError::InvalidHandle);
+        }
+        entry
+            .runtime
+            .window_close_resolve(entry.identity, entry.request, entry.generation, decision)
+            .map_err(map_window_lifecycle_error)?;
+        entry.state.resolved.store(true, Ordering::Release);
+        Ok(())
+    }
+
+    fn window_close_request_release_token(token: HandleToken) -> Result<bool, ShutdownApiError> {
+        let mut handles = close_request_handles()
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?;
+        let Some(entry) = handles.get(&token) else {
+            return Ok(false);
+        };
+        if !entry.owned {
+            return Err(ShutdownApiError::InvalidHandle);
+        }
+        let entry = handles.remove(&token).ok_or(ShutdownApiError::Internal)?;
+        drop(handles);
+        let remaining = entry.state.owned_handles.fetch_sub(1, Ordering::AcqRel) - 1;
+        if remaining == 0 && !entry.state.resolved.load(Ordering::Acquire) {
+            if entry.state.callback_active.load(Ordering::Acquire) {
+                entry.state.release_requested.store(true, Ordering::Release);
+                *entry
+                    .state
+                    .decision
+                    .lock()
+                    .map_err(|_| ShutdownApiError::Internal)? = Some(CloseDecision::Decline);
+            } else {
+                let _ = entry.runtime.window_close_request_release(
+                    entry.identity,
+                    entry.request,
+                    entry.generation,
+                );
+            }
+        }
+        Ok(true)
+    }
+
+    pub fn window_close_request_resolve_by_ids(
+        window: u64,
+        request: u64,
+        generation: u64,
+        decision: CloseDecision,
+    ) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_close_resolve(identity, request, generation, decision)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    pub fn window_close_request_release_by_ids(
+        window: u64,
+        request: u64,
+        generation: u64,
+    ) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_close_request_release(identity, request, generation)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_install_test_peer(
+        window: u64,
+        peer: Arc<dyn crate::ui_window::WindowPeerAdapter>,
+    ) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_set_peer(identity, peer)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn ui_control_create_window(runtime: u64) -> Result<u64, UiControlApiError> {
+        create_ui_control(runtime, UiControlKind::Window, None)
+    }
+
+    pub fn ui_control_create_stack_panel(runtime: u64) -> Result<u64, UiControlApiError> {
+        create_ui_control(runtime, UiControlKind::StackPanel, None)
+    }
+
+    pub fn ui_control_create_text(runtime: u64, content: &[u8]) -> Result<u64, UiControlApiError> {
+        create_ui_control(runtime, UiControlKind::Text, Some(content))
+    }
+
+    pub fn ui_control_create_text_box(
+        runtime: u64,
+        value: &[u8],
+    ) -> Result<u64, UiControlApiError> {
+        create_ui_control(runtime, UiControlKind::TextBox, Some(value))
+    }
+
+    pub fn ui_control_create_button(runtime: u64, label: &[u8]) -> Result<u64, UiControlApiError> {
+        create_ui_control(runtime, UiControlKind::Button, Some(label))
+    }
+
+    pub fn ui_control_is_enabled_property(control: u64) -> Result<u64, UiControlApiError> {
+        ui_control_property(control, UiControlProperty::IsEnabled)
+    }
+
+    pub fn ui_control_accessible_name_property(control: u64) -> Result<u64, UiControlApiError> {
+        ui_control_property(control, UiControlProperty::AccessibleName)
+    }
+
+    pub fn ui_control_window_title_property(control: u64) -> Result<u64, UiControlApiError> {
+        ui_control_property(control, UiControlProperty::WindowTitle)
+    }
+
+    pub fn ui_control_text_content_property(control: u64) -> Result<u64, UiControlApiError> {
+        ui_control_property(control, UiControlProperty::TextContent)
+    }
+
+    pub fn ui_control_text_box_value_property(control: u64) -> Result<u64, UiControlApiError> {
+        ui_control_property(control, UiControlProperty::TextBoxValue)
+    }
+
+    pub fn ui_control_button_label_property(control: u64) -> Result<u64, UiControlApiError> {
+        ui_control_property(control, UiControlProperty::ButtonLabel)
+    }
+
+    pub fn button_set_command(button: u64, command: u64) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(button, UiControlKind::Button)?;
+        let command_entry = if command == 0 {
+            None
+        } else {
+            let entry = command_entry(command).map_err(|error| match error {
+                CommandApiError::InvalidHandle => UiControlApiError::InvalidHandle,
+                CommandApiError::WrongType => UiControlApiError::WrongType,
+                CommandApiError::WrongRuntime => UiControlApiError::WrongRuntime,
+                CommandApiError::WrongThread => UiControlApiError::WrongThread,
+                CommandApiError::Closed => UiControlApiError::Closed,
+                CommandApiError::OutOfMemory => UiControlApiError::OutOfMemory,
+                _ => UiControlApiError::Internal,
+            })?;
+            if !Arc::ptr_eq(&runtime, &entry.runtime) {
+                return Err(UiControlApiError::WrongRuntime);
+            }
+            Some(entry)
+        };
+        runtime
+            .button_set_command_entry(identity, command_entry)
+            .map_err(map_ui_control_property_error)
+    }
+
+    pub fn button_command(button: u64) -> Result<Option<u64>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(button, UiControlKind::Button)?;
+        let Some(entry) = runtime
+            .button_command_entry(identity)
+            .map_err(map_ui_control_property_error)?
+        else {
+            return Ok(None);
+        };
+        let mut commands = command_handles()
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        commands
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        let token =
+            crate::handle_registry::issue_handle_token().ok_or(UiControlApiError::Internal)?;
+        commands.insert(token, entry);
+        Ok(Some(token.into_abi()))
     }
 
     pub fn command_state_property_create(runtime: u64) -> Result<u64, ShutdownApiError> {
@@ -1752,6 +3112,12 @@ pub mod abi_support {
                             }
                             _ => PropertyApiError::Internal,
                         })?;
+                }
+                SubscriptionOwner::Window(identity) => {
+                    entry
+                        .runtime
+                        .cancel_subscription_owner(identity, &entry.subscription)
+                        .map_err(map_property_read_error)?;
                 }
             }
         }
@@ -2351,6 +3717,32 @@ pub mod abi_support {
         Ok(true)
     }
 
+    fn ui_control_release(token: HandleToken) -> Result<bool, ShutdownApiError> {
+        let handles = ui_control_handles();
+        if !handles
+            .owners
+            .lock()
+            .map_err(|_| ShutdownApiError::Internal)?
+            .contains_key(&token)
+        {
+            return Ok(false);
+        }
+        handles
+            .registry
+            .release(token)
+            .map_err(map_registry_error)?;
+        let entry = handles
+            .owners
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&token);
+        if entry.is_none() {
+            return Err(ShutdownApiError::Internal);
+        }
+        drop(entry);
+        Ok(true)
+    }
+
     pub fn runtime_set_ui_loop_bridge(
         handle: u64,
         wake: WakeCallback,
@@ -2506,6 +3898,9 @@ pub mod abi_support {
 
     pub fn handle_release(handle: u64) -> Result<(), ShutdownApiError> {
         let token = HandleToken::from_abi(handle).ok_or(ShutdownApiError::InvalidHandle)?;
+        if window_close_request_release_token(token)? {
+            return Ok(());
+        }
         if error_handles()
             .lock()
             .map_err(|_| ShutdownApiError::Internal)?
@@ -2563,6 +3958,9 @@ pub mod abi_support {
             return Ok(());
         }
         if property_release(token)? {
+            return Ok(());
+        }
+        if ui_control_release(token)? {
             return Ok(());
         }
         process_runtime_handles()

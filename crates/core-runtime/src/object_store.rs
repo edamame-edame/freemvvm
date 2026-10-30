@@ -111,6 +111,32 @@ impl<T> UiObjectStore<T> {
         Ok(value)
     }
 
+    pub(crate) fn visit_mut(&mut self, mut visit: impl FnMut(ObjectIdentity, &mut T)) {
+        for (index, slot) in self.slots.iter_mut().enumerate() {
+            if let Some(value) = slot.value.as_mut() {
+                if let Ok(slot_id) = u64::try_from(index) {
+                    visit(ObjectIdentity::new(slot_id, slot.generation), value);
+                }
+            }
+        }
+    }
+
+    /// Invalidates every current identity and transfers live values to the caller for cleanup
+    /// after the store lock has been released.
+    pub(crate) fn take_all(
+        &mut self,
+    ) -> Result<impl Iterator<Item = (ObjectIdentity, T)> + use<T>, UiObjectStoreError> {
+        self.ensure_ui_thread()?;
+        self.free_head = None;
+        Ok(std::mem::take(&mut self.slots)
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, mut slot)| {
+                let identity = ObjectIdentity::new(u64::try_from(index).ok()?, slot.generation);
+                slot.value.take().map(|value| (identity, value))
+            }))
+    }
+
     /// Drops all live state on the owning UI thread and invalidates every current identity.
     pub(crate) fn clear(&mut self) -> Result<(), UiObjectStoreError> {
         self.ensure_ui_thread()?;
