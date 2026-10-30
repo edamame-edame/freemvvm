@@ -100,6 +100,7 @@ pub enum CloseDecision {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum WindowLifecycleError {
     Unsupported,
+    InvalidColor,
     InvalidState,
     StaleRequest,
     IdentifierExhausted,
@@ -120,6 +121,7 @@ pub(crate) struct WindowLifecycle {
     pending: HashMap<u64, u64>,
     frames: FrameTracker,
     force_full_damage: bool,
+    background_rgb_override: Option<[f32; 3]>,
     client_area: Option<(u64, WindowClientArea)>,
     layout_revision: u64,
     layout_snapshot: Option<Arc<LayoutSnapshot>>,
@@ -132,6 +134,34 @@ pub(crate) struct PreparedWindowFrame {
 }
 
 impl WindowLifecycle {
+    pub(crate) fn background_rgb(&self) -> [f32; 3] {
+        self.background_rgb_override.unwrap_or([1.0, 1.0, 1.0])
+    }
+
+    pub(crate) fn set_background_rgb(
+        &mut self,
+        background_rgb: [f32; 3],
+    ) -> Result<(), WindowLifecycleError> {
+        if background_rgb
+            .iter()
+            .any(|channel| !channel.is_finite() || !(0.0..=1.0).contains(channel))
+        {
+            return Err(WindowLifecycleError::InvalidColor);
+        }
+        if self.background_rgb() != background_rgb {
+            self.background_rgb_override = Some(background_rgb);
+            self.force_full_damage = true;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn reset_background_rgb(&mut self) {
+        if self.background_rgb() != [1.0, 1.0, 1.0] {
+            self.force_full_damage = true;
+        }
+        self.background_rgb_override = None;
+    }
+
     pub(crate) fn set_peer(&mut self, peer: Arc<dyn WindowPeerAdapter>) {
         self.peer = Some(peer);
     }
@@ -307,10 +337,11 @@ impl WindowLifecycle {
             .as_ref()
             .cloned()
             .ok_or(FrameError::InvalidTransition)?;
+        let scene = scene.with_background_rgb(self.background_rgb());
         let scene = if self.force_full_damage {
             Arc::new(scene.with_damage(Damage::Full))
         } else {
-            scene
+            Arc::new(scene)
         };
         let ticket = self.frames.begin(self.generation, Arc::clone(&scene))?;
         self.frames.mark_submitted(ticket)?;

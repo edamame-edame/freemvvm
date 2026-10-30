@@ -3729,6 +3729,34 @@
         {"id": "UT-LAYOUT-ABI-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_layout_snapshot_", "--locked"]},
         {"id": "UT-LAYOUT-ATOMIC-001", "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_layout_snapshot_failure", "--locked"]}
       ]
+    },
+    {
+      "id": "UNIT-CORE-079",
+      "state": "complete",
+      "scope": "window-background-rgb-default-override-reset-and-scene-forwarding",
+      "sources": [
+        "crates/core-runtime/src/platform/scene.rs",
+        "crates/core-runtime/src/ui_window.rs",
+        "crates/core-runtime/src/runtime.rs",
+        "crates/core-runtime/src/lib.rs",
+        "crates/core-runtime/src/ui_controls.rs",
+        "crates/c-abi/src/lib.rs",
+        "crates/c-abi/include/freemvvm/abi.h"
+      ],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/c-abi/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-075", "UNIT-CORE-078"],
+      "design": [
+        {"path": ".docs/13_detail_design/ui/controls.md", "version": "1.3 approved", "section": "Window background RGB API"},
+        {"path": ".docs/13_detail_design/runtime-objects/abi.md", "version": "1.4 approved", "section": "Window background RGB API"},
+        {"path": ".docs/12_design/platform/abstraction.md", "version": "1.1 approved", "section": "Core-owned Window background RGB backend forwarding"}
+      ],
+      "requirements": ["RQ-09-074"],
+      "cases": ["TC-WINDOW-BG-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {"id": "UT-WINDOW-BACKGROUND-001", "command": ["cargo", "test", "-p", "freemvvm-core", "window_background_color_is_core_owned_validated_and_forwarded_to_scene", "--locked"]},
+        {"id": "UT-ABI-WINDOW-BACKGROUND-001", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "window_background_color_abi_supports_get_set_and_reset_atomically", "--locked"]}
+      ]
     }
   ]
 }

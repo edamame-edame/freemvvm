@@ -107,13 +107,14 @@ mod tests {
         ui_control_is_enabled_property, ui_control_layout_clean, ui_control_layout_dirty,
         ui_control_text_box_value_property, ui_control_text_content_property,
         ui_control_window_title_property, widget_has_focus, widget_request_focus,
-        window_calculate_layout_for_test, window_calculate_layout_with_orientation_change_for_test,
-        window_clear_content, window_client_area_for_test, window_close, window_close_intent,
+        window_background_rgb, window_calculate_layout_for_test,
+        window_calculate_layout_with_orientation_change_for_test, window_clear_content,
+        window_client_area_for_test, window_close, window_close_intent,
         window_close_intent_subscribed, window_close_request_current, window_close_request_defer,
         window_close_request_resolve, window_close_request_subscribe, window_content,
         window_frame_phase, window_install_test_peer, window_layout_snapshot_for_test, window_open,
-        window_platform_activation, window_set_content, window_set_content_with_peer,
-        window_submit_frame,
+        window_platform_activation, window_reset_background_rgb, window_set_background_rgb,
+        window_set_content, window_set_content_with_peer, window_submit_frame,
     };
     use crate::ui_window::CloseDecision;
     use std::ffi::c_void;
@@ -503,6 +504,87 @@ mod tests {
         runtime_shutdown(runtime).expect("shutdown Runtime");
         assert!(sink.complete_frame(current).is_err());
         handle_release(window).expect("release Window");
+        handle_release(runtime).expect("release Runtime");
+    }
+
+    #[test]
+    fn window_background_color_is_core_owned_validated_and_forwarded_to_scene() {
+        let probe = Arc::new(PlatformProbe::default());
+        let factory: Arc<dyn crate::abi_support::PlatformRuntimeFactory> =
+            Arc::new(TestPlatformFactory(Arc::clone(&probe)));
+        let runtime = runtime_create_handle_with_platform_factory(factory)
+            .expect("create Runtime with platform factory");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let other_window = ui_control_create_window(runtime).expect("create second Window");
+        assert_eq!(window_background_rgb(window), Ok([1.0, 1.0, 1.0]));
+        assert_eq!(window_background_rgb(other_window), Ok([1.0, 1.0, 1.0]));
+        assert_eq!(window_open(window), Ok(1));
+        let sink = probe
+            .completion_sink
+            .lock()
+            .expect("completion sink lock")
+            .as_ref()
+            .expect("Core completion sink")
+            .clone();
+
+        let first = window_submit_frame(window, partial_scene(1)).expect("submit default frame");
+        {
+            let submitted = probe.submitted.lock().expect("submitted frames lock");
+            assert_eq!(submitted[0].1.background_rgb(), [1.0, 1.0, 1.0]);
+            assert_eq!(submitted[0].1.damage(), Damage::Full);
+        }
+        sink.complete_frame(first)
+            .expect("queue default frame completion");
+        runtime_dispatch_turn(runtime).expect("dispatch default frame completion");
+
+        assert_eq!(
+            window_set_background_rgb(window, f32::NAN, 0.2, 0.3),
+            Err(UiControlApiError::InvalidArgument)
+        );
+        assert_eq!(window_background_rgb(window), Ok([1.0, 1.0, 1.0]));
+        let after_invalid =
+            window_submit_frame(window, partial_scene(2)).expect("submit after invalid update");
+        {
+            let submitted = probe.submitted.lock().expect("submitted frames lock");
+            assert_eq!(submitted[1].1.background_rgb(), [1.0, 1.0, 1.0]);
+            assert!(matches!(submitted[1].1.damage(), Damage::Rect(_)));
+        }
+        sink.complete_frame(after_invalid)
+            .expect("queue post-invalid frame completion");
+        runtime_dispatch_turn(runtime).expect("dispatch post-invalid frame completion");
+
+        ui_control_layout_clean(window).expect("clear Layout before paint-only change");
+        window_set_background_rgb(window, 0.2, 0.4, 0.8).expect("set Window color");
+        assert!(!ui_control_layout_dirty(window).expect("background does not dirty Layout"));
+        assert_eq!(window_background_rgb(window), Ok([0.2, 0.4, 0.8]));
+        assert_eq!(window_background_rgb(other_window), Ok([1.0, 1.0, 1.0]));
+        let explicit = window_submit_frame(window, partial_scene(3)).expect("submit colored frame");
+        {
+            let submitted = probe.submitted.lock().expect("submitted frames lock");
+            assert_eq!(submitted[2].1.background_rgb(), [0.2, 0.4, 0.8]);
+            assert_eq!(submitted[2].1.damage(), Damage::Full);
+        }
+        sink.complete_frame(explicit)
+            .expect("queue colored frame completion");
+        runtime_dispatch_turn(runtime).expect("dispatch colored frame completion");
+
+        window_reset_background_rgb(window).expect("reset Window color");
+        assert_eq!(window_background_rgb(window), Ok([1.0, 1.0, 1.0]));
+        let reset = window_submit_frame(window, partial_scene(4)).expect("submit reset frame");
+        assert_eq!(
+            probe.submitted.lock().expect("submitted frames lock")[3]
+                .1
+                .background_rgb(),
+            [1.0, 1.0, 1.0]
+        );
+        sink.complete_frame(reset)
+            .expect("queue reset frame completion");
+        runtime_dispatch_turn(runtime).expect("dispatch reset frame completion");
+
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(window).expect("release Window");
+        handle_release(other_window).expect("release second Window");
         handle_release(runtime).expect("release Runtime");
     }
 

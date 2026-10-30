@@ -277,6 +277,21 @@ impl SceneSnapshot {
             damage,
         }
     }
+
+    pub(crate) fn with_background_rgb(&self, background_rgb: [f32; 3]) -> Self {
+        debug_assert!(
+            background_rgb
+                .iter()
+                .all(|channel| channel.is_finite() && (0.0..=1.0).contains(channel))
+        );
+        Self {
+            layout_revision: self.layout_revision,
+            device_scale: self.device_scale,
+            background_rgb,
+            operations: Arc::clone(&self.operations),
+            damage: self.damage,
+        }
+    }
 }
 
 #[cfg(test)]

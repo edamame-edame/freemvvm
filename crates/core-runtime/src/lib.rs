@@ -1653,6 +1653,7 @@ pub mod abi_support {
     fn map_window_lifecycle_error(error: WindowLifecycleError) -> UiControlApiError {
         match error {
             WindowLifecycleError::Unsupported => UiControlApiError::Unsupported,
+            WindowLifecycleError::InvalidColor => UiControlApiError::InvalidArgument,
             WindowLifecycleError::InvalidState | WindowLifecycleError::StaleRequest => {
                 UiControlApiError::InvalidArgument
             }
@@ -2279,6 +2280,32 @@ pub mod abi_support {
         let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
         runtime
             .window_open(identity)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    pub fn window_background_rgb(window: u64) -> Result<[f32; 3], UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_background_rgb(identity)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    pub fn window_set_background_rgb(
+        window: u64,
+        red: f32,
+        green: f32,
+        blue: f32,
+    ) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_set_background_rgb(identity, [red, green, blue])
+            .map_err(map_window_lifecycle_error)
+    }
+
+    pub fn window_reset_background_rgb(window: u64) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_reset_background_rgb(identity)
             .map_err(map_window_lifecycle_error)
     }
 

@@ -1,7 +1,7 @@
 # Window背景色の規定値・利用者設定
 
 - 計画版: 0.1
-- 状態: 計画0.1および要求・BD/DD・全wrapper・requirements test・unit test全文承認済み（利用者、2026-10-30）。Core/C ABI実装へ着手中
+- 状態: 計画0.1および要求・BD/DD・全wrapper・requirements test・unit test全文承認済み（利用者、2026-10-30）。Core/C ABI `UNIT-CORE-079` local完了、wrapper実装待ち
 - 作成日: 2026-10-30
 - 対象version: `0.0.1`
 - 対象branch案: `change/window-background-config` → `impl-rust/core-apis-window-background` → 各言語wrapper branch
@@ -51,7 +51,11 @@ Window背景色について、利用者が値を指定でき、未指定なら�
 - 要求: `RQ-09-074`をRQ-09 0.6改訂案へ追加。承認済み280件の承認状態は維持し、今回案は未承認として索引件数に混ぜない。
 - 設計: BD UI Tree/Layout/Control 1.1、Platform abstraction 1.1、DD UI controls 1.2、ABI 1.4、C++ 1.4、C# 1.5、Python 1.2、Rust 1.7をレビュー案として更新。
 - Test: requirement-test matrix 0.8 / assertions、および UI unit-test 0.4に候補caseを追加。未実装・未実行。
-- 実装・commit/push: Core/C ABI implementation branchへ着手。wrapper branchはCore API実装・検証後、各対象言語ごとにCore branchから作成する。
+- Core/C ABI: `impl-rust/core-apis-window-background` にて `UNIT-CORE-079` を実装。WindowLifecycleがWindowごとのoverrideを保持し、規定値white、reset、finite/range validation、paint full-damage強制、SceneSnapshotへの反映を行う。C ABI get/set/reset export・header・atomic getter testも追加した。
+- local検証: Core/ABI focused tests、workspace全target test、workspace Clippy、Rust 1.85 check、fmt、`.venv/Scripts/python.exe tools/dev.py check`、docs link check、manifest JSON、`git diff --check`がすべてpass。Linux Platform Adapter実機確認と同revision CIは未実施。
+- commit/push: 実装unitとしてcommit可能。pushは依頼されていないため未実施。
+- dependency integration: `impl-rust/core-scene-producer` を親へmerge commit `5cb737d` で統合。別エージェントの `impl-rust/ui-webview-plugin` は統合対象外で、変更も含めていない。
+- wrapper branch: Core API unitの全検証・commit完了後、各対象言語ごとにこのCore branchから独立して作成する。
 
 ## レビュー履歴
 

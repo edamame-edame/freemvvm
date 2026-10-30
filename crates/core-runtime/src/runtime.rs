@@ -2309,6 +2309,68 @@ impl RuntimeCore {
         Ok(())
     }
 
+    pub(crate) fn window_background_rgb(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<[f32; 3], WindowLifecycleError> {
+        self.ensure_property_access_thread()
+            .map_err(|_| WindowLifecycleError::InvalidState)?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| WindowLifecycleError::InvalidState)?;
+        store
+            .resolve(identity)
+            .map_err(|_| WindowLifecycleError::InvalidState)?
+            .downcast_ref::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_ref())
+            .map(|window| window.background_rgb())
+            .ok_or(WindowLifecycleError::InvalidState)
+    }
+
+    pub(crate) fn window_set_background_rgb(
+        &self,
+        identity: ObjectIdentity,
+        background_rgb: [f32; 3],
+    ) -> Result<(), WindowLifecycleError> {
+        self.ensure_property_access_thread()
+            .map_err(|_| WindowLifecycleError::InvalidState)?;
+        let mut store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| WindowLifecycleError::InvalidState)?;
+        store
+            .resolve_mut(identity)
+            .map_err(|_| WindowLifecycleError::InvalidState)?
+            .downcast_mut::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_mut())
+            .ok_or(WindowLifecycleError::InvalidState)?
+            .set_background_rgb(background_rgb)
+    }
+
+    pub(crate) fn window_reset_background_rgb(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<(), WindowLifecycleError> {
+        self.ensure_property_access_thread()
+            .map_err(|_| WindowLifecycleError::InvalidState)?;
+        let mut store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| WindowLifecycleError::InvalidState)?;
+        store
+            .resolve_mut(identity)
+            .map_err(|_| WindowLifecycleError::InvalidState)?
+            .downcast_mut::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_mut())
+            .ok_or(WindowLifecycleError::InvalidState)?
+            .reset_background_rgb();
+        Ok(())
+    }
+
     pub(crate) fn window_open(
         self: &Arc<Self>,
         identity: ObjectIdentity,

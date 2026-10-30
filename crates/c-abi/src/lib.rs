@@ -62,12 +62,15 @@ use freemvvm_core::abi_support::{
     ui_control_window_title_property as core_ui_control_window_title_property,
     validation_error_create as core_validation_error_create,
     widget_request_focus as core_widget_request_focus,
+    window_background_rgb as core_window_background_rgb,
     window_clear_content as core_window_clear_content, window_close as core_window_close,
     window_close_request_current as core_window_close_request_current,
     window_close_request_defer as core_window_close_request_defer,
     window_close_request_resolve as core_window_close_request_resolve,
     window_close_request_subscribe as core_window_close_request_subscribe,
     window_content as core_window_content, window_open as core_window_open,
+    window_reset_background_rgb as core_window_reset_background_rgb,
+    window_set_background_rgb as core_window_set_background_rgb,
     window_set_content as core_window_set_content,
 };
 
@@ -2296,6 +2299,79 @@ pub unsafe extern "C" fn ui_abi_1_window_open(window: u64, out_error: *mut u64) 
     catch_ui_control(|| core_window_open(window)).map_or_else(|status| status, |_| UI_OK)
 }
 
+/// Return the Window's effective normalized RGB background color.
+///
+/// # Safety
+/// All three color output pointers must be non-null writable storage. A non-null `out_error`
+/// must also be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_background_rgb(
+    window: u64,
+    out_red: *mut f32,
+    out_green: *mut f32,
+    out_blue: *mut f32,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_red.is_null() || out_green.is_null() || out_blue.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: the caller guarantees all required outputs are writable.
+    unsafe {
+        out_red.write(0.0);
+        out_green.write(0.0);
+        out_blue.write(0.0);
+    }
+    match catch_ui_control(|| core_window_background_rgb(window)) {
+        Ok([red, green, blue]) => {
+            // SAFETY: required outputs were checked non-null above.
+            unsafe {
+                out_red.write(red);
+                out_green.write(green);
+                out_blue.write(blue);
+            }
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Set a Window's normalized RGB background color.
+///
+/// Invalid or non-finite channels are rejected without changing the current color.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_set_background_rgb(
+    window: u64,
+    red: f32,
+    green: f32,
+    blue: f32,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_window_set_background_rgb(window, red, green, blue))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Remove a Window's background override and restore the opaque-white default.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_reset_background_rgb(
+    window: u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_window_reset_background_rgb(window))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
 /// Close a Window peer while retaining its Core state for later reopening.
 ///
 /// # Safety
@@ -2761,10 +2837,12 @@ mod tests {
         ui_abi_1_text_box_create, ui_abi_1_text_box_value_property, ui_abi_1_text_content_property,
         ui_abi_1_text_create, ui_abi_1_validation_error_create,
         ui_abi_1_widget_accessible_name_property, ui_abi_1_widget_is_enabled_property,
-        ui_abi_1_widget_request_focus, ui_abi_1_window_clear_content, ui_abi_1_window_close,
-        ui_abi_1_window_close_request_defer, ui_abi_1_window_close_request_resolve,
-        ui_abi_1_window_close_request_subscribe, ui_abi_1_window_content, ui_abi_1_window_create,
-        ui_abi_1_window_open, ui_abi_1_window_set_content, ui_abi_1_window_title_property,
+        ui_abi_1_widget_request_focus, ui_abi_1_window_background_rgb,
+        ui_abi_1_window_clear_content, ui_abi_1_window_close, ui_abi_1_window_close_request_defer,
+        ui_abi_1_window_close_request_resolve, ui_abi_1_window_close_request_subscribe,
+        ui_abi_1_window_content, ui_abi_1_window_create, ui_abi_1_window_open,
+        ui_abi_1_window_reset_background_rgb, ui_abi_1_window_set_background_rgb,
+        ui_abi_1_window_set_content, ui_abi_1_window_title_property,
     };
     use std::ffi::c_void;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -5546,6 +5624,118 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[test]
+    fn window_background_color_abi_supports_get_set_and_reset_atomically() {
+        let mut runtime = 0;
+        let mut window = 0;
+        assert_eq!(
+            unsafe { super::ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let bridge = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        assert_eq!(
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&bridge as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { super::ui_abi_1_window_create(runtime, &mut window, std::ptr::null_mut()) },
+            UI_OK
+        );
+
+        let (mut red, mut green, mut blue) = (0.0, 0.0, 0.0);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_background_rgb(
+                    window,
+                    &mut red,
+                    &mut green,
+                    &mut blue,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!([red, green, blue], [1.0, 1.0, 1.0]);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_set_background_rgb(
+                    window,
+                    0.2,
+                    f32::INFINITY,
+                    0.4,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_background_rgb(
+                    window,
+                    &mut red,
+                    &mut green,
+                    &mut blue,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!([red, green, blue], [1.0, 1.0, 1.0]);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_set_background_rgb(window, 0.2, 0.4, 0.8, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_background_rgb(
+                    window,
+                    &mut red,
+                    &mut green,
+                    &mut blue,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!([red, green, blue], [0.2, 0.4, 0.8]);
+        assert_eq!(
+            unsafe { ui_abi_1_window_reset_background_rgb(window, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_background_rgb(
+                    window,
+                    &mut red,
+                    &mut green,
+                    &mut blue,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!([red, green, blue], [1.0, 1.0, 1.0]);
+
+        assert_eq!(ui_abi_1_handle_release(window), UI_OK);
+        complete_runtime_shutdown_at_host_boundary(runtime);
+        assert_eq!(bridge.destroyed.load(Ordering::SeqCst), 1);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
     }
 
     #[allow(clippy::undocumented_unsafe_blocks)]
