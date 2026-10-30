@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 1.5 改訂案
+- 文書版: 1.6 改訂案
 - 文書ロール: detailed-design
 - 更新日: 2026-10-29
-- 状態: 1.5全文承認済み（利用者、2026-10-29）。実装・試験状態は別管理
+- 状態: 1.6全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -242,6 +242,45 @@ WindowPeerがOS eventをcopyしてCoreへ渡し、確定SceneをRenderBackendが
 
 IMEとAXはWindowを強保持するための関連にせず、OS接続の失効をgenerationで検出する。device loss時にsoftware rendererへ暗黙切替しない。queryがUI待ちでdeadlockする構成を避ける。
 
+## Control-View connectorと複数renderer backend（1.6改訂案）
+
+本節は既存の`RenderBackend` seamを活かし、Controlからrendererへ直接依存させず、複数backendを登録・選択できる接続案である。要求根拠はRQ-09-001/006/007/008/067、RQ-11-008/009/020/022。既存1.5のWindow peer・surface・frame lifecycle契約は維持し、公開C ABIは追加しない。
+
+### 型の責務と所有案
+
+| 型 | 責務・保持データ | 主要操作 | 所有・境界 |
+|---|---|---|---|
+| ControlViewConnector | Logical Controlと同revision LayoutSnapshotからrenderer-neutral visual/scene snapshotを作る | build_snapshot(tree, layout); invalidate(identity, reason) | Core UI、UI thread上。renderer interfaceへ依存しない |
+| RendererDescriptor | backend identity/version、surface kind、supported operation/capability、profile情報 | supports(surface, profile, scene_requirements) | immutable metadata。Control/APIやnative handleを保持しない |
+| RendererFactory | 候補backend実装の生成とsurface適合性検証 | describe(); create(surface, profile) | PlatformAdapterが登録済みfactoryを所有。未登録候補を自動ロードしない案 |
+| WindowPeer / NativeSurface | OS window、native surface、generation、resize/close | open(); surface(); close() | WindowPeerがsurfaceを所有。rendererと寿命を別管理し、peer close前にbackendをdrain/close |
+| RenderBackend | device/context、frame state、damage、completion | capabilities(); prepare(scene); submit(frame); on_device_lost(); close() | 選択されたfactoryが生成。immutable SceneSnapshotのみ消費しControl treeを参照しない |
+| RendererSelection | 選んだdescriptorとbackend instance、selection reason/profile | select(candidates, config, surface); close() | Window generationに属し、frame全体で同じselectionを使う |
+
+### 選択と失敗規則案
+
+1. Platform profileまたは明示Runtime/Window configurationがrenderer policy/identityを指定する。既定値を作る場合はprofileで明示し、OSやGPUから暗黙選択しない。
+2. WindowPeerがNativeSurfaceを準備し、PlatformAdapterが登録factoryのdescriptorを照合する。surface、profile、必須DrawOp/capabilityを満たす候補だけcreateを試みる。
+3. 固定identity指定時はそのbackendを選ぶ。複数候補からのauto-selectionを導入する場合、順序/優先規則をprofileに固定し、選択結果を診断可能にする。自動選択・fallbackの可否は未決としてレビュー対象にする。
+4. 初期化不能、surface不適合、Scene operation非対応、device lossは既存Platform failure/statusへ変換する。無断で別backendへ切替えず、present成功と報告しない。
+5. WinAPI/native windowとWinAPI/GDI系・OpenGL・Vulkan等のrendererは異なる要素として扱う。名前は選択肢の例であり、組合せ互換性・依存・配布profileを確定しない。
+6. renderer切替が必要な将来機能はWindow generation/frame revisionを更新し、旧backendのpending completionを排除する別設計を要する。1.6案では動作中Windowの暗黙hot-swapを提供しない。
+
+```mermaid
+flowchart TB
+    CT[Control Tree + LayoutSnapshot] --> CVC[ControlViewConnector]
+    CVC --> SS[immutable renderer-neutral SceneSnapshot]
+    Profile --> RF[PlatformAdapter / RendererFactory registry]
+    WP[WindowPeer] --> NS[NativeSurface]
+    RF -->|compatibility check| NS
+    RF -->|selected implementation| RB[RenderBackend]
+    NS --> RB
+    SS --> RB
+    RB --> FT[FrameTracker / completion]
+```
+
+登録方法（compile-time feature、platform crate、または明示factory injection）、descriptor schema、auto-selection policy、diagnostic formatはこの案で固定しない。現実装のLinux factoryを壊さず、新backend追加がControl/Scene producerを変更しないことを設計上の適合条件にする。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -258,3 +297,5 @@ IMEとAXはWindowを強保持するための関連にせず、OS接続の失効�
 | 2026-10-27 | 1.4全文 | 利用者の「ok」によりDeviceScale・Core指定BackgroundColor・Clip可視範囲・DRM page-flip/lifecycleを含む文書全体を承認。実装・CI・実機確認は別管理 |
 | 2026-10-29 | 1.5改訂案 | Window open時の初期client area、resizeのUI Dispatcher配送、generation検証、DIP/DeviceScale分離を提案。文書全体レビュー待ち。1.4承認範囲を維持 |
 | 2026-10-29 | 1.5全文 | 利用者の「ok」によりclient-area通知・generation・DIP/DeviceScale契約を含む文書全体を承認。実装・試験・実機確認は別管理 |
+| 2026-10-30 | 1.6改訂案 | ControlViewConnector、renderer descriptor/factory registry、surface互換性と複数backend選択・failure boundaryを提案。1.5承認範囲を維持し全文レビュー待ち |
+| 2026-10-30 | 1.6全文 | 利用者の「ok」によりdescriptor/factory・Window surfaceとの互換性・複数backend選択案を含む全文を承認。実装・試験・実機確認は別管理 |

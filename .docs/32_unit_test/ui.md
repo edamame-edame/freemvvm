@@ -1,14 +1,14 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
-- 文書版: 0.7 改訂案
-- 状態: 0.7全文承認済み（利用者、2026-10-29）。UNIT-PLATFORM-002は実装・同SHA Windows/Linux CI完了。実機確認は未完了。Layout testsは未実装・未実行
-- 更新日: 2026-10-29
+- 文書版: 0.8 改訂案
+- 状態: 0.8全文承認済み（利用者、2026-10-30）。実装・実行状態は別管理
+- 更新日: 2026-10-30
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
 
 上位根拠: [単体試験方針](unit-test-strategy.md)、[実装unit台帳契約](implementation-test-inventory.md)、[共通fixture・実行記録](README.md)。
 
-設計根拠: [ui/tree-layout.md](../13_detail_design/ui/tree-layout.md) 1.3改訂案「Tree所属 / Layout実行入力出力 / クラス設計」、[runtime-objects/objects-values.md](../13_detail_design/runtime-objects/objects-values.md) 1.3「Tree内部ownerとpublic参照の独立管理」、[ui/controls.md](../13_detail_design/ui/controls.md) 1.2改訂案「Control API / Window / Layout委譲」、[ui/input-focus.md](../13_detail_design/ui/input-focus.md) 1.1「Focus状態 / 入力・IME接続」、[ui/text-editing.md](../13_detail_design/ui/text-editing.md) 1.1「入力検証 / IME / 編集候補と確定値」、[runtime-objects/abi.md](../13_detail_design/runtime-objects/abi.md) 1.3改訂案「初期UI ControlのC ABI操作」、[Platform internal layers](../13_detail_design/platform/internal-layers.md) 1.5改訂案「Window client area / Core Layout入力」。
+設計根拠: [ui/tree-layout.md](../13_detail_design/ui/tree-layout.md) 1.3承認baseline（Tree/Layout）および1.4改訂案（ControlViewConnector/SceneSnapshot）、[runtime-objects/objects-values.md](../13_detail_design/runtime-objects/objects-values.md) 1.3「Tree内部ownerとpublic参照の独立管理」、[ui/controls.md](../13_detail_design/ui/controls.md) 1.2改訂案「Control API / Window / Layout委譲」、[ui/input-focus.md](../13_detail_design/ui/input-focus.md) 1.1「Focus状態 / 入力・IME接続」、[ui/text-editing.md](../13_detail_design/ui/text-editing.md) 1.1「入力検証 / IME / 編集候補と確定値」、[runtime-objects/abi.md](../13_detail_design/runtime-objects/abi.md) 1.3改訂案「初期UI ControlのC ABI操作」、[Platform internal layers](../13_detail_design/platform/internal-layers.md) 1.5承認baseline（Window client area）および1.6改訂案（renderer factory/selection）。
 
 ## Tree・Layout・Control
 
@@ -82,6 +82,20 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 
 実行記録: `UNIT-PLATFORM-002` / `UT-PLATFORM-PRESENT-001`・`UT-PLATFORM-LOSS-001`・`UT-PLATFORM-SCALE-CORE-001`は`cargo test -p freemvvm-core` 160 tests、`cargo test -p freemvvm-platform-linux` 10 tests、Linux target `cargo check --tests` / `cargo clippy --all-targets -- -D warnings`、`tools/dev.py check`、`tools/dev.py minimum`がlocal pass。Core指定の正規化RGB背景色をSceneSnapshotが保持し、damage-only copyでも維持することと、renderer planが同じ色をsurface clear色として使うことを確認。実装SHA `a7879aa3f66342cf7337d20ea1370e8cf8de4c84` の[同SHA Windows/Linux CI run 40514465626](https://github.com/edamame-edame/freemvvm/actions/runs/40514465626)もsuccess。実機描画は未確認。
 
+## ControlViewConnector・複数renderer・Scene生成の試験設計（0.8改訂案）
+
+0.7承認済みtest baselineは維持する。以下は新たなbackend-neutral View/Visual contractとControl connectorの試験提案であり、0.8全文承認前はimplementation oracle・CI pass条件として扱わない。fake renderer/factoryはCore境界と複数実装可能性を検証し、Windows API/OpenGL/VulkanやLinux DRMの実機動作を意味しない。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-view-connector-001"></a>UT-VIEW-CONNECTOR-001 | fake Control tree、同revision LayoutSnapshot、複数Control種類とdetach/attach/dirty更新をControlViewConnectorへ渡す | attachedで描画対象のControlだけからimmutable backend-neutral SceneSnapshotを作成。Layout/scene revision、tree traversal結果、DrawOp順序が一致。build失敗時に以前のcomplete snapshotとdirtyを保持。renderer固有値・native handleを含まない | [RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-006](../11_requirements/RQ-09_ui-scope.md#rq-09-006)、[RQ-09-007](../11_requirements/RQ-09_ui-scope.md#rq-09-007)、[RQ-09-008](../11_requirements/RQ-09_ui-scope.md#rq-09-008)<br/>[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-view-geometry-001"></a>UT-VIEW-GEOMETRY-001 | nested Control treeとLayoutSnapshotに親相対bounds、client clip、z-order、zero areaを入力しVisual/Scene snapshotを生成 | absolute scene boundsとeffective ancestor clipを規則どおり計算し、clipはlayout geometryを変更しない。draw orderと同一revisionを維持し、invalid値でsnapshotを部分更新しない | [RQ-09-008](../11_requirements/RQ-09_ui-scope.md#rq-09-008)、[RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067)<br/>[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-renderer-factory-001"></a>UT-RENDERER-FACTORY-001 | WindowPeer fake surfaceと、異なるsurface/capability/profileを宣言する複数fake RendererFactoryを登録し、fixed identity、incompatible surface、初期化失敗を投入 | profile/configで指定した実装のみを選択し、descriptor identity/capabilitiesを記録。互換性・生成failureを明示し、暗黙backend切替・software fallback・Presented扱いをしない。WindowPeer/native surfaceとRenderBackendは別owner/seam | [RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-009](../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-renderer-neutral-001"></a>UT-RENDERER-NEUTRAL-001 | 同一immutable SceneSnapshotを2つのfake backendへ個別に渡し、片方でoperation unsupported/submit failure/device loss、他方でsubmit/completion successを返す | Core scene/Control stateはbackendに依存せず同値。失敗backendを成功扱いせず、別backendの選択は明示policyがある場合にだけ起きる。stale completionはrevision/generationで拒否 | [RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-core-scene-frame-001"></a>UT-CORE-SCENE-FRAME-001 | Control property/tree/layout invalidationを投入しfake connector/factory/backendのframe submit/completionを遅延・失敗させる | dirty updateはUI thread上でLayout→Visual/Scene→submitの同revision snapshotにcoalesce。failureでlast complete snapshot/dirtyを保持し、成功completionのみPresented。閉じたWindow generationの遅延completionは無視 | [RQ-09-007](../11_requirements/RQ-09_ui-scope.md#rq-09-007)、[RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)<br/>[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-THREAD-01](../30_release_test/requirement-test-matrix.md#case-tc-thread-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+
+Text shaping/font profile/GlyphRun実描画は、本案のControl connector・factory契約から独立したTextService/backend unitで試験する。GlyphRun非対応backendは未対応を明示し、Text表示要求の合格をこのfake connector suiteから主張しない。実装単位ID/path/commandは設計全文の承認後にimplementation-test inventoryへ登録する。
+
 ## 承認履歴
 
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
@@ -100,6 +114,8 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 | 2026-10-27 | 0.6全文 | 利用者 | 「ok」によりCore DeviceScale/背景色・Clip可視範囲・page-flip closeを含む文書全体を承認。実装・CI・実機確認は別管理 |
 | 2026-10-29 | 0.7改訂案 | — | Core Measure/Arrange計算、Window client-area input、atomic LayoutSnapshot、既存ABI境界のtest oracleを追加。文書全体レビュー待ち |
 | 2026-10-29 | 0.7全文 | 利用者 | 「ok」によりCore Layout calculation、client-area、atomicityの試験設計全体を承認。実装・実行は別管理 |
+| 2026-10-30 | 0.8改訂案 | — | ControlViewConnector、geometry/clip、複数RendererFactory選択、backend-neutrality、dirty-to-frame経路のcase案。文書全体レビュー待ち。0.7承認baselineを維持 |
+| 2026-10-30 | 0.8全文 | 利用者 | 「ok」によりControlViewConnector、SceneSnapshot、renderer factory/selection、dirty-to-frame test caseを含む全文を承認。test実装・実行は別管理 |
 
 ## 改訂履歴
 
@@ -112,3 +128,4 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 | 0.5 | 2026-10-26 | Core render completion、DRM device/surface、GLES present/lossのunit test案を分割・具体化 | Codex | 文書全体承認済み。追加案は未実装・未実行 |
 | 0.6 | 2026-10-27 | Core DeviceScale/背景色とClip可視範囲、DRM page-flip/pending closeのcaseを追加 | Codex | 文書全体承認済み。UNIT-PLATFORM-002の実装・CI・hardware testは別管理 |
 | 0.7 | 2026-10-29 | Fake measurerによるLayout計算、Window root client-area通知、atomic snapshot/失敗保持を追加 | Codex | 文書全体レビュー待ち。実装・実行未開始 |
+| 0.8 | 2026-10-30 | backend-neutral Visual connector、geometry/clip、複数renderer factory/selection、frame接続test案を追加 | Codex | 文書全体承認済み。実装・実行未開始 |

@@ -1,9 +1,9 @@
 # UIクラス：Tree・Layout・Geometry
 
-- 文書版: 1.3 改訂案
+- 文書版: 1.4 改訂案
 - 文書ロール: detailed-design
 - 更新日: 2026-10-29
-- 状態: 1.3全文承認済み（利用者、2026-10-29）。実装・試験状態は別管理
+- 状態: 1.4全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -354,6 +354,76 @@ TreeCoordinatorは親子検査→TreeOwner/cleanup予約準備→peer/Visual候�
 
 LayoutSnapshotは内部の整合読取り用で、新しい公開snapshot APIや所有保証ではない。LogicalNodeの自己関連は非循環treeだけを許す。子側から親への関連は非所有とする。
 
+## Control-View connectorとbackend-neutral Visual（1.4改訂案）
+
+本節は、Logical Control/Layoutから描画engine固有APIへ直接結合せず、差し替え可能な複数View/renderer実装へ接続する提案である。1.3承認済みのTree ownership・Layout契約は維持し、公開C ABIやControlの外部動作を追加しない。要求根拠はRQ-09-001/006/007/008/067およびRQ-11-008/009/020/022とする。
+
+### 責務境界
+
+| 境界 | 責務 | 禁止する結合 |
+|---|---|---|
+| Logical Control + LayoutSnapshot | Coreが所有する意味・状態と同revisionの配置結果 | 描画API、OS view object、GPU資源を保持しない |
+| ControlViewConnector | UI thread上でLogical ControlとLayoutSnapshotを読み、Window世代/revisionに対応するimmutable `SceneSnapshot`を構築する。Control更新からのdirtyをscene生成へ伝える | backend固有型・OS handleを返さず、Control treeの所有関係を変えない |
+| SceneSnapshot（renderer-neutral View snapshot） | Control/Visualをflattenした描画命令。bounds、z-order、clip、background、DeviceScaleを同一revisionに束ねる | rendererの選択・GPU資源・OS callbackを保持しない |
+| WindowPeer / Surface | native windowとsurfaceの生成・resize・close、surface generationとOS event | renderer実装を一意に固定しない。Surfaceとの互換性はAdapterが検証する |
+| RenderBackend | immutable SceneSnapshotを選択されたsurfaceへprepare/submitし、failure/completionを返す | Control、LogicalNode、LayoutEngineへ逆参照しない |
+
+既存SceneSnapshotをControlViewConnectorの生成する唯一のimmutable renderer-neutral View snapshotとし、LayoutSnapshotと同revisionで作成する案とする。Logical Control identityからViewへの対応はsnapshot build中のCore内部対応として扱い、描画API向けの別View treeを永続所有しない。全体成功時だけWindowのcomplete scene stateを置換する。
+
+### Renderer選択・複数実装
+
+- OS/window adapter（例: Windows native window / WinAPI）とrenderer API（例: WinAPI/GDI系、OpenGL、Vulkan）は別選択軸とする。各組合せが必ず可能とは仮定せず、Adapterがsurface/backend compatibilityを検証する。
+- Platform profileまたは明示Runtime/Window configurationが要求するrenderer identityを選択し、factoryがbackendを生成する。選択時にbackend identity/version、対応surface、operation/capability set、profileを確定して記録する。
+- capability不足、未対応DrawOp、surface/device初期化失敗は既存failure境界で明示する。暗黙のbackend切替・software fallback・GlyphRunの破棄で成功扱いしない。
+- 複数backendの同時実装・登録を許容するが、一つのWindow/frameに対する選択・切替時点、device loss後の再選択可否はplatform designで明記する。Core UIは各backendの型や差を知らない。
+
+### Class / call flow案
+
+```mermaid
+flowchart TB
+    C[Logical Control Tree] --> X[ControlViewConnector]
+    L[LayoutSnapshot revision N] --> X
+    X --> V[immutable SceneSnapshot revision N]
+    V --> R[RenderBackend interface]
+    P[PlatformAdapter / profile] --> W[WindowPeer + Surface]
+    P --> R
+    W --> R
+    R -->|submit / completion / failure| F[FrameTracker]
+```
+
+```mermaid
+classDiagram
+    class ControlViewConnector {
+        build_snapshot(control_tree, layout_snapshot)
+        invalidate(control_identity, reason)
+    }
+    class SceneSnapshot {
+        revision
+        renderer_neutral_draw_ops
+        damage
+    }
+    class PlatformAdapter {
+        create_window_peer(config)
+        create_renderer(profile, surface)
+    }
+    class RenderBackend {
+        capabilities()
+        prepare(scene)
+        submit(frame)
+        close()
+    }
+    class WinApiRenderer
+    class OpenGlRenderer
+    class VulkanRenderer
+    ControlViewConnector ..> SceneSnapshot : build
+    PlatformAdapter ..> RenderBackend : factory
+    RenderBackend <|.. WinApiRenderer
+    RenderBackend <|.. OpenGlRenderer
+    RenderBackend <|.. VulkanRenderer
+```
+
+この図のbackend名は実装候補例であり、依存追加・Windows/Linux対応宣言・API採用を決定しない。具体trait名、factory registration方式、profile schemaと切替時点はPlatform文書と合わせて決める。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -366,3 +436,5 @@ LayoutSnapshotは内部の整合読取り用で、新しい公開snapshot APIや
 | 2026-10-24 | 1.2全文 | 利用者の承認により、TreeOwnerを含む本版全文を承認。実装・試験合格とは区別 |
 | 2026-10-29 | 1.3改訂案 | Core Layout pass、Window client area input、leaf measurement provider、revision付きatomic LayoutSnapshotを追記。文書全体レビュー待ち。1.2承認範囲を維持 |
 | 2026-10-29 | 1.3全文 | 利用者の「ok」によりLayout実行入力/出力・クラス責務案を含む文書全体を承認。実装・試験合格とは別管理 |
+| 2026-10-30 | 1.4改訂案 | backend-neutral Visual、ControlViewConnector、Window/surfaceとrenderer選択軸、複数RenderBackend実装の責務案を追加。1.3承認範囲を維持し全文レビュー待ち |
+| 2026-10-30 | 1.4全文 | 利用者の「ok」によりControlViewConnectorとrenderer-neutral SceneSnapshot、複数RenderBackend接続案を含む全文を承認。実装・試験合格とは別管理 |

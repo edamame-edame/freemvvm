@@ -1,9 +1,9 @@
 # Core UI Scene生成の次工程
 
-- 2026-10-29 progress: Core Layout kernel (`UNIT-CORE-076`), generation-checked Window client-area input (`UNIT-CORE-077`), and real Control-tree `LayoutSnapshot` integration (`UNIT-CORE-078`) are complete. Scene producer dependency/design audit is complete; this v0.2 plan is a review draft, not implementation authorization.
+- 2026-10-30 progress: Plan v0.2 approved and recorded on `impl-rust/core-ui-layout-engine` (`a225113`). First DD/UI-test proposal drafts are ready on `impl-rust/core-scene-producer`; design approval and implementation authorization remain pending.
 
 - 計画版: 0.2
-- 状態: 計画0.2利用者承認済み。DD/UI test改訂案の作成中（設計本文は未承認、実装未着手）
+- 状態: 計画0.2、UI Tree/Layout DD 1.4、Platform DD 1.6、UI unit-test 0.8は利用者承認済み。実装unitの切出し中。Scene入力・Control visual realizationの未決契約を解決するまで製品コード実装は未着手
 - 作成日: 2026-10-29
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/core-scene-producer`（現Platform/Core branchのSceneSnapshot/Renderer seamに依存する子branch）
@@ -63,6 +63,8 @@ Platform Adapterの実機確認は保留し、既存のWindow/Control/Logical Tr
 
 - 計画0.1で承認された範囲（要求・設計・実装差分の読取監査と次の設計提案）は完了した。
 - 本計画0.2は利用者承認済み。承認範囲はDD/UI test改訂案の作成までであり、設計本文の承認・実装開始を含まない。
+- 承認済み正本: [UI Tree/Layout 1.4](../13_detail_design/ui/tree-layout.md)、[Platform internal layers 1.6](../13_detail_design/platform/internal-layers.md)、[UI unit tests 0.8](../32_unit_test/ui.md)。implementation-test inventoryへunit mappingを登録し、承認済み範囲で実装する。
+- 実装着手前の契約確認: `DeviceScale`のWindowPeer→Core供給/変更経路とWindow background RGBのCore所有・初期値供給元、Text/Button等ControlからのDrawOp生成（TextService依存を含む）を確定し、要求のないplaceholder/defaultを作らない。
 - DD/UI test本文の改訂は文書全体をレビュー・承認してから実装する。計画承認、設計承認、実装開始、unit completion、commit/pushは別状態として記録する。
 
 ## レビュー履歴
@@ -71,3 +73,5 @@ Platform Adapterの実機確認は保留し、既存のWindow/Control/Logical Tr
 |---|---|---|---|
 | 2026-10-29 | 計画0.1 | 利用者承認・監査完了 | Layout不足を先に解消する改訂計画を経て、UNIT-CORE-076/077/078を完了。 |
 | 2026-10-29 | 計画0.2 | 利用者承認 | Scene producer、TextService、scale/background供給元、Visual geometry/clip、frame接続に加え、backend-neutral View契約と複数renderer選択軸を反映。DD/UI test改訂案の作成を承認。 |
+| 2026-10-30 | DD/UI test改訂案 | review draft | ControlViewConnector→backend-neutral SceneSnapshot→選択可能RenderBackendの責務とfake-test proposalを3文書に作成。文書全体レビュー待ち。 |
+| 2026-10-30 | DD 1.4 / DD 1.6 / UT 0.8 | 利用者承認 | 「ok」により3文書全体を承認。実装・試験合格とは別管理。 |
