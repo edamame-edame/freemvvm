@@ -14,6 +14,8 @@
 
 Core-neutralな`PlatformDefault` request、platform-resolved font identity付きimmutable result、revision照合と失敗伝播を`crates/core-runtime/src/text_service.rs`で検証する。`UT-TEXT-SERVICE-SEAM-001`はfake TextServiceを使い、requestにOS固有family/pathが含まれないこと、profileごとに異なるfont identityを結果へ保持できること、異なるtext revisionやfont digestの結果を拒否すること、resolver failureで部分snapshotを返さないことを確認する。実Layout/Scene接続とcomplete snapshot保持の統合確認は`UT-TEXT-PLATFORM-DEFAULT-001` / UNIT-CORE-085で行い、本unitの合格範囲に含めない。
 
+UNIT-PLATFORM-003の同revision補助検証では、TextMetricsが負値または非有限値を拒否し、platform実装が検証済み幅/高さを返すことも確認する（`cargo test -p freemvvm-core text_metrics_ --locked`）。
+
 ## handleと値
 
 ### 公開C ABIヘッダー

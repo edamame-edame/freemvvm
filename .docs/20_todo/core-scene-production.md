@@ -1,9 +1,9 @@
 # Core UI Scene生成の次工程
 
-- 2026-10-31 progress: `UNIT-CORE-080` (`ab2c273`), `UNIT-CORE-081` (`6885f91`), `UNIT-CORE-082` (`1747f33`), `UNIT-CORE-083` (`cf3ce05`), and `UNIT-CORE-084` (`b6c64ea`) are committed and pushed on `impl-rust/core-scene-rendering`. DeviceScale transport passed local Core/Linux fake tests, Windows workspace checks and Linux target compile/clippy. TextService seam passed 4 focused tests, workspace tests, Clippy, Rust 1.85 check, and documentation checks. Linux font realization/GlyphRun rendering, CI and Linux hardware remain unverified.
+- 2026-10-31 progress: `UNIT-CORE-080` (`ab2c273`), `UNIT-CORE-081` (`6885f91`), `UNIT-CORE-082` (`1747f33`), `UNIT-CORE-083` (`cf3ce05`), and `UNIT-CORE-084` (`b6c64ea`) are committed and pushed on `impl-rust/core-scene-rendering`. UNIT-PLATFORM-003 Linux Fontconfig/HarfBuzz/FreeType realization passes Debian 12 Docker workspace tests, Clippy, Rust 1.85 check, and fmt. `Window.open` is skipped in Linux C ABI test to keep CI off real DRM hardware. Hardware and CI confirmation remain pending.
 
 - 計画版: 0.5 改訂案
-- 状態: 計画0.3/0.4/0.5利用者承認済み。UNIT-CORE-080/081/082/083/084 commit/push済み。Linux text profile、RQ-09-075、Platform DD 1.9、UI Controls DD 1.4、UI UT 1.2、実装計画0.3全文承認済み。次はUNIT-PLATFORM-003。計画は[Linux TextService・GlyphRun実装](linux-text-rendering-implementation.md)
+- 状態: 計画0.3/0.4/0.5利用者承認済み。UNIT-CORE-080/081/082/083/084 commit/push済み。UNIT-PLATFORM-003はlocal実装・検証済み。次の計画unitはUNIT-CORE-085（Text Control/Layout/Scene wiring）。全体計画は[Linux TextService・GlyphRun実装](linux-text-rendering-implementation.md)
 - 作成日: 2026-10-29
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/core-scene-rendering`（`impl-rust/core-apis-window-background`の子branch）
@@ -119,3 +119,4 @@ UNIT-CORE-082はRuntime tree/layout snapshotの整合接続であり、productio
 | 2026-10-31 | UNIT-CORE-083 | 実装・検証完了 | `WindowOpenInfo`からCore Window generationへDeviceScaleを保存し、Scene入力へ渡す。Linux KMS current profileは明示`(1,1)`。Core/Linux testsとall local gates pass、実機未確認、commit/push待ち |
 | 2026-10-31 | UNIT-CORE-083 commit/push | 完了 | `cf3ce05 WindowのDeviceScaleをCoreへ伝搬` |
 | 2026-10-31 | Linux text rendering profile 計画0.1 | 利用者承認 | Linux text profile/font/appearanceの候補をDD・test改訂案へ具体化する。特定候補採用・実装は別承認 |
+| 2026-10-31 | Linux text rendering implementation 計画0.3 / UNIT-PLATFORM-003 | 利用者承認・local実装検証済み | Fontconfig `sans-serif`・ordered fallback・HarfBuzz/FreeTypeとDebian 12 Docker corpus。workspace tests/Clippy/Rust 1.85/fmt pass。実機・CI・commit/pushは別管理 |

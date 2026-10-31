@@ -1,7 +1,7 @@
 # Linux TextService・GlyphRun実装
 
 - 計画版: 0.3
-- 状態: RQ-09-075、Platform DD 1.9、UI Controls DD 1.4、UI UT 1.2、計画0.2全文承認済み。Linux resolver/dependency/test profileと実装unit分割0.3は利用者承認済み。UNIT-CORE-084はlocal実装・検証・commit/push完了（`b6c64ea`）
+- 状態: RQ-09-075、Platform DD 1.9、UI Controls DD 1.4、UI UT 1.2、計画0.2全文承認済み。Linux resolver/dependency/test profileと実装unit分割0.3は利用者承認済み。UNIT-CORE-084はcommit/push済み（`b6c64ea`）。UNIT-PLATFORM-003はLinux Dockerで実装・検証完了
 - 作成日: 2026-10-31
 - 対象version: `0.0.1`
 - 対象branch: `impl-rust/core-scene-rendering`
@@ -43,9 +43,16 @@
 
 ## 承認境界
 
-- 承認済み計画0.3に沿ってunit mappingを`tools/units.yaml`へ登録した。UNIT-CORE-084のCore request/result seamとfake testsはlocal passし、commit/push待ち。以後も各unitの対応testを同一revisionに含める。
+- 承認済み計画0.3に沿ってunit mappingを`tools/units.yaml`へ登録した。UNIT-CORE-084はcommit/push済み、UNIT-PLATFORM-003はLinux Docker focused/workspace Rust tests、Clippy、Rust 1.85 check、fmtをlocal passした。以後も各unitの対応testを同一実装revisionに含める。
 - profileの確定値・依存導入・実装着手・各unitのtest合格・commit/push・PRは別々に記録する。
 - RQ-09-075、DD 1.9、UI Controls 1.4、UI UT 1.2のみの承認と、exact Linux dependency/profile valuesを含む計画0.3の承認は別記録である。計画0.3は利用者承認済みだが、実装・test pass・commit/pushはunitごとに別記録する。
+
+## UNIT-PLATFORM-003 実装・検証記録
+
+- Linux `freemvvm-platform-linux`へFontconfig `sans-serif`候補順、grapheme単位coverage fallback、HarfBuzz run shaping、FreeType 14 DIP metrics/gray mask cacheを実装。各runはresolved family/style/file SHA-256/face indexをCore-neutral `ResolvedTextSnapshot`へ記録する。C ABIへText APIは追加しない。
+- `abi_support`のhidden Rust SPIからTextService request/result型をplatform crateへ公開し、metrics値は検証済みconstructor/getter経由とした。C ABIの既存Control統合testはLinuxで実DRM/KMS `Window.open`を呼ばないよう分離し、実機確認を保留する。
+- Debian 12 Docker (`FC_LANG=ja-jp`)で `cargo test --workspace --all-targets --locked` 成功。Linux Platform 19 passed / 1 ignored（headless GLES pixel testは別条件）、Core 180 passed。`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check` 成功。
+- 実行結果はDocker/ソフトウェア側のtext shapingとraster mask生成を確認したもの。live Control/Layout/Scene接続はUNIT-CORE-085、GLES glyph atlas/presentはUNIT-PLATFORM-004、DRM実機のopen/displayはhardware確認であり完了を意味しない。
 
 ## 実装計画0.3の参照資料
 

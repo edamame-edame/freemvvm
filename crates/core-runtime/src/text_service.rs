@@ -1,25 +1,24 @@
 //! Core-neutral boundary between text controls and platform text realization.
 
 use crate::platform::scene::{GlyphRunSnapshot, SceneError};
-use crate::ui_layout::Size;
 use std::sync::Arc;
 
 /// A request for the active platform profile's default font, without OS-specific naming.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum FontRequest {
+pub enum FontRequest {
     PlatformDefault,
 }
 
 /// Immutable Core input captured from one text-display revision.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct TextRequest {
-    pub(crate) revision: u64,
-    pub(crate) text: Arc<str>,
-    pub(crate) font: FontRequest,
+pub struct TextRequest {
+    pub revision: u64,
+    pub text: Arc<str>,
+    pub font: FontRequest,
 }
 
 impl TextRequest {
-    pub(crate) fn platform_default(revision: u64, text: impl Into<Arc<str>>) -> Self {
+    pub fn platform_default(revision: u64, text: impl Into<Arc<str>>) -> Self {
         Self {
             revision,
             text: text.into(),
@@ -30,23 +29,23 @@ impl TextRequest {
 
 /// Identity of the concrete font face resolved by a platform text service.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ResolvedFontIdentity {
-    pub(crate) resolver_profile: Arc<str>,
-    pub(crate) family: Arc<str>,
-    pub(crate) style: Arc<str>,
-    pub(crate) asset_digest: [u8; 32],
-    pub(crate) face_index: u32,
+pub struct ResolvedFontIdentity {
+    pub resolver_profile: Arc<str>,
+    pub family: Arc<str>,
+    pub style: Arc<str>,
+    pub asset_digest: [u8; 32],
+    pub face_index: u32,
 }
 
 /// A shaped run paired with the exact face used to realize its glyphs.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ResolvedGlyphRun {
-    pub(crate) font: ResolvedFontIdentity,
-    pub(crate) glyphs: GlyphRunSnapshot,
+pub struct ResolvedGlyphRun {
+    pub font: ResolvedFontIdentity,
+    pub glyphs: GlyphRunSnapshot,
 }
 
 impl ResolvedGlyphRun {
-    pub(crate) fn new(
+    pub fn new(
         font: ResolvedFontIdentity,
         glyphs: GlyphRunSnapshot,
     ) -> Result<Self, TextServiceError> {
@@ -59,20 +58,42 @@ impl ResolvedGlyphRun {
 
 /// Layout measurement returned from the same realization as the glyph runs.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct TextMetrics {
-    pub(crate) size: Size,
+pub struct TextMetrics {
+    width_dip: f64,
+    height_dip: f64,
+}
+
+impl TextMetrics {
+    pub fn new(width_dip: f64, height_dip: f64) -> Result<Self, TextServiceError> {
+        if !width_dip.is_finite() || !height_dip.is_finite() || width_dip < 0.0 || height_dip < 0.0
+        {
+            return Err(TextServiceError::InvalidMetrics);
+        }
+        Ok(Self {
+            width_dip,
+            height_dip,
+        })
+    }
+
+    pub fn width_dip(self) -> f64 {
+        self.width_dip
+    }
+
+    pub fn height_dip(self) -> f64 {
+        self.height_dip
+    }
 }
 
 /// One immutable, revision-stamped result shared by measurement and scene generation.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ResolvedTextSnapshot {
-    pub(crate) revision: u64,
-    pub(crate) metrics: TextMetrics,
-    pub(crate) glyph_runs: Arc<[ResolvedGlyphRun]>,
+pub struct ResolvedTextSnapshot {
+    pub revision: u64,
+    pub metrics: TextMetrics,
+    pub glyph_runs: Arc<[ResolvedGlyphRun]>,
 }
 
 impl ResolvedTextSnapshot {
-    pub(crate) fn new(
+    pub fn new(
         revision: u64,
         metrics: TextMetrics,
         glyph_runs: impl Into<Arc<[ResolvedGlyphRun]>>,
@@ -87,13 +108,15 @@ impl ResolvedTextSnapshot {
 
 /// Failure to resolve or realize a text request; no partial snapshot is published.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum TextServiceError {
+pub enum TextServiceError {
     Unavailable,
     FontResolutionFailed,
     ShapingFailed,
     RevisionMismatch,
     FontIdentityMismatch,
     InvalidGlyphRun,
+    InvalidMetrics,
+    RasterizationFailed,
 }
 
 impl From<SceneError> for TextServiceError {
@@ -103,7 +126,7 @@ impl From<SceneError> for TextServiceError {
 }
 
 /// Platform implementation for default-font resolution, shaping, and measurement.
-pub(crate) trait TextService {
+pub trait TextService: Send + Sync {
     fn resolve_and_shape(
         &self,
         request: &TextRequest,
@@ -118,6 +141,13 @@ pub(crate) fn resolve_text(
     let snapshot = service.resolve_and_shape(request)?;
     if snapshot.revision != request.revision {
         return Err(TextServiceError::RevisionMismatch);
+    }
+    if !snapshot.metrics.width_dip.is_finite()
+        || !snapshot.metrics.height_dip.is_finite()
+        || snapshot.metrics.width_dip < 0.0
+        || snapshot.metrics.height_dip < 0.0
+    {
+        return Err(TextServiceError::InvalidMetrics);
     }
     if snapshot
         .glyph_runs
@@ -136,7 +166,6 @@ mod tests {
         TextRequest, TextService, TextServiceError, resolve_text,
     };
     use crate::platform::scene::{GlyphPlacement, GlyphRunSnapshot, Rect};
-    use crate::ui_layout::Size;
     use std::sync::Arc;
 
     struct FakeTextService {
@@ -170,9 +199,7 @@ mod tests {
             let run = ResolvedGlyphRun::new(identity, glyphs)?;
             Ok(ResolvedTextSnapshot::new(
                 request.revision + self.revision_delta,
-                TextMetrics {
-                    size: Size::new(12.0, 16.0).expect("valid metrics"),
-                },
+                TextMetrics::new(12.0, 16.0).expect("valid metrics"),
                 Arc::from([run]),
             ))
         }
@@ -200,7 +227,7 @@ mod tests {
         let other_snapshot = resolve_text(&other, &request).expect("other profile resolves");
 
         assert_eq!(linux_snapshot.revision, request.revision);
-        assert_eq!(linux_snapshot.metrics.size, other_snapshot.metrics.size);
+        assert_eq!(linux_snapshot.metrics, other_snapshot.metrics);
         assert_ne!(
             linux_snapshot.glyph_runs[0].font,
             other_snapshot.glyph_runs[0].font
@@ -208,6 +235,18 @@ mod tests {
         assert_eq!(
             linux_snapshot.glyph_runs[0].glyphs.font_digest(),
             &linux_snapshot.glyph_runs[0].font.asset_digest
+        );
+    }
+
+    #[test]
+    fn text_metrics_reject_negative_or_non_finite_dimensions() {
+        assert_eq!(
+            TextMetrics::new(-1.0, 12.0),
+            Err(TextServiceError::InvalidMetrics)
+        );
+        assert_eq!(
+            TextMetrics::new(12.0, f64::INFINITY),
+            Err(TextServiceError::InvalidMetrics)
         );
     }
 

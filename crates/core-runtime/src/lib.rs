@@ -55,6 +55,10 @@ pub mod abi_support {
         ShutdownCompletionState, ShutdownRequest, ShutdownRequestMode, ShutdownRequestOutcome,
     };
     use crate::runtime_handles::{RuntimeHandleError, process_runtime_handles};
+    pub use crate::text_service::{
+        FontRequest, ResolvedFontIdentity, ResolvedGlyphRun, ResolvedTextSnapshot, TextMetrics,
+        TextRequest, TextService, TextServiceError,
+    };
     use crate::ui_controls::{
         UiControlKind, UiControlProperty, UiControlPropertyOwner, UiControlState,
     };

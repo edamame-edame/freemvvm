@@ -41,6 +41,7 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | `UNIT-CORE-075` | Core render submissionとdispatcher completion接続 | `UT-PLATFORM-RENDER-CORE-001` | complete / local・同revision Windows/Linux CI pass |
 | `UNIT-PLATFORM-001` | Linux DRM node/output選択とGBM/EGL surface lifecycle | `UT-PLATFORM-DEVICE-001` | complete / Linux focused 5 tests・Windows/Linux CI pass |
 | `UNIT-PLATFORM-002` | Core DeviceScale/背景色に基づくClip/FillRect GLES renderer、DRM page-flip completionとresource loss。GlyphRunは後続 | `UT-PLATFORM-PRESENT-001`、`UT-PLATFORM-LOSS-001`、`UT-PLATFORM-SCALE-CORE-001` | complete / local gates・同SHA Windows/Linux CI pass。実機profileは後続 |
+| `UNIT-PLATFORM-003` | Linux Fontconfig `sans-serif`/ordered fallback、HarfBuzz shaping、FreeType metrics/raster maskとfont identity記録 | `UT-PLATFORM-FONT-FALLBACK-001`、`UT-LINUX-FONTCONFIG-DEFAULT-001` | complete / Debian 12 Docker workspace tests pass（Linux Platform 19、Core 180）、Clippy/Rust 1.85/fmt pass。Linux hardware確認は後続 |
 
 #### Core Layout kernel unit（DD 1.3 / test design 0.7承認済み）
 

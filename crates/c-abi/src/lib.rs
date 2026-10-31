@@ -2801,6 +2801,8 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(target_os = "linux"))]
+    use super::ui_abi_1_window_open;
     use super::{
         RuntimeRetainError, UI_ALIGN_CENTER, UI_BUFFER_TOO_SMALL, UI_INTERNAL_ERROR,
         UI_INVALID_ARGUMENT, UI_INVALID_HANDLE, UI_OK, UI_ORIENTATION_HORIZONTAL,
@@ -2840,9 +2842,9 @@ mod tests {
         ui_abi_1_widget_request_focus, ui_abi_1_window_background_rgb,
         ui_abi_1_window_clear_content, ui_abi_1_window_close, ui_abi_1_window_close_request_defer,
         ui_abi_1_window_close_request_resolve, ui_abi_1_window_close_request_subscribe,
-        ui_abi_1_window_content, ui_abi_1_window_create, ui_abi_1_window_open,
-        ui_abi_1_window_reset_background_rgb, ui_abi_1_window_set_background_rgb,
-        ui_abi_1_window_set_content, ui_abi_1_window_title_property,
+        ui_abi_1_window_content, ui_abi_1_window_create, ui_abi_1_window_reset_background_rgb,
+        ui_abi_1_window_set_background_rgb, ui_abi_1_window_set_content,
+        ui_abi_1_window_title_property,
     };
     use std::ffi::c_void;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -5873,6 +5875,8 @@ mod tests {
         );
         assert_eq!(close_probe.destroys.load(Ordering::SeqCst), 1);
         assert_eq!(ui_abi_1_handle_release(close_subscription), UI_OK);
+        // Linux Window.open uses DRM/KMS hardware; keep this ABI wiring test hardware-independent.
+        #[cfg(not(target_os = "linux"))]
         assert_eq!(
             unsafe { ui_abi_1_window_open(window, std::ptr::null_mut()) },
             UI_UNSUPPORTED

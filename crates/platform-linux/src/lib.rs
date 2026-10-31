@@ -12,6 +12,8 @@ mod renderer;
 
 #[cfg(target_os = "linux")]
 mod device;
+#[cfg(target_os = "linux")]
+mod text_service;
 #[cfg(not(target_os = "linux"))]
 mod device {
     pub(super) struct NativeSurface;
@@ -27,6 +29,12 @@ mod device {
 /// Creates a lazy Linux platform factory. DRM/EGL resources are opened per Window.
 pub fn factory() -> Arc<dyn PlatformRuntimeFactory> {
     Arc::new(LinuxFactory)
+}
+
+/// Creates the Linux platform-default text resolver for the Core's hidden Rust service seam.
+#[cfg(target_os = "linux")]
+pub fn text_service() -> Arc<dyn freemvvm_core::abi_support::TextService> {
+    Arc::new(text_service::LinuxTextService::new())
 }
 
 struct LinuxFactory;

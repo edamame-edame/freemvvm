@@ -3923,6 +3923,46 @@
           "command": ["cargo", "test", "-p", "freemvvm-core", "text_service_", "--locked"]
         }
       ]
+    },
+    {
+      "id": "UNIT-PLATFORM-003",
+      "state": "complete",
+      "scope": "linux-fontconfig-system-default-fallback-harfbuzz-shaping-freetype-metrics-and-glyph-masks",
+      "sources": [
+        "crates/platform-linux/src/text_service.rs",
+        "crates/platform-linux/src/lib.rs",
+        "crates/platform-linux/Cargo.toml",
+        "crates/c-abi/src/lib.rs",
+        "crates/core-runtime/src/text_service.rs",
+        "crates/core-runtime/src/lib.rs",
+        "docker/linux-platform/Dockerfile"
+      ],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/platform-linux/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-084", "UNIT-PLATFORM-002"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.9 approved",
+          "section": "Linux Fontconfig system default, ordered coverage fallback, HarfBuzz and FreeType realization"
+        }
+      ],
+      "requirements": ["RQ-09-075", "RQ-11-020", "RQ-11-023", "RQ-11-024"],
+      "cases": ["TC-PLAT-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-PLATFORM-FONT-FALLBACK-001",
+          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "linux_", "--locked"]
+        },
+        {
+          "id": "UT-LINUX-FONTCONFIG-DEFAULT-001",
+          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "linux_candidate_list_", "--locked"]
+        },
+        {
+          "id": "UT-CORE-TEXT-METRICS-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "text_metrics_", "--locked"]
+        }
+      ]
     }
   ]
 }
