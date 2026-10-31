@@ -160,3 +160,4 @@ flowchart LR
 | --- | --- | --- | --- |
 | 1.0 | 2026-10-17 | UT-INVENTORY / 9判断とinterface・所有・状態遷移を正本へ適用し、旧判断との対応を保持 | Codex |
 | 1.1 | 2026-10-17 | 利用者の設計ID追跡廃止指示に従い、適用設計を文書・版・設計項目で示すschema 2へ変更。実装/test IDと実行規則は維持 | Codex |
+| 1.2 | 2026-10-31 | Python Window背景RGB wrapper unitとWindows local focused/real C ABI consumer実行記録を追加 | Codex |

@@ -4426,7 +4426,7 @@
     },
     {
       "id": "UNIT-WRAP-PY-WINDOW-BG-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "python-window-background-rgb-get-set-reset-wrapper",
       "sources": [
         "wrappers/python/src/freemvvm/**/*.py",
