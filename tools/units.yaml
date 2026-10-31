@@ -4423,6 +4423,51 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-window-consumer-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-WRAP-PY-WINDOW-BG-001",
+      "state": "ready",
+      "scope": "python-window-background-rgb-get-set-reset-wrapper",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/test_window.py",
+        "wrappers/python/examples/window_consumer.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml"
+      ],
+      "depends_on": ["UNIT-CORE-079", "UNIT-WRAP-PY-WINDOW-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "2.1",
+          "section": "Window background RGB wrapper API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.4",
+          "section": "Window background RGB API"
+        }
+      ],
+      "requirements": ["RQ-09-001", "RQ-09-074"],
+      "cases": ["TC-WINDOW-BG-01", "TC-ERROR-01", "TC-LIFE-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-WINDOW-BG-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-window-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-WINDOW-BG-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-window-consumer-test"]
+        }
+      ]
     }
   ]
 }

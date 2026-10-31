@@ -3,7 +3,7 @@
 - 文書版: 2.1
 - 文書ロール: detailed-design
 - 更新日: 2026-10-31
-- 状態: 2.0全文承認済み（利用者、「ok」、2026-10-26）。2.1改訂案全文レビュー待ち（Window background RGB追加。新version承認前の実装不可）
+- 状態: 2.1全文承認済み（利用者、「ok」、2026-10-31）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -17,6 +17,7 @@
 | --- | --- |
 | 所有参照・callback root・通常終了 | [RQ-02-013](../../11_requirements/RQ-02_core-features.md#rq-02-013)、[RQ-03-004](../../11_requirements/RQ-03_language-support.md#rq-03-004)、[RQ-03-008](../../11_requirements/RQ-03_language-support.md#rq-03-008)、[RQ-03-009](../../11_requirements/RQ-03_language-support.md#rq-03-009)、[RQ-03-010](../../11_requirements/RQ-03_language-support.md#rq-03-010)、[RQ-03-011](../../11_requirements/RQ-03_language-support.md#rq-03-011)、[RQ-03-012](../../11_requirements/RQ-03_language-support.md#rq-03-012)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-04-017](../../11_requirements/RQ-04_abi-boundary.md#rq-04-017)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-023](../../11_requirements/RQ-04_abi-boundary.md#rq-04-023)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-003](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-003)、[RQ-06-005](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-06-006](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-006)、[RQ-07-008](../../11_requirements/RQ-07_binding.md#rq-07-008)、[RQ-07-013](../../11_requirements/RQ-07_binding.md#rq-07-013)、[RQ-07-014](../../11_requirements/RQ-07_binding.md#rq-07-014)、[RQ-12-007](../../11_requirements/RQ-12_build-distribution.md#rq-12-007) |
 | 公開API・cleanup・handler寿命 | [RQ-03-004](../../11_requirements/RQ-03_language-support.md#rq-03-004)、[RQ-03-008](../../11_requirements/RQ-03_language-support.md#rq-03-008)、[RQ-03-009](../../11_requirements/RQ-03_language-support.md#rq-03-009)、[RQ-03-010](../../11_requirements/RQ-03_language-support.md#rq-03-010)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-03-015](../../11_requirements/RQ-03_language-support.md#rq-03-015)、[RQ-03-016](../../11_requirements/RQ-03_language-support.md#rq-03-016)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-05-014](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-014)、[RQ-06-003](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-003) |
+| Window background RGB facade | [RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-074](../../11_requirements/RQ-09_ui-scope.md#rq-09-074) |
 | BOOL/I64 Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 | F64 Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-02-018](../../11_requirements/RQ-02_core-features.md#rq-02-018)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
 | DECIMAL Property facade | [RQ-02-001](../../11_requirements/RQ-02_core-features.md#rq-02-001)、[RQ-02-002](../../11_requirements/RQ-02_core-features.md#rq-02-002)、[RQ-02-017](../../11_requirements/RQ-02_core-features.md#rq-02-017)、[RQ-02-019](../../11_requirements/RQ-02_core-features.md#rq-02-019)、[RQ-02-020](../../11_requirements/RQ-02_core-features.md#rq-02-020)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001) |
@@ -1033,7 +1034,7 @@ classDiagram
 
 複数subscriber/decision aggregation、Core/C ABI変更、OS Window peer、close intent injection API、rendering/input、Runtime shutdown vetoは含めない。fake ABI試験でcallback invocation/lifecycleを制御し、実C ABI consumerはsubscription register/cancelと`window_open()`の現行status伝達までを確認する。public C ABIにintent triggerがないことを理由にclose decision machineをconsumerが検証したとは主張しない。
 
-## Window background RGB wrapper API（2.1改訂案）
+## Window background RGB wrapper API（2.1）
 
 Pythonは`Window.background_rgb`を3つのnormalized floatのtupleとして公開する。getterはeffective RGBを返し、assignmentはC ABI setterへ転送する。`Window.reset_background_rgb()`は規定値へ戻す。未指定時はgetterもopaque white `(1.0, 1.0, 1.0)`を返す。wrapperはWindow stateを別途cacheせず、既存status/errorを既存Python error mappingへ変換する。
 
@@ -1072,3 +1073,4 @@ window.reset_background_rgb()
 | 2026-10-26 | 2.0改訂案 | 承認済みRQ-09-071と既存C ABIに基づくWindow peer open/close、close-request callback/defer/resolve facadeとowner lifecycleを追加提案。実C ABIにOS intent triggerがない制約を明記 |
 | 2026-10-26 | 2.0全文 | 利用者の「ok」によりWindow peerとclose-request facade、handle/peer close分離、callback/deferred owner lifecycleを含む全文を承認。実装・試験結果は別管理 |
 | 2026-10-31 | 2.1改訂案 | RQ-09-074のWindow background RGB tuple APIを統合。文書全体レビュー待ち |
+| 2026-10-31 | 2.1全文 | 利用者の「ok」により、Window background RGB tuple APIとCore/C ABIへの委譲、既存error mappingを含む文書全体を承認。実装・試験結果は別管理 |

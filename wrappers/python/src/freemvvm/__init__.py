@@ -2219,6 +2219,44 @@ class Window(Widget):
         )
 
     @property
+    def background_rgb(self) -> tuple[float, float, float]:
+        with self._ui_call() as (api, token):
+            status, red, green, blue, error = api.window_background_rgb(token)
+        _check_result(
+            api,
+            status,
+            error,
+            _CleanupTicket(api=api, anchor=self._runtime_cell),
+        )
+        return red, green, blue
+
+    @background_rgb.setter
+    def background_rgb(self, value: tuple[float, float, float]) -> None:
+        if type(value) is not tuple or len(value) != 3:
+            raise TypeError("background_rgb must be a 3-item tuple")
+        red, green, blue = value
+        with self._ui_call() as (api, token):
+            status, error = api.window_set_background_rgb(
+                token, red, green, blue
+            )
+        _check_result(
+            api,
+            status,
+            error,
+            _CleanupTicket(api=api, anchor=self._runtime_cell),
+        )
+
+    def reset_background_rgb(self) -> None:
+        with self._ui_call() as (api, token):
+            status, error = api.window_reset_background_rgb(token)
+        _check_result(
+            api,
+            status,
+            error,
+            _CleanupTicket(api=api, anchor=self._runtime_cell),
+        )
+
+    @property
     def content(self) -> Widget | None:
         with self._ui_call() as (api, token):
             status, child, error = api.window_content(token)

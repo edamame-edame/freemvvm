@@ -1,16 +1,17 @@
 # Python Window背景RGB wrapper実装計画
 
 - 計画版: 0.1
-- 状態: review draft（実装待ち。利用者承認前のためcommit/pushしない）
+- 状態: 計画・Python DD 2.1・試験設計1.3承認済み。実装中
 - 上位計画: [Window背景色の規定値・利用者設定](window-background-config.md)
 - 対象: Python `Window.background_rgb` getter/setter、`reset_background_rgb()`、fake ABI・real C ABI consumer
 - 対象branch: `impl-rust/core-apis-window-background`を先頭親とするPython wrapper branch
-- 上位設計: [Python wrapper DD](../13_detail_design/wrappers/python.md) 1.2（承認済み）
+- 上位設計: [Python wrapper DD](../13_detail_design/wrappers/python.md) 2.1（承認済み）
+- 試験設計: [wrapper単体試験](../32_unit_test/wrappers.md) 1.3（承認済み）
 - 要求: [RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-074](../11_requirements/RQ-09_ui-scope.md#rq-09-074)
 
 ## 目的
 
-承認済みPython wrapper設計1.2に従い、Core/C ABIが保持するWindow background RGBをtupleとして公開する。Window/Runtime ownership、status/error変換、Window peer lifecycleは既存Python wrapper契約を再利用し、新たな状態cacheやvalidation規則を追加しない。
+承認済みPython wrapper設計2.1に従い、Core/C ABIが保持するWindow background RGBをtupleとして公開する。Window/Runtime ownership、status/error変換、Window peer lifecycleは既存Python wrapper契約を再利用し、新たな状態cacheやRGB validation規則を追加しない。
 
 ## Git分岐と既存Python wrapperの取り込み案
 
@@ -38,4 +39,4 @@
 
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
-| 2026-10-31 | 計画0.1 | review draft | Python wrapper branchのCore親関係、Window背景RGB surface、試験・traceability・push範囲を提案。承認待ち |
+| 2026-10-31 | 計画0.1 | 承認済み | 利用者の「ok」により計画を承認。実装開始 |

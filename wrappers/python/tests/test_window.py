@@ -22,6 +22,8 @@ class FakeWindowApi(FakeControlsApi):
     def __init__(self) -> None:
         super().__init__()
         self.window_status: dict[str, tuple[int, int]] = {}
+        self.background_rgb = (1.0, 1.0, 1.0)
+        self.background_error = 0
         self.subscribe_result: tuple[int, int, int] | None = None
         self.subscription_callback = None
         self.subscription_userdata = 0
@@ -32,6 +34,41 @@ class FakeWindowApi(FakeControlsApi):
         self.destroy_after_callback = False
         self.deferred_result: tuple[int, int, int] | None = None
         self.decisions: list[tuple[int, int]] = []
+
+    def window_background_rgb(
+        self, window: int
+    ) -> tuple[int, float, float, float, int]:
+        self.calls.append(("window_background_rgb", (window,)))
+        status, error = self.window_status.get(
+            "window_background_rgb", (_native.OK, 0)
+        )
+        return status, *self.background_rgb, error or self.background_error
+
+    def window_set_background_rgb(
+        self, window: int, red: float, green: float, blue: float
+    ) -> tuple[int, int]:
+        self.calls.append(
+            ("window_set_background_rgb", (window, red, green, blue))
+        )
+        status, error = self.window_status.get(
+            "window_set_background_rgb", (_native.OK, 0)
+        )
+        if status == _native.OK and not error:
+            if not all(
+                0.0 <= component <= 1.0 for component in (red, green, blue)
+            ):
+                return _native.INVALID_ARGUMENT, 0
+            self.background_rgb = (red, green, blue)
+        return status, error
+
+    def window_reset_background_rgb(self, window: int) -> tuple[int, int]:
+        self.calls.append(("window_reset_background_rgb", (window,)))
+        status, error = self.window_status.get(
+            "window_reset_background_rgb", (_native.OK, 0)
+        )
+        if status == _native.OK and not error:
+            self.background_rgb = (1.0, 1.0, 1.0)
+        return status, error
 
     def window_open(self, window: int) -> tuple[int, int]:
         self.calls.append(("window_open", (window,)))
@@ -106,6 +143,60 @@ class FakeWindowApi(FakeControlsApi):
 def _create_window(api: FakeWindowApi) -> tuple[object, Window]:
     runtime, _ = make_runtime(api)
     return runtime, Window.create(runtime)
+
+
+def test_window_background_rgb_get_set_and_reset() -> None:
+    api = FakeWindowApi()
+    _runtime, window = _create_window(api)
+
+    assert window.background_rgb == (1.0, 1.0, 1.0)
+    window.background_rgb = (0.2, 0.4, 0.8)
+    assert window.background_rgb == pytest.approx((0.2, 0.4, 0.8))
+    window.reset_background_rgb()
+    assert window.background_rgb == (1.0, 1.0, 1.0)
+    assert [name for name, _args in api.calls if "background_rgb" in name] == [
+        "window_background_rgb",
+        "window_set_background_rgb",
+        "window_background_rgb",
+        "window_reset_background_rgb",
+        "window_background_rgb",
+    ]
+
+
+def test_window_background_rgb_delegates_validation_and_maps_native_error() -> (
+    None
+):
+    api = FakeWindowApi()
+    _runtime, window = _create_window(api)
+
+    with pytest.raises(UiError) as raised:
+        window.background_rgb = (1.1, 0.0, 0.0)
+    assert raised.value.raw_status == _native.INVALID_ARGUMENT
+    assert api.calls[-1] == (
+        "window_set_background_rgb",
+        (window._cell.token, 1.1, 0.0, 0.0),
+    )
+
+    api.window_status["window_background_rgb"] = (_native.CLOSED, 0)
+    with pytest.raises(UiError) as raised:
+        _ = window.background_rgb
+    assert raised.value.raw_status == _native.CLOSED
+
+
+@pytest.mark.parametrize(
+    "value", [(0.0, 0.0), (0.0, 0.0, 0.0, 0.0), [0.0, 0.0, 0.0]]
+)
+def test_window_background_rgb_requires_three_item_tuple(
+    value: object,
+) -> None:
+    api = FakeWindowApi()
+    _runtime, window = _create_window(api)
+
+    with pytest.raises(TypeError):
+        window.background_rgb = value  # type: ignore[assignment]
+    assert not any(
+        name == "window_set_background_rgb" for name, _ in api.calls
+    )
 
 
 def test_window_peer_close_is_distinct_from_owned_handle_release() -> None:

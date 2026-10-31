@@ -130,6 +130,16 @@ class NativeApi(Protocol):
 
     def window_create(self, runtime: int) -> tuple[int, int, int]: ...
 
+    def window_background_rgb(
+        self, window: int
+    ) -> tuple[int, float, float, float, int]: ...
+
+    def window_set_background_rgb(
+        self, window: int, red: float, green: float, blue: float
+    ) -> tuple[int, int]: ...
+
+    def window_reset_background_rgb(self, window: int) -> tuple[int, int]: ...
+
     def window_open(self, window: int) -> tuple[int, int]: ...
 
     def window_close(self, window: int) -> tuple[int, int]: ...
@@ -441,6 +451,30 @@ class CtypesNativeApi:
         self._bind(
             "ui_abi_1_window_create",
             [Handle, ctypes.POINTER(Handle), ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_window_background_rgb",
+            [
+                Handle,
+                ctypes.POINTER(ctypes.c_float),
+                ctypes.POINTER(ctypes.c_float),
+                ctypes.POINTER(ctypes.c_float),
+                ctypes.POINTER(Handle),
+            ],
+        )
+        self._bind(
+            "ui_abi_1_window_set_background_rgb",
+            [
+                Handle,
+                ctypes.c_float,
+                ctypes.c_float,
+                ctypes.c_float,
+                ctypes.POINTER(Handle),
+            ],
+        )
+        self._bind(
+            "ui_abi_1_window_reset_background_rgb",
+            [Handle, ctypes.POINTER(Handle)],
         )
         self._bind("ui_abi_1_window_open", [Handle, ctypes.POINTER(Handle)])
         self._bind("ui_abi_1_window_close", [Handle, ctypes.POINTER(Handle)])
@@ -942,6 +976,38 @@ class CtypesNativeApi:
             runtime, ctypes.byref(token), ctypes.byref(error)
         )
         return status, token.value, error.value
+
+    def window_background_rgb(
+        self, window: int
+    ) -> tuple[int, float, float, float, int]:
+        red = ctypes.c_float()
+        green = ctypes.c_float()
+        blue = ctypes.c_float()
+        error = Handle()
+        status = self._library.ui_abi_1_window_background_rgb(
+            window,
+            ctypes.byref(red),
+            ctypes.byref(green),
+            ctypes.byref(blue),
+            ctypes.byref(error),
+        )
+        return status, red.value, green.value, blue.value, error.value
+
+    def window_set_background_rgb(
+        self, window: int, red: float, green: float, blue: float
+    ) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_window_set_background_rgb(
+            window, red, green, blue, ctypes.byref(error)
+        )
+        return status, error.value
+
+    def window_reset_background_rgb(self, window: int) -> tuple[int, int]:
+        error = Handle()
+        status = self._library.ui_abi_1_window_reset_background_rgb(
+            window, ctypes.byref(error)
+        )
+        return status, error.value
 
     def stack_panel_create(self, runtime: int) -> tuple[int, int, int]:
         token = Handle()

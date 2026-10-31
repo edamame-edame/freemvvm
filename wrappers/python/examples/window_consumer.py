@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import math
 import sys
 
 import freemvvm
@@ -48,6 +49,16 @@ def main() -> None:
     window = Window.create(runtime)
     content = Text.create(runtime, "preserve after unsupported peer open")
     window.set_content(content)
+    assert window.background_rgb == (1.0, 1.0, 1.0)
+    window.background_rgb = (0.2, 0.4, 0.8)
+    assert all(
+        math.isclose(actual, expected, abs_tol=1e-6)
+        for actual, expected in zip(
+            window.background_rgb, (0.2, 0.4, 0.8), strict=True
+        )
+    )
+    window.reset_background_rgb()
+    assert window.background_rgb == (1.0, 1.0, 1.0)
     subscription = None
     replacement_subscription = None
     try:
@@ -109,7 +120,7 @@ def main() -> None:
             runtime.close()
         except freemvvm.UiError:
             pass
-    print("Python Window peer/close-request C ABI consumer: OK")
+    print("Python Window peer/close-request/background C ABI consumer: OK")
 
 
 if __name__ == "__main__":
