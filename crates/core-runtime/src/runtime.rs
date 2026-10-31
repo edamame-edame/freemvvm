@@ -30,7 +30,7 @@ use crate::ui_window::{
 use crate::value::{
     BindingCopyError, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
 };
-use crate::visual::{ControlTreeNodeSnapshot, ControlTreeSnapshot};
+use crate::visual::{ControlTreeNodeSnapshot, ControlTreeSnapshot, VisualNodeDescriptor};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -1215,6 +1215,12 @@ fn control_tree_snapshot_node(
     }
     Ok(ControlTreeNodeSnapshot {
         identity: input.identity,
+        visual: VisualNodeDescriptor {
+            // Initial Controls have no approved chrome. Containers clip descendants to
+            // their client bounds; leaf Controls contribute only their text snapshot.
+            clips_children: control.kind.is_container(),
+            operations: Vec::new(),
+        },
         text: text_snapshots.get(&input.identity).cloned(),
         children,
     })

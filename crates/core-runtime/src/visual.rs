@@ -35,6 +35,7 @@ pub(crate) struct ControlTreeSnapshot {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ControlTreeNodeSnapshot {
     pub(crate) identity: ObjectIdentity,
+    pub(crate) visual: VisualNodeDescriptor,
     pub(crate) text: Option<Arc<ResolvedTextSnapshot>>,
     pub(crate) children: Vec<Self>,
 }
@@ -60,6 +61,79 @@ pub(crate) enum VisualBuildError {
 pub(crate) struct ControlViewConnector;
 
 impl ControlViewConnector {
+    /// Builds a scene from descriptors captured from the live Core Control state.
+    pub(crate) fn build_from_production_control_tree(
+        tree: &ControlTreeSnapshot,
+        layout: &LayoutSnapshot,
+        device_scale: DeviceScale,
+        background_rgb: [f32; 3],
+        damage: Damage,
+    ) -> Result<SceneSnapshot, VisualBuildError> {
+        if tree.tree_revision != layout.tree_revision {
+            return Err(VisualBuildError::RevisionMismatch);
+        }
+        let mut visited = HashSet::new();
+        let root = Self::materialize_production_node(&tree.root, layout, &mut visited)?;
+        if visited.len() != layout.node_count() {
+            return Err(VisualBuildError::MissingLayout);
+        }
+        Self::build_snapshot(&root, layout, device_scale, background_rgb, damage)
+    }
+
+    fn materialize_production_node(
+        node: &ControlTreeNodeSnapshot,
+        layout: &LayoutSnapshot,
+        visited: &mut HashSet<ObjectIdentity>,
+    ) -> Result<VisualNodeSnapshot, VisualBuildError> {
+        visited
+            .try_reserve(1)
+            .map_err(|_| VisualBuildError::AllocationFailed)?;
+        if !visited.insert(node.identity) {
+            return Err(VisualBuildError::InvalidGeometry);
+        }
+        if layout.node(node.identity).is_none() {
+            return Err(VisualBuildError::MissingLayout);
+        }
+        let text_operation_count = if let Some(snapshot) = &node.text {
+            if snapshot.revision != layout.layout_revision {
+                return Err(VisualBuildError::RevisionMismatch);
+            }
+            snapshot.glyph_runs.len()
+        } else {
+            0
+        };
+        let mut operations = Vec::new();
+        operations
+            .try_reserve(
+                node.visual
+                    .operations
+                    .len()
+                    .saturating_add(text_operation_count),
+            )
+            .map_err(|_| VisualBuildError::AllocationFailed)?;
+        operations.extend(node.visual.operations.iter().cloned());
+        if let Some(text) = &node.text {
+            operations.extend(
+                text.glyph_runs
+                    .iter()
+                    .map(|run| VisualOperation::GlyphRun(run.glyphs.clone())),
+            );
+        }
+        let mut children = Vec::new();
+        children
+            .try_reserve(node.children.len())
+            .map_err(|_| VisualBuildError::AllocationFailed)?;
+        for child in &node.children {
+            children.push(Self::materialize_production_node(child, layout, visited)?);
+        }
+        Ok(VisualNodeSnapshot {
+            identity: node.identity,
+            clips_children: node.visual.clips_children,
+            operations,
+            children,
+        })
+    }
+
     pub(crate) fn build_from_control_tree(
         tree: &ControlTreeSnapshot,
         layout: &LayoutSnapshot,
@@ -72,7 +146,7 @@ impl ControlViewConnector {
             return Err(VisualBuildError::RevisionMismatch);
         }
         let mut visited = HashSet::new();
-        let root = Self::materialize_visual_node(&tree.root, descriptors, &mut visited)?;
+        let root = Self::materialize_visual_node(&tree.root, layout, descriptors, &mut visited)?;
         if visited.len() != layout.node_count() {
             return Err(VisualBuildError::MissingLayout);
         }
@@ -84,6 +158,7 @@ impl ControlViewConnector {
 
     fn materialize_visual_node(
         node: &ControlTreeNodeSnapshot,
+        layout: &LayoutSnapshot,
         descriptors: &HashMap<ObjectIdentity, VisualNodeDescriptor>,
         visited: &mut HashSet<ObjectIdentity>,
     ) -> Result<VisualNodeSnapshot, VisualBuildError> {
@@ -96,10 +171,13 @@ impl ControlViewConnector {
         let descriptor = descriptors
             .get(&node.identity)
             .ok_or(VisualBuildError::MissingDescriptor)?;
-        let text_operation_count = node
-            .text
-            .as_ref()
-            .map_or(0, |snapshot| snapshot.glyph_runs.len());
+        let text_operation_count = node.text.as_ref().map_or(Ok(0), |snapshot| {
+            if snapshot.revision != layout.layout_revision {
+                Err(VisualBuildError::RevisionMismatch)
+            } else {
+                Ok(snapshot.glyph_runs.len())
+            }
+        })?;
         let mut operations = Vec::new();
         operations
             .try_reserve(
@@ -122,7 +200,12 @@ impl ControlViewConnector {
             .try_reserve(node.children.len())
             .map_err(|_| VisualBuildError::AllocationFailed)?;
         for child in &node.children {
-            children.push(Self::materialize_visual_node(child, descriptors, visited)?);
+            children.push(Self::materialize_visual_node(
+                child,
+                layout,
+                descriptors,
+                visited,
+            )?);
         }
         Ok(VisualNodeSnapshot {
             identity: node.identity,
@@ -300,6 +383,10 @@ mod tests {
     ) -> ControlTreeNodeSnapshot {
         ControlTreeNodeSnapshot {
             identity,
+            visual: VisualNodeDescriptor {
+                clips_children: !children.is_empty(),
+                operations: Vec::new(),
+            },
             text: None,
             children,
         }

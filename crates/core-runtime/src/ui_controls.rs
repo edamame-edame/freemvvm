@@ -489,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn platform_default_text_snapshot_is_shared_by_layout_and_visual_scene() {
+    fn production_visual_uses_live_control_state_and_same_revision_text_snapshot() {
         let probe = Arc::new(PlatformProbe::default());
         let text_service = Arc::new(TextServiceProbe::default());
         *probe.text_service.lock().expect("text service lock") = Some(text_service.clone());
@@ -518,6 +518,13 @@ mod tests {
         let tree = tree.expect("attached Control tree");
         let text_nodes = &tree.root.children;
         assert_eq!(text_nodes.len(), 3);
+        assert!(tree.root.visual.clips_children);
+        assert!(tree.root.visual.operations.is_empty());
+        assert!(
+            text_nodes
+                .iter()
+                .all(|node| { !node.visual.clips_children && node.visual.operations.is_empty() })
+        );
         let text_snapshots = text_nodes
             .iter()
             .map(|node| node.text.as_ref().expect("resolved text snapshot"))
@@ -551,28 +558,14 @@ mod tests {
             ]
         );
 
-        let mut descriptors = HashMap::new();
-        for identity in [tree.root.identity]
-            .into_iter()
-            .chain(text_nodes.iter().map(|node| node.identity))
-        {
-            descriptors.insert(
-                identity,
-                VisualNodeDescriptor {
-                    clips_children: false,
-                    operations: Vec::new(),
-                },
-            );
-        }
-        let scene = ControlViewConnector::build_from_control_tree(
+        let scene = ControlViewConnector::build_from_production_control_tree(
             &tree,
             &layout,
-            &descriptors,
             window_device_scale_for_test(window).expect("open Window scale"),
             [1.0, 1.0, 1.0],
             crate::abi_support::Damage::Full,
         )
-        .expect("build Scene from retained resolved text");
+        .expect("build Scene from production Control descriptors and resolved text");
         let scene_glyphs = scene
             .operations()
             .iter()
@@ -587,6 +580,26 @@ mod tests {
                 .iter()
                 .zip(text_snapshots)
                 .all(|(digest, snapshot)| { *digest == &snapshot.glyph_runs[0].font.asset_digest })
+        );
+        assert_eq!(scene.layout_revision(), layout.layout_revision);
+
+        let mut stale_tree = tree.clone();
+        Arc::make_mut(
+            stale_tree.root.children[0]
+                .text
+                .as_mut()
+                .expect("Text snapshot"),
+        )
+        .revision += 1;
+        assert_eq!(
+            ControlViewConnector::build_from_production_control_tree(
+                &stale_tree,
+                &layout,
+                window_device_scale_for_test(window).expect("open Window scale"),
+                [1.0, 1.0, 1.0],
+                crate::abi_support::Damage::Full,
+            ),
+            Err(crate::visual::VisualBuildError::RevisionMismatch)
         );
 
         let property = ui_control_text_content_property(text).expect("Text content Property");
