@@ -3935,9 +3935,10 @@
         "crates/c-abi/src/lib.rs",
         "crates/core-runtime/src/text_service.rs",
         "crates/core-runtime/src/lib.rs",
-        "docker/linux-platform/Dockerfile"
+        "docker/linux-platform/Dockerfile",
+        ".github/workflows/bootstrap.yml"
       ],
-      "config": ["Cargo.toml", "Cargo.lock", "crates/platform-linux/Cargo.toml", "tools/units.yaml"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/platform-linux/Cargo.toml", "docker/linux-platform/Dockerfile", ".github/workflows/bootstrap.yml", "tools/units.yaml"],
       "depends_on": ["UNIT-CORE-084", "UNIT-PLATFORM-002"],
       "design": [
         {

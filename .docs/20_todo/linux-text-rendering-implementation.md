@@ -52,6 +52,7 @@
 - Linux `freemvvm-platform-linux`へFontconfig `sans-serif`候補順、grapheme単位coverage fallback、HarfBuzz run shaping、FreeType 14 DIP metrics/gray mask cacheを実装。各runはresolved family/style/file SHA-256/face indexをCore-neutral `ResolvedTextSnapshot`へ記録する。C ABIへText APIは追加しない。
 - `abi_support`のhidden Rust SPIからTextService request/result型をplatform crateへ公開し、metrics値は検証済みconstructor/getter経由とした。C ABIの既存Control統合testはLinuxで実DRM/KMS `Window.open`を呼ばないよう分離し、実機確認を保留する。
 - Debian 12 Docker (`FC_LANG=ja-jp`)で `cargo test --workspace --all-targets --locked` 成功。Linux Platform 19 passed / 1 ignored（headless GLES pixel testは別条件）、Core 180 passed。`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check` 成功。
+- 初回GitHub Ubuntu 24.04 CIはFreeType development package不足で失敗（`freetype2.pc` missing）。`.github/workflows/bootstrap.yml`でFontconfig/CJK fonts/FreeType/HarfBuzz/pkg-configを準備し、Linux gateへ`FC_LANG=ja-jp`を設定した。依存修正後のCI結果は次のpushで確認する。
 - 実行結果はDocker/ソフトウェア側のtext shapingとraster mask生成を確認したもの。live Control/Layout/Scene接続はUNIT-CORE-085、GLES glyph atlas/presentはUNIT-PLATFORM-004、DRM実機のopen/displayはhardware確認であり完了を意味しない。
 
 ## 実装計画0.3の参照資料

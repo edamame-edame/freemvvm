@@ -51,7 +51,14 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libdrm-dev libgbm-dev
+          sudo apt-get install --yes \
+            fontconfig \
+            fonts-noto-cjk \
+            libdrm-dev \
+            libfreetype-dev \
+            libgbm-dev \
+            libharfbuzz-dev \
+            pkg-config
           python -m venv .venv
           ./.venv/bin/python -m pip install -r tools/requirements-dev.txt
       - name: Run all bootstrap gates (Windows)
@@ -64,6 +71,8 @@ jobs:
       - name: Run all bootstrap gates (Linux)
         if: runner.os == 'Linux'
         shell: bash
+        env:
+          FC_LANG: ja-jp
         run: |
           ./.venv/bin/python tools/dev.py check
           ./.venv/bin/python tools/dev.py minimum
