@@ -50,7 +50,7 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | unit | 責務 | test設計 | 状態 |
 |---|---|---|---|
 | `UNIT-CORE-086` | attached Core Control stateと同revision Layout/Text snapshotからproduction Visual operationsを供給し、既存ControlViewConnectorへ接続する。未確定appearanceやchromeは追加しない | `UT-VIEW-CONNECTOR-001` | complete / focused test 1件、Core 181件、workspace tests、Clippy、Rust 1.85 check、fmt、document links pass。commit `66fe771` CI Windows/Ubuntu pass（run `41209924293`） |
-| `UNIT-CORE-087` | dirty WindowをUI thread上でLayout→Visual/Scene→existing Platform submitへ接続し、generation/revision stale completion・failure retryを扱う | `UT-CORE-SCENE-FRAME-001` | ready / focused 1 test、Core 182件、workspace tests、Clippy、Rust 1.85 check、fmt、document links pass。同revision CI待ち |
+| `UNIT-CORE-087` | dirty WindowをUI thread上でLayout→Visual/Scene→existing Platform submitへ接続し、generation/revision stale completion・failure retryを扱う | `UT-CORE-SCENE-FRAME-001` | complete / focused test 1件、Core 182件、workspace tests、Clippy、Rust 1.85 check、fmt、document links pass。commit `fed8a02` CI Windows/Ubuntu pass（run `41210812794`） |
 
 #### Core Layout kernel unit（DD 1.3 / test design 0.7承認済み）
 
