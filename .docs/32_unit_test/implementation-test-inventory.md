@@ -45,6 +45,13 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | `UNIT-PLATFORM-003` | Linux Fontconfig `sans-serif`/ordered fallback、HarfBuzz shaping、FreeType metrics/raster maskとfont identity記録 | `UT-PLATFORM-FONT-FALLBACK-001`、`UT-LINUX-FONTCONFIG-DEFAULT-001` | complete / Debian 12 Docker workspace tests pass（Linux Platform 19、Core 180）、Clippy/Rust 1.85/fmt pass。Linux hardware確認は後続 |
 | `UNIT-PLATFORM-004` | FreeType maskを同じLinux TextServiceから取得し、Core色・異方DeviceScale・Clipと合成してGLES glyph atlasから描画。mask/atlas/GLES failureと未解決identityをframe failureにする | `UT-LINUX-GLYPH-RENDER-001` | complete / Debian 12 llvmpipe headless GLESでLatin glyph pixel、clip/scale、未解決identity/GLES errorを確認。Core 181・Linux Platform 21 tests、Clippy、Rust 1.85 check、fmt pass。DRM実機描画は未確認 |
 
+#### Core production Visual / frame orchestration（計画0.1承認済み）
+
+| unit | 責務 | test設計 | 状態 |
+|---|---|---|---|
+| `UNIT-CORE-086` | attached Core Control stateと同revision Layout/Text snapshotからproduction Visual operationsを供給し、既存ControlViewConnectorへ接続する。未確定appearanceやchromeは追加しない | `UT-VIEW-CONNECTOR-001` | planned / 計画承認済み、実装未着手 |
+| `UNIT-CORE-087` | dirty WindowをUI thread上でLayout→Visual/Scene→existing Platform submitへ接続し、generation/revision stale completion・failure retryを扱う | `UT-CORE-SCENE-FRAME-001` | planned / 計画承認済み、UNIT-CORE-086後に着手 |
+
 #### Core Layout kernel unit（DD 1.3 / test design 0.7承認済み）
 
 | unit | 責務 | test設計 | 状態 |

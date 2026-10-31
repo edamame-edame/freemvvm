@@ -4067,6 +4067,81 @@
           "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "headless_gles_renders_glyph_runs_with_device_scale_and_clip", "--locked", "--", "--ignored", "--nocapture"]
         }
       ]
+    },
+    {
+      "id": "UNIT-CORE-086",
+      "state": "planned",
+      "scope": "produce-visual-operations-from-attached-core-controls-and-same-revision-layout-text-snapshots",
+      "sources": [
+        "crates/core-runtime/src/ui_controls.rs",
+        "crates/core-runtime/src/runtime.rs",
+        "crates/core-runtime/src/visual.rs",
+        "crates/core-runtime/src/text_service.rs",
+        "crates/core-runtime/src/lib.rs"
+      ],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-081", "UNIT-CORE-082", "UNIT-CORE-085"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.4 approved",
+          "section": "initial control text snapshots and Text/TextBox/Button display-value semantics"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.4 approved",
+          "section": "same-revision ControlViewConnector input and attached tree projection"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.9 approved",
+          "section": "resolved text snapshot reuse and renderer-neutral Scene production"
+        }
+      ],
+      "requirements": ["RQ-09-001", "RQ-09-004", "RQ-09-006", "RQ-09-007", "RQ-09-008", "RQ-09-072", "RQ-09-075", "RQ-11-008"],
+      "cases": ["TC-LAYOUT-01", "TC-LIFE-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-VIEW-CONNECTOR-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "production_visual_", "--locked"]
+        }
+      ]
+    },
+    {
+      "id": "UNIT-CORE-087",
+      "state": "planned",
+      "scope": "orchestrate-dirty-window-layout-scene-submission-and-retry-by-generation",
+      "sources": [
+        "crates/core-runtime/src/runtime.rs",
+        "crates/core-runtime/src/ui_controls.rs",
+        "crates/core-runtime/src/ui_window.rs",
+        "crates/core-runtime/src/dispatcher.rs",
+        "crates/core-runtime/src/visual.rs"
+      ],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-075", "UNIT-CORE-082", "UNIT-CORE-083", "UNIT-CORE-085", "UNIT-CORE-086", "UNIT-PLATFORM-002", "UNIT-PLATFORM-004"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.9 approved",
+          "section": "dirty aggregation, same-revision Visual/Layout/Scene, bounded UI dispatch, frame completion and failure retention"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.4 approved",
+          "section": "Window generation, root layout invalidation and same-revision scene input"
+        }
+      ],
+      "requirements": ["RQ-09-007", "RQ-09-067", "RQ-11-008", "RQ-11-020"],
+      "cases": ["TC-LAYOUT-01", "TC-THREAD-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-CORE-SCENE-FRAME-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "dirty_window_frame_", "--locked"]
+        }
+      ]
     }
   ]
 }
