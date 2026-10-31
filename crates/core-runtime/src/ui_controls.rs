@@ -577,7 +577,7 @@ mod tests {
             .operations()
             .iter()
             .filter_map(|operation| match operation {
-                crate::abi_support::DrawOp::GlyphRun(run) => Some(run.font_digest()),
+                crate::abi_support::DrawOp::GlyphRun { run, .. } => Some(run.font_digest()),
                 _ => None,
             })
             .collect::<Vec<_>>();

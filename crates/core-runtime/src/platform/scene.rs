@@ -200,8 +200,14 @@ impl GlyphRunSnapshot {
 #[derive(Clone, Debug, PartialEq)]
 pub enum DrawOp {
     Clip(Rect),
-    FillRect { bounds: Rect, rgba: [f32; 4] },
-    GlyphRun(GlyphRunSnapshot),
+    FillRect {
+        bounds: Rect,
+        rgba: [f32; 4],
+    },
+    GlyphRun {
+        run: GlyphRunSnapshot,
+        rgba: [f32; 4],
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -233,8 +239,12 @@ impl SceneSnapshot {
         if background_rgb
             .iter()
             .any(|channel| !channel.is_finite() || !(0.0..=1.0).contains(channel))
-            || operations.iter().any(|operation| {
-                matches!(operation, DrawOp::FillRect { rgba, .. } if rgba.iter().any(|channel| !channel.is_finite()))
+            || operations.iter().any(|operation| match operation {
+                DrawOp::FillRect { rgba, .. } => rgba.iter().any(|channel| !channel.is_finite()),
+                DrawOp::GlyphRun { rgba, .. } => rgba
+                    .iter()
+                    .any(|channel| !channel.is_finite() || !(0.0..=1.0).contains(channel)),
+                _ => false,
             })
         {
             return Err(SceneError::InvalidColor);
@@ -335,7 +345,10 @@ mod tests {
                     bounds,
                     rgba: [0.1, 0.2, 0.3, 1.0],
                 },
-                DrawOp::GlyphRun(run),
+                DrawOp::GlyphRun {
+                    run,
+                    rgba: [0.0, 0.0, 0.0, 1.0],
+                },
             ]),
             Damage::Rect(bounds),
         )

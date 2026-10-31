@@ -11,6 +11,7 @@ use std::fs::{self, File, OpenOptions};
 use std::os::fd::AsFd;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 const EGL_PLATFORM_GBM_KHR: egl::Enum = 0x31D7;
 const EGL_WINDOW_BIT: egl::Int = 0x0004;
@@ -227,7 +228,7 @@ impl NativeSurface {
             )
             .map_err(|_| PlanError::NativeFailure)?;
         self.renderer
-            .as_ref()
+            .as_mut()
             .ok_or(PlanError::NativeFailure)?
             .render(scene, self.size)?;
         self.egl
@@ -329,7 +330,9 @@ impl NativeSurface {
     }
 }
 
-pub(super) fn open_surface() -> std::io::Result<NativeSurface> {
+pub(super) fn open_surface(
+    text_service: Arc<super::text_service::LinuxTextService>,
+) -> std::io::Result<NativeSurface> {
     let selected = open_selected_device()?;
     let card = Card(
         OpenOptions::new()
@@ -480,7 +483,7 @@ pub(super) fn open_surface() -> std::io::Result<NativeSurface> {
     // SAFETY: EGL has made the ES3 context current on this thread. The returned GL entry points
     // are only used while this NativeSurface's context is current.
     let renderer = match unsafe {
-        GlesRenderer::new(|name| {
+        GlesRenderer::new(Arc::clone(&text_service), |name| {
             egl.get_proc_address(name)
                 .map_or(std::ptr::null(), |address| {
                     address as *const () as *const c_void

@@ -4028,6 +4028,45 @@
           "command": ["cargo", "test", "-p", "freemvvm-core", "text_metrics_", "--locked"]
         }
       ]
+    },
+    {
+      "id": "UNIT-PLATFORM-004",
+      "state": "complete",
+      "scope": "render-resolved-linux-glyph-masks-through-gles-atlas-with-core-paint-scale-clip-and-explicit-failure",
+      "sources": [
+        "crates/platform-linux/src/renderer.rs",
+        "crates/platform-linux/src/text_service.rs",
+        "crates/platform-linux/src/device.rs",
+        "crates/platform-linux/src/lib.rs",
+        "crates/core-runtime/src/platform/scene.rs",
+        "crates/core-runtime/src/visual.rs"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "crates/platform-linux/Cargo.toml",
+        "docker/linux-platform/Dockerfile",
+        "tools/linux_platform_docker.sh",
+        ".github/workflows/bootstrap.yml",
+        "tools/units.yaml"
+      ],
+      "depends_on": ["UNIT-PLATFORM-003", "UNIT-CORE-085", "UNIT-PLATFORM-002"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.9 approved; Linux profile/implementation plan 0.3 approved",
+          "section": "ResolvedTextSnapshot identity reuse, Core-owned text paint, DeviceScale/Clip, GLES glyph-mask atlas and explicit frame failure"
+        }
+      ],
+      "requirements": ["RQ-09-067", "RQ-09-072", "RQ-09-075", "RQ-11-008", "RQ-11-020", "RQ-11-023"],
+      "cases": ["TC-PLAT-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-LINUX-GLYPH-RENDER-001",
+          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "headless_gles_renders_glyph_runs_with_device_scale_and_clip", "--locked", "--", "--ignored", "--nocapture"]
+        }
+      ]
     }
   ]
 }

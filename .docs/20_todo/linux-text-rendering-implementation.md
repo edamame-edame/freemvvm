@@ -62,6 +62,13 @@
 - fake TextService統合testは同revision/metrics/glyph run共有、property更新による再解決、failure atomicityを確認。`cargo test --workspace --all-targets --locked`（Core 181、ABI 39、Linux Platform 10ほか）、Clippy、Rust 1.85 check、fmt、`tools/check_docs.py` がlocal pass。commit `d489ca5` のGitHub Actions run `41204164249` はWindows/Ubuntu gateとLinux Platform unit testsがpass。
 - 関連実装上の注意は[Core scene production memory](../01_memory/core-scene-production.md)を参照。Linux runner依存の不足と修正はcommit `526737c` / Actions run `41201554822`（失敗）・`41202444544`（成功）。
 
+## UNIT-PLATFORM-004 実装・検証記録
+
+- Core `DrawOp::GlyphRun`にCore所有のRGBA paintを持たせ、既定のopaque blackをVisual sceneへ渡す。Linux PlatformFactoryからWindow rendererまで同じ`LinuxTextService` instanceを共有し、既に解決・rasterizeされたfont digest/glyph IDのmaskを再選択なしで取得する。
+- GLES3 rendererにR8 shelf atlasとfont digest/size/anisotropic scale/glyph ID keyed cacheを追加。FreeType gray/mono bitmapのpitchを正規化してuploadし、HarfBuzz placement、Core color、DeviceScale、Clipを反映してquad描画する。atlas容量超過、未解決mask、GL upload/draw errorはNativeFailureとしてframeへ返し、空GlyphRunはunsupportedとして失敗する。
+- Debian 12 Dockerの`tools/linux_platform_docker.sh`でCore 181 tests、Linux Platform 21 passed / 2 ignored、既存headless fill pixel test、Linux check、Clippy、Rust 1.85 checkを実行。追加のheadless llvmpipe GLES testはGlyphRun画素、異方scale、clip領域外不変、未解決identity、GL error時のframe failureを確認してpass。Docker test runnerはEGL surfaceless/software renderingと`FC_LANG=ja-jp`を明示する。
+- `cargo fmt --all`を実施。Windows hostのLinux cfg外Platform testは別途実施していない。DockerでのGLESソフトウェア描画はLinux DRM/KMS実機でのopen/display・hardware GPU動作確認を意味しない。
+
 ## 実装計画0.3の参照資料
 
 - Fontconfig language context and config environment: [Fontconfig user documentation](https://fontconfig.pages.freedesktop.org/fontconfig/fontconfig-user.html)

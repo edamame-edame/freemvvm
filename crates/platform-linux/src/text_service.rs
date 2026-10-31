@@ -4,6 +4,7 @@ use freemvvm_core::abi_support::{
     FontRequest, GlyphPlacement, GlyphRunSnapshot, Rect, ResolvedFontIdentity, ResolvedGlyphRun,
     ResolvedTextSnapshot, TextMetrics, TextRequest, TextService, TextServiceError,
 };
+use freetype::bitmap::PixelMode;
 use freetype::face::LoadFlag;
 use freetype::{Face, Library};
 use harfbuzz::sys;
@@ -28,13 +29,13 @@ struct GlyphCacheKey {
 }
 
 #[derive(Clone, Debug)]
-struct GlyphMask {
-    width: u32,
-    rows: u32,
-    pitch: i32,
-    // UNIT-PLATFORM-004 consumes these bytes when it uploads masks to the GLES atlas.
-    #[allow(dead_code)]
-    pixels: Arc<[u8]>,
+pub(super) struct GlyphMask {
+    pub(super) width: u32,
+    pub(super) rows: u32,
+    pub(super) left: i32,
+    pub(super) top: i32,
+    pub(super) ascent_dip: f64,
+    pub(super) pixels: Arc<[u8]>,
 }
 
 #[derive(Clone, Debug)]
@@ -76,6 +77,24 @@ impl LinuxTextService {
             .values()
             .map(|mask| mask.pixels.len())
             .sum()
+    }
+
+    pub(super) fn glyph_mask(
+        &self,
+        font_digest: [u8; 32],
+        font_size_dip: u32,
+        glyph_id: u32,
+    ) -> Result<Arc<GlyphMask>, TextServiceError> {
+        self.glyph_masks
+            .lock()
+            .map_err(|_| TextServiceError::RasterizationFailed)?
+            .get(&GlyphCacheKey {
+                font_digest,
+                font_size_dip,
+                glyph_id,
+            })
+            .cloned()
+            .ok_or(TextServiceError::RasterizationFailed)
     }
 }
 
@@ -189,16 +208,97 @@ impl LinuxTextService {
             u32::try_from(bitmap.width()).map_err(|_| TextServiceError::RasterizationFailed)?;
         let rows =
             u32::try_from(bitmap.rows()).map_err(|_| TextServiceError::RasterizationFailed)?;
+        let pixels = normalize_bitmap(&bitmap, width, rows)?;
+        let slot = face.glyph();
+        let ascent_dip = face
+            .size_metrics()
+            .ok_or(TextServiceError::RasterizationFailed)?
+            .ascender as f64
+            / 64.0;
         let mask = GlyphMask {
             width,
             rows,
-            pitch: bitmap.pitch(),
-            pixels: Arc::from(bitmap.buffer()),
+            left: slot.bitmap_left(),
+            top: slot.bitmap_top(),
+            ascent_dip,
+            pixels,
         };
-        debug_assert!(mask.width == 0 || mask.pitch != 0 || mask.rows == 0);
         cache.insert(key, Arc::new(mask));
         Ok(())
     }
+}
+
+fn normalize_bitmap(
+    bitmap: &freetype::bitmap::Bitmap,
+    width: u32,
+    rows: u32,
+) -> Result<Arc<[u8]>, TextServiceError> {
+    let width = usize::try_from(width).map_err(|_| TextServiceError::RasterizationFailed)?;
+    let rows = usize::try_from(rows).map_err(|_| TextServiceError::RasterizationFailed)?;
+    let size = width
+        .checked_mul(rows)
+        .ok_or(TextServiceError::RasterizationFailed)?;
+    let mut normalized = Vec::new();
+    normalized
+        .try_reserve_exact(size)
+        .map_err(|_| TextServiceError::RasterizationFailed)?;
+    if size == 0 {
+        return Ok(Arc::from(normalized));
+    }
+    let pitch = bitmap.pitch();
+    let row_stride =
+        usize::try_from(pitch.unsigned_abs()).map_err(|_| TextServiceError::RasterizationFailed)?;
+    if row_stride == 0 {
+        return Err(TextServiceError::RasterizationFailed);
+    }
+    let source = bitmap.buffer();
+    let source_size = row_stride
+        .checked_mul(rows)
+        .ok_or(TextServiceError::RasterizationFailed)?;
+    if source.len() < source_size {
+        return Err(TextServiceError::RasterizationFailed);
+    }
+    let mode = bitmap
+        .pixel_mode()
+        .map_err(|_| TextServiceError::RasterizationFailed)?;
+    let num_grays = bitmap.raw().num_grays;
+    for row in 0..rows {
+        let source_row = if pitch < 0 { rows - 1 - row } else { row };
+        let start = source_row
+            .checked_mul(row_stride)
+            .ok_or(TextServiceError::RasterizationFailed)?;
+        let source_row = &source[start..start + row_stride];
+        for column in 0..width {
+            let coverage = match mode {
+                PixelMode::Gray => {
+                    let value = *source_row
+                        .get(column)
+                        .ok_or(TextServiceError::RasterizationFailed)?;
+                    if num_grays > 1 && num_grays != 256 {
+                        let gray_levels = u32::try_from(num_grays - 1)
+                            .map_err(|_| TextServiceError::RasterizationFailed)?;
+                        u8::try_from(u32::from(value) * 255 / gray_levels)
+                            .map_err(|_| TextServiceError::RasterizationFailed)?
+                    } else {
+                        value
+                    }
+                }
+                PixelMode::Mono => {
+                    let byte = *source_row
+                        .get(column / 8)
+                        .ok_or(TextServiceError::RasterizationFailed)?;
+                    if byte & (0x80 >> (column % 8)) != 0 {
+                        255
+                    } else {
+                        0
+                    }
+                }
+                _ => return Err(TextServiceError::RasterizationFailed),
+            };
+            normalized.push(coverage);
+        }
+    }
+    Ok(Arc::from(normalized))
 }
 
 fn font_candidates(text: &str) -> Result<Vec<FontCandidate>, TextServiceError> {

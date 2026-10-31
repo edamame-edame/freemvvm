@@ -216,7 +216,10 @@ impl ControlViewConnector {
                         Arc::<[GlyphPlacement]>::from(glyphs),
                     )
                     .map_err(|_| VisualBuildError::InvalidGeometry)?;
-                    DrawOp::GlyphRun(moved)
+                    DrawOp::GlyphRun {
+                        run: moved,
+                        rgba: [0.0, 0.0, 0.0, 1.0],
+                    }
                 }
             });
         }

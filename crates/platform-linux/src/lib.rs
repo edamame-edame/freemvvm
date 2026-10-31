@@ -50,9 +50,14 @@ impl PlatformRuntimeFactory for LinuxFactory {
         &self,
         completion_sink: Arc<dyn PlatformFrameCompletionSink>,
     ) -> Result<Arc<dyn PlatformWindowPeer>, PlatformOperationError> {
+        #[cfg(target_os = "linux")]
+        let opener: Arc<dyn SurfaceOpener> = Arc::new(NativeSurfaceOpener {
+            text_service: Arc::clone(&self.text_service),
+        });
+        #[cfg(not(target_os = "linux"))]
+        let opener: Arc<dyn SurfaceOpener> = Arc::new(NativeSurfaceOpener);
         Ok(Arc::new(
-            LinuxPeer::new(Arc::new(NativeSurfaceOpener), completion_sink)
-                .map_err(|_| PlatformOperationError)?,
+            LinuxPeer::new(opener, completion_sink).map_err(|_| PlatformOperationError)?,
         ))
     }
 
@@ -146,11 +151,21 @@ trait SurfaceOpener: Send + Sync {
     fn open(&self) -> Result<Box<dyn OpenedSurface>, ()>;
 }
 
+#[cfg(target_os = "linux")]
+struct NativeSurfaceOpener {
+    text_service: Arc<text_service::LinuxTextService>,
+}
+
+#[cfg(not(target_os = "linux"))]
 struct NativeSurfaceOpener;
 
 impl SurfaceOpener for NativeSurfaceOpener {
     fn open(&self) -> Result<Box<dyn OpenedSurface>, ()> {
-        device::open_surface()
+        #[cfg(target_os = "linux")]
+        let surface = device::open_surface(Arc::clone(&self.text_service));
+        #[cfg(not(target_os = "linux"))]
+        let surface = device::open_surface();
+        surface
             .map(|surface| Box::new(surface) as Box<dyn OpenedSurface>)
             .map_err(|_| ())
     }
@@ -417,7 +432,7 @@ mod tests {
                 && scene
                     .operations()
                     .iter()
-                    .any(|operation| matches!(operation, DrawOp::GlyphRun(_)))
+                    .any(|operation| matches!(operation, DrawOp::GlyphRun { .. }))
             {
                 return Err(PlanError::UnsupportedOperation);
             }
@@ -621,7 +636,13 @@ mod tests {
             Arc::from([]),
         )
         .expect("glyph run");
-        let unsupported = scene(9, vec![DrawOp::GlyphRun(glyph)]);
+        let unsupported = scene(
+            9,
+            vec![DrawOp::GlyphRun {
+                run: glyph,
+                rgba: [0.0, 0.0, 0.0, 1.0],
+            }],
+        );
         let unsupported_ticket = ticket(Arc::clone(&unsupported));
         assert!(peer.submit_frame(unsupported_ticket, unsupported).is_err());
         assert_eq!(closes.load(Ordering::SeqCst), 0);
