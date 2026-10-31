@@ -1,7 +1,7 @@
 # Core ControlからPlatform frameまでのproduction接続計画
 
 - 計画版: 0.1
-- 状態: 計画0.1利用者承認済み（2026-10-31）。UNIT-CORE-086実装・local検証済み、同revision CI待ち。UNIT-CORE-087は後続
+- 状態: 計画0.1利用者承認済み（2026-10-31）。UNIT-CORE-086完了（local gates・Windows/Ubuntu CI pass）、UNIT-CORE-087着手可能
 - 作成日: 2026-10-31
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/core-scene-rendering`（Rust Core / Platform feature）
@@ -74,8 +74,8 @@
 
 | unit | 実装・検証 | 状態 |
 |---|---|---|
-| UNIT-CORE-086 | production Control tree snapshotへControl種別由来のclip descriptorを保持し、Layout/Textと同revisionを検査してSceneSnapshotを生成。Text/TextBox/Button labelは解決済みGlyphRunのみを使用。対応test 1件、Core 181件、workspace tests、Clippy、Rust 1.85 check、fmt、document link check pass | local検証済み、commit/push・同revision CI待ち |
-| UNIT-CORE-087 | dirty Windowからの自動Layout→Scene→Platform submit | 未着手 |
+| UNIT-CORE-086 | production Control tree snapshotへControl種別由来のclip descriptorを保持し、Layout/Textと同revisionを検査してSceneSnapshotを生成。Text/TextBox/Button labelは解決済みGlyphRunのみを使用。対応test 1件、Core 181件、workspace tests、Clippy、Rust 1.85 check、fmt、document link check pass | 完了。commit `66fe771` をpushし、Windows/Ubuntu CI pass（run `41209924293`） |
+| UNIT-CORE-087 | dirty Windowからの自動Layout→Scene→Platform submit | 計画承認済み・次unit |
 
 ## レビュー履歴
 
