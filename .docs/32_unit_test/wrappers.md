@@ -111,6 +111,7 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-31 | 1.3改訂案 | Codex | Python Window background RGB fake ABI・real C ABI consumer試験設計を追加。全文レビュー・承認待ち。実装前 |
 | 2026-10-31 | 1.3全文 | 利用者 | 「ok」によりPython Window background RGBのfake ABI・real C ABI consumer試験設計を含む文書全体を承認。実装・試験結果は別管理 |
 | 2026-10-31 | 1.4全文 | 利用者 | Linux CIでのpeer factory初期化と実機open確認を分離する指示により、headless-safe consumerから`Window.open()`を除外し、実機専用smokeを別試験とする改訂を承認 |
+| 2026-10-31 | 1.4実行記録 | — | `UNIT-WRAP-PY-WINDOW-BG-001`のfake ABI 16件、real C ABI consumer、Windows/Linux CI run 41176829432がsuccess。`UNIT-PLATFORM-003`実機smokeはCI対象外・未実行 |
 | 2026-10-26 | 1.2実行記録 | — | `UNIT-WRAP-PY-WINDOW-001`: fake ABI 11件と別process実C ABI consumerがWindows local success。consumerはsubscription登録/cancelと`window_open`の`UI_UNSUPPORTED`伝達を確認し、OS close intent発火を主張しない。`tools/dev.py check`と`minimum`もsuccess。実装SHA `1b4e686c31cc66c843f27bc123ba7790fddd2189`のWindows/Linux CI success。[run 40306768925](https://github.com/edamame-edame/freemvvm/actions/runs/40306768925) |
 | 2026-10-26 | 1.1実行記録 | — | Python Controls fake ABI 14件、Window/StackPanel/Control Property・OneWay/TwoWay Binding・Button Commandを含む別process実C ABI consumer、Windows local `tools/dev.py check`/`minimum`成功。最終実装SHA `84e994715c5fbe189e4fd3d68f351d684516440a`のWindows/Linux CI success。[run 40216602669](https://github.com/edamame-edame/freemvvm/actions/runs/40216602669) |
 | 2026-10-26 | 0.9改訂案 | — | 承認済みPython wrapper DD v1.7に基づくBinding fake ABI / real C ABI consumer試験設計を追加。文書全体レビュー待ち。試験登録・実装・実行は未承認・未実施 |

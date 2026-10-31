@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
 - 文書版: 1.2
-- 状態: 設計承認済み・正本適用済み（2026-10-17）。Python Window背景RGB local結果と実機peer smoke分離を追記（2026-10-31）
+- 状態: 設計承認済み・正本適用済み（2026-10-17）。Python Window背景RGB Windows/Linux CI成功と実機peer smoke分離を記録（2026-10-31）
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -73,9 +73,9 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 
 | unit | 責務 | test設計 | 状態 |
 | --- | --- | --- | --- |
-| `UNIT-WRAP-PY-WINDOW-BG-001` | Python `Window.background_rgb` get/setとresetをC ABIへ写し、native status/errorを既存`UiError`へ伝える | `UT-WRAP-PY-WINDOW-BG-001`、`UT-CONSUMER-PY-WINDOW-BG-001` | complete / Windows local focused・real C ABI consumer pass、CI待ち |
+| `UNIT-WRAP-PY-WINDOW-BG-001` | Python `Window.background_rgb` get/setとresetをC ABIへ写し、native status/errorを既存`UiError`へ伝える | `UT-WRAP-PY-WINDOW-BG-001`、`UT-CONSUMER-PY-WINDOW-BG-001` | complete / Windows local focused・real C ABI consumer pass、Windows/Linux CI success |
 
-実行記録: 同一作業revisionで`.venv/Scripts/python.exe tools/dev.py python-window-test`（16 tests）と`python-window-consumer-test`がWindows local pass。fake ABIはdefault/set/get/reset、Core validation failureのstatus伝達、getter error mappingを確認。別process consumerは実C ABIでdefault opaque white、RGB roundtrip、reset後white、既存Window明示closeを確認する。consumerはheadless-safeに`Window.open()`を呼ばない。旧Linux CIでは背景RGB assertionsの後に実行した`Window.open()`がheadless Platform peer failureとなり、旧consumerが不一致で失敗。修正版CI待ち。実機peer open/closeは独立した`UNIT-PLATFORM-003` / `UT-SMOKE-PY-WINDOW-OPEN-001`としてplannedで、実機profileが準備できるまで実行しない。
+実行記録: 同一作業revisionで`.venv/Scripts/python.exe tools/dev.py python-window-test`（16 tests）と`python-window-consumer-test`がWindows local pass。fake ABIはdefault/set/get/reset、Core validation failureのstatus伝達、getter error mappingを確認。別process consumerは実C ABIでdefault opaque white、RGB roundtrip、reset後white、既存Window明示closeを確認する。consumerはheadless-safeに`Window.open()`を呼ばない。`UNIT-WRAP-PY-WINDOW-BG-001`は実装SHA `a7bfceaccc66f4f590d65d0099e52f91ca61d50c` の[Windows/Linux CI run 41176829432](https://github.com/edamame-edame/freemvvm/actions/runs/41176829432)でsuccess。CIのLinux jobでもconsumerを含む全bootstrap gateがpassし、実機peer smokeは起動していない。実機peer open/closeは独立した`UNIT-PLATFORM-003` / `UT-SMOKE-PY-WINDOW-OPEN-001`としてplannedで、実機profileが準備できるまで実行しない。
 
 #### Linux Platform Python Window peer smoke
 
