@@ -1,9 +1,9 @@
 # Core UI Scene生成の次工程
 
-- 2026-10-31 progress: `UNIT-CORE-080` (`ab2c273`), `UNIT-CORE-081` (`6885f91`), `UNIT-CORE-082` (`1747f33`), and `UNIT-CORE-083` (`cf3ce05`) are committed and pushed on `impl-rust/core-scene-rendering`. DeviceScale transport passed local Core/Linux fake tests, Windows workspace checks and Linux target compile/clippy. `UNIT-CORE-084` adds the Core-neutral TextService seam and passes local fake/workspace checks; commit/push pending. Linux font realization/GlyphRun rendering, CI and Linux hardware remain unverified.
+- 2026-10-31 progress: `UNIT-CORE-080` (`ab2c273`), `UNIT-CORE-081` (`6885f91`), `UNIT-CORE-082` (`1747f33`), `UNIT-CORE-083` (`cf3ce05`), and `UNIT-CORE-084` (`b6c64ea`) are committed and pushed on `impl-rust/core-scene-rendering`. DeviceScale transport passed local Core/Linux fake tests, Windows workspace checks and Linux target compile/clippy. TextService seam passed 4 focused tests, workspace tests, Clippy, Rust 1.85 check, and documentation checks. Linux font realization/GlyphRun rendering, CI and Linux hardware remain unverified.
 
 - 計画版: 0.5 改訂案
-- 状態: 計画0.3/0.4/0.5利用者承認済み。UNIT-CORE-080/081/082/083 commit/push済み。Linux text profile、RQ-09-075、Platform DD 1.9、UI Controls DD 1.4、UI UT 1.2、実装計画0.3全文承認済み。UNIT-CORE-084 local実装・検証完了。計画は[Linux TextService・GlyphRun実装](linux-text-rendering-implementation.md)
+- 状態: 計画0.3/0.4/0.5利用者承認済み。UNIT-CORE-080/081/082/083/084 commit/push済み。Linux text profile、RQ-09-075、Platform DD 1.9、UI Controls DD 1.4、UI UT 1.2、実装計画0.3全文承認済み。次はUNIT-PLATFORM-003。計画は[Linux TextService・GlyphRun実装](linux-text-rendering-implementation.md)
 - 作成日: 2026-10-29
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/core-scene-rendering`（`impl-rust/core-apis-window-background`の子branch）

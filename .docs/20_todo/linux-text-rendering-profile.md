@@ -3,7 +3,7 @@
 > **旧候補の扱い:** 以下の初期調査・レビュー履歴には、固定font assetや自動fallbackを採らない旧案が残る。未指定fontはPlatformのsystem defaultを使い、fallbackを解決結果とともに記録する方針がRQ-09-075 / Platform DD 1.9で承認されたため、旧案の「OS設定に追従しない」「fallbackしない」は superseded。具体的なLinux profile・依存・fallback順は[実装計画0.3](linux-text-rendering-implementation.md)のレビュー対象であり、まだ未承認。
 
 - 計画版: 0.1
-- 状態: 計画0.1/0.3、Platform DD 1.9、UI test 1.2、RQ-09-075全文承認済み。UNIT-CORE-084 local実装・検証完了。Linux依存追加・platform実装は未着手
+- 状態: 計画0.1/0.3、Platform DD 1.9、UI test 1.2、RQ-09-075全文承認済み。UNIT-CORE-084は`b6c64ea`でcommit/push済み。Linux依存追加・platform実装は未着手
 - 作成日: 2026-10-31
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/core-scene-rendering`

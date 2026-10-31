@@ -1,7 +1,7 @@
 # Linux TextService・GlyphRun実装
 
 - 計画版: 0.3
-- 状態: RQ-09-075、Platform DD 1.9、UI Controls DD 1.4、UI UT 1.2、計画0.2全文承認済み。Linux resolver/dependency/test profileと実装unit分割0.3は利用者承認済み。UNIT-CORE-084 local実装・検証完了、commit/push待ち
+- 状態: RQ-09-075、Platform DD 1.9、UI Controls DD 1.4、UI UT 1.2、計画0.2全文承認済み。Linux resolver/dependency/test profileと実装unit分割0.3は利用者承認済み。UNIT-CORE-084はlocal実装・検証・commit/push完了（`b6c64ea`）
 - 作成日: 2026-10-31
 - 対象version: `0.0.1`
 - 対象branch: `impl-rust/core-scene-rendering`
