@@ -3894,6 +3894,35 @@
           "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "platform_device_open_failure_can_retry_and_close_releases_surface_once", "--locked"]
         }
       ]
+    },
+    {
+      "id": "UNIT-CORE-084",
+      "state": "complete",
+      "scope": "core-neutral-platform-default-text-service-request-and-revision-stamped-result",
+      "sources": ["crates/core-runtime/src/text_service.rs", "crates/core-runtime/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-083"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.9 approved",
+          "section": "Core-neutral PlatformDefault request and ResolvedTextSnapshot"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.4 approved",
+          "section": "Text-family immutable display snapshot and shared TextService result"
+        }
+      ],
+      "requirements": ["RQ-09-004", "RQ-09-072", "RQ-09-075", "RQ-11-023"],
+      "cases": ["TC-LAYOUT-01", "TC-PLAT-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-TEXT-SERVICE-SEAM-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "text_service_", "--locked"]
+        }
+      ]
     }
   ]
 }

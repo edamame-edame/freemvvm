@@ -1,9 +1,9 @@
 # UIクラス：Window・基本Control・次段階Control
 
-- 文書版: 1.3
+- 文書版: 1.4
 - 文書ロール: detailed-design
-- 更新日: 2026-10-30
-- 状態: 1.2全文承認済み（利用者、2026-10-29）。1.3全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
+- 更新日: 2026-10-31
+- 状態: 1.2全文承認済み（利用者、2026-10-29）。1.3 / 1.4全文承認済み（利用者、2026-10-30～2026-10-31）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -61,7 +61,7 @@ flowchart LR
 | StackPanelはUIクラス：Tree・Layout・Geometryの順序付きchildrenとorientation/AlignをそのままControl意味論とし、独自のlayout Propertyや追加spacingを作らない。追加/削除/並び順変更はUIクラス：Tree・Layout・GeometryのUI-thread原子操作へ接続する。 | MVVM UIライブラリ Layoutの責務境界に関する上位判断案、UI Tree、Layout。公開collection facade/child API名は決めない。 |
 | StackPanelはMeasure/ArrangeをLayoutEngineへ委譲し、自身はorientation・順序付きchildren・child Alignを測定計算入力として提供する。初期公開APIに任意サイズ制約setter/getterは加えない。 | [RQ-09-007](../../11_requirements/RQ-09_ui-scope.md#rq-09-007)、[RQ-09-045](../../11_requirements/RQ-09_ui-scope.md#rq-09-045)、[RQ-09-057](../../11_requirements/RQ-09_ui-scope.md#rq-09-057)。新しいサイズAPIは要求差分とABIレビューを要する。 |
 | Textは`Content` UTF-8 Propertyを表示値として持ち、既定は空文字列、OneWay Bindingのtargetにできる読み取り専用Controlとする。Accessibility valueは同じ表示値を参照し、`AccessibleName`は別設定とする。 | MVVM UIライブラリ 初期Control契約に関する上位判断案、公開ABI契約、Binding契約。wrap/ellipsis/selection/copy/action、fallback name、line-break policyはここで決めない。 |
-| Text/TextBox/Buttonは、各々の表示用immutable text snapshotをTextServiceへ渡し、そのmetricsをIntrinsicMeasureProvider経由でLayoutEngineへ返す。TextBoxは編集中表示snapshotを使い、確定Valueだけで測定しない。 | [RQ-09-004](../../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-072](../../11_requirements/RQ-09_ui-scope.md#rq-09-072)、TextService内部層契約。font profile未解決時に固定寸法やfallback fontを作らない。 |
+| Text/TextBox/Buttonは、各々の表示用immutable text snapshotをTextServiceへ渡し、そのmetricsをIntrinsicMeasureProvider経由でLayoutEngineへ返す。TextBoxは編集中表示snapshotを使い、確定Valueだけで測定しない。 | [RQ-09-004](../../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-072](../../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-09-075](../../11_requirements/RQ-09_ui-scope.md#rq-09-075)、TextService内部層契約。font resolve failure時に固定寸法や空GlyphRunで成功扱いしない。未指定fontのPlatform default解決はPlatform DD 1.9を参照。 |
 | TextBoxは公開ABI契約/UIクラス：TextBox・Validation・IME編集の確定`Value` PropertyをTwoWay Binding可能とし、editing text、selection/caret、input state/reasonはUIクラス：TextBox・Validation・IME編集の状態getter/subscriptionに接続する。Control levelに別のTextBox-only Binding semanticsを追加しない。 | 公開ABI契約、UIクラス：TextBox・Validation・IME編集。編集API、公開property handle一覧、symbolはABI/wrapper設計へ送る。 |
 | Buttonは表示用UTF-8 `Text`/labelと`AccessibleName`を独立させ、optional Command associationからactivationを処理する案。Command associationはgeneric Value Propertyでなくtyped Command referenceとし、同Runtime Commandのみを設定可能にする案。 | MVVM UIライブラリ 初期Control契約に関する上位判断案、公開ABI契約、イベントハンドリング：非同期Command。label property名、Command associationの設定/binding面は確認対象。 |
 | Buttonのeffective executable stateを`IsEnabled && assigned Command exists && Command.can_execute`とする案。disabled状態のactivationはCommand.executeへ進まず、実行中の二度押しもイベントハンドリング：非同期Commandの実行可否規則に従う。Commandなしでは生成・表示を許し、activationをno-opで終了する。 | 公開ABI契約、Command、MVVM UIライブラリ Accessibility共通意味論に関する上位判断案。Command由来のProperty notificationを同期flushしない。 |
@@ -282,6 +282,10 @@ Button.activateはUI contextとenabledを確認し、現在のCommandをcall期�
 
 Window close/reopenではoverrideを保持し、Runtime shutdown時は通常のWindow state cleanupで破棄する。背景RGBはSceneSnapshotにCoreがeffective値を渡し、backendはrenderer固有の暗黙色に置き換えない。UI threading・Window identity・scene/frame invalidationは既存ControlViewConnector contractに従う。
 
+### v1.4: Control textの未指定fontとPlatform default（全文承認済み）
+
+Text/TextBox/Buttonの初期Controlはfont未指定で作成され、CoreはOS固有font名ではなく`PlatformDefault` requestをTextServiceへ渡す。TextServiceのplatform実装がsystem defaultと必要なsystem fallbackを解決し、metricsと各GlyphRunのfont identityを含むimmutable resultを返す。Coreは同一resolved resultをMeasureとSceneで共有する。初期public Font APIは追加しない。詳細なSPI、Linux headless profile、failure/reproducibility境界は[Platform internal layers 1.9](../platform/internal-layers.md)を参照する。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -293,3 +297,5 @@ Window close/reopenではoverrideを保持し、Runtime shutdown時は通常のW
 | 2026-10-29 | 1.2改訂案 | Window client areaからLayoutEngineへの接続、Text familyのintrinsic measurement責務、初期C ABIにサイズ制約APIを追加しない境界を提案。文書全体レビュー待ち。1.1承認範囲を維持 |
 | 2026-10-29 | 1.2全文 | 利用者の「ok」によりWindow/LayoutEngine接続、Text family measurement責務、C ABI境界を含む文書全体を承認。実装・試験合格とは別管理 |
 | 2026-10-30 | 1.3全文 | 利用者の「ok」によりRQ-09-074のWindow背景色API、default/set/reset semanticsを含む文書全体を承認。実装・試験合格は別管理 |
+| 2026-10-31 | 1.4改訂案 | Text-familyの未指定fontをCore-neutral PlatformDefault requestとし、Platform resolver経由で同一metrics/GlyphRun resultをLayout・Sceneで共有する案を追加。全文レビュー待ち |
+| 2026-10-31 | 1.4全文 | 利用者の「ok」により未指定font requestとMeasure/Scene同一resolved snapshotの接続を含む文書全体を承認。実装・試験合格は別管理 |

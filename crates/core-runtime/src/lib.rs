@@ -16,6 +16,8 @@ mod property;
 pub use property::ValidationError;
 mod runtime;
 mod runtime_handles;
+#[allow(dead_code)]
+mod text_service;
 mod ui_controls;
 mod ui_focus;
 #[allow(dead_code)]

@@ -28,6 +28,8 @@
 
 [tools/units.yaml](../../tools/units.yaml)にschema2のUNIT-BUILD-001を登録した。YAMLのJSON互換記法を使い、開発コマンド・設定・probeと、[bootstrap検証](development-bootstrap.md)の実入口を対応付ける。readyはbootstrapの実在source/commandと実行確認に限り、下記planned例の製品UNIT-CORE-001やUT-CORE-HANDLE-001をreadyへ昇格しない。CIの現状は全bootstrap gateの常時実行で、製品unitのpath選択器は未実装である。
 
+| `UNIT-CORE-084` | Core-neutral `PlatformDefault` requestとresolved font identity/metrics snapshot。revision mismatchおよびTextService failureの部分結果拒否をfake serviceで確認 | `UT-TEXT-SERVICE-SEAM-001` | local complete / focused 4 tests、Core 179・C ABI 39・Linux Platform 10を含むworkspace tests、Clippy、Rust 1.85 check、fmt pass。Layout/Scene wiringはUNIT-CORE-085 |
+
 #### Linux Platform backend unit（DD v1.3 / test design 0.5承認済み）
 
 Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり、UNIT-CORE-073/074はcomplete。`UNIT-CORE-075`は実装・local検証済みで同revision CI待ちの`ready`。Linux backend 2 unitは未着手の`planned`。各unitは個別の同revision検証完了まで実行済みと扱わない。

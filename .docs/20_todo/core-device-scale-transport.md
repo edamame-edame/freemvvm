@@ -1,7 +1,7 @@
 # Window DeviceScaleをCoreへ渡す経路
 
 - 計画版: 0.1 改訂案
-- 状態: 計画0.1・Platform DD 1.7・UI test 1.0を利用者承認済み。UNIT-CORE-083実装・local検証完了、commit/push待ち
+- 状態: 計画0.1・Platform DD 1.7・UI test 1.0を利用者承認済み。UNIT-CORE-083完了、commit/push済み（`cf3ce05`）
 - 作成日: 2026-10-31
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/core-scene-rendering`
@@ -61,4 +61,5 @@ Window peerが環境値として供給するDeviceScaleをCoreが検証・所有
 |---|---|---|---|
 | 2026-10-31 | 計画0.1 | 利用者承認 | Scale transportの不足、Rust内部SPI、Linux KMS現profileの明示1:1案を承認 |
 | 2026-10-31 | Platform DD 1.7 / UI UT 1.0 | 利用者承認 | open environmentからCore-owned Scaleまでの経路、Linux KMS現profile 1:1案、fake peer test oracleを承認 |
-| 2026-10-31 | UNIT-CORE-083 | 実装・local検証完了 | Core 175 tests、Linux Platform 10 tests、workspace check/minimum、Linux target check/clippy pass。commit/push待ち。Linux実機未確認 |
+| 2026-10-31 | UNIT-CORE-083 | 実装・local検証・commit/push完了 | Core 175 tests、Linux Platform 10 tests、workspace check/minimum、Linux target check/clippy pass。`cf3ce05`。Linux実機未確認 |
+| 2026-10-31 | UNIT-CORE-083 commit/push | 完了 | `cf3ce05 WindowのDeviceScaleをCoreへ伝搬`を`impl-rust/core-scene-rendering`へpush |
