@@ -195,6 +195,30 @@ ui_status api_binding_subscribe_error(ui_handle binding, ui_callback callback,
                                           out_subscription, out_error);
 }
 
+ui_status api_window_create(ui_handle runtime, ui_handle* out_window,
+                            ui_handle* out_error) {
+  return ui_abi_1_window_create(runtime, out_window, out_error);
+}
+
+ui_status api_window_background_rgb(ui_handle window, float* out_red,
+                                    float* out_green, float* out_blue,
+                                    ui_handle* out_error) {
+  return ui_abi_1_window_background_rgb(window, out_red, out_green, out_blue,
+                                        out_error);
+}
+
+ui_status api_window_set_background_rgb(ui_handle window, float red,
+                                        float green, float blue,
+                                        ui_handle* out_error) {
+  return ui_abi_1_window_set_background_rgb(window, red, green, blue,
+                                            out_error);
+}
+
+ui_status api_window_reset_background_rgb(ui_handle window,
+                                          ui_handle* out_error) {
+  return ui_abi_1_window_reset_background_rgb(window, out_error);
+}
+
 void report_callback_exception(const std::exception_ptr& exception) noexcept {
   if (!exception) {
     std::fputs("FreeMvvm: C++ callback failed without an exception payload\n",
@@ -461,6 +485,10 @@ std::shared_ptr<const AbiApi> linked_api() {
       &api_binding_cancel,
       &api_binding_error_snapshot,
       &api_binding_subscribe_error,
+      &api_window_create,
+      &api_window_background_rgb,
+      &api_window_set_background_rgb,
+      &api_window_reset_background_rgb,
   });
   return api;
 }

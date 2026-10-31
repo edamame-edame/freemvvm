@@ -1,5 +1,6 @@
 #include <freemvvm/runtime.hpp>
 #include <freemvvm/property.hpp>
+#include <freemvvm/window.hpp>
 
 #include <cmath>
 #include <cstdint>
@@ -153,6 +154,24 @@ int main() {
   if (!ratio_value.has_value() || *ratio_value.value() != -2.5) return 40;
   if (!two_way.cancel().has_value() || !two_way.close().has_value()) return 41;
 
+  auto window_result = freemvvm::Window::create(runtime);
+  if (!window_result.has_value()) return 48;
+  auto window = std::move(*window_result.value());
+  auto background = window.background_rgb();
+  if (!background.has_value() || background.value()->red != 1.0f ||
+      background.value()->green != 1.0f ||
+      background.value()->blue != 1.0f) return 49;
+  if (!window.set_background_rgb({0.15f, 0.35f, 0.75f}).has_value()) return 50;
+  background = window.background_rgb();
+  if (!background.has_value() || background.value()->red != 0.15f ||
+      background.value()->green != 0.35f ||
+      background.value()->blue != 0.75f) return 51;
+  if (!window.reset_background_rgb().has_value()) return 52;
+  background = window.background_rgb();
+  if (!background.has_value() || background.value()->red != 1.0f ||
+      background.value()->green != 1.0f ||
+      background.value()->blue != 1.0f) return 53;
+
   auto decimal_target_result =
       freemvvm::Property<freemvvm::Decimal64>::create(
           runtime, *decimal_replacement.value());
@@ -178,6 +197,7 @@ int main() {
   // The test host does not pump a UI loop, so an accepted pending shutdown is
   // also a valid result for this package smoke consumer.
   if (shutdown.has_error()) return 47;
+  if (!window.close().has_value()) return 54;
   if (!enabled.close().has_value() || !bool_target.close().has_value() ||
       !count.close().has_value() || !count_target.close().has_value() ||
       !text.close().has_value() || !ratio.close().has_value() ||

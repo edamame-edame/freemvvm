@@ -13,6 +13,7 @@ namespace freemvvm {
 
 class UiError;
 class HandlerRegistration;
+class Window;
 template <typename T>
 class Property;
 
@@ -221,6 +222,7 @@ class Runtime final {
  private:
   template <typename T>
   friend class Property;
+  friend class Window;
   friend struct detail::RuntimeTestAccess;
   Runtime(std::uint64_t token,
           std::shared_ptr<detail::RuntimeCleanupState> state,

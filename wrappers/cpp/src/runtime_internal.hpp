@@ -56,6 +56,12 @@ struct AbiApi final {
   ui_status (*binding_subscribe_error)(ui_handle, ui_callback, void*,
                                        ui_destroy_callback, ui_handle*,
                                        ui_handle*);
+  ui_status (*window_create)(ui_handle, ui_handle*, ui_handle*);
+  ui_status (*window_background_rgb)(ui_handle, float*, float*, float*,
+                                     ui_handle*);
+  ui_status (*window_set_background_rgb)(ui_handle, float, float, float,
+                                         ui_handle*);
+  ui_status (*window_reset_background_rgb)(ui_handle, ui_handle*);
 };
 
 struct CallbackHandlerRecord final {

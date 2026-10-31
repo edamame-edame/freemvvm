@@ -1,9 +1,9 @@
 # 言語ラッパー：C++
 
-- 文書版: 1.4 改訂案
+- 文書版: 1.5
 - 文書ロール: detailed-design
-- 更新日: 2026-10-30
-- 状態: 1.2全文・1.3 Binding API補足承認済み。1.4全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
+- 更新日: 2026-10-31
+- 状態: 1.2全文・1.3 Binding API補足承認済み。1.4全文承認済み（利用者、2026-10-30）。1.5全文承認済み（利用者、2026-10-31）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -18,6 +18,7 @@
 | 所有型・callback・例外・thread | [RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-03-005](../../11_requirements/RQ-03_language-support.md#rq-03-005)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-007](../../11_requirements/RQ-04_abi-boundary.md#rq-04-007)、[RQ-04-016](../../11_requirements/RQ-04_abi-boundary.md#rq-04-016)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-04-023](../../11_requirements/RQ-04_abi-boundary.md#rq-04-023)、[RQ-05-003](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-06-006](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-006) |
 | 公開API・handler・cleanup同期 | [RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-03-005](../../11_requirements/RQ-03_language-support.md#rq-03-005)、[RQ-03-014](../../11_requirements/RQ-03_language-support.md#rq-03-014)、[RQ-04-022](../../11_requirements/RQ-04_abi-boundary.md#rq-04-022)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-05-014](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-014)、[RQ-12-004](../../11_requirements/RQ-12_build-distribution.md#rq-12-004) |
 | Property Binding | [RQ-05-002](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-006](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-006)、[RQ-05-007](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-007)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-07-001](../../11_requirements/RQ-07_binding.md#rq-07-001)、[RQ-07-002](../../11_requirements/RQ-07_binding.md#rq-07-002)、[RQ-07-003](../../11_requirements/RQ-07_binding.md#rq-07-003)、[RQ-07-004](../../11_requirements/RQ-07_binding.md#rq-07-004)、[RQ-07-005](../../11_requirements/RQ-07_binding.md#rq-07-005)、[RQ-07-006](../../11_requirements/RQ-07_binding.md#rq-07-006)、[RQ-07-007](../../11_requirements/RQ-07_binding.md#rq-07-007)、[RQ-07-008](../../11_requirements/RQ-07_binding.md#rq-07-008)、[RQ-07-009](../../11_requirements/RQ-07_binding.md#rq-07-009)、[RQ-07-010](../../11_requirements/RQ-07_binding.md#rq-07-010)、[RQ-07-011](../../11_requirements/RQ-07_binding.md#rq-07-011) |
+| Window owner・Window背景色 | [RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-074](../../11_requirements/RQ-09_ui-scope.md#rq-09-074) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -488,6 +489,31 @@ Result<void> Window::set_background_rgb(RgbColor color);
 Result<void> Window::reset_background_rgb();
 ```
 
+## Window safe ownerの生成・寿命（1.5改訂案）
+
+要求根拠: [RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-074](../../11_requirements/RQ-09_ui-scope.md#rq-09-074)。C++ safe wrapperはC ABI Window tokenをmove-only `Window` ownerとして保持する。Runtimeからの生成はC ABI `window_create`を使い、owned token受領前に既存規則どおりcleanup nodeとRuntime cleanup stateを準備する。
+
+```cpp
+class Window {
+ public:
+  static Result<Window> create(Runtime& runtime);
+  Window(const Window&) = delete;
+  Window& operator=(const Window&) = delete;
+  Window(Window&&) noexcept;
+  Window& operator=(Window&&) noexcept;
+  ~Window() noexcept;
+
+  Result<void> close();
+  Result<RgbColor> background_rgb() const;
+  Result<void> set_background_rgb(RgbColor color);
+  Result<void> reset_background_rgb();
+};
+```
+
+`Window`はnative token、Runtimeとの関係、release失敗時に使う事前確保cleanup nodeを一体で所有する。`close()`はC ABI handle releaseだけを行い、成功時にだけownerをempty化する。release失敗時はtokenを保持し、再試行可能にする。destructorのrelease失敗は既存のRuntime cleanup queue/supervisorへ移す。moveはtoken/node/Runtime関連の所有を一度移すだけで、C ABI retainを行わない。
+
+このownerはCore上のWindow objectを生成・管理するsafe APIであり、Platform peerのopen/close、OS Window表示、title、content、Control tree、Layoutを暗黙に開始・終了しない。Window背景色の値・validation・defaultは既承認のC ABI/Core契約に従い、C++側に状態をcacheしない。本節は公開APIと所有/失敗境界の設計提案であり、既承認の要求を拡張せず、実装済みを意味しない。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -501,3 +527,5 @@ Result<void> Window::reset_background_rgb();
 | 2026-10-24 | 1.3 Binding API補足 | 利用者が承認済み計画/API案を承認。`Property<T>::bind_to`、OneTime optional、cancel/release分離、error snapshotとSubscriptionを具体化。実装・試験状態は別管理 |
 | 2026-10-30 | 1.4改訂案 | RQ-09-074に対応する`RgbColor`とWindow background get/set/reset APIを追加提案。全文レビュー待ち |
 | 2026-10-30 | 1.4全文 | 利用者の「ok」により`Result`ベースのWindow background get/set/reset APIを含む全文を承認。実装・試験合格は別管理 |
+| 2026-10-31 | 1.5改訂案 | C++ safe Window ownerの生成・move/close/destructor・cleanup failure境界を追加。Platform peer open/closeとは分離し、全文レビュー待ち |
+| 2026-10-31 | 1.5全文 | 利用者の「ok」でWindow safe owner/背景色APIを含む全文を承認。実装・試験は別管理 |

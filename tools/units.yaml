@@ -1819,6 +1819,51 @@
       ]
     },
     {
+      "id": "UNIT-WRAP-CPP-008",
+      "state": "complete",
+      "scope": "cpp-window-safe-owner-and-core-owned-background-rgb",
+      "sources": [
+        "wrappers/cpp/include/freemvvm/window.hpp",
+        "wrappers/cpp/src/window.cpp",
+        "wrappers/cpp/src/runtime_internal.hpp",
+        "wrappers/cpp/src/runtime.cpp",
+        "wrappers/cpp/tests/runtime_tests.cpp",
+        "wrappers/cpp/tests/package_consumer/main.cpp"
+      ],
+      "config": [
+        "wrappers/cpp/CMakeLists.txt",
+        "CMakeLists.txt",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "tools/units.yaml"
+      ],
+      "depends_on": ["UNIT-CORE-079", "UNIT-WRAP-CPP-001", "UNIT-PKG-CPP-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.5",
+          "section": "Window safe owner / background RGB wrapper API"
+        },
+        {
+          "path": ".docs/32_unit_test/ui.md",
+          "version": "1.0",
+          "section": "UT-CPP-WINDOW-BACKGROUND-001 / consumer"
+        }
+      ],
+      "requirements": ["RQ-09-001", "RQ-09-074"],
+      "cases": ["TC-LIFE-01", "TC-ERROR-01", "TC-WINDOW-BG-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-CPP-WINDOW-BACKGROUND-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-runtime-test"]
+        },
+        {
+          "id": "UT-CPP-WINDOW-BACKGROUND-CONSUMER-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "cpp-package-test"]
+        }
+      ]
+    },
+    {
       "id": "UNIT-WRAP-CPP-002",
       "state": "ready",
       "scope": "cpp-property-bool-i64-create-get-set-and-owned-cleanup",

@@ -1,8 +1,8 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
-- 文書版: 0.9
-- 状態: 0.8全文承認済み（利用者、2026-10-30）。0.9全文承認済み（利用者、2026-10-30）。実装・実行状態は別管理
-- 更新日: 2026-10-30
+- 文書版: 1.0
+- 状態: 0.8全文承認済み（利用者、2026-10-30）。0.9全文承認済み（利用者、2026-10-30）。1.0全文承認済み（利用者、2026-10-31）。実装・実行状態は別管理
+- 更新日: 2026-10-31
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
 
@@ -20,6 +20,8 @@ Window、StackPanel、Text、TextBox、Buttonを同Runtimeで構成し、別Runt
 | --- | --- | --- | --- |
 | <a id="ut-window-background-001"></a>UT-WINDOW-BACKGROUND-001 | 同じRuntimeにWindowを2つ作成し、両方の未指定値を取得する。一方だけRGBを設定し、双方を再取得した後、設定側をresetする。各遷移でCore stateからSceneSnapshotまでの生成値とpaint/layout dirty通知を記録 | 未指定・reset後は各Windowのeffective RGBがopaque white `(1,1,1)`。set値は対象Windowだけに反映。変更時はpaint/sceneのみdirty、layoutはdirtyにならず、SceneSnapshotにCoreのeffective RGBを格納 | [RQ-09-074](../11_requirements/RQ-09_ui-scope.md#rq-09-074)<br/>[TC-WINDOW-BG-01](../30_release_test/requirement-test-matrix.md#case-tc-window-bg-01) |
 | <a id="ut-window-background-002"></a>UT-WINDOW-BACKGROUND-002 | Window背景色の各成分にNaN、正負Infinity、負値、1超過を個別に与える。C ABI getter/setter/resetを各言語wrapperから同じWindowへ呼ぶ | 不正setは既存override・SceneSnapshot・dirty状態を変更せずerrorを返す。全wrapperのgetter/set/resetがC ABI/Coreの結果と一致し、API失敗は各言語既存error surfaceへ変換される | [RQ-09-074](../11_requirements/RQ-09_ui-scope.md#rq-09-074)<br/>[TC-WINDOW-BG-01](../30_release_test/requirement-test-matrix.md#case-tc-window-bg-01) |
+| <a id="ut-cpp-window-background-001"></a>UT-CPP-WINDOW-BACKGROUND-001（1.0案） | fake C ABIでWindow create失敗、wrong Runtime/thread、background get/set/reset、invalid RGB、release失敗を注入。ownerをmoveし、明示closeを再試行し、destructor release failureをcleanup supervisorへ送る | failed createにtoken leakなし。get/set/resetはCore/C ABI結果を`Result`へ写像し、invalid値のatomicityはCore契約を保持。move後は一ownerだけがreleaseし、明示close失敗はtoken保持、destructor失敗は既存cleanup経路でretry | [RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-074](../11_requirements/RQ-09_ui-scope.md#rq-09-074)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01)、[TC-WINDOW-BG-01](../30_release_test/requirement-test-matrix.md#case-tc-window-bg-01) |
+| <a id="ut-cpp-window-background-consumer-001"></a>UT-CPP-WINDOW-BACKGROUND-CONSUMER-001（1.0案） | 外部C++ consumerでRuntimeとWindowを生成し、背景色を取得・変更・reset後にclose/releaseする | 配布対象C++ APIから実C ABIを呼べ、default opaque white、指定値、reset後の値を観測し、全ownerを解放できる | [RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-074](../11_requirements/RQ-09_ui-scope.md#rq-09-074)<br/>[TC-WINDOW-BG-01](../30_release_test/requirement-test-matrix.md#case-tc-window-bg-01) |
 | <a id="ut-control-abi-001"></a>UT-CONTROL-ABI-001 | C ABI経由でWindow/StackPanel/Text/TextBox/Buttonを作成し、共通PropertyとTextBox Value/Button Command接点を取得。wrong Runtime/thread/type、handle releaseとProperty ownerを個別に試す | 初期値・型・既定値がControl DDに一致。getterごとに独立owned token、failed createはout=0でpartial stateなし、Property ownerはControl破棄後も契約どおり独立 | [RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-004](../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-005](../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-006](../11_requirements/RQ-09_ui-scope.md#rq-09-006)<br/>[TC-VERT-01](../30_release_test/requirement-test-matrix.md#case-tc-vert-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 | <a id="ut-tree-abi-001"></a>UT-TREE-ABI-001 | C ABIのWindow.set_content、Container.insert/remove/move、child_count/child_atを使い、別Runtime・二重親・循環・範囲外・準備失敗を注入 | attach/detachは原子的。失敗時旧Tree不変。child getterはTreeOwnerを根拠に独立tokenを返し、token解放はparent所属を変えない | [RQ-04-025](../11_requirements/RQ-04_abi-boundary.md#rq-04-025)、[RQ-09-003](../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-09-043](../11_requirements/RQ-09_ui-scope.md#rq-09-043)、[RQ-09-044](../11_requirements/RQ-09_ui-scope.md#rq-09-044)<br/>[TC-TREE-01](../30_release_test/requirement-test-matrix.md#case-tc-tree-01)、[TC-VERT-01](../30_release_test/requirement-test-matrix.md#case-tc-vert-01)、[TC-OWN-01](../30_release_test/requirement-test-matrix.md#case-tc-own-01) |
 | <a id="ut-tree-001"></a>UT-TREE-001 | 子のinsert/remove/moveと別Runtime・二重所属・循環を試す | 成功時だけ所属commit。invalidとpeer準備失敗で旧Treeを保持、親子強参照循環を作らない | [RQ-09-002](../11_requirements/RQ-09_ui-scope.md#rq-09-002)、[RQ-09-003](../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-04-025](../11_requirements/RQ-04_abi-boundary.md#rq-04-025)<br/>[TC-TREE-01](../30_release_test/requirement-test-matrix.md#case-tc-tree-01)、[TC-VERT-01](../30_release_test/requirement-test-matrix.md#case-tc-vert-01)、[TC-TRACE-01](../30_release_test/requirement-test-matrix.md#case-tc-trace-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01) |
@@ -119,6 +121,8 @@ Text shaping/font profile/GlyphRun実描画は、本案のControl connector・fa
 | 2026-10-30 | 0.8改訂案 | — | ControlViewConnector、geometry/clip、複数RendererFactory選択、backend-neutrality、dirty-to-frame経路のcase案。文書全体レビュー待ち。0.7承認baselineを維持 |
 | 2026-10-30 | 0.8全文 | 利用者 | 「ok」によりControlViewConnector、SceneSnapshot、renderer factory/selection、dirty-to-frame test caseを含む全文を承認。test実装・実行は別管理 |
 | 2026-10-30 | 0.9全文 | 利用者 | 「ok」によりWindow背景色のdefault/set/reset、invalid atomicity、paint-only invalidation、wrapper parityのtest案を含む全文を承認。実装・実行は別管理 |
+| 2026-10-31 | 1.0改訂案 | Codex | C++ safe Window ownerのcreate/move/close/destructor cleanup試験と実C ABI consumerを追加。文書全体レビュー待ち、未実装・未実行 |
+| 2026-10-31 | 1.0全文 | 利用者 | 「ok」によりC++ safe Window ownerのfake ABI試験・実C ABI consumer試験を含む全文を承認。実装・実行は別管理 |
 
 ## 改訂履歴
 
