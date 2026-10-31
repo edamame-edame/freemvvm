@@ -30,6 +30,42 @@ internal static class Program
         }
 
         using UiRuntime runtime = create.Value;
+        UiResult<UiWindow> windowCreate = UiWindow.TryCreate(runtime);
+        if (windowCreate.IsFailure)
+        {
+            Console.Error.WriteLine($"Window creation failed: {windowCreate.Error?.RawStatus}");
+            return 31;
+        }
+
+        using UiWindow window = windowCreate.Value;
+        RgbColor defaultBackground = window.BackgroundRgb;
+        if (defaultBackground.Red != 1f || defaultBackground.Green != 1f || defaultBackground.Blue != 1f)
+        {
+            Console.Error.WriteLine("Window did not expose the opaque-white default background.");
+            return 32;
+        }
+
+        var requestedBackground = new RgbColor(0.2f, 0.4f, 0.8f);
+        if (window.TrySetBackgroundRgb(requestedBackground).IsFailure ||
+            !window.TryGetBackgroundRgb().Value.Equals(requestedBackground))
+        {
+            Console.Error.WriteLine("Window background RGB did not round trip through the C ABI.");
+            return 33;
+        }
+
+        if (window.TryResetBackgroundRgb().IsFailure ||
+            !window.TryGetBackgroundRgb().Value.Equals(new RgbColor(1f, 1f, 1f)))
+        {
+            Console.Error.WriteLine("Window background RGB reset did not restore the default.");
+            return 34;
+        }
+
+        if (window.TryClose().IsFailure)
+        {
+            Console.Error.WriteLine("Window handle could not be closed.");
+            return 35;
+        }
+
         UiResult<bool> isUiThread = runtime.IsUiThread();
         if (isUiThread.IsFailure || !isUiThread.Value)
         {
@@ -254,7 +290,7 @@ internal static class Program
             return 28;
         }
 
-        Console.WriteLine("C# Runtime BOOL/I64/F64/UTF-8/DECIMAL Property and notification Subscription C ABI consumer: OK");
+        Console.WriteLine("C# Runtime, Window background RGB, Property, and notification Subscription C ABI consumer: OK");
         return 0;
     }
 

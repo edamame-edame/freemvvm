@@ -36,10 +36,92 @@ internal static class Program
         Run(TestCommandWorkerPostsTerminalResultsAndRetainsSnapshot);
         Run(TestCommandStartExceptionStaysInsideAbiBoundary);
         Run(TestCommandCreateFailureKeepsStartRootLocallyOwned);
+        Run(TestWindowBackgroundRgbOwnerAndOperations);
+        Run(TestWindowLeaseProtectsHandleDuringDispose);
         return _failures == 0 ? 0 : 1;
     }
 
     private static int _failures;
+
+    private static void TestWindowBackgroundRgbOwnerAndOperations()
+    {
+        var failedCreateNative = new FakeNativeApi
+        {
+            WindowCreateStatus = UiStatus.InvalidArgument,
+            WindowHandle = 1701,
+        };
+        UiRuntime failedCreateRuntime = UiRuntime.TryCreate(failedCreateNative).Value;
+        UiResult<UiWindow> failedCreate = UiWindow.TryCreate(failedCreateRuntime);
+        Check(failedCreate.IsFailure && failedCreate.Error?.RawStatus == UiStatus.InvalidArgument,
+            "Window creation failure should preserve the native status");
+        Check(failedCreateNative.SuccessfulReleaseCount(1701) == 0,
+            "a failed native create with no out token must not release a token it did not return");
+        failedCreateRuntime.Dispose();
+
+        var native = new FakeNativeApi();
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiWindow window = UiWindow.TryCreate(runtime).Value;
+        Check(native.LastWindowRuntime == native.RuntimeHandle, "Window creation should borrow the Runtime handle");
+        Check(window.BackgroundRgb.Red == 1f && window.BackgroundRgb.Green == 1f && window.BackgroundRgb.Blue == 1f,
+            "new Window should expose Core's opaque-white default");
+
+        var requested = new RgbColor(0.2f, 0.4f, 0.8f);
+        Check(window.TrySetBackgroundRgb(requested).IsSuccess, "valid background setter should succeed");
+        Check(window.TryGetBackgroundRgb().Value.Equals(requested), "background get should return the native value");
+
+        native.WindowOperationStatus = 0xF123_4567;
+        UiResult<bool> invalid = window.TrySetBackgroundRgb(new RgbColor(float.NaN, 2f, -1f));
+        Check(invalid.IsFailure && invalid.Error?.RawStatus == 0xF123_4567,
+            "invalid color status should pass through without wrapper validation");
+        Check(float.IsNaN(native.LastWindowBackgroundSet.Red) && native.LastWindowBackgroundSet.Green == 2f &&
+            native.LastWindowBackgroundSet.Blue == -1f,
+            "wrapper should forward color validation to the native Core API");
+        native.WindowOperationStatus = UiStatus.Ok;
+
+        native.ThrowWindowSet = true;
+        UiResult<bool> thrown = window.TrySetBackgroundRgb(requested);
+        native.ThrowWindowSet = false;
+        Check(thrown.IsFailure && thrown.Error?.RawStatus == UiStatus.InternalError,
+            "interop exceptions should be contained as InternalError");
+
+        window.ResetBackgroundRgb();
+        Check(window.BackgroundRgb.Equals(new RgbColor(1f, 1f, 1f)), "reset should restore the Core default");
+        native.SetReleaseFailures(native.WindowHandle, 1);
+        UiResult<UiCloseDisposition> firstClose = window.TryClose();
+        Check(firstClose.IsFailure, "failed release should be observable");
+        Check(window.TryClose().IsSuccess, "failed release should remain retryable");
+        Check(native.SuccessfulReleaseCount(native.WindowHandle) == 1, "Window token should be released exactly once");
+        Check(runtime.TryClose().IsSuccess, "Runtime should close independently of the Window wrapper");
+
+        var otherNative = new FakeNativeApi { RuntimeHandle = 909 };
+        UiRuntime otherRuntime = UiRuntime.TryCreate(otherNative).Value;
+        UiWindow otherWindow = UiWindow.Create(otherRuntime);
+        Check(otherWindow.TryGetBackgroundRgb().IsSuccess, "Window should be creatable from another Runtime");
+        otherWindow.Dispose();
+        otherRuntime.Dispose();
+    }
+
+    private static void TestWindowLeaseProtectsHandleDuringDispose()
+    {
+        var native = new FakeNativeApi { BlockWindowGet = true };
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiWindow window = UiWindow.Create(runtime);
+
+        Task<UiResult<RgbColor>> getter = Task.Run(window.TryGetBackgroundRgb);
+        Check(native.WindowGetEntered.Wait(TimeSpan.FromSeconds(2)), "Window getter should enter the fake ABI");
+        UiResult<UiCloseDisposition> close = window.TryClose();
+        Check(close.IsSuccess && close.Value == UiCloseDisposition.Pending,
+            "close during an active Window call should be pending");
+        Check(native.ReleaseCount(native.WindowHandle) == 0,
+            "Window token must remain alive until its active call lease ends");
+
+        native.AllowWindowGet.Set();
+        Check(getter.Wait(TimeSpan.FromSeconds(2)) && getter.Result.IsSuccess,
+            "in-flight Window getter should complete while the token is leased");
+        Check(SpinWait.SpinUntil(() => native.SuccessfulReleaseCount(native.WindowHandle) == 1, TimeSpan.FromSeconds(2)),
+            "the final Window lease should release the token exactly once");
+        runtime.Dispose();
+    }
 
     private static void Run(Action test)
     {
@@ -1085,6 +1167,17 @@ internal static class Program
         internal uint CommandExecuteStatus { get; set; } = UiStatus.Ok;
         internal uint CommandCloseStatus { get; set; } = UiStatus.Ok;
         internal uint RuntimePostStatus { get; set; } = UiStatus.Ok;
+        internal uint WindowCreateStatus { get; set; } = UiStatus.Ok;
+        internal uint WindowOperationStatus { get; set; } = UiStatus.Ok;
+        internal ulong WindowHandle { get; set; } = 1701;
+        internal ulong WindowErrorToken { get; set; }
+        internal ulong LastWindowRuntime { get; private set; }
+        internal RgbColor LastWindowBackgroundSet { get; private set; }
+        internal bool ThrowWindowSet { get; set; }
+        internal bool BlockWindowGet { get; init; }
+        internal ManualResetEventSlim WindowGetEntered { get; } = new(false);
+        internal ManualResetEventSlim AllowWindowGet { get; } = new(false);
+        private RgbColor _windowBackground = new(1f, 1f, 1f);
         internal ulong CommandHandle { get; set; } = 1301;
         internal ulong CommandCancelToken { get; set; } = 1302;
         internal ulong CommandOperationErrorToken { get; set; }
@@ -1176,6 +1269,57 @@ internal static class Program
             }
 
             return RuntimePostStatus;
+        }
+
+        public uint WindowCreate(ulong runtime, out ulong window, out ulong error)
+        {
+            LastWindowRuntime = runtime;
+            window = WindowCreateStatus == UiStatus.Ok ? WindowHandle : 0;
+            error = WindowErrorToken;
+            return WindowCreateStatus;
+        }
+
+        public uint WindowBackgroundRgb(ulong window, out float red, out float green, out float blue, out ulong error)
+        {
+            WindowGetEntered.Set();
+            if (BlockWindowGet)
+            {
+                AllowWindowGet.Wait(TimeSpan.FromSeconds(5));
+            }
+
+            red = _windowBackground.Red;
+            green = _windowBackground.Green;
+            blue = _windowBackground.Blue;
+            error = WindowErrorToken;
+            return WindowOperationStatus;
+        }
+
+        public uint WindowSetBackgroundRgb(ulong window, float red, float green, float blue, out ulong error)
+        {
+            error = WindowErrorToken;
+            LastWindowBackgroundSet = new RgbColor(red, green, blue);
+            if (ThrowWindowSet)
+            {
+                throw new InvalidOperationException("Injected Window setter failure.");
+            }
+
+            if (WindowOperationStatus == UiStatus.Ok)
+            {
+                _windowBackground = new RgbColor(red, green, blue);
+            }
+
+            return WindowOperationStatus;
+        }
+
+        public uint WindowResetBackgroundRgb(ulong window, out ulong error)
+        {
+            error = WindowErrorToken;
+            if (WindowOperationStatus == UiStatus.Ok)
+            {
+                _windowBackground = new RgbColor(1f, 1f, 1f);
+            }
+
+            return WindowOperationStatus;
         }
 
         public uint CommandCreateAsync(

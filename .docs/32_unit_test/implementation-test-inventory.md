@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
-- 文書版: 1.1
-- 状態: 設計承認済み・正本適用済み（2026-10-17）。実装unit 079のlocal検証結果を追記（2026-10-30）
+- 文書版: 1.2
+- 状態: 設計承認済み・正本適用済み（2026-10-17）。実装unit 079のlocal検証結果を追記（2026-10-30）。C# Window background wrapperの実装・focused検証を追記（2026-10-31）
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -80,6 +80,14 @@ TextServiceは未実装のため、本番のText/TextBox/Button intrinsic measur
 #### C# Property notification Subscriptionの実装記録
 
 `UNIT-WRAP-CS-PROP-SUB-001`を実装完了（`complete`）とし、fake ABI focused test、real C ABI consumer、全体check、minimum Rust toolchainをWindows 11上で通過した。実装commit `59d4dc9ec5cec3cf1315aa6e603b7742624aa6ef` のGitHub Actions [run 40054978936](https://github.com/edamame-edame/freemvvm/actions/runs/40054978936) はWindows/Linux両runnerでsuccess。
+
+#### C# UiWindow background RGB wrapper
+
+| unit | focused test | consumer test | local checks | CI |
+| --- | --- | --- | --- | --- |
+| `UNIT-WRAP-CS-WINDOW-BG-001` | `.venv/Scripts/python.exe tools/dev.py csharp-runtime-test` 成功（UiWindow生成、背景get/set/reset、status/exception伝播、failed release retry、active CallLease中のclose） | `.venv/Scripts/python.exe tools/dev.py csharp-runtime-consumer-test` 成功（実C ABI default/set/reset/close） | unit実装と同じworkspace revisionでpass | push後のCIは未確認 |
+
+対応する承認設計はC# wrapper 1.6、wrapper試験設計0.4。要求根拠はRQ-09-001/RQ-09-074。focused検証結果は実装・consumerの範囲に限り、Platform peer open/closeや実画面表示を含まない。
 
 | unit | focused test | consumer test | local checks | CI |
 | --- | --- | --- | --- | --- |

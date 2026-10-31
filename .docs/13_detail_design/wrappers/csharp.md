@@ -1,9 +1,9 @@
 # 言語ラッパー：C#
 
-- 文書版: 1.5
+- 文書版: 1.6
 - 文書ロール: detailed-design
 - 更新日: 2026-10-24
-- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
+- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-30）。1.6全文承認済み（利用者、2026-10-31）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -549,6 +549,33 @@ public RgbColor BackgroundRgb { get; set; }
 public void ResetBackgroundRgb();
 ```
 
+## Window safe ownerとbackground RGB操作（1.6）
+
+要求根拠: [RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-074](../../11_requirements/RQ-09_ui-scope.md#rq-09-074)。C ABI `window_create`が返すowned tokenをC# `UiWindow` facadeの`TokenOwner`へ移す。Runtime tokenは生成呼出し中だけ`CallLease`でborrowし、Window handleは独立した`TokenOwner`で保持する。Windowが`UiRuntime` facadeの破棄後もnative Window tokenの寿命を保つのはCore handle所有契約に委ね、wrapperは別Runtime tokenをretainしない。
+
+```csharp
+public sealed class UiWindow : IDisposable
+{
+    public static UiResult<UiWindow> TryCreate(UiRuntime runtime);
+    public static UiWindow Create(UiRuntime runtime);
+
+    public UiResult<RgbColor> TryGetBackgroundRgb();
+    public UiResult<bool> TrySetBackgroundRgb(RgbColor color);
+    public UiResult<bool> TryResetBackgroundRgb();
+
+    public RgbColor BackgroundRgb { get; set; }
+    public void ResetBackgroundRgb();
+    public UiResult<UiCloseDisposition> TryClose();
+    public void Dispose();
+}
+```
+
+`TryCreate`はC ABI call前に`TokenOwner`/cleanup ticketと`PreparedError`を準備する。Runtime ownerからleaseを取得して`window_create`を呼び、成功かつ非zero tokenのときだけWindow ownerへadoptする。失敗statusとerror tokenは既存`UiErrorSnapshot`へ渡す。各Window操作は`CallLease`で同時`Dispose`と競合するcallを保護し、C ABI statusを`UiResult`へ返す。property形式の`BackgroundRgb`と`ResetBackgroundRgb()`は同じTry経路を使い、失敗を既存C#慣例の`UiException`として表す便宜surfaceとする。
+
+背景値の規定値・validation・atomicityはCore/C ABIへ委譲し、C#側では値をcacheしない。invalid RGBは事前検証して別の挙動へ変えずC ABIへ送り、raw statusを返す。`Dispose`はowned Window tokenをreleaseするだけで、Platform peer open/close、Runtime shutdown、content/tree/Layout/表示操作を暗黙実行しない。
+
+既承認1.5の`BackgroundRgb`/`ResetBackgroundRgb`表面を維持しつつ、C# wrapper既存の明示的失敗観測に合わせて`TryGet`/`TrySet`/`TryReset`を追加する。C++ DD 1.5における`Window` handle-owner形式をC#へそのまま移植せず、C# facade名と`UiResult`/`TokenOwner`/`CallLease`を用いる。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -564,3 +591,5 @@ public void ResetBackgroundRgb();
 | 2026-10-24 | 1.4全文 | 利用者の「承認します。実装を進めてください」により文書全体を承認。実装・試験状態は別管理 |
 | 2026-10-30 | 1.5改訂案 | RQ-09-074に対応する`RgbColor`・`BackgroundRgb`・reset APIを提案。全文レビュー待ち |
 | 2026-10-30 | 1.5全文 | 利用者の「ok」によりC# Window `RgbColor`・`BackgroundRgb`・reset APIを含む全文を承認。実装・試験合格は別管理 |
+| 2026-10-31 | 1.6改訂案 | C# `UiWindow`生成・TokenOwner/CallLease所有・背景RGB Try APIを追加提案。既承認1.5のproperty surfaceを保持し、全文レビュー待ち |
+| 2026-10-31 | 1.6全文 | 利用者の「ok」によりUiWindowと背景RGB APIを含む文書全体を承認。実装・試験合格は別管理 |
