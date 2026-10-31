@@ -112,9 +112,10 @@ mod tests {
         window_client_area_for_test, window_close, window_close_intent,
         window_close_intent_subscribed, window_close_request_current, window_close_request_defer,
         window_close_request_resolve, window_close_request_subscribe, window_content,
-        window_frame_phase, window_install_test_peer, window_layout_snapshot_for_test, window_open,
-        window_platform_activation, window_reset_background_rgb, window_set_background_rgb,
-        window_set_content, window_set_content_with_peer, window_submit_frame,
+        window_control_tree_snapshot_for_test, window_frame_phase, window_install_test_peer,
+        window_layout_snapshot_for_test, window_open, window_platform_activation,
+        window_reset_background_rgb, window_set_background_rgb, window_set_content,
+        window_set_content_with_peer, window_submit_frame,
     };
     use crate::ui_window::CloseDecision;
     use std::ffi::c_void;
@@ -421,6 +422,82 @@ mod tests {
         let empty = window_calculate_layout_for_test(empty_window, 24.0, 12.0, false)
             .expect("empty content produces complete empty snapshot");
         assert_eq!(empty.node_count(), 0);
+        runtime_shutdown(runtime).expect("shutdown test Runtime");
+    }
+
+    #[test]
+    fn runtime_control_tree_snapshot_tracks_attach_detach_order_and_rejects_stale_layout() {
+        let probe = Arc::new(PlatformProbe::default());
+        let factory: Arc<dyn crate::abi_support::PlatformRuntimeFactory> =
+            Arc::new(TestPlatformFactory(probe));
+        let runtime = runtime_create_handle_with_platform_factory(factory)
+            .expect("create Runtime with fake peer");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let root = ui_control_create_stack_panel(runtime).expect("create content root");
+        let first = ui_control_create_button(runtime, b"first").expect("create first Button");
+        let second = ui_control_create_button(runtime, b"second").expect("create second Button");
+        window_set_content(window, root).expect("attach content root");
+        stack_panel_insert(root, 0, first).expect("attach first Button");
+        assert_eq!(window_open(window), Ok(1));
+
+        let first_layout = window_calculate_layout_for_test(window, 24.0, 12.0, false)
+            .expect("calculate first LayoutSnapshot");
+        let first_tree = window_control_tree_snapshot_for_test(window)
+            .expect("capture first live tree")
+            .expect("content root exists");
+        assert_eq!(first_tree.tree_revision, first_layout.tree_revision);
+        assert_eq!(first_tree.root.children.len(), 1);
+        let first_identity = first_tree.root.children[0].identity;
+
+        stack_panel_insert(root, 1, second).expect("attach second Button");
+        assert_eq!(
+            window_control_tree_snapshot_for_test(window),
+            Err(UiControlApiError::Internal)
+        );
+        let attached_layout = window_calculate_layout_for_test(window, 24.0, 12.0, false)
+            .expect("calculate LayoutSnapshot after attach");
+        let attached_tree = window_control_tree_snapshot_for_test(window)
+            .expect("capture attached tree")
+            .expect("content root exists");
+        assert_eq!(attached_tree.tree_revision, attached_layout.tree_revision);
+        assert_eq!(attached_tree.root.children.len(), 2);
+        assert_eq!(attached_tree.root.children[0].identity, first_identity);
+        let second_identity = attached_tree.root.children[1].identity;
+
+        stack_panel_move(root, 1, 0).expect("reorder attached children");
+        assert_eq!(
+            window_control_tree_snapshot_for_test(window),
+            Err(UiControlApiError::Internal)
+        );
+        let reordered_layout = window_calculate_layout_for_test(window, 24.0, 12.0, false)
+            .expect("calculate LayoutSnapshot after reorder");
+        let reordered_tree = window_control_tree_snapshot_for_test(window)
+            .expect("capture reordered tree")
+            .expect("content root exists");
+        assert_eq!(reordered_tree.tree_revision, reordered_layout.tree_revision);
+        assert_eq!(reordered_tree.root.children[0].identity, second_identity);
+        assert_eq!(reordered_tree.root.children[1].identity, first_identity);
+
+        stack_panel_remove(root, 0).expect("detach first child");
+        assert_eq!(
+            window_control_tree_snapshot_for_test(window),
+            Err(UiControlApiError::Internal)
+        );
+        let detached_layout = window_calculate_layout_for_test(window, 24.0, 12.0, false)
+            .expect("calculate LayoutSnapshot after detach");
+        let detached_tree = window_control_tree_snapshot_for_test(window)
+            .expect("capture detached tree")
+            .expect("content root exists");
+        assert_eq!(detached_tree.tree_revision, detached_layout.tree_revision);
+        assert_eq!(detached_tree.root.children.len(), 1);
+        assert_eq!(detached_tree.root.children[0].identity, first_identity);
+
+        window_close(window).expect("close Window");
+        assert_eq!(
+            window_control_tree_snapshot_for_test(window),
+            Err(UiControlApiError::Internal)
+        );
         runtime_shutdown(runtime).expect("shutdown test Runtime");
     }
 

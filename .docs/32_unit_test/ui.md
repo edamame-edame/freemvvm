@@ -102,6 +102,8 @@ Text shaping/font profile/GlyphRun実描画は、本案のControl connector・fa
 
 実行記録（UNIT-CORE-081）: revision-stamped `ControlTreeSnapshot` + fake `VisualNodeDescriptor`からのattach/detach/reorder、same-revision、descriptor mismatchを実装SHA未commit作業treeで `cargo test -p freemvvm-core control_tree_visual_snapshot_ --locked`（2 tests）、`cargo test -p freemvvm-core --locked`（173 tests）、`cargo clippy -p freemvvm-core --all-targets --locked -- -D warnings`、`cargo fmt --all -- --check`、`tools/dev.py check`、`tools/dev.py minimum`がpass。Runtime live tree capture、production Visual descriptor、Text/Button appearanceは未実装。
 
+実行記録（UNIT-CORE-082）: fake Platform上のCore Runtimeで実Control tree attach/reorder/detach、Layout dirty/stale時のcapture拒否、clean Layout revision一致時の順序付き非所有snapshotを `cargo test -p freemvvm-core runtime_control_tree_snapshot_ --locked`（1 test）、`cargo test -p freemvvm-core --locked`（174 tests）、`cargo clippy -p freemvvm-core --all-targets --locked -- -D warnings`、`cargo fmt --all -- --check`、`tools/dev.py check`、`tools/dev.py minimum`で確認。production Visual descriptor、Text/Button appearanceと描画は未実装。
+
 ## 承認履歴
 
 | 日付 | 対象版 | 承認者 | 結論・根拠 |

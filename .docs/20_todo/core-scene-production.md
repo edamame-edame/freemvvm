@@ -1,9 +1,9 @@
 # Core UI Scene生成の次工程
 
-- 2026-10-31 progress: Plan 0.3 and approved DD/UI test designs were accepted. `UNIT-CORE-080` (ControlViewConnector geometry/clip flattening) was committed and pushed on `impl-rust/core-scene-rendering` (`ab2c273`). Plan 0.4 proposes `UNIT-CORE-081`, which now passes focused/Core/Clippy/fmt local checks using only fake descriptors; Runtime live tree capture, production descriptor/TextService, CI and Linux hardware remain unverified.
+- 2026-10-31 progress: `UNIT-CORE-080` (`ab2c273`) and `UNIT-CORE-081` (`6885f91`) are committed and pushed on `impl-rust/core-scene-rendering`. Plan 0.5's `UNIT-CORE-082` Runtime live tree capture is implemented; focused/Core/workspace/minimum checks pass locally. Production visual descriptors/TextService, CI and Linux hardware remain unverified for this unit.
 
-- 計画版: 0.4 改訂案
-- 状態: 計画0.3/0.4利用者承認済み。UNIT-CORE-080 commit/push済み。UNIT-CORE-081を実装・local検証済み、commit/push待ち
+- 計画版: 0.5 改訂案
+- 状態: 計画0.3/0.4/0.5利用者承認済み。UNIT-CORE-080/081 commit/push済み。UNIT-CORE-082実装・local検証済み、commit/push待ち
 - 作成日: 2026-10-29
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/core-scene-rendering`（`impl-rust/core-apis-window-background`の子branch）
@@ -76,6 +76,18 @@ Platform Adapterの実機確認は保留し、既存のWindow/Control/Logical Tr
 
 計画0.4は次sliceの責務を示す。Runtime live tree captureと、Control内容から実描画operationを供給するProduction Visual descriptor/TextServiceは後続設計課題であり、UNIT-CORE-081をLinux上のUI表示完了とは扱わない。
 
+## 次の実装slice（計画0.5案）
+
+### UNIT-CORE-082: Runtimeのattached Control treeをclean LayoutSnapshotと同revisionでcapture
+
+- UI thread上で開いているWindowのcontent root以下をLogical Treeから順序付き・非所有の`ControlTreeSnapshot`へcaptureする。
+- Window generation、現在Windowにpublish済みのLayoutSnapshot identity、tree revision、全Controlのlayout-dirty状態を照合する。いずれかが古い/dirty/不一致ならsnapshotを返さない。空contentは空sceneとして成功扱いせず、tree snapshotなしを明示する。
+- identity snapshotはControl/Tree ownerやProperty callbackを保持せず、DrawOp/Visual descriptorは含めない。UNIT-CORE-081の`build_from_control_tree`へ渡せる入力をCore Runtimeから供給するところまで。
+- attach/detach/order更新、未再計算layout、Window close/generation不一致、成功後のsame-revision captureを既存fake Platform test harnessで検証する。新しいC ABI/APIは追加しない。
+- focused command案: `cargo test -p freemvvm-core runtime_control_tree_snapshot_ --locked`。Core tests、Clippy/fmt、`tools/dev.py check`、`tools/dev.py minimum`を同revisionで確認する。
+
+UNIT-CORE-082はRuntime tree/layout snapshotの整合接続であり、production Visual descriptorやLinux上のControl paintingを完了とは扱わない。
+
 ## 対象外
 
 - Debian/RPi実機DRM/KMS操作、Platform Adapter hardware smoke、`/dev/dri` passthrough。
@@ -101,3 +113,4 @@ Platform Adapterの実機確認は保留し、既存のWindow/Control/Logical Tr
 | 2026-10-30 | DD 1.4 / DD 1.6 / UT 0.8 | 利用者承認 | 「ok」により3文書全体を承認。実装・試験合格とは別管理。 |
 | 2026-10-31 | 計画0.3 / UNIT-CORE-080 | 利用者承認・実装済み | UNIT-CORE-080をcommit `ab2c273`でpush。focused 2件・Core 171件・`tools/dev.py check`・`tools/dev.py minimum` pass。CI・Linux実機未確認 |
 | 2026-10-31 | 計画0.4 / UNIT-CORE-081 | 利用者承認 | revision-stamped tree identity snapshotとfake descriptor mapからSceneを構造生成。focused 2件・Core 173件・`tools/dev.py check`・`tools/dev.py minimum` pass。Runtime live tree capture、production appearance/TextService/Control別clip policyは後続 |
+| 2026-10-31 | 計画0.5 / UNIT-CORE-082 | 利用者承認 | Runtime UI-thread tree captureを現行clean LayoutSnapshotへ照合。focused test pass。dirty/stale/closed stateを返さずsceneを部分公開しない |

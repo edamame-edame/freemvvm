@@ -2389,6 +2389,20 @@ pub mod abi_support {
             .map_err(|_| UiControlApiError::Internal)
     }
 
+    #[cfg(test)]
+    pub(crate) fn window_control_tree_snapshot_for_test(
+        window: u64,
+    ) -> Result<Option<crate::visual::ControlTreeSnapshot>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let layout = runtime
+            .window_layout_snapshot(identity)
+            .map_err(|_| UiControlApiError::Internal)?
+            .ok_or(UiControlApiError::Internal)?;
+        runtime
+            .capture_window_control_tree_snapshot(identity, &layout)
+            .map_err(|_| UiControlApiError::Internal)
+    }
+
     /// Internal Core/Renderer bridge; not part of the public C ABI.
     pub fn window_submit_frame(
         window: u64,

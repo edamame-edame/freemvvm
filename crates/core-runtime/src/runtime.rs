@@ -29,9 +29,10 @@ use crate::ui_window::{
 use crate::value::{
     BindingCopyError, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
 };
+use crate::visual::{ControlTreeNodeSnapshot, ControlTreeSnapshot};
 use std::any::Any;
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::num::NonZeroU64;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, Weak};
@@ -1158,6 +1159,41 @@ fn capture_layout_tree(
         children.push(capture_layout_tree(tree, child)?);
     }
     Ok(LayoutTreeInput { identity, children })
+}
+
+fn control_tree_snapshot_node(
+    input: &LayoutTreeInput,
+    layout: &LayoutSnapshot,
+    controls: &UiObjectStore<Box<dyn Any + Send>>,
+    visited: &mut HashSet<ObjectIdentity>,
+) -> Result<ControlTreeNodeSnapshot, LayoutError> {
+    visited
+        .try_reserve(1)
+        .map_err(|_| LayoutError::AllocationFailed)?;
+    if !visited.insert(input.identity) || layout.node(input.identity).is_none() {
+        return Err(LayoutError::InvalidTree);
+    }
+    let control = controls
+        .resolve(input.identity)
+        .map_err(|_| LayoutError::InvalidTree)?
+        .downcast_ref::<UiControlState>()
+        .ok_or(LayoutError::InvalidTree)?;
+    if control.layout_dirty {
+        return Err(LayoutError::InvalidTree);
+    }
+    let mut children = Vec::new();
+    children
+        .try_reserve(input.children.len())
+        .map_err(|_| LayoutError::AllocationFailed)?;
+    for child in &input.children {
+        children.push(control_tree_snapshot_node(
+            child, layout, controls, visited,
+        )?);
+    }
+    Ok(ControlTreeNodeSnapshot {
+        identity: input.identity,
+        children,
+    })
 }
 
 fn layout_node_from_tree(
@@ -3062,6 +3098,88 @@ impl RuntimeCore {
             .and_then(|state| state.window.as_ref())
             .map(|window| window.layout_snapshot())
             .ok_or(LayoutError::InvalidTree)
+    }
+
+    pub(crate) fn capture_window_control_tree_snapshot(
+        &self,
+        identity: ObjectIdentity,
+        layout: &Arc<LayoutSnapshot>,
+    ) -> Result<Option<ControlTreeSnapshot>, LayoutError> {
+        if !self.is_ui_thread() || self.cleanup.state() != RuntimeState::Running {
+            return Err(LayoutError::InvalidTree);
+        }
+
+        let published_layout = self
+            .window_layout_snapshot(identity)?
+            .ok_or(LayoutError::InvalidTree)?;
+        if !Arc::ptr_eq(&published_layout, layout) {
+            return Err(LayoutError::InvalidTree);
+        }
+
+        let (tree_revision, root_input) = {
+            let tree = self.ui_tree.lock().map_err(|_| LayoutError::InvalidTree)?;
+            let count = tree
+                .child_count(identity)
+                .map_err(|_| LayoutError::InvalidTree)?;
+            if count > 1 {
+                return Err(LayoutError::InvalidTree);
+            }
+            let root = if count == 0 {
+                None
+            } else {
+                let content = tree
+                    .child_identity_at(identity, 0)
+                    .map_err(|_| LayoutError::InvalidTree)?;
+                Some(capture_layout_tree(&tree, content)?)
+            };
+            (tree.revision(), root)
+        };
+        if tree_revision != layout.tree_revision {
+            return Err(LayoutError::InvalidTree);
+        }
+
+        let snapshot = {
+            let controls = self
+                .ui_objects
+                .lock()
+                .map_err(|_| LayoutError::InvalidTree)?;
+            let snapshot = controls
+                .resolve(identity)
+                .map_err(|_| LayoutError::InvalidTree)?
+                .downcast_ref::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window && !state.layout_dirty)
+                .and_then(|state| state.window.as_ref())
+                .filter(|window| {
+                    window
+                        .layout_input()
+                        .is_some_and(|(generation, _, revision)| {
+                            generation == layout.window_generation
+                                && revision == layout.layout_revision
+                        })
+                })
+                .and_then(|window| window.layout_snapshot())
+                .ok_or(LayoutError::InvalidTree)?;
+            if !Arc::ptr_eq(&snapshot, layout) {
+                return Err(LayoutError::InvalidTree);
+            }
+
+            let Some(root) = root_input.as_ref() else {
+                if layout.node_count() != 0 {
+                    return Err(LayoutError::InvalidTree);
+                }
+                return Ok(None);
+            };
+            let mut visited = HashSet::new();
+            let root = control_tree_snapshot_node(root, layout, &controls, &mut visited)?;
+            if visited.len() != layout.node_count() {
+                return Err(LayoutError::InvalidTree);
+            }
+            ControlTreeSnapshot {
+                tree_revision,
+                root,
+            }
+        };
+        Ok(Some(snapshot))
     }
 
     fn mark_layout_dirty(&self, identity: ObjectIdentity) {
