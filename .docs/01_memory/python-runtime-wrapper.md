@@ -12,4 +12,4 @@
 
 - `Window.background_rgb`はCore/C ABI getter/setterへ委譲する3-float tuple。resetは`Window.reset_background_rgb()`。Python側にRGB state cacheやrange/finite validationを持たせず、native status/errorを既存`UiError`へ渡す。
 - `_native.CtypesNativeApi`のRGB outputsは`ctypes.c_float`で受ける。consumer比較はABI float32丸めを考慮し`math.isclose`を使う。
-- fake ABIのWindow focused suite入口は`.venv/Scripts/python.exe tools/dev.py python-window-test`、real library consumerは`python-window-consumer-test`。実peer表示は別のPlatform確認である。
+- fake ABIのWindow focused suite入口は`.venv/Scripts/python.exe tools/dev.py python-window-test`、headless-safe real library consumerは`python-window-consumer-test`。CI consumerでは`Window.open()`を呼ばない。実peer open/closeはLinux実機でのみ`tools/dev.py python-window-peer-smoke-test`を明示実行し、通常のcheck/CIから分離する。

@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
 - 文書版: 1.2
-- 状態: 設計承認済み・正本適用済み（2026-10-17）。Python Window背景RGB unitのWindows local検証結果を追記（2026-10-31）
+- 状態: 設計承認済み・正本適用済み（2026-10-17）。Python Window背景RGB local結果と実機peer smoke分離を追記（2026-10-31）
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -69,13 +69,21 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 
 実行記録: `UNIT-CORE-079` は実装revisionでCore focused test（1件）、ABI focused test（1件）、`cargo test --workspace --all-targets --locked`（Rust wrapper unit/consumer 19件、C ABI 39件、Core 169件、Linux Platform 10件）、`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check`、`.venv/Scripts/python.exe tools/dev.py check` がlocal pass。`tools/check_docs.py`（76 documents / 7033 local links）、units manifest JSON parse、`git diff --check`もpass。CIおよびPlatform Adapter実機確認は未実施。本unitのlocal passを実機描画確認やwrapper背景色API実装完了として扱わない。
 
-#### Python Window background RGB wrapper unit（Python DD 2.1 / test design 1.3承認済み）
+#### Python Window background RGB wrapper unit（Python DD 2.1 / test design 1.4承認済み）
 
 | unit | 責務 | test設計 | 状態 |
 | --- | --- | --- | --- |
 | `UNIT-WRAP-PY-WINDOW-BG-001` | Python `Window.background_rgb` get/setとresetをC ABIへ写し、native status/errorを既存`UiError`へ伝える | `UT-WRAP-PY-WINDOW-BG-001`、`UT-CONSUMER-PY-WINDOW-BG-001` | complete / Windows local focused・real C ABI consumer pass、CI待ち |
 
-実行記録: 同一作業revisionで`.venv/Scripts/python.exe tools/dev.py python-window-test`（16 tests）と`python-window-consumer-test`がWindows local pass。fake ABIはdefault/set/get/reset、Core validation failureのstatus伝達、getter error mappingを確認。別process consumerは実C ABIでdefault opaque white、RGB roundtrip、reset後white、既存Window明示closeを確認した。Platform peer open・実機表示は検証していない。CI結果はpush後に追記する。
+実行記録: 同一作業revisionで`.venv/Scripts/python.exe tools/dev.py python-window-test`（16 tests）と`python-window-consumer-test`がWindows local pass。fake ABIはdefault/set/get/reset、Core validation failureのstatus伝達、getter error mappingを確認。別process consumerは実C ABIでdefault opaque white、RGB roundtrip、reset後white、既存Window明示closeを確認する。consumerはheadless-safeに`Window.open()`を呼ばない。旧Linux CIでは背景RGB assertionsの後に実行した`Window.open()`がheadless Platform peer failureとなり、旧consumerが不一致で失敗。修正版CI待ち。実機peer open/closeは独立した`UNIT-PLATFORM-003` / `UT-SMOKE-PY-WINDOW-OPEN-001`としてplannedで、実機profileが準備できるまで実行しない。
+
+#### Linux Platform Python Window peer smoke
+
+| unit | 責務 | test設計 | 状態 |
+| --- | --- | --- | --- |
+| `UNIT-PLATFORM-003` | Linux Platform実機profile上でPython `Window.open()` / `close_peer()`を実C ABI経由で明示確認する | `UT-SMOKE-PY-WINDOW-OPEN-001` | planned / 実機準備待ち。通常の`tools/dev.py check`およびCIから除外 |
+
+実機未準備のため未実行。headless runnerの`UI_INTERNAL_ERROR`を許容して合格にせず、DRM/display実機での実行結果を別記録する。
 
 TextServiceは未実装のため、本番のText/TextBox/Button intrinsic measurementを創作しない。providerを内部入力境界に保ち、試験ではfake providerを使う。TextServiceを必要とする実Leafの測定不能はpass全体を失敗させ、scene producer/public ABIは本unitに含めない。
 

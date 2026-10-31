@@ -4468,6 +4468,43 @@
           "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-window-consumer-test"]
         }
       ]
+    },
+    {
+      "id": "UNIT-PLATFORM-003",
+      "state": "planned",
+      "scope": "manual-python-window-platform-peer-open-close-hardware-smoke",
+      "sources": [
+        "wrappers/python/examples/window_peer_smoke.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "crates/platform-linux/Cargo.toml",
+        "tools/units.yaml"
+      ],
+      "depends_on": ["UNIT-PLATFORM-001", "UNIT-WRAP-PY-WINDOW-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "2.1 approved",
+          "section": "Window peer open/close API"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.4 proposal",
+          "section": "Linux Platform peer and device lifecycle"
+        }
+      ],
+      "requirements": ["RQ-09-001", "RQ-09-071", "RQ-11-019"],
+      "cases": ["TC-PLAT-01", "TC-LIFE-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-SMOKE-PY-WINDOW-OPEN-001",
+          "command": [".venv/bin/python", "tools/dev.py", "python-window-peer-smoke-test"]
+        }
+      ]
     }
   ]
 }

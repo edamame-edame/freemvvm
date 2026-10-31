@@ -60,6 +60,9 @@ Linux/ARMのsysroot・compiler・container digestを固定するrelease profile�
 | `tools/dev.py cpp-package-test` | CMake packageをinstall・移動し、独立consumerのconfigure/link/Runtime smokeを実行 |
 | `tools/dev.py check` | 文書リンク/表/fence、Python format/lint、Rust fmt/clippy/buildとtest harness compile、C/C++ CTest、relocated C++ package consumer、.NET locked restore/build、Python wheel build/install/import |
 | `tools/dev.py minimum` | Rust1.85.0でworkspace/all-targetsをlocked check |
+| `tools/dev.py python-window-peer-smoke-test` | 実機用の手動確認。Linux Platform factoryを使いWindow peer open/closeを確認する。`check`/CIでは実行しない |
+
+`python-window-peer-smoke-test`はLinux DRM/display実機が準備できた場合にだけ明示実行する。headless runnerでのpeer生成failureを許容してpassにせず、実機profileの記録と分ける。背景色やC ABI値を検証するheadless-safe consumerは`check`/CIに含める。
 
 実行は常に上記venvのPythonで行う。checkは初期化済みvenvへ開発wheelを導入し直す。C++ Runtimeとpackage consumerは製品unit/integration testとして実行し、他のpytest製品suiteは未作成である。C/C++環境probeはtoolchain確認で、UI全体の振る舞いの証明ではない。
 

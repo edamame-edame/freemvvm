@@ -1,4 +1,4 @@
-"""Exercise Python Window peer and close subscription against the host C ABI."""
+"""Exercise Python Window close subscription/background through the C ABI."""
 
 from __future__ import annotations
 
@@ -70,13 +70,6 @@ def main() -> None:
         else:
             raise AssertionError("duplicate close subscription was accepted")
 
-        try:
-            window.open()
-        except freemvvm.UiError as error:
-            assert error.raw_status == _native.UNSUPPORTED
-        else:
-            raise AssertionError("host unexpectedly opened a native Window")
-
         current_content = window.content
         assert isinstance(current_content, freemvvm.Widget)
         current_content.close()
@@ -120,7 +113,7 @@ def main() -> None:
             runtime.close()
         except freemvvm.UiError:
             pass
-    print("Python Window peer/close-request/background C ABI consumer: OK")
+    print("Python Window close-request/background C ABI consumer: OK")
 
 
 if __name__ == "__main__":

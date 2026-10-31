@@ -1,12 +1,12 @@
 # Python Window背景RGB wrapper実装計画
 
-- 計画版: 0.1
-- 状態: 計画・Python DD 2.1・試験設計1.3承認済み。実装中
+- 計画版: 0.2
+- 状態: 計画・Python DD 2.1・試験設計1.4承認済み。Python wrapper実装済み、Linux Window peer smokeは実機待ち
 - 上位計画: [Window背景色の規定値・利用者設定](window-background-config.md)
 - 対象: Python `Window.background_rgb` getter/setter、`reset_background_rgb()`、fake ABI・real C ABI consumer
 - 対象branch: `impl-rust/core-apis-window-background`を先頭親とするPython wrapper branch
 - 上位設計: [Python wrapper DD](../13_detail_design/wrappers/python.md) 2.1（承認済み）
-- 試験設計: [wrapper単体試験](../32_unit_test/wrappers.md) 1.3（承認済み）
+- 試験設計: [wrapper単体試験](../32_unit_test/wrappers.md) 1.4（承認済み）
 - 要求: [RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-074](../11_requirements/RQ-09_ui-scope.md#rq-09-074)
 
 ## 目的
@@ -23,10 +23,11 @@
 
 1. `Window.background_rgb`を`tuple[float, float, float]`で読み書きし、`Window.reset_background_rgb()`を追加する。既存`_ui_call`、Window token lease、native error mappingを利用し、Core/C ABIへ委譲する。
 2. fake ABI testでopaque white default、指定値get/set、reset、invalid tupleのCoreへの転送とnative status/error mappingを確認する。既存`wrappers/python/tests/test_window.py`のfake APIを拡張する。
-3. real C ABI consumerでWindow create、default/set/get/reset、明示closeを行う。既存`wrappers/python/examples/window_consumer.py`と`tools/dev.py python-window-consumer-test`を拡張する。
-4. wrapper test designに`UNIT-WRAP-PY-WINDOW-BG-001`、`UT-WRAP-PY-WINDOW-BG-001`、`UT-CONSUMER-PY-WINDOW-BG-001`を登録し、requirements/caseをRQ-09-001・RQ-09-074・TC-WINDOW-BG-01へ結ぶ。`tools/units.yaml`には既存Window unitとCore Window背景色unitへの依存を登録する。
-5. `python-window-test`、`python-window-consumer-test`、`tools/dev.py check`、`tools/dev.py minimum`、docs link・manifest・`git diff --check`を同revisionで実行する。
-6. 実装unit試験が通ったら、日本語commitと対象Python branchへのpushを同じ応答内で行う。CI結果は別途記録する。window-background-config全Todo完了前にmain向けPRは作成しない。
+3. headless-safe real C ABI consumerでWindow create、default/set/get/reset、close-request registration/cancel、明示closeを行う。`Window.open()`は呼ばず、background RGB consumerはCIで実行する。
+4. 実機確認用`wrappers/python/examples/window_peer_smoke.py`と明示コマンド`tools/dev.py python-window-peer-smoke-test`を追加する。Runtime/Windowを作成して`Window.open()`と`close_peer()`の成功を要求し、通常の`check`/CI gateには組み込まず実機profileで手動実行する。実機が未準備の間は未実行・未合格を維持する。
+5. wrapper test designに`UNIT-WRAP-PY-WINDOW-BG-001`、`UT-WRAP-PY-WINDOW-BG-001`、`UT-CONSUMER-PY-WINDOW-BG-001`を登録し、requirements/caseをRQ-09-001・RQ-09-074・TC-WINDOW-BG-01へ結ぶ。実機peer smokeは`UT-SMOKE-PY-WINDOW-OPEN-001`として別unit/実行記録に分離する。
+6. `python-window-test`、headless-safe `python-window-consumer-test`、`tools/dev.py check`、`tools/dev.py minimum`、docs link・manifest・`git diff --check`を同revisionで実行する。実機peer smokeは専用の実機profileで別途実施する。
+7. 対応するCI-safe実装unit試験が通ったら、日本語commitと対象Python branchへのpushを同じ応答内で行う。CI結果は別途記録する。window-background-config全Todo完了前にmain向けPRは作成しない。
 
 ## 完了条件と対象外
 
@@ -40,3 +41,4 @@
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
 | 2026-10-31 | 計画0.1 | 承認済み | 利用者の「ok」により計画を承認。実装開始 |
+| 2026-10-31 | 計画0.2 | 利用者承認済み | 利用者の承認により、headless CIから`Window.open()`確認を分離し、実機用peer open/close smoke commandを手動入口として追加。許容statusの推測でCI期待値を広げず、背景RGB consumerをCIに残す |
