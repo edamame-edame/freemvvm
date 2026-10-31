@@ -3,7 +3,7 @@
   "units": [
     {
       "id": "UNIT-BUILD-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "development-bootstrap-only",
       "sources": ["tools/*.py", "tools/probes/*"],
       "config": [
@@ -3756,6 +3756,40 @@
       "tests": [
         {"id": "UT-WINDOW-BACKGROUND-001", "command": ["cargo", "test", "-p", "freemvvm-core", "window_background_color_is_core_owned_validated_and_forwarded_to_scene", "--locked"]},
         {"id": "UT-ABI-WINDOW-BACKGROUND-001", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "window_background_color_abi_supports_get_set_and_reset_atomically", "--locked"]}
+      ]
+    },
+    {
+      "id": "UNIT-CORE-080",
+      "state": "ready",
+      "scope": "control-view-scene-geometry-and-clip-flattening",
+      "sources": [
+        "crates/core-runtime/src/visual.rs",
+        "crates/core-runtime/src/ui_layout.rs",
+        "crates/core-runtime/src/platform/scene.rs",
+        "crates/core-runtime/src/lib.rs"
+      ],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-075", "UNIT-CORE-078", "UNIT-CORE-079"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.4 approved",
+          "section": "Control-View connector / Layout FinalBounds coordinates"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.6 approved",
+          "section": "ControlViewConnector and SceneSnapshot boundary"
+        }
+      ],
+      "requirements": ["RQ-09-008", "RQ-09-067", "RQ-11-008", "RQ-11-020"],
+      "cases": ["TC-LAYOUT-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-VIEW-GEOMETRY-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "control_view_connector_", "--locked"]
+        }
       ]
     }
   ]

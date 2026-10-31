@@ -1,12 +1,12 @@
 # Core UI Scene生成の次工程
 
-- 2026-10-30 progress: Plan v0.2 approved and recorded on `impl-rust/core-ui-layout-engine` (`a225113`). First DD/UI-test proposal drafts are ready on `impl-rust/core-scene-producer`; design approval and implementation authorization remain pending.
+- 2026-10-31 progress: DD 1.4 / Platform DD 1.6 / UI test design 0.8 are approved. User authorized the next Linux-related implementation task. The first implementation slice is `UNIT-CORE-080` (ControlViewConnector geometry/clip flattening) on `impl-rust/core-scene-rendering`, parent `impl-rust/core-apis-window-background`. Focused/Core tests, workspace `tools/dev.py check`, and `tools/dev.py minimum` pass locally; plan revision 0.3 is under review and is not committed.
 
-- 計画版: 0.2
-- 状態: 計画0.2、UI Tree/Layout DD 1.4、Platform DD 1.6、UI unit-test 0.8は利用者承認済み。実装unitの切出し中。Scene入力・Control visual realizationの未決契約を解決するまで製品コード実装は未着手
+- 計画版: 0.3 改訂案
+- 状態: 計画0.2、UI Tree/Layout DD 1.4、Platform DD 1.6、UI unit-test 0.8は利用者承認済み。UNIT-CORE-080を実装・local検証済み。計画0.3（実装unit splitと検証結果）はレビュー待ちで未commit、CI待ち
 - 作成日: 2026-10-29
 - 対象version: `0.0.1`
-- 対象branch案: `impl-rust/core-scene-producer`（現Platform/Core branchのSceneSnapshot/Renderer seamに依存する子branch）
+- 対象branch案: `impl-rust/core-scene-rendering`（`impl-rust/core-apis-window-background`の子branch）
 - 独立して保留する作業: [Linux Platform hardware smoke](linux-platform-hardware-smoke.md)。本作業は実機確認を含めない
 
 ## 目的
@@ -52,6 +52,18 @@ Platform Adapterの実機確認は保留し、既存のWindow/Control/Logical Tr
 - Docker検証は利用可能なbackendの仮確認に限り、実機Platform Adapter確認やprofile適合の合格へ昇格しない。
 - 本計画・監査の文書チェックは実装testとは区別する。
 
+## 最初の実装slice（計画0.3案）
+
+### UNIT-CORE-080: ControlViewConnectorのgeometry/clip flattening
+
+- 承認済み`UT-VIEW-GEOMETRY-001`を使い、ephemeral `VisualNodeSnapshot`と同revision `LayoutSnapshot`からrenderer-neutral `SceneSnapshot`を構築する。
+- FinalBoundsは承認済みDD 1.4に従い親座標系として扱う。scene builderが親originを累積してabsolute DIPへ変換し、各nodeのclient clipと祖先clipの交差をClip operationとして出力する。Clipはlayout boundsを変更しない。
+- child orderと各nodeのlocal FillRect/GlyphRun orderを保ち、background RGB、DeviceScale、layout revision、damageを出力へ渡す。geometry/build failureではpartial SceneSnapshotを公開しない。
+- 完了した最小unitはVisual operation付きのephemeral inputからsceneを作るまで。live Runtime Control treeからvisual inputを組み立てる経路、TextService/font/profile/appearance、dirty-to-frame自動接続、renderer factory selection、Linux physical displayは本unitの完了に含めない。
+- focused command: `cargo test -p freemvvm-core control_view_connector_ --locked`。Core crate全test、Clippy、fmtも同一revisionで確認する。
+
+実装監査で、現行`LayoutEngine::arrange_node`が親座標を子FinalBoundsへ累積していたため、DD 1.4の「親座標系bounds」と不一致であることを発見した。UNIT-CORE-080の同revision修正で、FinalBoundsを親相対に保ち、scene generationでabsolute座標へ合成する。既存単層Layout testを維持し、nested geometry/clip testで新しい境界を検証する。
+
 ## 対象外
 
 - Debian/RPi実機DRM/KMS操作、Platform Adapter hardware smoke、`/dev/dri` passthrough。
@@ -75,3 +87,4 @@ Platform Adapterの実機確認は保留し、既存のWindow/Control/Logical Tr
 | 2026-10-29 | 計画0.2 | 利用者承認 | Scene producer、TextService、scale/background供給元、Visual geometry/clip、frame接続に加え、backend-neutral View契約と複数renderer選択軸を反映。DD/UI test改訂案の作成を承認。 |
 | 2026-10-30 | DD/UI test改訂案 | review draft | ControlViewConnector→backend-neutral SceneSnapshot→選択可能RenderBackendの責務とfake-test proposalを3文書に作成。文書全体レビュー待ち。 |
 | 2026-10-30 | DD 1.4 / DD 1.6 / UT 0.8 | 利用者承認 | 「ok」により3文書全体を承認。実装・試験合格とは別管理。 |
+| 2026-10-31 | 計画0.3案 / UNIT-CORE-080 | 利用者レビュー待ち | 「つぎのLinux実装課題に進んでください」により次のCore/Linux共通scene unitを開始。parent-relative FinalBoundsとscene geometry flatteningを同revisionで実装。focused 2件・Core 171件・`tools/dev.py check`・`tools/dev.py minimum` pass。計画0.3のcommit/pushはレビュー待ち、CI・Linux実機は未実施 |

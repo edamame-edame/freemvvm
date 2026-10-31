@@ -25,6 +25,8 @@ mod ui_tree;
 mod ui_window;
 #[allow(dead_code)]
 mod value;
+#[allow(dead_code)]
+mod visual;
 
 /// Narrow support surface used by the C ABI crate while the Core remains private to wrappers.
 #[doc(hidden)]

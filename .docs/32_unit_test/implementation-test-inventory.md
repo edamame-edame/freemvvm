@@ -67,6 +67,14 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | `UNIT-CORE-078` | Window client areaと実Control tree/StackPanel設定からimmutable LayoutNodeSnapshotを構築し、LayoutEngine成功時のみWindowのcomplete LayoutSnapshotを交換する。failureでは旧snapshotとdirtyを保持する | `UT-LAYOUT-ABI-001`、`UT-LAYOUT-ATOMIC-001` | complete / 同revision local検証pass |
 | `UNIT-CORE-079` | Windowごとの背景RGB規定値・override・resetをCoreで保持し、入力を検証してSceneSnapshotへ反映する。ABIのget/set/resetを含む | `UT-WINDOW-BACKGROUND-001`、`UT-ABI-WINDOW-BACKGROUND-001` | complete / 同revision local gates pass、CI待ち |
 
+#### Core Scene geometry projection unit（DD 1.4 / UI test design 0.8承認済み）
+
+| unit | 責務 | test設計 | 状態 |
+| --- | --- | --- | --- |
+| `UNIT-CORE-080` | ephemeral `VisualNodeSnapshot`と同revision `LayoutSnapshot`からSceneSnapshotを作る。FinalBoundsの親相対座標をabsolute DIPへ変換し、ancestor clipとdraw orderを維持する | `UT-VIEW-GEOMETRY-001` | complete / focused 2 tests、Core 171 tests、Clippy、fmt local pass。CI待ち |
+
+実装SHAは未commit。Control treeからvisual inputを生成するlive connector、TextService/font/color、dirty-to-frame、renderer selection、Linux/Windows実機表示は未実装で、本unitのpassに含めない。
+
 実行記録: `UNIT-CORE-079` は実装revisionでCore focused test（1件）、ABI focused test（1件）、`cargo test --workspace --all-targets --locked`（Rust wrapper unit/consumer 19件、C ABI 39件、Core 169件、Linux Platform 10件）、`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check`、`.venv/Scripts/python.exe tools/dev.py check` がlocal pass。`tools/check_docs.py`（76 documents / 7033 local links）、units manifest JSON parse、`git diff --check`もpass。CIおよびPlatform Adapter実機確認は未実施。本unitのlocal passを実機描画確認やwrapper背景色API実装完了として扱わない。
 
 TextServiceは未実装のため、本番のText/TextBox/Button intrinsic measurementを創作しない。providerを内部入力境界に保ち、試験ではfake providerを使う。TextServiceを必要とする実Leafの測定不能はpass全体を失敗させ、scene producer/public ABIは本unitに含めない。
