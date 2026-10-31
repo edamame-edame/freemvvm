@@ -10,7 +10,7 @@ use crate::handle_registry::registry::{
 };
 use crate::object_store::{UiObjectStore, UiObjectStoreError};
 use crate::platform::frame::{FramePhase, FrameTicket};
-use crate::platform::scene::{DeviceScale, SceneSnapshot};
+use crate::platform::scene::{Damage, DeviceScale, DrawOp, SceneSnapshot};
 use crate::property::{
     PropertyChangeQueue, PropertyHandleKind, PropertyState, PropertyValidator, Subscription,
     ValidationError, ValidatorResult,
@@ -30,7 +30,9 @@ use crate::ui_window::{
 use crate::value::{
     BindingCopyError, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
 };
-use crate::visual::{ControlTreeNodeSnapshot, ControlTreeSnapshot, VisualNodeDescriptor};
+use crate::visual::{
+    ControlTreeNodeSnapshot, ControlTreeSnapshot, ControlViewConnector, VisualNodeDescriptor,
+};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -2432,18 +2434,33 @@ impl RuntimeCore {
     ) -> Result<(), WindowLifecycleError> {
         self.ensure_property_access_thread()
             .map_err(|_| WindowLifecycleError::InvalidState)?;
-        let mut store = self
-            .ui_objects
-            .lock()
-            .map_err(|_| WindowLifecycleError::InvalidState)?;
-        store
-            .resolve_mut(identity)
-            .map_err(|_| WindowLifecycleError::InvalidState)?
-            .downcast_mut::<UiControlState>()
-            .filter(|state| state.kind == UiControlKind::Window)
-            .and_then(|state| state.window.as_mut())
-            .ok_or(WindowLifecycleError::InvalidState)?
-            .set_background_rgb(background_rgb)
+        let changed = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            let state = store
+                .resolve_mut(identity)
+                .map_err(|_| WindowLifecycleError::InvalidState)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .ok_or(WindowLifecycleError::InvalidState)?;
+            let window = state
+                .window
+                .as_mut()
+                .ok_or(WindowLifecycleError::InvalidState)?;
+            let before = window.background_rgb();
+            window.set_background_rgb(background_rgb)?;
+            let changed = before != window.background_rgb();
+            if changed {
+                state.frame_dirty = true;
+            }
+            changed
+        };
+        if changed {
+            self.schedule_window_frame_wake();
+        }
+        Ok(())
     }
 
     pub(crate) fn window_reset_background_rgb(
@@ -2452,18 +2469,32 @@ impl RuntimeCore {
     ) -> Result<(), WindowLifecycleError> {
         self.ensure_property_access_thread()
             .map_err(|_| WindowLifecycleError::InvalidState)?;
-        let mut store = self
-            .ui_objects
-            .lock()
-            .map_err(|_| WindowLifecycleError::InvalidState)?;
-        store
-            .resolve_mut(identity)
-            .map_err(|_| WindowLifecycleError::InvalidState)?
-            .downcast_mut::<UiControlState>()
-            .filter(|state| state.kind == UiControlKind::Window)
-            .and_then(|state| state.window.as_mut())
-            .ok_or(WindowLifecycleError::InvalidState)?
-            .reset_background_rgb();
+        let changed = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| WindowLifecycleError::InvalidState)?;
+            let state = store
+                .resolve_mut(identity)
+                .map_err(|_| WindowLifecycleError::InvalidState)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .ok_or(WindowLifecycleError::InvalidState)?;
+            let window = state
+                .window
+                .as_mut()
+                .ok_or(WindowLifecycleError::InvalidState)?;
+            let before = window.background_rgb();
+            window.reset_background_rgb();
+            let changed = before != window.background_rgb();
+            if changed {
+                state.frame_dirty = true;
+            }
+            changed
+        };
+        if changed {
+            self.schedule_window_frame_wake();
+        }
         Ok(())
     }
 
@@ -2613,6 +2644,16 @@ impl RuntimeCore {
             self.window_frame_completion(identity, prepared.ticket, false);
             return Err(WindowLifecycleError::PeerFailure);
         }
+        if let Ok(mut store) = self.ui_objects.lock() {
+            if let Ok(object) = store.resolve_mut(identity) {
+                if let Some(state) = object
+                    .downcast_mut::<UiControlState>()
+                    .filter(|state| state.kind == UiControlKind::Window)
+                {
+                    state.frame_dirty = false;
+                }
+            }
+        }
         Ok(prepared.ticket)
     }
 
@@ -2640,23 +2681,40 @@ impl RuntimeCore {
         ticket: FrameTicket,
         success: bool,
     ) {
-        let Ok(mut store) = self.ui_objects.lock() else {
-            return;
+        let schedule = {
+            let Ok(mut store) = self.ui_objects.lock() else {
+                return;
+            };
+            let Ok(state) = store.resolve_mut(identity) else {
+                return;
+            };
+            let Some(state) = state
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+            else {
+                return;
+            };
+            let Some(window) = state.window.as_mut() else {
+                return;
+            };
+            let accepted = if success {
+                window.complete_frame(ticket)
+            } else {
+                window.fail_frame(ticket)
+            };
+            if !accepted {
+                return;
+            }
+            if success {
+                state.frame_dirty
+            } else {
+                state.frame_dirty = true;
+                state.frame_retry_deferred = true;
+                false
+            }
         };
-        let Ok(state) = store.resolve_mut(identity) else {
-            return;
-        };
-        let Some(window) = state
-            .downcast_mut::<UiControlState>()
-            .filter(|state| state.kind == UiControlKind::Window)
-            .and_then(|state| state.window.as_mut())
-        else {
-            return;
-        };
-        if success {
-            window.complete_frame(ticket);
-        } else {
-            window.fail_frame(ticket);
+        if schedule {
+            self.schedule_window_frame_wake();
         }
     }
 
@@ -3396,6 +3454,7 @@ impl RuntimeCore {
 
     fn mark_layout_dirty(&self, identity: ObjectIdentity) {
         let mut current = Some(identity);
+        let mut window_dirtied = false;
         while let Some(candidate) = current {
             {
                 let mut store = self
@@ -3405,6 +3464,10 @@ impl RuntimeCore {
                 if let Ok(object) = store.resolve_mut(candidate) {
                     if let Some(state) = object.downcast_mut::<UiControlState>() {
                         state.layout_dirty = true;
+                        if state.kind == UiControlKind::Window {
+                            state.frame_dirty = true;
+                            window_dirtied = true;
+                        }
                     }
                 }
             }
@@ -3416,6 +3479,9 @@ impl RuntimeCore {
                 .ok()
                 .flatten();
         }
+        if window_dirtied {
+            self.schedule_window_frame_wake();
+        }
     }
 
     fn mark_layout_subtree_dirty(&self, root: ObjectIdentity) {
@@ -3425,11 +3491,16 @@ impl RuntimeCore {
             return;
         }
         pending.push(root);
+        let mut window_dirtied = false;
         while let Some(identity) = pending.pop() {
             if let Ok(mut store) = self.ui_objects.lock() {
                 if let Ok(object) = store.resolve_mut(identity) {
                     if let Some(state) = object.downcast_mut::<UiControlState>() {
                         state.layout_dirty = true;
+                        if state.kind == UiControlKind::Window {
+                            state.frame_dirty = true;
+                            window_dirtied = true;
+                        }
                     }
                 }
             }
@@ -3447,6 +3518,15 @@ impl RuntimeCore {
                     pending.push(child);
                 }
             }
+        }
+        if window_dirtied {
+            self.schedule_window_frame_wake();
+        }
+    }
+
+    fn schedule_window_frame_wake(&self) {
+        if let Ok(Some(dispatcher)) = self.dispatcher() {
+            let _ = dispatcher.schedule_pending_work_wake();
         }
     }
 
@@ -4758,12 +4838,13 @@ impl RuntimeCore {
         let Ok(mut controls) = self.ui_objects.lock() else {
             return;
         };
-        let mut affects_display = false;
-        controls.visit_mut(|_, object| {
+        let mut affected_controls = Vec::new();
+        let mut allocation_failed = false;
+        controls.visit_mut(|identity, object| {
             let Some(state) = object.downcast_mut::<UiControlState>() else {
                 return;
             };
-            affects_display |= state.properties.iter().any(|entry| {
+            if state.properties.iter().any(|entry| {
                 entry.owner.identity() == property
                     && matches!(
                         entry.property,
@@ -4771,14 +4852,30 @@ impl RuntimeCore {
                             | UiControlProperty::TextBoxValue
                             | UiControlProperty::ButtonLabel
                     )
-            });
+            }) {
+                if affected_controls.try_reserve(1).is_ok() {
+                    affected_controls.push(identity);
+                } else {
+                    allocation_failed = true;
+                }
+            }
         });
-        if affects_display {
+        if allocation_failed {
             controls.visit_mut(|_, object| {
                 if let Some(state) = object.downcast_mut::<UiControlState>() {
                     state.layout_dirty = true;
+                    if state.kind == UiControlKind::Window {
+                        state.frame_dirty = true;
+                    }
                 }
             });
+            drop(controls);
+            self.schedule_window_frame_wake();
+            return;
+        }
+        drop(controls);
+        for identity in affected_controls {
+            self.mark_layout_dirty(identity);
         }
     }
 
@@ -5405,11 +5502,148 @@ impl RuntimeCore {
         let dispatch = dispatcher
             .dispatch_normal_turn()
             .map_err(RuntimeCoreError::Dispatch);
+        if dispatch.is_ok()
+            && self.cleanup.state() == RuntimeState::Running
+            && !dispatcher.shutdown_is_pending().unwrap_or(true)
+        {
+            self.submit_one_dirty_window_frame();
+        }
         let close = self.end_host_event(scope_id);
         match (dispatch, close) {
             (Err(error), _) => Err(error),
             (Ok(_), Err(error)) => Err(error),
             (Ok(_), Ok(_)) => Ok(()),
+        }
+    }
+
+    /// Coalesces dirty Windows at the dispatcher boundary and submits at most one frame per turn.
+    fn submit_one_dirty_window_frame(&self) {
+        if !self.is_ui_thread() || self.cleanup.state() != RuntimeState::Running {
+            return;
+        }
+
+        let (candidate, has_more) = {
+            let Ok(mut controls) = self.ui_objects.lock() else {
+                return;
+            };
+            let mut candidate = None;
+            let mut has_more = false;
+            controls.visit_mut(|identity, object| {
+                let Some(state) = object.downcast_mut::<UiControlState>() else {
+                    return;
+                };
+                let Some(window) = state
+                    .window
+                    .as_ref()
+                    .filter(|_| state.kind == UiControlKind::Window && state.frame_dirty)
+                else {
+                    return;
+                };
+                if !window.is_open()
+                    || matches!(
+                        window.frame_phase(),
+                        FramePhase::Preparing(_) | FramePhase::Rendering(_)
+                    )
+                {
+                    return;
+                }
+                if state.frame_retry_deferred {
+                    state.frame_retry_deferred = false;
+                    return;
+                }
+                if candidate.is_none() {
+                    candidate = Some(identity);
+                } else {
+                    has_more = true;
+                }
+            });
+            (candidate, has_more)
+        };
+
+        let failed_candidate = candidate.and_then(|identity| {
+            (!self.build_and_submit_dirty_window_frame(identity)).then_some(identity)
+        });
+        if has_more {
+            if let Some(identity) = failed_candidate {
+                self.defer_window_frame_retry(identity);
+            }
+            self.schedule_window_frame_wake();
+        }
+    }
+
+    fn build_and_submit_dirty_window_frame(&self, identity: ObjectIdentity) -> bool {
+        let layout_dirty = {
+            let Ok(controls) = self.ui_objects.lock() else {
+                return false;
+            };
+            let Ok(object) = controls.resolve(identity) else {
+                return false;
+            };
+            let Some(state) = object
+                .downcast_ref::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+            else {
+                return false;
+            };
+            state.layout_dirty
+        };
+
+        let layout = if layout_dirty {
+            self.calculate_window_layout_with_platform_text(identity)
+                .ok()
+        } else {
+            self.window_layout_snapshot(identity).ok().flatten()
+        };
+        let Some(layout) = layout else {
+            return false;
+        };
+        let tree = self
+            .capture_window_control_tree_snapshot(identity, &layout)
+            .ok()
+            .flatten();
+        let Ok(device_scale) = self.window_device_scale(identity) else {
+            return false;
+        };
+        let Ok(background_rgb) = self.window_background_rgb(identity) else {
+            return false;
+        };
+        let scene = match tree {
+            Some(tree) => ControlViewConnector::build_from_production_control_tree(
+                &tree,
+                &layout,
+                device_scale,
+                background_rgb,
+                Damage::Full,
+            )
+            .ok(),
+            None if layout.node_count() == 0 => SceneSnapshot::new(
+                layout.layout_revision,
+                device_scale,
+                background_rgb,
+                Arc::<[DrawOp]>::from([]),
+                Damage::Full,
+            )
+            .ok(),
+            None => None,
+        };
+        let Some(scene) = scene.map(Arc::new) else {
+            return false;
+        };
+        self.window_submit_frame(identity, scene).is_ok()
+    }
+
+    fn defer_window_frame_retry(&self, identity: ObjectIdentity) {
+        let Ok(mut controls) = self.ui_objects.lock() else {
+            return;
+        };
+        let Ok(object) = controls.resolve_mut(identity) else {
+            return;
+        };
+        if let Some(state) = object
+            .downcast_mut::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+        {
+            state.frame_retry_deferred = true;
         }
     }
 

@@ -53,6 +53,8 @@ pub(crate) struct UiControlState {
     pub(crate) orientation: u32,
     pub(crate) child_align: HashMap<ObjectIdentity, u32>,
     pub(crate) layout_dirty: bool,
+    pub(crate) frame_dirty: bool,
+    pub(crate) frame_retry_deferred: bool,
     pub(crate) window: Option<WindowLifecycle>,
     pub(crate) button_command: Option<Arc<crate::abi_support::CommandHandleEntry>>,
 }
@@ -65,6 +67,8 @@ impl UiControlState {
             orientation: 1,
             child_align: HashMap::new(),
             layout_dirty: true,
+            frame_dirty: false,
+            frame_retry_deferred: false,
             window: (kind == UiControlKind::Window).then(WindowLifecycle::default),
             button_command: None,
         }
@@ -349,8 +353,13 @@ mod tests {
             .expect("enqueue current-generation resize");
         assert!(!ui_control_layout_dirty(window).expect("dirty before dispatch"));
         runtime_dispatch_turn(runtime).expect("apply resize on UI thread");
-        assert!(ui_control_layout_dirty(window).expect("resize marks Layout dirty"));
-        assert!(ui_control_layout_dirty(content).expect("resize marks root subtree dirty"));
+        assert!(!ui_control_layout_dirty(window).expect("resize Layout consumed for frame"));
+        assert!(!ui_control_layout_dirty(content).expect("root subtree Layout consumed"));
+        let layout = window_layout_snapshot_for_test(window)
+            .expect("query resized Layout")
+            .expect("resize frame has complete Layout");
+        assert_eq!(layout.client_area().width, resized.width_dip);
+        assert_eq!(layout.client_area().height, resized.height_dip);
         assert_eq!(window_client_area_for_test(window), Ok(Some((1, resized))));
 
         ui_control_layout_clean(window).expect("clear resize dirty");
@@ -402,8 +411,13 @@ mod tests {
         )
         .expect("enqueue valid empty client area");
         runtime_dispatch_turn(runtime).expect("apply empty client area");
-        assert!(ui_control_layout_dirty(window).expect("empty area is a valid update"));
-        assert!(ui_control_layout_dirty(content).expect("empty area dirties root subtree"));
+        assert!(!ui_control_layout_dirty(window).expect("empty-area Layout consumed"));
+        assert!(!ui_control_layout_dirty(content).expect("empty-area subtree Layout consumed"));
+        let empty_layout = window_layout_snapshot_for_test(window)
+            .expect("query empty-area Layout")
+            .expect("empty-area Layout exists");
+        assert_eq!(empty_layout.client_area().width, 0.0);
+        assert_eq!(empty_layout.client_area().height, 0.0);
         assert_eq!(
             window_client_area_for_test(window),
             Ok(Some((
@@ -851,6 +865,102 @@ mod tests {
         assert!(sink.complete_frame(current).is_err());
         handle_release(window).expect("release Window");
         handle_release(runtime).expect("release Runtime");
+    }
+
+    #[test]
+    fn dirty_window_frame_coalesces_updates_and_retries_layout_failure() {
+        let probe = Arc::new(PlatformProbe::default());
+        let text_service = Arc::new(TextServiceProbe::default());
+        *probe.text_service.lock().expect("text service lock") = Some(text_service.clone());
+        let factory: Arc<dyn crate::abi_support::PlatformRuntimeFactory> =
+            Arc::new(TestPlatformFactory(Arc::clone(&probe)));
+        let runtime = runtime_create_handle_with_platform_factory(factory)
+            .expect("create Runtime with frame peer and TextService");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let root = ui_control_create_stack_panel(runtime).expect("create root panel");
+        let text = ui_control_create_text(runtime, b"initial").expect("create Text");
+        window_set_content(window, root).expect("attach root panel");
+        stack_panel_insert(root, 0, text).expect("attach Text");
+        assert_eq!(window_open(window), Ok(1));
+
+        let property = ui_control_text_content_property(text).expect("get Text content");
+        property_set_utf8(property, b"intermediate").expect("update Text content");
+        property_set_utf8(property, b"latest").expect("update Text content again");
+        runtime_dispatch_turn(runtime).expect("produce the coalesced first frame");
+
+        let first = {
+            let submitted = probe.submitted.lock().expect("submitted frames lock");
+            assert_eq!(submitted.len(), 1);
+            let (ticket, scene) = &submitted[0];
+            let layout = window_layout_snapshot_for_test(window)
+                .expect("query Layout")
+                .expect("complete Layout");
+            assert_eq!(scene.layout_revision(), layout.layout_revision);
+            assert_eq!(ticket.scene_revision(), layout.layout_revision);
+            assert_eq!(
+                scene
+                    .operations()
+                    .iter()
+                    .filter(|operation| matches!(
+                        operation,
+                        crate::abi_support::DrawOp::GlyphRun { .. }
+                    ))
+                    .count(),
+                1
+            );
+            *ticket
+        };
+        assert_eq!(
+            text_service
+                .requests
+                .lock()
+                .expect("TextService requests")
+                .as_slice(),
+            &[(first.scene_revision(), String::from("latest"))]
+        );
+
+        let sink = probe
+            .completion_sink
+            .lock()
+            .expect("completion sink lock")
+            .as_ref()
+            .expect("Core completion sink")
+            .clone();
+        sink.complete_frame(first).expect("complete initial frame");
+        runtime_dispatch_turn(runtime).expect("dispatch first frame completion");
+        assert_eq!(window_frame_phase(window), Ok(FramePhase::Presented(first)));
+
+        let previous_layout = window_layout_snapshot_for_test(window)
+            .expect("query Layout")
+            .expect("previous Layout");
+        text_service.fail.store(true, Ordering::SeqCst);
+        property_set_utf8(property, b"retry after failure").expect("update Text content");
+        runtime_dispatch_turn(runtime).expect("failed Text resolution keeps last complete state");
+        assert_eq!(
+            probe.submitted.lock().expect("submitted frames lock").len(),
+            1,
+            "a failed TextService pass must not submit a partial frame"
+        );
+        assert!(Arc::ptr_eq(
+            &previous_layout,
+            &window_layout_snapshot_for_test(window)
+                .expect("query retained Layout")
+                .expect("retained complete Layout")
+        ));
+        assert!(ui_control_layout_dirty(window).expect("failed pass retains dirty state"));
+
+        text_service.fail.store(false, Ordering::SeqCst);
+        runtime_dispatch_turn(runtime).expect("retry dirty Window frame");
+        let retry = {
+            let submitted = probe.submitted.lock().expect("submitted frames lock");
+            assert_eq!(submitted.len(), 2);
+            assert!(submitted[1].1.layout_revision() > previous_layout.layout_revision);
+            submitted[1].0
+        };
+        sink.complete_frame(retry).expect("complete retried frame");
+        runtime_dispatch_turn(runtime).expect("dispatch retried frame completion");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
     }
 
     #[test]

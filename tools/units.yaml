@@ -4110,7 +4110,7 @@
     },
     {
       "id": "UNIT-CORE-087",
-      "state": "planned",
+      "state": "ready",
       "scope": "orchestrate-dirty-window-layout-scene-submission-and-retry-by-generation",
       "sources": [
         "crates/core-runtime/src/runtime.rs",
