@@ -97,10 +97,10 @@ mod tests {
     };
     use crate::abi_support::{
         UiControlApiError, handle_release, property_get_bool, property_get_utf8, property_set_bool,
-        runtime_create_handle, runtime_create_handle_with_platform_factory, runtime_dispatch_turn,
-        runtime_set_ui_loop_bridge, runtime_shutdown, stack_panel_child_align,
-        stack_panel_child_at, stack_panel_child_count, stack_panel_insert, stack_panel_move,
-        stack_panel_orientation, stack_panel_remove, stack_panel_set_child_align,
+        property_set_utf8, runtime_create_handle, runtime_create_handle_with_platform_factory,
+        runtime_dispatch_turn, runtime_set_ui_loop_bridge, runtime_shutdown,
+        stack_panel_child_align, stack_panel_child_at, stack_panel_child_count, stack_panel_insert,
+        stack_panel_move, stack_panel_orientation, stack_panel_remove, stack_panel_set_child_align,
         stack_panel_set_orientation, ui_control_accessible_name_property,
         ui_control_button_label_property, ui_control_create_button, ui_control_create_stack_panel,
         ui_control_create_text, ui_control_create_text_box, ui_control_create_window,
@@ -108,15 +108,18 @@ mod tests {
         ui_control_text_box_value_property, ui_control_text_content_property,
         ui_control_window_title_property, widget_has_focus, widget_request_focus,
         window_background_rgb, window_calculate_layout_for_test,
-        window_calculate_layout_with_orientation_change_for_test, window_clear_content,
+        window_calculate_layout_with_orientation_change_for_test,
+        window_calculate_layout_with_platform_text_for_test, window_clear_content,
         window_client_area_for_test, window_close, window_close_intent,
         window_close_intent_subscribed, window_close_request_current, window_close_request_defer,
         window_close_request_resolve, window_close_request_subscribe, window_content,
         window_control_tree_snapshot_for_test, window_device_scale_for_test, window_frame_phase,
-        window_install_test_peer, window_layout_snapshot_for_test, window_open,
-        window_platform_activation, window_reset_background_rgb, window_set_background_rgb,
-        window_set_content, window_set_content_with_peer, window_submit_frame,
+        window_install_test_peer, window_layout_and_control_tree_with_text_for_test,
+        window_layout_snapshot_for_test, window_open, window_platform_activation,
+        window_reset_background_rgb, window_set_background_rgb, window_set_content,
+        window_set_content_with_peer, window_submit_frame,
     };
+    use crate::ui_layout::Size;
     use crate::ui_window::CloseDecision;
     use crate::visual::{ControlViewConnector, VisualNodeDescriptor};
     use std::collections::HashMap;
@@ -163,6 +166,7 @@ mod tests {
         client_area_sink: std::sync::Mutex<Option<Arc<dyn PlatformWindowClientAreaSink>>>,
         submitted: std::sync::Mutex<Vec<(FrameTicket, Arc<SceneSnapshot>)>>,
         fail_next_submit: std::sync::atomic::AtomicBool,
+        text_service: std::sync::Mutex<Option<Arc<dyn crate::abi_support::TextService>>>,
     }
 
     struct TestPlatformFactory(Arc<PlatformProbe>);
@@ -185,6 +189,57 @@ mod tests {
                 probe: Arc::clone(&self.0),
                 _completion_sink: completion_sink,
             }))
+        }
+
+        fn text_service(&self) -> Option<Arc<dyn crate::abi_support::TextService>> {
+            self.0
+                .text_service
+                .lock()
+                .expect("text service lock")
+                .clone()
+        }
+    }
+
+    #[derive(Default)]
+    struct TextServiceProbe {
+        requests: std::sync::Mutex<Vec<(u64, String)>>,
+        fail: std::sync::atomic::AtomicBool,
+    }
+
+    impl crate::abi_support::TextService for TextServiceProbe {
+        fn resolve_and_shape(
+            &self,
+            request: &crate::abi_support::TextRequest,
+        ) -> Result<crate::abi_support::ResolvedTextSnapshot, crate::abi_support::TextServiceError>
+        {
+            self.requests
+                .lock()
+                .expect("text request lock")
+                .push((request.revision, request.text.to_string()));
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(crate::abi_support::TextServiceError::Unavailable);
+            }
+            let digest = [0x5a; 32];
+            let glyph = crate::abi_support::GlyphPlacement::new(42, 0.0, 0.0, 18.0, 0.0)?;
+            let glyphs = crate::abi_support::GlyphRunSnapshot::new(
+                digest,
+                14.0,
+                crate::abi_support::Rect::new(0.0, 0.0, 18.0, 20.0)?,
+                Arc::<[crate::abi_support::GlyphPlacement]>::from([glyph]),
+            )?;
+            let font = crate::abi_support::ResolvedFontIdentity {
+                resolver_profile: Arc::from("test-profile"),
+                family: Arc::from("Test Sans"),
+                style: Arc::from("Regular"),
+                asset_digest: digest,
+                face_index: 0,
+            };
+            let run = crate::abi_support::ResolvedGlyphRun::new(font, glyphs)?;
+            Ok(crate::abi_support::ResolvedTextSnapshot::new(
+                request.revision,
+                crate::abi_support::TextMetrics::new(18.0, 20.0)?,
+                Arc::<[crate::abi_support::ResolvedGlyphRun]>::from([run]),
+            ))
         }
     }
 
@@ -430,6 +485,137 @@ mod tests {
         let empty = window_calculate_layout_for_test(empty_window, 24.0, 12.0, false)
             .expect("empty content produces complete empty snapshot");
         assert_eq!(empty.node_count(), 0);
+        runtime_shutdown(runtime).expect("shutdown test Runtime");
+    }
+
+    #[test]
+    fn platform_default_text_snapshot_is_shared_by_layout_and_visual_scene() {
+        let probe = Arc::new(PlatformProbe::default());
+        let text_service = Arc::new(TextServiceProbe::default());
+        *probe.text_service.lock().expect("text service lock") = Some(text_service.clone());
+        let factory: Arc<dyn crate::abi_support::PlatformRuntimeFactory> =
+            Arc::new(TestPlatformFactory(Arc::clone(&probe)));
+        let runtime = runtime_create_handle_with_platform_factory(factory)
+            .expect("create Runtime with text service");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let root = ui_control_create_stack_panel(runtime).expect("create root panel");
+        let text = ui_control_create_text(runtime, b"plain text").expect("create Text");
+        let text_box =
+            ui_control_create_text_box(runtime, b"editing value").expect("create TextBox");
+        let button = ui_control_create_button(runtime, b"label").expect("create Button");
+        window_set_content(window, root).expect("attach root panel");
+        stack_panel_insert(root, 0, text).expect("attach Text");
+        stack_panel_insert(root, 1, text_box).expect("attach TextBox");
+        stack_panel_insert(root, 2, button).expect("attach Button");
+        window_open(window).expect("open fake Window");
+
+        let calculated_layout = window_calculate_layout_with_platform_text_for_test(window)
+            .expect("TextService measures the attached Text");
+        let (layout, tree) = window_layout_and_control_tree_with_text_for_test(window)
+            .expect("capture the matching text and layout snapshots");
+        assert!(Arc::ptr_eq(&calculated_layout, &layout));
+        let tree = tree.expect("attached Control tree");
+        let text_nodes = &tree.root.children;
+        assert_eq!(text_nodes.len(), 3);
+        let text_snapshots = text_nodes
+            .iter()
+            .map(|node| node.text.as_ref().expect("resolved text snapshot"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            text_snapshots
+                .iter()
+                .map(|snapshot| snapshot.revision)
+                .collect::<Vec<_>>(),
+            vec![layout.layout_revision; 3]
+        );
+        for node in text_nodes {
+            assert_eq!(
+                layout
+                    .node(node.identity)
+                    .expect("text layout node")
+                    .desired_size,
+                Size::new(18.0, 20.0).expect("valid test metrics")
+            );
+        }
+        assert_eq!(
+            text_service
+                .requests
+                .lock()
+                .expect("request list")
+                .as_slice(),
+            &[
+                (layout.layout_revision, String::from("plain text")),
+                (layout.layout_revision, String::from("editing value")),
+                (layout.layout_revision, String::from("label")),
+            ]
+        );
+
+        let mut descriptors = HashMap::new();
+        for identity in [tree.root.identity]
+            .into_iter()
+            .chain(text_nodes.iter().map(|node| node.identity))
+        {
+            descriptors.insert(
+                identity,
+                VisualNodeDescriptor {
+                    clips_children: false,
+                    operations: Vec::new(),
+                },
+            );
+        }
+        let scene = ControlViewConnector::build_from_control_tree(
+            &tree,
+            &layout,
+            &descriptors,
+            window_device_scale_for_test(window).expect("open Window scale"),
+            [1.0, 1.0, 1.0],
+            crate::abi_support::Damage::Full,
+        )
+        .expect("build Scene from retained resolved text");
+        let scene_glyphs = scene
+            .operations()
+            .iter()
+            .filter_map(|operation| match operation {
+                crate::abi_support::DrawOp::GlyphRun(run) => Some(run.font_digest()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(scene_glyphs.len(), 3);
+        assert!(
+            scene_glyphs
+                .iter()
+                .zip(text_snapshots)
+                .all(|(digest, snapshot)| { *digest == &snapshot.glyph_runs[0].font.asset_digest })
+        );
+
+        let property = ui_control_text_content_property(text).expect("Text content Property");
+        property_set_utf8(property, b"updated text").expect("update Text content");
+        assert!(ui_control_layout_dirty(window).expect("display change dirties Layout"));
+        let updated_layout = window_calculate_layout_with_platform_text_for_test(window)
+            .expect("resolve updated Text content");
+        assert!(updated_layout.layout_revision > layout.layout_revision);
+        assert!(
+            text_service
+                .requests
+                .lock()
+                .expect("request list")
+                .iter()
+                .any(|(_, text)| text == "updated text")
+        );
+
+        text_service.fail.store(true, Ordering::SeqCst);
+        let previous = window_layout_snapshot_for_test(window)
+            .expect("query Layout")
+            .expect("previous Layout exists");
+        assert_eq!(
+            window_calculate_layout_with_platform_text_for_test(window),
+            Err(UiControlApiError::Internal)
+        );
+        let retained = window_layout_snapshot_for_test(window)
+            .expect("query Layout after failure")
+            .expect("last complete Layout remains available");
+        assert!(Arc::ptr_eq(&previous, &retained));
         runtime_shutdown(runtime).expect("shutdown test Runtime");
     }
 

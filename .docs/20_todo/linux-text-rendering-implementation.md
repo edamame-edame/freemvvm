@@ -1,7 +1,7 @@
 # Linux TextService・GlyphRun実装
 
 - 計画版: 0.3
-- 状態: RQ-09-075、Platform DD 1.9、UI Controls DD 1.4、UI UT 1.2、計画0.2全文承認済み。Linux resolver/dependency/test profileと実装unit分割0.3は利用者承認済み。UNIT-CORE-084はcommit/push済み（`b6c64ea`）。UNIT-PLATFORM-003はLinux Dockerで実装・検証完了
+- 状態: RQ-09-075、Platform DD 1.9、UI Controls DD 1.4、UI UT 1.2、計画0.2全文承認済み。Linux resolver/dependency/test profileと実装unit分割0.3は利用者承認済み。UNIT-CORE-084はcommit/push済み（`b6c64ea`）。UNIT-PLATFORM-003はLinux Docker・Ubuntu CIで検証完了。UNIT-CORE-085は実装・ローカル検証完了、push後のUbuntu CI確認待ち
 - 作成日: 2026-10-31
 - 対象version: `0.0.1`
 - 対象branch: `impl-rust/core-scene-rendering`
@@ -52,8 +52,15 @@
 - Linux `freemvvm-platform-linux`へFontconfig `sans-serif`候補順、grapheme単位coverage fallback、HarfBuzz run shaping、FreeType 14 DIP metrics/gray mask cacheを実装。各runはresolved family/style/file SHA-256/face indexをCore-neutral `ResolvedTextSnapshot`へ記録する。C ABIへText APIは追加しない。
 - `abi_support`のhidden Rust SPIからTextService request/result型をplatform crateへ公開し、metrics値は検証済みconstructor/getter経由とした。C ABIの既存Control統合testはLinuxで実DRM/KMS `Window.open`を呼ばないよう分離し、実機確認を保留する。
 - Debian 12 Docker (`FC_LANG=ja-jp`)で `cargo test --workspace --all-targets --locked` 成功。Linux Platform 19 passed / 1 ignored（headless GLES pixel testは別条件）、Core 180 passed。`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check` 成功。
-- 初回GitHub Ubuntu 24.04 CIはFreeType development package不足で失敗（`freetype2.pc` missing）。`.github/workflows/bootstrap.yml`でFontconfig/CJK fonts/FreeType/HarfBuzz/pkg-configを準備し、Linux gateへ`FC_LANG=ja-jp`を設定した。依存修正後のCI結果は次のpushで確認する。
-- 実行結果はDocker/ソフトウェア側のtext shapingとraster mask生成を確認したもの。live Control/Layout/Scene接続はUNIT-CORE-085、GLES glyph atlas/presentはUNIT-PLATFORM-004、DRM実機のopen/displayはhardware確認であり完了を意味しない。
+- 初回GitHub Ubuntu 24.04 CIはFreeType development package不足で失敗（`freetype2.pc` missing）。`.github/workflows/bootstrap.yml`でFontconfig/CJK fonts/FreeType/HarfBuzz/pkg-configを準備し、Linux gateへ`FC_LANG=ja-jp`を設定。依存修正を含むcommit `526737c` のGitHub Actions run `41202444544` はWindows/Ubuntuの全jobが成功。
+- UNIT-PLATFORM-003までの実行結果はDocker/ソフトウェア側のtext shapingとraster mask生成を確認したもの。live Control/Layout/Scene接続はUNIT-CORE-085、GLES glyph atlas/presentはUNIT-PLATFORM-004、DRM実機のopen/displayはhardware確認であり完了を意味しない。
+
+## UNIT-CORE-085 実装・検証記録
+
+- Platform factoryからRuntimeへ同一TextService instanceを提供し、Text/TextBox/Button labelをLayout revisionごとに解決。Text snapshotをLayout計測とControl tree/Visual sceneへ共有し、表示property更新後はLayoutをdirty化して再解決する。
+- TextService失敗時は新Layoutとtext snapshot一式を公開せず、最後に成功した完全snapshotを保持する。C ABIやlanguage wrapper APIは追加していない。
+- fake TextService統合testは同revision/metrics/glyph run共有、property更新による再解決、failure atomicityを確認。`cargo test --workspace --all-targets --locked`（Core 181、ABI 39、Linux Platform 10ほか）、Clippy、Rust 1.85 check、fmt、`tools/check_docs.py` がlocal pass。今回の実装revisionのUbuntu CIはpush後確認する。
+- 関連実装上の注意は[Core scene production memory](../01_memory/core-scene-production.md)を参照。Linux runner依存の不足と修正はcommit `526737c` / Actions run `41201554822`（失敗）・`41202444544`（成功）。
 
 ## 実装計画0.3の参照資料
 

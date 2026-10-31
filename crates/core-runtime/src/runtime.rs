@@ -15,6 +15,7 @@ use crate::property::{
     PropertyChangeQueue, PropertyHandleKind, PropertyState, PropertyValidator, Subscription,
     ValidationError, ValidatorResult,
 };
+use crate::text_service::{ResolvedTextSnapshot, TextRequest, TextService, resolve_text};
 use crate::ui_controls::{UiControlKind, UiControlProperty, UiControlState};
 use crate::ui_focus::FocusManager;
 use crate::ui_layout::{
@@ -34,7 +35,7 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::num::NonZeroU64;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::thread::ThreadId;
 
@@ -1115,6 +1116,8 @@ impl RuntimeIdentity {
 pub(crate) struct RuntimeCore {
     identity: RuntimeIdentity,
     platform_factory: Option<Arc<dyn PlatformRuntimeFactory>>,
+    text_service: Option<Arc<dyn TextService>>,
+    next_text_revision: AtomicU64,
     command_operation_ids: OperationIdIssuer,
     ui_thread: UiThreadContext,
     cleanup: Arc<RuntimeCleanupQueue>,
@@ -1141,6 +1144,21 @@ struct LayoutTreeInput {
     children: Vec<Self>,
 }
 
+struct ResolvedTextMeasurer<'a>(&'a HashMap<ObjectIdentity, Arc<ResolvedTextSnapshot>>);
+
+impl IntrinsicMeasureProvider for ResolvedTextMeasurer<'_> {
+    fn measure(
+        &self,
+        identity: ObjectIdentity,
+        _: crate::ui_layout::LayoutConstraints,
+    ) -> Result<Size, LayoutError> {
+        let Some(snapshot) = self.0.get(&identity) else {
+            return Size::new(0.0, 0.0);
+        };
+        Size::new(snapshot.metrics.width_dip(), snapshot.metrics.height_dip())
+    }
+}
+
 fn capture_layout_tree(
     tree: &RuntimeTreeStore<RuntimeIdentity>,
     identity: ObjectIdentity,
@@ -1165,6 +1183,7 @@ fn control_tree_snapshot_node(
     input: &LayoutTreeInput,
     layout: &LayoutSnapshot,
     controls: &UiObjectStore<Box<dyn Any + Send>>,
+    text_snapshots: &HashMap<ObjectIdentity, Arc<ResolvedTextSnapshot>>,
     visited: &mut HashSet<ObjectIdentity>,
 ) -> Result<ControlTreeNodeSnapshot, LayoutError> {
     visited
@@ -1187,11 +1206,16 @@ fn control_tree_snapshot_node(
         .map_err(|_| LayoutError::AllocationFailed)?;
     for child in &input.children {
         children.push(control_tree_snapshot_node(
-            child, layout, controls, visited,
+            child,
+            layout,
+            controls,
+            text_snapshots,
+            visited,
         )?);
     }
     Ok(ControlTreeNodeSnapshot {
         identity: input.identity,
+        text: text_snapshots.get(&input.identity).cloned(),
         children,
     })
 }
@@ -1397,6 +1421,9 @@ impl RuntimeCore {
     pub(crate) fn new_with_platform_factory(
         platform_factory: Option<Arc<dyn PlatformRuntimeFactory>>,
     ) -> Result<Self, RuntimeCoreError> {
+        let text_service = platform_factory
+            .as_ref()
+            .and_then(|factory| factory.text_service());
         let identity = RuntimeIdentity::issue().ok_or(RuntimeCoreError::IdentityUnavailable)?;
         let ui_thread = UiThreadContext::capture();
         let cleanup = RuntimeCleanupQueue::new_for_ui_thread(ui_thread);
@@ -1520,6 +1547,8 @@ impl RuntimeCore {
         Ok(Self {
             identity,
             platform_factory,
+            text_service,
+            next_text_revision: AtomicU64::new(1),
             command_operation_ids: OperationIdIssuer::new(),
             ui_thread,
             cleanup,
@@ -2965,6 +2994,146 @@ impl RuntimeCore {
         identity: ObjectIdentity,
         measurer: &impl IntrinsicMeasureProvider,
     ) -> Result<Arc<LayoutSnapshot>, LayoutError> {
+        self.calculate_window_layout_with_text(identity, measurer, HashMap::new())
+    }
+
+    pub(crate) fn calculate_window_layout_with_platform_text(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<Arc<LayoutSnapshot>, LayoutError> {
+        if !self.is_ui_thread() || self.cleanup.state() != RuntimeState::Running {
+            return Err(LayoutError::InvalidTree);
+        }
+        let next_layout_revision = {
+            let controls = self
+                .ui_objects
+                .lock()
+                .map_err(|_| LayoutError::InvalidTree)?;
+            controls
+                .resolve(identity)
+                .map_err(|_| LayoutError::InvalidTree)?
+                .downcast_ref::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .and_then(|state| state.window.as_ref())
+                .and_then(|window| window.layout_input())
+                .and_then(|(_, _, revision)| revision.checked_add(1))
+                .ok_or(LayoutError::InvalidTree)?
+        };
+        let root = {
+            let tree = self.ui_tree.lock().map_err(|_| LayoutError::InvalidTree)?;
+            let count = tree
+                .child_count(identity)
+                .map_err(|_| LayoutError::InvalidTree)?;
+            if count > 1 {
+                return Err(LayoutError::InvalidTree);
+            }
+            if count == 0 {
+                None
+            } else {
+                let content = tree
+                    .child_identity_at(identity, 0)
+                    .map_err(|_| LayoutError::InvalidTree)?;
+                Some(capture_layout_tree(&tree, content)?)
+            }
+        };
+        let text_snapshots =
+            self.resolve_control_text_snapshots(root.as_ref(), next_layout_revision)?;
+        let measurement_snapshots = text_snapshots.clone();
+        let measurer = ResolvedTextMeasurer(&measurement_snapshots);
+        self.calculate_window_layout_with_text(identity, &measurer, text_snapshots)
+    }
+
+    fn resolve_control_text_snapshots(
+        &self,
+        root: Option<&LayoutTreeInput>,
+        revision: u64,
+    ) -> Result<HashMap<ObjectIdentity, Arc<ResolvedTextSnapshot>>, LayoutError> {
+        let mut inputs = Vec::new();
+        if let Some(root) = root {
+            let mut pending = Vec::new();
+            pending
+                .try_reserve(1)
+                .map_err(|_| LayoutError::AllocationFailed)?;
+            pending.push(root);
+            while let Some(node) = pending.pop() {
+                inputs
+                    .try_reserve(1)
+                    .map_err(|_| LayoutError::AllocationFailed)?;
+                inputs.push(node.identity);
+                pending
+                    .try_reserve(node.children.len())
+                    .map_err(|_| LayoutError::AllocationFailed)?;
+                pending.extend(node.children.iter().rev());
+            }
+        }
+
+        let text_inputs = {
+            let controls = self
+                .ui_objects
+                .lock()
+                .map_err(|_| LayoutError::InvalidTree)?;
+            let mut text_inputs = Vec::new();
+            text_inputs
+                .try_reserve(inputs.len())
+                .map_err(|_| LayoutError::AllocationFailed)?;
+            for identity in inputs {
+                let control = controls
+                    .resolve(identity)
+                    .map_err(|_| LayoutError::InvalidTree)?
+                    .downcast_ref::<UiControlState>()
+                    .ok_or(LayoutError::InvalidTree)?;
+                let property = match control.kind {
+                    UiControlKind::Text => Some(UiControlProperty::TextContent),
+                    UiControlKind::TextBox => Some(UiControlProperty::TextBoxValue),
+                    UiControlKind::Button => Some(UiControlProperty::ButtonLabel),
+                    UiControlKind::Window | UiControlKind::StackPanel => None,
+                };
+                let Some(property) = property else {
+                    continue;
+                };
+                let owner = control
+                    .property_owner(property)
+                    .ok_or(LayoutError::InvalidTree)?;
+                let value = controls
+                    .resolve(owner.identity())
+                    .map_err(|_| LayoutError::InvalidTree)?
+                    .downcast_ref::<PropertyState>()
+                    .ok_or(LayoutError::InvalidTree)?
+                    .read();
+                let TypedValue::Utf8(text) = value else {
+                    return Err(LayoutError::InvalidTree);
+                };
+                text_inputs.push((identity, Arc::<str>::from(text.as_str())));
+            }
+            text_inputs
+        };
+
+        if text_inputs.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let service = self
+            .text_service
+            .as_deref()
+            .ok_or(LayoutError::MeasurementFailed)?;
+        let mut snapshots = HashMap::new();
+        snapshots
+            .try_reserve(text_inputs.len())
+            .map_err(|_| LayoutError::AllocationFailed)?;
+        for (identity, text) in text_inputs {
+            let request = TextRequest::platform_default(revision, text);
+            let snapshot =
+                resolve_text(service, &request).map_err(|_| LayoutError::MeasurementFailed)?;
+            snapshots.insert(identity, Arc::new(snapshot));
+        }
+        Ok(snapshots)
+    }
+
+    fn calculate_window_layout_with_text(
+        &self,
+        identity: ObjectIdentity,
+        measurer: &impl IntrinsicMeasureProvider,
+        text_snapshots: HashMap<ObjectIdentity, Arc<ResolvedTextSnapshot>>,
+    ) -> Result<Arc<LayoutSnapshot>, LayoutError> {
         if !self.is_ui_thread() || self.cleanup.state() != RuntimeState::Running {
             return Err(LayoutError::InvalidTree);
         }
@@ -3098,7 +3267,7 @@ impl RuntimeCore {
             return Err(LayoutError::InvalidTree);
         }
         let published = window
-            .publish_layout(generation, client_area, candidate)
+            .publish_layout(generation, client_area, candidate, text_snapshots)
             .ok_or(LayoutError::InvalidTree)?;
         for control_identity in identities {
             if let Ok(object) = controls.resolve_mut(control_identity) {
@@ -3197,8 +3366,17 @@ impl RuntimeCore {
                 }
                 return Ok(None);
             };
+            let text_snapshots = controls
+                .resolve(identity)
+                .map_err(|_| LayoutError::InvalidTree)?
+                .downcast_ref::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window && !state.layout_dirty)
+                .and_then(|state| state.window.as_ref())
+                .map(|window| window.text_snapshots())
+                .ok_or(LayoutError::InvalidTree)?;
             let mut visited = HashSet::new();
-            let root = control_tree_snapshot_node(root, layout, &controls, &mut visited)?;
+            let root =
+                control_tree_snapshot_node(root, layout, &controls, &text_snapshots, &mut visited)?;
             if visited.len() != layout.node_count() {
                 return Err(LayoutError::InvalidTree);
             }
@@ -4199,6 +4377,11 @@ impl RuntimeCore {
         candidates: Vec<PreparedBindingValue>,
         current_generation: &[ObjectIdentity],
     ) -> Result<(), RuntimePropertyError> {
+        let mut dirty_properties = Vec::new();
+        dirty_properties
+            .try_reserve(candidates.len())
+            .map_err(|_| RuntimePropertyError::BindingPropagationOutOfMemory)?;
+        dirty_properties.extend(candidates.iter().map(|candidate| candidate.target));
         let mut store = self
             .ui_objects
             .lock()
@@ -4226,6 +4409,11 @@ impl RuntimeCore {
             if !current_generation.contains(&candidate.target) {
                 changes.commit_change(candidate.target);
             }
+        }
+        drop(changes);
+        drop(store);
+        for property in dirty_properties {
+            self.mark_layout_dirty_for_display_property(property);
         }
         Ok(())
     }
@@ -4553,8 +4741,39 @@ impl RuntimeCore {
             .map_err(RuntimePropertyError::ValueKindMismatch)?;
         if outcome == ValueCommit::Changed {
             changes.commit_direct_change(identity);
+            drop(changes);
+            drop(store);
+            self.mark_layout_dirty_for_display_property(identity);
         }
         Ok(outcome)
+    }
+
+    fn mark_layout_dirty_for_display_property(&self, property: ObjectIdentity) {
+        let Ok(mut controls) = self.ui_objects.lock() else {
+            return;
+        };
+        let mut affects_display = false;
+        controls.visit_mut(|_, object| {
+            let Some(state) = object.downcast_mut::<UiControlState>() else {
+                return;
+            };
+            affects_display |= state.properties.iter().any(|entry| {
+                entry.owner.identity() == property
+                    && matches!(
+                        entry.property,
+                        UiControlProperty::TextContent
+                            | UiControlProperty::TextBoxValue
+                            | UiControlProperty::ButtonLabel
+                    )
+            });
+        });
+        if affects_display {
+            controls.visit_mut(|_, object| {
+                if let Some(state) = object.downcast_mut::<UiControlState>() {
+                    state.layout_dirty = true;
+                }
+            });
+        }
     }
 
     /// Atomically updates a Command's read-only state and can-execute Properties.

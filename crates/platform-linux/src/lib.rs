@@ -28,7 +28,10 @@ mod device {
 
 /// Creates a lazy Linux platform factory. DRM/EGL resources are opened per Window.
 pub fn factory() -> Arc<dyn PlatformRuntimeFactory> {
-    Arc::new(LinuxFactory)
+    Arc::new(LinuxFactory {
+        #[cfg(target_os = "linux")]
+        text_service: Arc::new(text_service::LinuxTextService::new()),
+    })
 }
 
 /// Creates the Linux platform-default text resolver for the Core's hidden Rust service seam.
@@ -37,7 +40,10 @@ pub fn text_service() -> Arc<dyn freemvvm_core::abi_support::TextService> {
     Arc::new(text_service::LinuxTextService::new())
 }
 
-struct LinuxFactory;
+struct LinuxFactory {
+    #[cfg(target_os = "linux")]
+    text_service: Arc<text_service::LinuxTextService>,
+}
 
 impl PlatformRuntimeFactory for LinuxFactory {
     fn create_window_peer(
@@ -48,6 +54,11 @@ impl PlatformRuntimeFactory for LinuxFactory {
             LinuxPeer::new(Arc::new(NativeSurfaceOpener), completion_sink)
                 .map_err(|_| PlatformOperationError)?,
         ))
+    }
+
+    #[cfg(target_os = "linux")]
+    fn text_service(&self) -> Option<Arc<dyn freemvvm_core::abi_support::TextService>> {
+        Some(self.text_service.clone())
     }
 }
 

@@ -1,6 +1,8 @@
 use crate::handle_registry::registry::ObjectIdentity;
 use crate::platform::frame::{FrameError, FramePhase, FrameTicket, FrameTracker};
 use crate::platform::scene::{Damage, DeviceScale, SceneSnapshot};
+use crate::text_service::ResolvedTextSnapshot;
+use crate::text_service::TextService;
 use crate::ui_layout::LayoutSnapshot;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -69,6 +71,11 @@ pub trait PlatformRuntimeFactory: Send + Sync {
         &self,
         completion_sink: Arc<dyn PlatformFrameCompletionSink>,
     ) -> Result<Arc<dyn PlatformWindowPeer>, PlatformOperationError>;
+
+    /// Returns the profile-owned service used to resolve and shape Control text.
+    fn text_service(&self) -> Option<Arc<dyn TextService>> {
+        None
+    }
 }
 
 /// Opaque failure at the platform SPI boundary; detailed diagnostics remain backend-owned.
@@ -133,6 +140,7 @@ pub(crate) struct WindowLifecycle {
     device_scale: Option<(u64, DeviceScale)>,
     layout_revision: u64,
     layout_snapshot: Option<Arc<LayoutSnapshot>>,
+    text_snapshots: Arc<HashMap<ObjectIdentity, Arc<ResolvedTextSnapshot>>>,
 }
 
 pub(crate) struct PreparedWindowFrame {
@@ -218,11 +226,16 @@ impl WindowLifecycle {
         self.layout_snapshot.clone()
     }
 
+    pub(crate) fn text_snapshots(&self) -> Arc<HashMap<ObjectIdentity, Arc<ResolvedTextSnapshot>>> {
+        Arc::clone(&self.text_snapshots)
+    }
+
     pub(crate) fn publish_layout(
         &mut self,
         generation: u64,
         area: WindowClientArea,
         mut snapshot: LayoutSnapshot,
+        text_snapshots: HashMap<ObjectIdentity, Arc<ResolvedTextSnapshot>>,
     ) -> Option<Arc<LayoutSnapshot>> {
         if !self.open
             || self.generation != generation
@@ -236,6 +249,7 @@ impl WindowLifecycle {
         let snapshot = Arc::new(snapshot);
         self.layout_revision = revision;
         self.layout_snapshot = Some(Arc::clone(&snapshot));
+        self.text_snapshots = Arc::new(text_snapshots);
         Some(snapshot)
     }
 
@@ -290,6 +304,7 @@ impl WindowLifecycle {
         self.client_area = Some((generation, info.client_area));
         self.device_scale = Some((generation, info.device_scale));
         self.layout_snapshot = None;
+        self.text_snapshots = Arc::default();
         Ok(())
     }
 
@@ -332,6 +347,7 @@ impl WindowLifecycle {
         self.client_area = None;
         self.device_scale = None;
         self.layout_snapshot = None;
+        self.text_snapshots = Arc::default();
         self.pending.clear();
         self.in_flight = None;
         self.frames.reset();
@@ -465,6 +481,7 @@ impl WindowLifecycle {
         self.open = false;
         self.client_area = None;
         self.layout_snapshot = None;
+        self.text_snapshots = Arc::default();
         self.pending.clear();
         self.frames.reset();
         self.force_full_damage = true;
@@ -537,6 +554,7 @@ impl WindowLifecycle {
         self.open = false;
         self.client_area = None;
         self.layout_snapshot = None;
+        self.text_snapshots = Arc::default();
         self.pending.clear();
         self.in_flight = None;
     }

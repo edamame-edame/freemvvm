@@ -4,6 +4,7 @@ use crate::handle_registry::registry::ObjectIdentity;
 use crate::platform::scene::{
     Damage, DeviceScale, DrawOp, GlyphPlacement, GlyphRunSnapshot, Rect, SceneError, SceneSnapshot,
 };
+use crate::text_service::ResolvedTextSnapshot;
 use crate::ui_layout::{LayoutSnapshot, Rect as LayoutRect};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -34,6 +35,7 @@ pub(crate) struct ControlTreeSnapshot {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ControlTreeNodeSnapshot {
     pub(crate) identity: ObjectIdentity,
+    pub(crate) text: Option<Arc<ResolvedTextSnapshot>>,
     pub(crate) children: Vec<Self>,
 }
 
@@ -94,11 +96,27 @@ impl ControlViewConnector {
         let descriptor = descriptors
             .get(&node.identity)
             .ok_or(VisualBuildError::MissingDescriptor)?;
+        let text_operation_count = node
+            .text
+            .as_ref()
+            .map_or(0, |snapshot| snapshot.glyph_runs.len());
         let mut operations = Vec::new();
         operations
-            .try_reserve(descriptor.operations.len())
+            .try_reserve(
+                descriptor
+                    .operations
+                    .len()
+                    .saturating_add(text_operation_count),
+            )
             .map_err(|_| VisualBuildError::AllocationFailed)?;
         operations.extend(descriptor.operations.iter().cloned());
+        if let Some(text) = &node.text {
+            operations.extend(
+                text.glyph_runs
+                    .iter()
+                    .map(|run| VisualOperation::GlyphRun(run.glyphs.clone())),
+            );
+        }
         let mut children = Vec::new();
         children
             .try_reserve(node.children.len())
@@ -277,7 +295,11 @@ mod tests {
         identity: ObjectIdentity,
         children: Vec<ControlTreeNodeSnapshot>,
     ) -> ControlTreeNodeSnapshot {
-        ControlTreeNodeSnapshot { identity, children }
+        ControlTreeNodeSnapshot {
+            identity,
+            text: None,
+            children,
+        }
     }
 
     fn descriptors(identities: &[ObjectIdentity]) -> HashMap<ObjectIdentity, VisualNodeDescriptor> {

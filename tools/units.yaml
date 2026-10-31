@@ -2,6 +2,70 @@
   "schema": 2,
   "units": [
     {
+      "id": "UNIT-CORE-085",
+      "state": "complete",
+      "scope": "resolve-control-text-once-and-share-revision-stamped-snapshot-with-layout-and-scene",
+      "sources": [
+        "crates/core-runtime/src/lib.rs",
+        "crates/core-runtime/src/runtime.rs",
+        "crates/core-runtime/src/ui_controls.rs",
+        "crates/core-runtime/src/ui_window.rs",
+        "crates/core-runtime/src/visual.rs",
+        "crates/platform-linux/src/lib.rs"
+      ],
+      "config": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "crates/core-runtime/Cargo.toml",
+        "crates/platform-linux/Cargo.toml",
+        "tools/units.yaml"
+      ],
+      "depends_on": [
+        "UNIT-CORE-084",
+        "UNIT-CORE-078",
+        "UNIT-CORE-079",
+        "UNIT-PLATFORM-003"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.4 approved",
+          "section": "Text-family immutable display snapshot and shared TextService result"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.9 approved",
+          "section": "Core request, PlatformDefault resolution, and same-revision Layout/Scene reuse"
+        }
+      ],
+      "requirements": [
+        "RQ-09-004",
+        "RQ-09-006",
+        "RQ-09-072",
+        "RQ-09-075",
+        "RQ-11-023"
+      ],
+      "cases": [
+        "TC-LAYOUT-01",
+        "TC-PLAT-01",
+        "TC-ERROR-01"
+      ],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-TEXT-PLATFORM-DEFAULT-001",
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "freemvvm-core",
+            "platform_default_text_snapshot_is_shared_by_layout_and_visual_scene",
+            "--locked"
+          ]
+        }
+      ]
+    },
+    {
       "id": "UNIT-BUILD-001",
       "state": "complete",
       "scope": "development-bootstrap-only",

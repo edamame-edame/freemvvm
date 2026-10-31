@@ -2377,6 +2377,37 @@ pub mod abi_support {
     }
 
     #[cfg(test)]
+    pub(crate) fn window_calculate_layout_with_platform_text_for_test(
+        window: u64,
+    ) -> Result<Arc<LayoutSnapshot>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .calculate_window_layout_with_platform_text(identity)
+            .map_err(|_| UiControlApiError::Internal)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_layout_and_control_tree_with_text_for_test(
+        window: u64,
+    ) -> Result<
+        (
+            Arc<LayoutSnapshot>,
+            Option<crate::visual::ControlTreeSnapshot>,
+        ),
+        UiControlApiError,
+    > {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let layout = runtime
+            .window_layout_snapshot(identity)
+            .map_err(|_| UiControlApiError::Internal)?
+            .ok_or(UiControlApiError::Internal)?;
+        let tree = runtime
+            .capture_window_control_tree_snapshot(identity, &layout)
+            .map_err(|_| UiControlApiError::Internal)?;
+        Ok((layout, tree))
+    }
+
+    #[cfg(test)]
     pub(crate) fn window_calculate_layout_with_orientation_change_for_test(
         window: u64,
         panel: u64,
