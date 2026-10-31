@@ -1,7 +1,7 @@
 # Linux TextService・GlyphRun実装
 
 - 計画版: 0.3
-- 状態: RQ-09-075、Platform DD 1.9、UI Controls DD 1.4、UI UT 1.2、計画0.2全文承認済み。Linux resolver/dependency/test profileと実装unit分割0.3は利用者承認済み。UNIT-CORE-084はcommit/push済み（`b6c64ea`）。UNIT-PLATFORM-003はLinux Docker・Ubuntu CIで検証完了。UNIT-CORE-085は実装・ローカル検証完了、push後のUbuntu CI確認待ち
+- 状態: RQ-09-075、Platform DD 1.9、UI Controls DD 1.4、UI UT 1.2、計画0.2全文承認済み。Linux resolver/dependency/test profileと実装unit分割0.3は利用者承認済み。UNIT-CORE-084はcommit/push済み（`b6c64ea`）。UNIT-PLATFORM-003はLinux Docker・Ubuntu CIで検証完了。UNIT-CORE-085はcommit/push済み（`d489ca5`）、local・Windows/Ubuntu CI pass
 - 作成日: 2026-10-31
 - 対象version: `0.0.1`
 - 対象branch: `impl-rust/core-scene-rendering`
@@ -59,7 +59,7 @@
 
 - Platform factoryからRuntimeへ同一TextService instanceを提供し、Text/TextBox/Button labelをLayout revisionごとに解決。Text snapshotをLayout計測とControl tree/Visual sceneへ共有し、表示property更新後はLayoutをdirty化して再解決する。
 - TextService失敗時は新Layoutとtext snapshot一式を公開せず、最後に成功した完全snapshotを保持する。C ABIやlanguage wrapper APIは追加していない。
-- fake TextService統合testは同revision/metrics/glyph run共有、property更新による再解決、failure atomicityを確認。`cargo test --workspace --all-targets --locked`（Core 181、ABI 39、Linux Platform 10ほか）、Clippy、Rust 1.85 check、fmt、`tools/check_docs.py` がlocal pass。今回の実装revisionのUbuntu CIはpush後確認する。
+- fake TextService統合testは同revision/metrics/glyph run共有、property更新による再解決、failure atomicityを確認。`cargo test --workspace --all-targets --locked`（Core 181、ABI 39、Linux Platform 10ほか）、Clippy、Rust 1.85 check、fmt、`tools/check_docs.py` がlocal pass。commit `d489ca5` のGitHub Actions run `41204164249` はWindows/Ubuntu gateとLinux Platform unit testsがpass。
 - 関連実装上の注意は[Core scene production memory](../01_memory/core-scene-production.md)を参照。Linux runner依存の不足と修正はcommit `526737c` / Actions run `41201554822`（失敗）・`41202444544`（成功）。
 
 ## 実装計画0.3の参照資料
