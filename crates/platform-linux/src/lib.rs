@@ -2,8 +2,8 @@
 
 use crate::renderer::PlanError;
 use freemvvm_core::abi_support::{
-    FrameTicket, PlatformFrameCompletionSink, PlatformOperationError, PlatformRuntimeFactory,
-    PlatformWindowPeer, SceneSnapshot, WindowClientArea,
+    DeviceScale, FrameTicket, PlatformFrameCompletionSink, PlatformOperationError,
+    PlatformRuntimeFactory, PlatformWindowPeer, SceneSnapshot, WindowClientArea, WindowOpenInfo,
 };
 use std::sync::{Arc, Mutex, mpsc};
 
@@ -12,6 +12,8 @@ mod renderer;
 
 #[cfg(target_os = "linux")]
 mod device;
+#[cfg(target_os = "linux")]
+mod text_service;
 #[cfg(not(target_os = "linux"))]
 mod device {
     pub(super) struct NativeSurface;
@@ -26,20 +28,42 @@ mod device {
 
 /// Creates a lazy Linux platform factory. DRM/EGL resources are opened per Window.
 pub fn factory() -> Arc<dyn PlatformRuntimeFactory> {
-    Arc::new(LinuxFactory)
+    Arc::new(LinuxFactory {
+        #[cfg(target_os = "linux")]
+        text_service: Arc::new(text_service::LinuxTextService::new()),
+    })
 }
 
-struct LinuxFactory;
+/// Creates the Linux platform-default text resolver for the Core's hidden Rust service seam.
+#[cfg(target_os = "linux")]
+pub fn text_service() -> Arc<dyn freemvvm_core::abi_support::TextService> {
+    Arc::new(text_service::LinuxTextService::new())
+}
+
+struct LinuxFactory {
+    #[cfg(target_os = "linux")]
+    text_service: Arc<text_service::LinuxTextService>,
+}
 
 impl PlatformRuntimeFactory for LinuxFactory {
     fn create_window_peer(
         &self,
         completion_sink: Arc<dyn PlatformFrameCompletionSink>,
     ) -> Result<Arc<dyn PlatformWindowPeer>, PlatformOperationError> {
+        #[cfg(target_os = "linux")]
+        let opener: Arc<dyn SurfaceOpener> = Arc::new(NativeSurfaceOpener {
+            text_service: Arc::clone(&self.text_service),
+        });
+        #[cfg(not(target_os = "linux"))]
+        let opener: Arc<dyn SurfaceOpener> = Arc::new(NativeSurfaceOpener);
         Ok(Arc::new(
-            LinuxPeer::new(Arc::new(NativeSurfaceOpener), completion_sink)
-                .map_err(|_| PlatformOperationError)?,
+            LinuxPeer::new(opener, completion_sink).map_err(|_| PlatformOperationError)?,
         ))
+    }
+
+    #[cfg(target_os = "linux")]
+    fn text_service(&self) -> Option<Arc<dyn freemvvm_core::abi_support::TextService>> {
+        Some(self.text_service.clone())
     }
 }
 
@@ -52,6 +76,7 @@ enum SurfaceSubmission {
 
 trait OpenedSurface {
     fn client_area(&self) -> WindowClientArea;
+    fn device_scale(&self) -> DeviceScale;
     fn submit(
         &mut self,
         ticket: FrameTicket,
@@ -65,6 +90,10 @@ trait OpenedSurface {
 impl OpenedSurface for device::NativeSurface {
     fn client_area(&self) -> WindowClientArea {
         device::NativeSurface::client_area(self)
+    }
+
+    fn device_scale(&self) -> DeviceScale {
+        device::NativeSurface::device_scale(self)
     }
 
     fn submit(
@@ -97,6 +126,10 @@ impl OpenedSurface for device::NativeSurface {
         }
     }
 
+    fn device_scale(&self) -> DeviceScale {
+        DeviceScale::new(1.0, 1.0).expect("valid Linux KMS profile scale")
+    }
+
     fn submit(
         &mut self,
         _: FrameTicket,
@@ -118,11 +151,21 @@ trait SurfaceOpener: Send + Sync {
     fn open(&self) -> Result<Box<dyn OpenedSurface>, ()>;
 }
 
+#[cfg(target_os = "linux")]
+struct NativeSurfaceOpener {
+    text_service: Arc<text_service::LinuxTextService>,
+}
+
+#[cfg(not(target_os = "linux"))]
 struct NativeSurfaceOpener;
 
 impl SurfaceOpener for NativeSurfaceOpener {
     fn open(&self) -> Result<Box<dyn OpenedSurface>, ()> {
-        device::open_surface()
+        #[cfg(target_os = "linux")]
+        let surface = device::open_surface(Arc::clone(&self.text_service));
+        #[cfg(not(target_os = "linux"))]
+        let surface = device::open_surface();
+        surface
             .map(|surface| Box::new(surface) as Box<dyn OpenedSurface>)
             .map_err(|_| ())
     }
@@ -134,7 +177,7 @@ struct LinuxPeer {
 }
 
 enum WorkerCommand {
-    Open(u64, mpsc::SyncSender<Result<WindowClientArea, ()>>),
+    Open(u64, mpsc::SyncSender<Result<WindowOpenInfo, ()>>),
     Close(mpsc::SyncSender<Result<(), ()>>),
     Submit(
         FrameTicket,
@@ -187,7 +230,7 @@ impl Drop for LinuxPeer {
 }
 
 impl PlatformWindowPeer for LinuxPeer {
-    fn open(&self, generation: u64) -> Result<WindowClientArea, PlatformOperationError> {
+    fn open(&self, generation: u64) -> Result<WindowOpenInfo, PlatformOperationError> {
         let (reply, result) = mpsc::sync_channel(0);
         self.commands
             .send(WorkerCommand::Open(generation, reply))
@@ -284,13 +327,19 @@ fn surface_worker(
                 let result = if surface.is_some() {
                     surface
                         .as_ref()
-                        .map(|opened| opened.client_area())
+                        .map(|opened| WindowOpenInfo {
+                            client_area: opened.client_area(),
+                            device_scale: opened.device_scale(),
+                        })
                         .ok_or(())
                 } else {
                     opener.open().map(|opened| {
-                        let client_area = opened.client_area();
+                        let info = WindowOpenInfo {
+                            client_area: opened.client_area(),
+                            device_scale: opened.device_scale(),
+                        };
                         surface = Some(opened);
-                        client_area
+                        info
                     })
                 };
                 let _ = reply.send(result);
@@ -370,6 +419,10 @@ mod tests {
             }
         }
 
+        fn device_scale(&self) -> DeviceScale {
+            DeviceScale::new(1.0, 1.0).expect("valid test scale")
+        }
+
         fn submit(
             &mut self,
             ticket: FrameTicket,
@@ -379,7 +432,7 @@ mod tests {
                 && scene
                     .operations()
                     .iter()
-                    .any(|operation| matches!(operation, DrawOp::GlyphRun(_)))
+                    .any(|operation| matches!(operation, DrawOp::GlyphRun { .. }))
             {
                 return Err(PlanError::UnsupportedOperation);
             }
@@ -518,12 +571,17 @@ mod tests {
         let (peer, _) = peer_and_completions(opener.clone());
 
         assert!(peer.open(1).is_err());
+        let info = peer.open(1).expect("open after retry");
         assert_eq!(
-            peer.open(1).expect("open after retry"),
+            info.client_area,
             WindowClientArea {
                 width_dip: 800.0,
                 height_dip: 600.0,
             }
+        );
+        assert_eq!(
+            info.device_scale,
+            DeviceScale::new(1.0, 1.0).expect("Linux KMS profile scale")
         );
         assert!(peer.open(1).is_ok());
         assert_eq!(opener.attempts.load(Ordering::SeqCst), 2);
@@ -578,7 +636,13 @@ mod tests {
             Arc::from([]),
         )
         .expect("glyph run");
-        let unsupported = scene(9, vec![DrawOp::GlyphRun(glyph)]);
+        let unsupported = scene(
+            9,
+            vec![DrawOp::GlyphRun {
+                run: glyph,
+                rgba: [0.0, 0.0, 0.0, 1.0],
+            }],
+        );
         let unsupported_ticket = ticket(Arc::clone(&unsupported));
         assert!(peer.submit_frame(unsupported_ticket, unsupported).is_err());
         assert_eq!(closes.load(Ordering::SeqCst), 0);

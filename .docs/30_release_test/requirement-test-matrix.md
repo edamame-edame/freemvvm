@@ -1,7 +1,7 @@
 # 要求-テストケース対応表
 
-- 文書版: 0.7
-- 状態: 文書全体の改訂承認済み（2026-10-17）。実装・試験実行は未証明
+- 文書版: 0.8
+- 状態: 0.8全文承認済み（利用者、2026-10-30）。RQ-09-074 / TC-WINDOW-BG-01を対応付け。実装・試験実行は未証明
 - 共通契約: [Requirements Test Manifest](requirements-test-manifest.md)
 - 上位根拠: [要求仕様索引](../11_requirements/reqirements-specification.md)
 
@@ -11,8 +11,8 @@
 
 | 監査 | 今回の状態 |
 | --- | --- |
-| 現行RQ | 280件（分離後249 IDを維持、具体化承認で31 ID追加） |
-| case catalog | 92論理case。実装unit台帳schemaは承認済み、実path/command/SHAは未登録 |
+| 現行RQ | 281件承認済み（分離後249 IDを維持、具体化承認で32 ID追加） |
+| case catalog | 93論理case承認済み。TC-WINDOW-BG-01を追加 |
 | 要求→case未割当 | 0件 |
 | case→RQ孤立 | 0件。実test重複の判定はinventory待ち |
 | 実行coverage | 未証明。文書coverageと区別する |
@@ -35,6 +35,7 @@ IDは論理caseであり、実test function・framework・jobの確定ではな�
 | <a id="case-tc-sel-01"></a>TC-SEL-01 | Selection cardinality/current item/focus分離/item deletion | DD-25で具体化済み。mode縮退・削除・差替えの観測を追加、未実行 |
 | <a id="case-tc-tree-01"></a>TC-TREE-01 | Visual/Logical Tree、attach/detach、ownership/lifetime | DD-11/15 oracleを参照 |
 | <a id="case-tc-layout-01"></a>TC-LAYOUT-01 | Measure/ArrangeとStackPanelの初期動作 | 数値結果は承認済みlayout rulesで固定。pixelsを他backendと同一化しない |
+| <a id="case-tc-window-bg-01"></a>TC-WINDOW-BG-01 | Window background RGBの規定値・指定・解除と次frame反映 | 未指定/explicit/reset・paint-only invalidation・renderer forwardingを観測する。実装・実行状態は別管理 |
 | <a id="case-tc-input-01"></a>TC-INPUT-01 | normalized keyboard/text/pointer inputとevent routing | keybinding/actionの期待は追加しない |
 | <a id="case-tc-focus-01"></a>TC-FOCUS-01 | active Window/focusの設定・移動・focus event | Tab/Shift+Tab traversalは要求しない |
 | <a id="case-tc-ime-01"></a>TC-IME-01 | IME composition/commit/cancel/focus-loss/session stale event | OS adapterごとのoracleを分ける。OS接続はDD-31で具体化済み。実環境corpus/実行証拠は未取得 |
@@ -400,6 +401,7 @@ IDは論理caseであり、実test function・framework・jobの確定ではな�
 | [RQ-12-024](../11_requirements/RQ-12_build-distribution.md#rq-12-024) | [TC-SUPPORT-01](requirement-test-matrix.md#case-tc-support-01) | [RQ-12-024のassertion](requirements-test-assertions.md#assert-rq-12-024) | 観測設計済 / 初期共通基盤 | 未実装/未実行・SHA/path未登録 |
 | [RQ-12-025](../11_requirements/RQ-12_build-distribution.md#rq-12-025) | [TC-ARCH-01](requirement-test-matrix.md#case-tc-arch-01) | [RQ-12-025のassertion](requirements-test-assertions.md#assert-rq-12-025) | 観測設計済 / 初期共通基盤 | 未実装/未実行・SHA/path未登録 |
 | [RQ-09-073](../11_requirements/RQ-09_ui-scope.md#rq-09-073) | [TC-FEATURE-NEXT-10](requirement-test-matrix.md#case-tc-feature-next-10)、[TC-FEATURE-NEXT-11](requirement-test-matrix.md#case-tc-feature-next-11)、[TC-FEATURE-NEXT-12](requirement-test-matrix.md#case-tc-feature-next-12)、[TC-FEATURE-NEXT-13](requirement-test-matrix.md#case-tc-feature-next-13) | [RQ-09-073のassertion](requirements-test-assertions.md#assert-rq-09-073) | 観測設計済 / 次段階 | 未実装/未実行・SHA/path未登録 |
+| [RQ-09-074](../11_requirements/RQ-09_ui-scope.md#rq-09-074) | [TC-WINDOW-BG-01](requirement-test-matrix.md#case-tc-window-bg-01) | [RQ-09-074のassertion](requirements-test-assertions.md#assert-rq-09-074) | 観測設計済 / 初期共通基盤 | 未実装/未実行・SHA/path未登録 |
 
 ## 4. case→RQ逆引き
 
@@ -417,6 +419,7 @@ IDは論理caseであり、実test function・framework・jobの確定ではな�
 | [TC-SEL-01](requirement-test-matrix.md#case-tc-sel-01) | [RQ-02-006](../11_requirements/RQ-02_core-features.md#rq-02-006)、[RQ-09-020](../11_requirements/RQ-09_ui-scope.md#rq-09-020)、[RQ-09-037](../11_requirements/RQ-09_ui-scope.md#rq-09-037)、[RQ-09-051](../11_requirements/RQ-09_ui-scope.md#rq-09-051)、[RQ-09-052](../11_requirements/RQ-09_ui-scope.md#rq-09-052)、[RQ-14-009](../11_requirements/RQ-14_delivery-sequence.md#rq-14-009)、[RQ-09-064](../11_requirements/RQ-09_ui-scope.md#rq-09-064) | catalogの境界とassertionを照合。共有fixtureを同一oracleの重複と数えない |
 | [TC-TREE-01](requirement-test-matrix.md#case-tc-tree-01) | [RQ-02-007](../11_requirements/RQ-02_core-features.md#rq-02-007)、[RQ-09-002](../11_requirements/RQ-09_ui-scope.md#rq-09-002)、[RQ-09-003](../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-09-043](../11_requirements/RQ-09_ui-scope.md#rq-09-043)、[RQ-09-044](../11_requirements/RQ-09_ui-scope.md#rq-09-044)、[RQ-09-069](../11_requirements/RQ-09_ui-scope.md#rq-09-069) | catalogの境界とassertionを照合。共有fixtureを同一oracleの重複と数えない |
 | [TC-LAYOUT-01](requirement-test-matrix.md#case-tc-layout-01) | [RQ-02-008](../11_requirements/RQ-02_core-features.md#rq-02-008)、[RQ-09-007](../11_requirements/RQ-09_ui-scope.md#rq-09-007)、[RQ-09-008](../11_requirements/RQ-09_ui-scope.md#rq-09-008)、[RQ-09-045](../11_requirements/RQ-09_ui-scope.md#rq-09-045)、[RQ-09-057](../11_requirements/RQ-09_ui-scope.md#rq-09-057)、[RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067) | catalogの境界とassertionを照合。共有fixtureを同一oracleの重複と数えない |
+| [TC-WINDOW-BG-01](requirement-test-matrix.md#case-tc-window-bg-01) | [RQ-09-074](../11_requirements/RQ-09_ui-scope.md#rq-09-074) | Core default・explicit override/reset・paint-only更新・sceneへのRGB伝播を個別assertionで確認 |
 | [TC-INPUT-01](requirement-test-matrix.md#case-tc-input-01) | [RQ-02-009](../11_requirements/RQ-02_core-features.md#rq-02-009)、[RQ-09-010](../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-047](../11_requirements/RQ-09_ui-scope.md#rq-09-047)、[RQ-09-048](../11_requirements/RQ-09_ui-scope.md#rq-09-048)、[RQ-09-049](../11_requirements/RQ-09_ui-scope.md#rq-09-049)、[RQ-09-058](../11_requirements/RQ-09_ui-scope.md#rq-09-058)、[RQ-09-059](../11_requirements/RQ-09_ui-scope.md#rq-09-059)、[RQ-10-007](../11_requirements/RQ-10_accessibility.md#rq-10-007)、[RQ-11-012](../11_requirements/RQ-11_platform.md#rq-11-012)、[RQ-14-007](../11_requirements/RQ-14_delivery-sequence.md#rq-14-007)、[RQ-09-068](../11_requirements/RQ-09_ui-scope.md#rq-09-068) | catalogの境界とassertionを照合。共有fixtureを同一oracleの重複と数えない |
 | [TC-FOCUS-01](requirement-test-matrix.md#case-tc-focus-01) | [RQ-02-010](../11_requirements/RQ-02_core-features.md#rq-02-010)、[RQ-09-009](../11_requirements/RQ-09_ui-scope.md#rq-09-009)、[RQ-09-046](../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-049](../11_requirements/RQ-09_ui-scope.md#rq-09-049)、[RQ-09-058](../11_requirements/RQ-09_ui-scope.md#rq-09-058)、[RQ-09-059](../11_requirements/RQ-09_ui-scope.md#rq-09-059)、[RQ-14-007](../11_requirements/RQ-14_delivery-sequence.md#rq-14-007)、[RQ-09-070](../11_requirements/RQ-09_ui-scope.md#rq-09-070) | catalogの境界とassertionを照合。共有fixtureを同一oracleの重複と数えない |
 | [TC-IME-01](requirement-test-matrix.md#case-tc-ime-01) | [RQ-02-011](../11_requirements/RQ-02_core-features.md#rq-02-011)、[RQ-09-005](../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-038](../11_requirements/RQ-09_ui-scope.md#rq-09-038)、[RQ-09-039](../11_requirements/RQ-09_ui-scope.md#rq-09-039)、[RQ-09-040](../11_requirements/RQ-09_ui-scope.md#rq-09-040)、[RQ-09-041](../11_requirements/RQ-09_ui-scope.md#rq-09-041)、[RQ-09-042](../11_requirements/RQ-09_ui-scope.md#rq-09-042)、[RQ-09-053](../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-054](../11_requirements/RQ-09_ui-scope.md#rq-09-054)、[RQ-09-055](../11_requirements/RQ-09_ui-scope.md#rq-09-055)、[RQ-09-056](../11_requirements/RQ-09_ui-scope.md#rq-09-056)、[RQ-11-010](../11_requirements/RQ-11_platform.md#rq-11-010)、[RQ-14-007](../11_requirements/RQ-14_delivery-sequence.md#rq-14-007)、[RQ-14-008](../11_requirements/RQ-14_delivery-sequence.md#rq-14-008)、[RQ-09-065](../11_requirements/RQ-09_ui-scope.md#rq-09-065)、[RQ-09-066](../11_requirements/RQ-09_ui-scope.md#rq-09-066)、[RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023) | catalogの境界とassertionを照合。共有fixtureを同一oracleの重複と数えない |
@@ -508,12 +511,14 @@ IDは論理caseであり、実test function・framework・jobの確定ではな�
 | 日付 | 版・対象 | 承認者 | 結果 |
 | --- | --- | --- | --- |
 | 2026-10-17 | 0.6 / 249 RQと90 logical caseの対応改訂 | 利用者 | 全案反映指示により承認。実装・実行証跡のない項目は未実装・未実行を維持 |
+| 2026-10-30 | 0.8全文 / RQ-09-074・TC-WINDOW-BG-01 | 利用者 | 「ok」によりWindow背景色要求caseとreverse mappingを含む文書全体を承認。実装・試験合格は別管理 |
 
 ## 改訂履歴（今回）
 
 | 版 | 日付 | 内容 | 作成者 |
 | --- | --- | --- | --- |
 | 0.6 | 2026-10-17 | 249 RQと90 logical caseの対応改訂 | Codex |
+| 0.8 | 2026-10-30 | RQ-09-074とTC-WINDOW-BG-01の対応・逆引きを追加 | Codex |
 
 ## 承認履歴（具体化適用）
 

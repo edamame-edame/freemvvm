@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 1.6 改訂案
+- 文書版: 1.9
 - 文書ロール: detailed-design
-- 更新日: 2026-10-29
-- 状態: 1.6全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
+- 更新日: 2026-10-31
+- 状態: 1.6全文承認済み（利用者、2026-10-30）。1.7 / 1.8 / 1.9全文承認済み（利用者、2026-10-31）。font source/resolution exact profile valuesと実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -125,6 +125,80 @@ v1.4全文の承認範囲を維持し、既存の「Platformはroot領域をCore
 | zero area | finite 0寸法は有効なempty client regionとしてLayoutへ渡す。祖先client clipはemptyとなる | native backendがzero extentでsurface operation不可ならSurface stateに従ってsubmitしない。Core geometryの不正値とは扱わない |
 
 このprotocolはRust内部SPIであり公開C ABI signatureやlanguage wrapper surfaceを増やさない。論理client areaのOS/native pixelからの換算と値の由来は各Adapterが提供するが、Coreが受け取る表現はDIPに統一する。SceneSnapshotのDeviceScaleは別のCore値として従来どおりRendererへ渡す。
+
+### v1.7改訂案: Window environmentからScene DeviceScaleへの供給（文書全体レビュー待ち）
+
+v1.4の「Coreが環境由来DeviceScaleをSceneSnapshotへ格納する」とv1.5のDIP client-area入力を、実行時のWindow peer/Core間で接続する提案。v1.4/1.5の承認済み意味を変更せず、scaleの由来を曖昧なrenderer既定値に委ねない。
+
+| 対象 | 1.7提案 | 失敗・境界 |
+| --- | --- | --- |
+| open環境値 | `WindowOpenInfo { client_area: WindowClientArea, device_scale: DeviceScale }`相当のRust内部recordをpeer open成功結果とする。client areaは論理DIP、scaleは各軸finite positiveの環境/profile値 | 欠落・invalid値ではopenをcommitしない。DIP寸法へscaleを乗算せず、どちらも同じWindow generationへ結び付ける |
+| Core所有 | `WindowLifecycle`がgeneration単位でclient areaとDeviceScaleを保持し、CoreのScene producerへ値を渡す | renderer・Scene builderがOS/device情報からscaleを推定しない。無効値やstale generationで現行open状態を部分更新しない |
+| scale更新 | 本提案の最小実装ではscaleはopen generation中に不変とする。将来profileがscale変更を通知する必要が出た場合は、generation付きenvironment updateとしてclient areaとscaleを一体で更新する別unitを設ける | dynamic DPI/display migrationの意味・Layout/Scene invalidationは本提案で暗黙に決めない。変更通知を実装する前にその規則を設計・承認する |
+| Linux KMS profile | 現行adapterは選択modeのpixel extentを同じ数値のDIP extentとして返すため、本案ではprofile値`(1.0, 1.0)`を明示供給する。これはpixel-to-DIPを現profile内で1:1とする値であり、物理DPI測定・HiDPI対応・実機合格を表さない | 将来のprofile/UI scalingは別値を供給可能。実機のEDID/density確認やhotplugは本unitの外 |
+| Scene接続 | Coreが所有するDeviceScaleをSceneSnapshotへ渡し、既存Linux GLES変換がそれをpixel boundsへ使用する | scaleをSceneSnapshot生成箇所以外で再乗算しない。invalid値を1.0へfallbackしない |
+
+この提案はRust内部SPIのopen戻り値を具体化するものであり、公開C ABIやwrapper surfaceを増やさない。Linux KMSの現profile 1:1値は文書全体の承認後に限り確定設計として扱う。`RQ-09-067`はlogical sizeとdevice scaleの区別を要求するが、物理DPI推定・monitor migrationの振る舞いまでは定めない。
+
+### v1.8: Linux初期profileのTextService/GlyphRun（文書全文承認済み、採用候補値は未決）
+
+v1.3のDrawOp/GlyphRun未決事項を、Text/TextBox/Buttonの表示snapshot・Layout measurement・Linux GLESまで追跡する提案。RQ-09-004/006/072のTextとButton label、RQ-11-023のprofile別font識別へ範囲を限定し、soft-wrap/ellipsis/selection/copy、IME、Accessibility provider、Style/Themeは追加しない。Button labelとAccessibleNameは独立値を維持する。
+
+| 対象 | 1.8提案 | 境界・failure |
+| --- | --- | --- |
+| Linux font profile | immutable profile lockがfont family/style、asset identity、file digest、version/notice、coverage corpus、HarfBuzz/FreeType build identityを識別する。初期weightはRegularのみを候補とする | hostのFontconfig nearest-matchだけで実際のfontを無記録に選ばない。font欠落・digest違い・未宣言coverageをprofile errorとする。system assetとbundled assetの配布方式はreview choice |
+| 候補engine | HarfBuzzはUTF-8 text snapshotからscript shaping済みglyph id/positionを生成し、FreeTypeは同一font assetからmetricsとglyph maskを得る候補。Fontconfigはhost asset探索を選ぶprofileでのみ使い、resolved path/digestをlockと照合する | exact dependency/version/featureとassetの所有・更新方法は全文承認前に固定しない。soft-wrapなしの単一paragraphを維持し、widthはshaping/line-break条件へ使わずclient clipとして扱う案 |
+| TextService出力 | 不変`TextDisplaySnapshot`とprofileから、`TextMetrics`およびfont asset identity付きGlyphRun候補を一括生成する。MeasureとSceneは同じsnapshot/profile revisionのmetricsとglyph結果を消費する | shaping・metrics・glyph realizationのいずれかが失敗したらLayout/Sceneをpartial publishせず、前のcomplete revisionを保持。Textを空DrawOpや仮寸法に置換しない |
+| GlyphRun paint | Core-owned text paintにopaque normalized RGBA（`0.0..=1.0`）を保持し、GlyphRunへ同じ値を適用する案。font digestとprofile asset identityの対応を検証し、DIP sizeとDeviceScaleを区別する | current user-visible text color/font sizeに要求根拠がないため、初期値はreview choiceとする。rendererはtext color/font/scaleを暗黙defaultしない |
+| Linux GLES | profileに沿うFreeType glyph maskをbackend-owned atlas/textureへ載せ、HarfBuzz位置とCore DeviceScale、既存Clip/viewportを用いて描画する候補 | missing glyph、atlas/upload/draw failure、unsupported operationはframe failure。silent fallback、欠落glyphの成功present、textを消したsuccessは認めない |
+| Control接続 | TextはContent、TextBoxは同revision editing display snapshot、Buttonはlabelを入力とする。各Controlのappearance/profile結果からephemeral Visual descriptorを作り、同じTextDisplaySnapshotがLayout/Sceneで使われる | AccessibleNameを描画textから推測しない。Control固有色/Chrome、focus/hover/disabled chromeは要求・design差分がない限り本案へ追加しない |
+
+#### Profile source / deployment候補
+
+| 候補 | 特性 | 明示するreview項目 |
+| --- | --- | --- |
+| A: profile lockが指定する配布asset（候補: Noto Sans CJK JP Regular） | CI/Docker/実機で同じfont digestを使いやすい。現在のupstream release pageは2.004と日本語OTF assetを掲載し、表示された日本語OTFは133 MB。 | asset format/version、package/repository増分、license notice同梱、supported corpusを選ぶ。別のsubset化は文字coverageとlicense/versionを別途検証 |
+| B: hostに導入済みの同profile asset | binary/repositoryは小さくできる。OS font packageはdeployment側でprovisionする | package名/versionとresolved file digestをprofile identityへ記録。無い/違う時は明示failure。一般的なFontconfig fallbackに流れない |
+| C: generic `sans-serif`に対するhost Fontconfig match | provisioningは軽くできる | Fontconfigはrequested patternに対するnearest matchを返し、完全一致を保証しないため、固定再現性が必要なinitial profileには推奨しない |
+
+#### 初期文字appearance候補
+
+| 項目 | 推奨提案 | 可視影響・未決境界 |
+| --- | --- | --- |
+| Glyph color | Text/TextBox editing text/Button label共通でopaque black `#000000` | 現Window white defaultに対して黒文字を表示。Window background overrideが暗色の場合も自動補色/contrast変更はせず、style APIも追加しない |
+| Typeface/weight | Linux profileが固定するNoto Sans CJK JP Regular候補 | 期待字形・CJK coverageがprofileに含まれる。version/file hashを固定。font欠落時fallbackしない |
+| Em size | `14 DIP`をinitial profileの候補 | Layout metricsとGlyphRun raster sizeが同じ値を使う。OS DPI/DeviceScaleによる再乗算はしない |
+| Button/TextBox chrome | 本proposalではGlyphRun/label/content文字まで | Button fill/border/hover/pressed/focusとTextBox border/caret/selectionは別の可視仕様として残り、このproposalの完了で完成Control appearanceと主張しない |
+
+上記は利用者レビュー用候補であり、repoへassetを追加する許可やfont/color/sizeの確定を意味しない。公式資料ではHarfBuzzがtext shaping、FreeTypeがglyph metrics/bitmap生成を提供し、Noto CJK upstreamはSIL OFL 1.1と複数配布形式を示す。採用時はexact release/subsetのlicense/size/coverageをlock前に確認する。
+
+一次資料: [Fontconfig font matching](https://fontconfig.pages.freedesktop.org/fontconfig/fontconfig-user.html)、[HarfBuzz shaping API](https://harfbuzz.github.io/getting-started.html)、[FreeType glyph metrics tutorial](https://freetype.org/freetype2/docs/tutorial/step2.html)、[Noto CJK license](https://github.com/notofonts/noto-cjk/blob/main/Sans/LICENSE)、[Noto Sans CJK formats/releases](https://github.com/notofonts/noto-cjk/releases)。この提案は候補比較であり、外部資料は本プロジェクトのfont/dependency採用を承認しない。
+
+#### Review choice（実装前の採用条件）
+
+1. Linux initial profileのfont sourceをA/B/Cから選び、採用family・release/file digest・coverage corpusを確定する。
+2. HarfBuzz+FreeTypeのexact runtime/build dependencyと、Fontconfigを利用する場合のstrict resolution/lock検査を確定する。
+3. Core-owned text color、font size単位/初期値、Text/Button/TextBoxで共有するpaint属性を確定する。これらを決めるまではUIに表示される色/サイズを実装都合で推測しない。
+4. unsupported codepoint/font/missing packageは明示失敗し、fallbackを行わない初期profile境界を承認する。別fontへfallbackする将来要件はprofile変更・test corpusと合わせて別改訂する。
+
+### v1.9: 未指定fontのPlatform default解決とCore接続（全文承認済み）
+
+利用者の「未指定ならシステムのデフォルトフォント駆動で動かし、platform別の取得差をCoreへ接続する」という指示と[未指定fontの既定表示要求案](../../11_requirements/RQ-09_ui-scope.md#rq-09-075)を反映する。v1.8の「host fallbackをしない」「一つのassetへ固定する」案はこの範囲で置換する。font/color/sizeを利用者が明示指定する公開APIは追加しない。
+
+| 責務 | 1.9提案 | 契約・境界 |
+| --- | --- | --- |
+| Core request | Controlのimmutable text snapshotはfont指定がない状態を中立な`PlatformDefault` requestとしてTextServiceへ渡す。CoreはOS font family名、file path、Fontconfig/DirectWrite型を保持しない | 現段階に公開Font APIは加えない。将来明示font指定が追加されても同じneutral request seamを通すが、そのAPI/semanticsは別設計 |
+| Platform resolution | Platform TextServiceが当該profileのOS/system font機構から既定fontを解決し、shapingとglyph mask生成まで責務を持つ | Windows候補はDirectWrite system font collection/fallback。Linux DRM/KMS候補はFontconfig system configurationによるdefault generic matchとordered fallback。Linux KMSはdesktop UI toolkit/themeを持たないheadless環境なので、これはdesktop環境のUI font preferenceと同一とは主張しない |
+| Core result | TextServiceが`ResolvedTextSnapshot`としてmetrics・glyph placement・font identity付きGlyphRunを返す。CoreはLayoutとSceneで同じimmutable resolved snapshot/revisionを再利用する | font identityにはresolver/profile identity、family/style、resolved asset digest、face indexを含める案。fallbackが複数faceにまたがる場合はGlyphRunごとにidentityを保持。Core measureと描画で別resolveしない |
+| Fallback / failure | `PlatformDefault`ではOSが提供する通常の文字fallbackを許し、解決後の各font run identityをsnapshotに記録する | platformのfallback chainを試してもglyphを解決できない、font subsystemに接続できない、metrics/rasterizeできない場合はText/Layout/Scene/frame failure。欠落glyphを空描画成功にしない。明示font指定のfallback policyは将来API設計で別途決める |
+| Profile/reproducibility | runtimeではsystem defaultに従い、profile record/diagnosticへ実際に解決したfont identitiesを記録する | 異なるOS/distribution/hostで同じfamily・metrics・pixelを要求しない。CI/Dockerでは検証用font package/configurationを固定し、実機は実機で解決されたidentityを記録する。機械間差をUI仕様の差と混同しない |
+| Invalidation | 解決済みsnapshotはtext/property/layout revisionに結び付け、Layout/Sceneでは同じ結果を使用する | system font configが実行中に変化した際の自動再解決通知は今回の初期scopeに含めず、profile/Runtime再初期化の契約を別途決める |
+
+**Core接続フロー案**: `Control text + PlatformDefault request` → Core内部`TextService` trait → platform実装がsystem default/fallbackを解決・shape・measure → `ResolvedTextSnapshot { metrics, glyph_runs[resolved_font_identity] }` → CoreがLayoutSnapshotとSceneSnapshotに同一revisionを適用 → Rendererは解決済GlyphRunだけを描画する。Coreはfontの取得APIやOSを知らず、PlatformはControl tree/Property ownershipを知らない。
+
+SPIの形は概ね`TextService::resolve_and_shape(TextDisplaySnapshot, FontRequest::PlatformDefault, TextEnvironment) -> Result<ResolvedTextSnapshot, TextError>`とする案。`TextEnvironment`はPlatformAdapterが保持し、CoreからOS-specific resolverを選択させない。`ResolvedTextSnapshot`内の各shaped runはCore sceneの`GlyphRunSnapshot`へ同一font identityを保持し、fallback先が変わる境界でrunを分ける。現在のScene型には32-byte font digestがあるため、1.9ではこのdigestを実際に解決したfaceのresource identityへ結び付け、必要なfamily/style/face index/resolver情報は同じsnapshot revisionのPlatform profile diagnosticsとして保持する案。選択Rendererは同じPlatformRuntimeのfont resource/raster serviceを使い、独自にdefault fontを再選択しない。
+
+Linux initial profileではFontconfigのsystem configurationを参照する案だが、headless DRM/KMSでは「システム既定」がdistribution設定のgeneric family/fallback chainを意味し、GNOME/KDE等のdesktop UI font settingを自動取得するものではない。exact resolution mode、process locale/language hint、fallback順、identityの診断・cache keyはimplementation/test planで具体化する。これらがRQ-11-023の「各profileのfont/文字対応識別」と一致することをレビューし、System defaultを一つのbundled font/hashへ置き換えない。
 
 ## Text engine・IME・OS Accessibility
 
@@ -299,3 +373,9 @@ flowchart TB
 | 2026-10-29 | 1.5全文 | 利用者の「ok」によりclient-area通知・generation・DIP/DeviceScale契約を含む文書全体を承認。実装・試験・実機確認は別管理 |
 | 2026-10-30 | 1.6改訂案 | ControlViewConnector、renderer descriptor/factory registry、surface互換性と複数backend選択・failure boundaryを提案。1.5承認範囲を維持し全文レビュー待ち |
 | 2026-10-30 | 1.6全文 | 利用者の「ok」によりdescriptor/factory・Window surfaceとの互換性・複数backend選択案を含む全文を承認。実装・試験・実機確認は別管理 |
+| 2026-10-31 | 1.7改訂案 | Window open環境値からCore-owned DeviceScaleをSceneへ接続する内部record、Linux KMS現profileの明示1:1案、dynamic scale変更の境界を提案。全文レビュー待ち。1.4/1.5承認範囲を維持 |
+| 2026-10-31 | 1.7全文 | 利用者の「ok」によりWindow open environment、generation中scale固定、Linux KMS現profile 1:1案、物理DPI/動的切替の対象外を含む全文を承認。実装・試験・実機確認は別管理 |
+| 2026-10-31 | 1.8改訂案 | Linux初期TextService/font profile/GlyphRunの候補とfailure境界、profile asset配布A/B/C、色/size/fontのreview choiceを提案。文書全体レビュー待ち。1.7承認範囲を維持 |
+| 2026-10-31 | 1.8全文 | 利用者の「ok」により提案された実現契約・失敗境界・候補比較を含む文書全文を承認。font source/version/digest、color、size、coverage corpusの採用値は未選定であり、実装開始・依存追加を意味しない |
+| 2026-10-31 | 1.9改訂案 | font未指定時はsystem/platform defaultを使う利用者指示を反映。Core-neutral request、Platform解決、ResolvedTextSnapshot、解決faceごとのidentity/fallback記録とheadless Linux境界を提案。全文レビュー待ち |
+| 2026-10-31 | 1.9全文 | 利用者の「ok」によりPlatformDefault request、Platform TextService、font identity付きResolvedTextSnapshot、system fallback、headless Linux境界を含む全文を承認。exact Linux resolution mode・locale hint・package/fallback orderは別途unit設計で確定 |

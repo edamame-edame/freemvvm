@@ -1,9 +1,9 @@
 # 言語ラッパー：Python
 
-- 文書版: 1.1
+- 文書版: 1.2
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-10-30
+- 状態: 1.1全文承認済み（利用者、2026-10-17）。1.2全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -399,6 +399,16 @@ managed_main/登録hostのfinallyがcoordinatorへ終了を依頼し、native ga
 
 図のroot queue所有は登録中rootの管理と回収待ちへの移管を表し、coordinatorが常に利用者ownerを強保持する構成ではない。Condition waitではGILとregistry lockを保持しない。停止不能callback等の完遂条件はRQ-03-015のまま維持する。
 
+## Window background RGB wrapper API（1.2）
+
+Pythonは`Window.background_rgb`を3つのnormalized floatのtupleとして公開する。getterはeffective RGBを返し、assignmentはC ABI setterへ転送する。`Window.reset_background_rgb()`は規定値へ戻す。未指定時はgetterもopaque white `(1.0, 1.0, 1.0)`を返す。wrapperはWindow stateを別途cacheせず、既存status/errorを既存Python error mappingへ変換する。
+
+```python
+background: tuple[float, float, float] = window.background_rgb
+window.background_rgb = (0.2, 0.4, 0.8)
+window.reset_background_rgb()
+```
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -407,3 +417,5 @@ managed_main/登録hostのfinallyがcoordinatorへ終了を依頼し、native ga
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-10-30 | 1.2改訂案 | RQ-09-074に対応するWindow background RGB tuple property/set/reset APIを提案。全文レビュー待ち |
+| 2026-10-30 | 1.2全文 | 利用者の「ok」によりPython Window background RGB tuple property/set/reset APIを含む全文を承認。実装・試験合格は別管理 |

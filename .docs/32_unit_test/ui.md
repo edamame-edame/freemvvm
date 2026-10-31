@@ -1,8 +1,8 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
-- 文書版: 0.8 改訂案
-- 状態: 0.8全文承認済み（利用者、2026-10-30）。実装・実行状態は別管理
-- 更新日: 2026-10-30
+- 文書版: 1.2
+- 状態: 0.8～1.2全文承認済み（利用者、2026-10-30～2026-10-31）。具体profile oracle・試験実装・実行状態は別管理
+- 更新日: 2026-10-31
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
 
@@ -18,6 +18,8 @@ Window、StackPanel、Text、TextBox、Buttonを同Runtimeで構成し、別Runt
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
 | --- | --- | --- | --- |
+| <a id="ut-window-background-001"></a>UT-WINDOW-BACKGROUND-001 | 同じRuntimeにWindowを2つ作成し、両方の未指定値を取得する。一方だけRGBを設定し、双方を再取得した後、設定側をresetする。各遷移でCore stateからSceneSnapshotまでの生成値とpaint/layout dirty通知を記録 | 未指定・reset後は各Windowのeffective RGBがopaque white `(1,1,1)`。set値は対象Windowだけに反映。変更時はpaint/sceneのみdirty、layoutはdirtyにならず、SceneSnapshotにCoreのeffective RGBを格納 | [RQ-09-074](../11_requirements/RQ-09_ui-scope.md#rq-09-074)<br/>[TC-WINDOW-BG-01](../30_release_test/requirement-test-matrix.md#case-tc-window-bg-01) |
+| <a id="ut-window-background-002"></a>UT-WINDOW-BACKGROUND-002 | Window背景色の各成分にNaN、正負Infinity、負値、1超過を個別に与える。C ABI getter/setter/resetを各言語wrapperから同じWindowへ呼ぶ | 不正setは既存override・SceneSnapshot・dirty状態を変更せずerrorを返す。全wrapperのgetter/set/resetがC ABI/Coreの結果と一致し、API失敗は各言語既存error surfaceへ変換される | [RQ-09-074](../11_requirements/RQ-09_ui-scope.md#rq-09-074)<br/>[TC-WINDOW-BG-01](../30_release_test/requirement-test-matrix.md#case-tc-window-bg-01) |
 | <a id="ut-control-abi-001"></a>UT-CONTROL-ABI-001 | C ABI経由でWindow/StackPanel/Text/TextBox/Buttonを作成し、共通PropertyとTextBox Value/Button Command接点を取得。wrong Runtime/thread/type、handle releaseとProperty ownerを個別に試す | 初期値・型・既定値がControl DDに一致。getterごとに独立owned token、failed createはout=0でpartial stateなし、Property ownerはControl破棄後も契約どおり独立 | [RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-004](../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-005](../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-006](../11_requirements/RQ-09_ui-scope.md#rq-09-006)<br/>[TC-VERT-01](../30_release_test/requirement-test-matrix.md#case-tc-vert-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 | <a id="ut-tree-abi-001"></a>UT-TREE-ABI-001 | C ABIのWindow.set_content、Container.insert/remove/move、child_count/child_atを使い、別Runtime・二重親・循環・範囲外・準備失敗を注入 | attach/detachは原子的。失敗時旧Tree不変。child getterはTreeOwnerを根拠に独立tokenを返し、token解放はparent所属を変えない | [RQ-04-025](../11_requirements/RQ-04_abi-boundary.md#rq-04-025)、[RQ-09-003](../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-09-043](../11_requirements/RQ-09_ui-scope.md#rq-09-043)、[RQ-09-044](../11_requirements/RQ-09_ui-scope.md#rq-09-044)<br/>[TC-TREE-01](../30_release_test/requirement-test-matrix.md#case-tc-tree-01)、[TC-VERT-01](../30_release_test/requirement-test-matrix.md#case-tc-vert-01)、[TC-OWN-01](../30_release_test/requirement-test-matrix.md#case-tc-own-01) |
 | <a id="ut-tree-001"></a>UT-TREE-001 | 子のinsert/remove/moveと別Runtime・二重所属・循環を試す | 成功時だけ所属commit。invalidとpeer準備失敗で旧Treeを保持、親子強参照循環を作らない | [RQ-09-002](../11_requirements/RQ-09_ui-scope.md#rq-09-002)、[RQ-09-003](../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-04-025](../11_requirements/RQ-04_abi-boundary.md#rq-04-025)<br/>[TC-TREE-01](../30_release_test/requirement-test-matrix.md#case-tc-tree-01)、[TC-VERT-01](../30_release_test/requirement-test-matrix.md#case-tc-vert-01)、[TC-TRACE-01](../30_release_test/requirement-test-matrix.md#case-tc-trace-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01)、[TC-PROP-01](../30_release_test/requirement-test-matrix.md#case-tc-prop-01) |
@@ -96,6 +98,52 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 
 Text shaping/font profile/GlyphRun実描画は、本案のControl connector・factory契約から独立したTextService/backend unitで試験する。GlyphRun非対応backendは未対応を明示し、Text表示要求の合格をこのfake connector suiteから主張しない。実装単位ID/path/commandは設計全文の承認後にimplementation-test inventoryへ登録する。
 
+実行記録（UNIT-CORE-080）: 実装SHA `ab2c2733085f40564d0c862918b355536edff4bd` で `cargo test -p freemvvm-core control_view_connector_ --locked`（2 tests）、`cargo test -p freemvvm-core --locked`（171 tests）、`cargo clippy -p freemvvm-core --all-targets --locked -- -D warnings`、`cargo fmt --all -- --check`、`tools/dev.py check`、`tools/dev.py minimum` がpass。CI・Linux実機描画は未実施。この記録はgeometry/clip projectionまでに限り、live Control treeからのVisual生成、Text表示、frame scheduling、実機表示の合格を意味しない。
+
+実行記録（UNIT-CORE-081）: revision-stamped `ControlTreeSnapshot` + fake `VisualNodeDescriptor`からのattach/detach/reorder、same-revision、descriptor mismatchを実装SHA未commit作業treeで `cargo test -p freemvvm-core control_tree_visual_snapshot_ --locked`（2 tests）、`cargo test -p freemvvm-core --locked`（173 tests）、`cargo clippy -p freemvvm-core --all-targets --locked -- -D warnings`、`cargo fmt --all -- --check`、`tools/dev.py check`、`tools/dev.py minimum`がpass。Runtime live tree capture、production Visual descriptor、Text/Button appearanceは未実装。
+
+実行記録（UNIT-CORE-082）: fake Platform上のCore Runtimeで実Control tree attach/reorder/detach、Layout dirty/stale時のcapture拒否、clean Layout revision一致時の順序付き非所有snapshotを `cargo test -p freemvvm-core runtime_control_tree_snapshot_ --locked`（1 test）、`cargo test -p freemvvm-core --locked`（174 tests）、`cargo clippy -p freemvvm-core --all-targets --locked -- -D warnings`、`cargo fmt --all -- --check`、`tools/dev.py check`、`tools/dev.py minimum`で確認。production Visual descriptor、Text/Button appearanceと描画は未実装。
+
+## Window environment DeviceScale transport（1.0改訂案）
+
+0.9承認済みbaselineを維持する。下記はPlatform peer openからCore Window/SceneSnapshotへDeviceScaleを渡す試験提案であり、文書全体承認前は実装oracle・CI pass条件として扱わない。fake peerの値はCore境界を検証するもので、Linux physical DPI/HiDPIやDRM実機確認を意味しない。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-window-scale-transport-001"></a>UT-WINDOW-SCALE-TRANSPORT-001 | fake Window peer openからclient areaと異方性DeviceScaleを返し、Window open、Core Scene生成、scene submit入力まで同じgenerationで進める。invalid値（zero、負、NaN、±Infinity）、open failure、close/reopen、旧generation値を独立fixtureで注入 | client areaはDIPのまま保持されscaleと相互乗算しない。valid scaleはCore Window stateとSceneSnapshotへ同値で渡されRendererが各軸変換へ利用する。invalid値/open failureはopenをcommitせず既存Core状態を保つ。close後はscaleを失効し、reopenでは新generationの値だけを使う。stale generationは現行scale/Sceneを変更しない | [RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-09-071](../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)<br/>[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-linux-kms-scale-profile-001"></a>UT-LINUX-KMS-SCALE-PROFILE-001 | Linux peerをfake surface openerで開き、open結果と同じgenerationの再open結果を観測する | 現Linux KMS profileはclient areaを変換せず返し、open recordに明示`DeviceScale(1,1)`を含める。これはprofile契約だけを検証し、physical DPI・実機HiDPI・monitor移動を判定しない | [RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01) |
+
+Linux adapter testでは現profileがopen infoに明示scale `(1.0, 1.0)`を返すことを確認する。これは現行mode pixel extentとlogical client areaを同じ数値で返すprofile契約の確認に限り、physical DPI、実機HiDPI、monitor移動、hardware displayの合格判定には使用しない。
+
+実行記録（UNIT-CORE-083）: Core fake peerの異方性scaleをWindow generationに保持し、DIP client areaを変えずControlViewConnector生成のSceneSnapshotまで渡すtestは `cargo test -p freemvvm-core runtime_window_device_scale_flows_into_scene_without_scaling_dip_client_area --locked` pass。Linux fake surface open recordの明示`(1,1)`は `cargo test -p freemvvm-platform-linux platform_device_open_failure_can_retry_and_close_releases_surface_once --locked` pass。Core 175 tests、Linux Platform 10 tests、workspace Clippy/fmt/build、Linux target `cargo check --workspace --all-targets`・Clippy、`.venv`の`tools/dev.py check`・`minimum` pass。Windows上のfake adapter/target compileでありLinux DRM実機・physical DPI/HiDPI未確認。
+
+## Linux TextService・GlyphRun profile（1.1全文承認済み、profile oracle未確定）
+
+1.0承認済みbaselineを維持する。下記はLinux initial profileのText asset/metrics/DrawOp連結とfailure oracleの提案であり、1.1全文承認前はimplementation oracle・CI pass条件にしない。font family/asset/digest、text color/size、coverage corpusは設計レビューで選んでからtest fixtureへ固定する。Docker/fake surface testをLinux physical display合格へ読み替えない。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-linux-text-profile-001"></a>UT-LINUX-TEXT-PROFILE-001 | Linux text profile lockからfont family/style/release/file digest、engine identity、supported corpusを読む。asset欠落、digest差、依存/coverage mismatchを個別に注入 | 選択profileに同一assetとengine identityが解決され、対応範囲を診断値として識別できる。missing/mismatch/uncovered glyphは明示profile/text failureとし、host nearest matchへ黙ってfallbackしない | [RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)、[RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-text-service-001"></a>UT-TEXT-SERVICE-001 | approved profile corpusの同一immutable Text/TextBox-edit/Button-label snapshotをTextServiceへ渡し、metrics→Layout measure→Visual descriptor/Scene generationを同じrevisionで行う。paragraphを長くして利用可能幅より広げる | 同一font/profile/text/size revisionから同一metrics・font identity・glyph placementが生成され、measureとSceneが一致。soft-wrap/ellipsisを導入せずclipだけを適用。Core-owned colorがGlyphRunへ明示される。measure/shape/profile failureでは部分Layout/Sceneをpublishせず以前のcomplete snapshotを保持 | [RQ-09-004](../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-006](../11_requirements/RQ-09_ui-scope.md#rq-09-006)、[RQ-09-008](../11_requirements/RQ-09_ui-scope.md#rq-09-008)、[RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-09-072](../11_requirements/RQ-09_ui-scope.md#rq-09-072)<br/>[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-linux-glyph-render-001"></a>UT-LINUX-GLYPH-RENDER-001 | selected profile's known glyph corpusをfake EGL/GLES surfaceへsubmitし、異方性DeviceScale、ancestor Clip、unsupported glyph, atlas allocate/upload/draw failure, device lossを注入 | HarfBuzz positions, FreeType glyph mask, Core paint color/profile identity, DeviceScale and Clip compose into scene render. only intended client pixels are touched. unsupported/missing asset or GPU failure returns frame failure and full-damage retry, never empty/successful Presented. glyph cache is keyed by approved asset digest,size,scale,glyph ID and invalidated on profile/device loss | [RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-09-072](../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+
+本案はprofile corpus・exact output/pixel oracleが未選定のため、各test IDは案である。文書全文承認後にprofile値を固定してimplementation-test inventoryへ登録し、Core fake unit、Linux backend fake surface unit、Docker仮pass、Linux hardware evidenceを別々に記録する。
+
+## Platform default font解決とCore接続（1.2改訂案）
+
+font未指定時はPlatform system defaultとplatform-managed fallbackを使う。1.1のasset lock caseは明示font/profileまたはtest fixtureの再現性検証に限って残し、未指定default fontのruntime selectionを単一assetへ固定するoracleとしては使わない。1.2全文は承認済み。解決先はplatform・profileにより異なり、Coreはfamily/path/OS APIを選ばず、TextServiceが返すresolved identity付きimmutable snapshotを再利用する。Core seamとLayout/Scene integrationは別unitで検証する。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-text-service-seam-001"></a>UT-TEXT-SERVICE-SEAM-001 | immutable text revisionをCore-neutral `PlatformDefault` requestとしてfake TextServiceへ渡し、platform profile identity、metrics、font digestを含むsnapshotを受け取る。resolver failure・異revision・identity/digest不一致も注入 | requestはOS依存family/pathを持たず、結果は要求revisionと一致しrunごとのresolved font identityを保持する。invalid/partial resultはCore downstreamへ返さず明示errorとする。このcase単独ではControl/Layout/Scene production wiringを合格扱いしない | [RQ-09-004](../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-075](../11_requirements/RQ-09_ui-scope.md#rq-09-075)、[RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)<br/>[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-text-platform-default-001"></a>UT-TEXT-PLATFORM-DEFAULT-001 | font未指定のText/TextBox/Button snapshotをfake Platform TextServiceへ渡す。異なるplatform profileにはそれぞれ異なるsystem font identityを返すresolverを注入 | Core requestはOS依存family/pathを含まない。各platformの解決identityがglyph runへ保持され、同じResolvedTextSnapshot revisionのmetricsをLayout/Sceneが使い、再resolveで差異を生まない | [RQ-09-004](../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-072](../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-09-075](../11_requirements/RQ-09_ui-scope.md#rq-09-075)、[RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)<br/>[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01) |
+| <a id="ut-platform-font-fallback-001"></a>UT-PLATFORM-FONT-FALLBACK-001 | Platform default fontで未対応glyphを含むcorpusをshapeし、ordered system fallback、uncovered glyph、resolver failureを個別注入 | system fallbackを使うprofileでは各runのresolved font identityとmetricsが記録される。fallback chain全体で未解決なら明示Text/Layout/frame failureとなり、欠落glyphや空描画を成功扱いしない | [RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-linux-fontconfig-default-001"></a>UT-LINUX-FONTCONFIG-DEFAULT-001 | Linux headless profileでsystem `sans-serif` requestを行い、Fontconfig substitution/sort、current localeまたは`FC_LANG`、Unicode coverage、resolved file digestをlocked container profileから読む。configなし・font欠落を注入 | `FcFontSort`由来のordered candidate/coverageからresolved runsを識別でき、GNOME/KDE UI font preferenceとは誤認しない。missing subsystem/fontは明示failure。CI containerは`FC_LANG=ja-jp`と検証font/configを固定し、hardware display確認とは分離 | [RQ-09-075](../11_requirements/RQ-09_ui-scope.md#rq-09-075)、[RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)、[RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01) |
+
+計画0.3でLinux初期profileをFontconfig system `sans-serif`、`FC_LANG=ja-jp`（Docker）、`FcFontSort(NoTrim)`、HarfBuzz/FreeType、Debian 12 corpusに固定した。OS/profile-specific font identityを記録することと全platform pixel一致は別である。Windows DirectWriteの実装testは本Linux実装unitの対象外。
+
+UNIT-PLATFORM-003のDocker Debian 12実行結果: `cargo test -p freemvvm-platform-linux --locked` は19 passed / 1 ignored（headless EGL/GLES pixel testは別条件）。Latin/Japanese/mixed corpusをshapeしmetrics・face identity・digest・raster maskを確認、U+10FFFFとuncovered graphemeは明示failure。`cargo test -p freemvvm-core text_ --locked` は8 passed。Linux C ABI統合testではDRM実機依存の`Window.open`呼出しをskipし、実機確認へ分離。全workspace tests、Clippy、Rust 1.85 check、fmtは同一作業treeでpass。
+
 ## 承認履歴
 
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
@@ -116,6 +164,14 @@ Text shaping/font profile/GlyphRun実描画は、本案のControl connector・fa
 | 2026-10-29 | 0.7全文 | 利用者 | 「ok」によりCore Layout calculation、client-area、atomicityの試験設計全体を承認。実装・実行は別管理 |
 | 2026-10-30 | 0.8改訂案 | — | ControlViewConnector、geometry/clip、複数RendererFactory選択、backend-neutrality、dirty-to-frame経路のcase案。文書全体レビュー待ち。0.7承認baselineを維持 |
 | 2026-10-30 | 0.8全文 | 利用者 | 「ok」によりControlViewConnector、SceneSnapshot、renderer factory/selection、dirty-to-frame test caseを含む全文を承認。test実装・実行は別管理 |
+| 2026-10-30 | 0.9全文 | 利用者 | 「ok」によりWindow背景色のdefault/set/reset、invalid atomicity、paint-only invalidation、wrapper parityのtest案を含む全文を承認。実装・実行は別管理 |
+| 2026-10-31 | 1.0改訂案 | — | peer openからCore-owned DeviceScaleまでのtransport、異方性・invalid/stale/reopen・DIP非二重適用を提案。全文レビュー待ち。0.9承認baselineを維持 |
+| 2026-10-31 | 1.0全文 | 利用者 | 「ok」によりWindow environmentからCore Window/Scene入力へのScale transport caseとLinux現profile 1:1境界を含む全文を承認。実装・実行・実機確認は別管理 |
+| 2026-10-31 | UNIT-CORE-083 | Codex | 上記test caseをCore異方性scale transportとLinux profile open-infoで実装。fake testsとstatic/build gates pass、実機は未確認 |
+| 2026-10-31 | 1.1改訂案 | — | Linux TextService/font profile/GlyphRun integration, asset lock, metrics consistency, glyph render/failure test案を追加。profile corpus/default appearance未選定、文書全体レビュー待ち |
+| 2026-10-31 | 1.1全文 | 利用者 | 「ok」によりtest caseとfailure oracle案の全文を承認。font/profile/color/size/corpusの具体oracle選定とtest実装・実行は別管理 |
+| 2026-10-31 | 1.2改訂案 | — | font未指定時のPlatform system default/fallback、Core-neutral request/ResolvedTextSnapshot、Linux headless Fontconfig profile testを追加。1.1 approved testsの既存baselineを維持し全文レビュー待ち |
+| 2026-10-31 | 1.2全文 | 利用者 | 「ok」によりPlatform default resolution、fallback identity、Core/Layout/Scene snapshot共有、Linux headless Fontconfig test案を含む全文を承認。具体resolver mode・corpus・test実装/実行は別管理 |
 
 ## 改訂履歴
 
@@ -129,3 +185,7 @@ Text shaping/font profile/GlyphRun実描画は、本案のControl connector・fa
 | 0.6 | 2026-10-27 | Core DeviceScale/背景色とClip可視範囲、DRM page-flip/pending closeのcaseを追加 | Codex | 文書全体承認済み。UNIT-PLATFORM-002の実装・CI・hardware testは別管理 |
 | 0.7 | 2026-10-29 | Fake measurerによるLayout計算、Window root client-area通知、atomic snapshot/失敗保持を追加 | Codex | 文書全体レビュー待ち。実装・実行未開始 |
 | 0.8 | 2026-10-30 | backend-neutral Visual connector、geometry/clip、複数renderer factory/selection、frame接続test案を追加 | Codex | 文書全体承認済み。実装・実行未開始 |
+| 0.9 | 2026-10-30 | Window背景色のdefault/set/reset、invalid atomicity、paint-only invalidation、wrapper parityのtest案を追加 | Codex | 文書全体承認済み。新規testは未実装・未実行 |
+| 1.0 | 2026-10-31 | Window environmentからSceneSnapshotへのDeviceScale transport、Core異方性値とLinux現profile 1:1 test proposalを追加 | Codex | 文書全体承認済み。UNIT-CORE-083のfake test pass、実機確認は未実施 |
+| 1.1 | 2026-10-31 | Linux TextService/GlyphRun asset lock、same-metrics layout/scene、profile failureとGLES render test proposalを追加 | Codex | 文書全文承認済み。profile/color/size/corpusの具体oracle選定、test実装・実行は別段階 |
+| 1.2 | 2026-10-31 | 未指定fontのPlatform default解決・fallback identity、Core/Platform seam、Linux headless profileのtest proposalを追加 | Codex | 文書全文承認済み。exact profile oracle、test実装・実行は別管理 |

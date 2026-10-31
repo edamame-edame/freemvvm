@@ -265,6 +265,10 @@ pub(crate) struct LayoutSnapshot {
 }
 
 impl LayoutSnapshot {
+    pub(crate) fn client_area(&self) -> Size {
+        self.client_area
+    }
+
     pub(crate) fn node(&self, identity: ObjectIdentity) -> Option<NodeLayout> {
         self.nodes.get(&identity).copied()
     }
@@ -439,18 +443,8 @@ fn arrange_node(
             Align::End => available_cross - cross_size,
         };
         let child_bounds = match orientation {
-            Orientation::Vertical => Rect::new(
-                bounds.x + cross_offset,
-                bounds.y + main_offset,
-                cross_size,
-                main_size,
-            )?,
-            Orientation::Horizontal => Rect::new(
-                bounds.x + main_offset,
-                bounds.y + cross_offset,
-                main_size,
-                cross_size,
-            )?,
+            Orientation::Vertical => Rect::new(cross_offset, main_offset, cross_size, main_size)?,
+            Orientation::Horizontal => Rect::new(main_offset, cross_offset, main_size, cross_size)?,
         };
         arrange_node(child, child_bounds, measured, arranged)?;
         main_offset += main_size;

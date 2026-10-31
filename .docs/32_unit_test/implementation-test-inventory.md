@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
 - 文書版: 1.1
-- 状態: 設計承認済み・正本適用済み（2026-10-17）。実装・実行状態は各unitのstateと実行記録で管理
+- 状態: 設計承認済み・正本適用済み（2026-10-17）。実装unit 079のlocal検証結果を追記（2026-10-30）
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -28,6 +28,9 @@
 
 [tools/units.yaml](../../tools/units.yaml)にschema2のUNIT-BUILD-001を登録した。YAMLのJSON互換記法を使い、開発コマンド・設定・probeと、[bootstrap検証](development-bootstrap.md)の実入口を対応付ける。readyはbootstrapの実在source/commandと実行確認に限り、下記planned例の製品UNIT-CORE-001やUT-CORE-HANDLE-001をreadyへ昇格しない。CIの現状は全bootstrap gateの常時実行で、製品unitのpath選択器は未実装である。
 
+| `UNIT-CORE-084` | Core-neutral `PlatformDefault` requestとresolved font identity/metrics snapshot。revision mismatchおよびTextService failureの部分結果拒否をfake serviceで確認 | `UT-TEXT-SERVICE-SEAM-001` | complete / commit `b6c64ea` pushed。focused 4 tests、Core 179・C ABI 39・Linux Platform 10を含むworkspace tests、Clippy、Rust 1.85 check、fmt pass。Layout/Scene wiringはUNIT-CORE-085 |
+| `UNIT-CORE-085` | Text/TextBox/Button labelをPlatform TextServiceで解決し、同じrevision-stamped snapshotをLayoutとVisual sceneで共有。property更新後の再解決とfailure atomicityをfake serviceで確認 | `UT-TEXT-PLATFORM-DEFAULT-001` | complete / commit `d489ca5` pushed。focused test 1件、Core 181・ABI 39・Linux Platform 10を含むworkspace tests、Clippy、Rust 1.85 check、fmt、Windows/Ubuntu CI pass。Actions run `41204164249` |
+
 #### Linux Platform backend unit（DD v1.3 / test design 0.5承認済み）
 
 Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり、UNIT-CORE-073/074はcomplete。`UNIT-CORE-075`は実装・local検証済みで同revision CI待ちの`ready`。Linux backend 2 unitは未着手の`planned`。各unitは個別の同revision検証完了まで実行済みと扱わない。
@@ -39,6 +42,15 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | `UNIT-CORE-075` | Core render submissionとdispatcher completion接続 | `UT-PLATFORM-RENDER-CORE-001` | complete / local・同revision Windows/Linux CI pass |
 | `UNIT-PLATFORM-001` | Linux DRM node/output選択とGBM/EGL surface lifecycle | `UT-PLATFORM-DEVICE-001` | complete / Linux focused 5 tests・Windows/Linux CI pass |
 | `UNIT-PLATFORM-002` | Core DeviceScale/背景色に基づくClip/FillRect GLES renderer、DRM page-flip completionとresource loss。GlyphRunは後続 | `UT-PLATFORM-PRESENT-001`、`UT-PLATFORM-LOSS-001`、`UT-PLATFORM-SCALE-CORE-001` | complete / local gates・同SHA Windows/Linux CI pass。実機profileは後続 |
+| `UNIT-PLATFORM-003` | Linux Fontconfig `sans-serif`/ordered fallback、HarfBuzz shaping、FreeType metrics/raster maskとfont identity記録 | `UT-PLATFORM-FONT-FALLBACK-001`、`UT-LINUX-FONTCONFIG-DEFAULT-001` | complete / Debian 12 Docker workspace tests pass（Linux Platform 19、Core 180）、Clippy/Rust 1.85/fmt pass。Linux hardware確認は後続 |
+| `UNIT-PLATFORM-004` | FreeType maskを同じLinux TextServiceから取得し、Core色・異方DeviceScale・Clipと合成してGLES glyph atlasから描画。mask/atlas/GLES failureと未解決identityをframe failureにする | `UT-LINUX-GLYPH-RENDER-001` | complete / Debian 12 llvmpipe headless GLESでLatin glyph pixel、clip/scale、未解決identity/GLES errorを確認。Core 181・Linux Platform 21 tests、Clippy、Rust 1.85 check、fmt pass。DRM実機描画は未確認 |
+
+#### Core production Visual / frame orchestration（計画0.1承認済み）
+
+| unit | 責務 | test設計 | 状態 |
+|---|---|---|---|
+| `UNIT-CORE-086` | attached Core Control stateと同revision Layout/Text snapshotからproduction Visual operationsを供給し、既存ControlViewConnectorへ接続する。未確定appearanceやchromeは追加しない | `UT-VIEW-CONNECTOR-001` | complete / focused test 1件、Core 181件、workspace tests、Clippy、Rust 1.85 check、fmt、document links pass。commit `66fe771` CI Windows/Ubuntu pass（run `41209924293`） |
+| `UNIT-CORE-087` | dirty WindowをUI thread上でLayout→Visual/Scene→existing Platform submitへ接続し、generation/revision stale completion・failure retryを扱う | `UT-CORE-SCENE-FRAME-001` | complete / focused test 1件、Core 182件、workspace tests、Clippy、Rust 1.85 check、fmt、document links pass。commit `fed8a02` CI Windows/Ubuntu pass（run `41210812794`） |
 
 #### Core Layout kernel unit（DD 1.3 / test design 0.7承認済み）
 
@@ -65,6 +77,23 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | unit | 責務 | test設計 | 状態 |
 | --- | --- | --- | --- |
 | `UNIT-CORE-078` | Window client areaと実Control tree/StackPanel設定からimmutable LayoutNodeSnapshotを構築し、LayoutEngine成功時のみWindowのcomplete LayoutSnapshotを交換する。failureでは旧snapshotとdirtyを保持する | `UT-LAYOUT-ABI-001`、`UT-LAYOUT-ATOMIC-001` | complete / 同revision local検証pass |
+| `UNIT-CORE-079` | Windowごとの背景RGB規定値・override・resetをCoreで保持し、入力を検証してSceneSnapshotへ反映する。ABIのget/set/resetを含む | `UT-WINDOW-BACKGROUND-001`、`UT-ABI-WINDOW-BACKGROUND-001` | complete / 同revision local gates pass、CI待ち |
+
+#### Core Scene geometry projection unit（DD 1.4 / UI test design 0.8承認済み）
+
+| unit | 責務 | test設計 | 状態 |
+| --- | --- | --- | --- |
+| `UNIT-CORE-080` | ephemeral `VisualNodeSnapshot`と同revision `LayoutSnapshot`からSceneSnapshotを作る。FinalBoundsの親相対座標をabsolute DIPへ変換し、ancestor clipとdraw orderを維持する | `UT-VIEW-GEOMETRY-001` | complete / focused 2 tests、Core 171 tests、Clippy、fmt local pass。CI待ち |
+| `UNIT-CORE-081` | revision-stamped Control tree identity snapshotと明示descriptor mapからVisualNodeSnapshotを作り、同revision Layout/Sceneへ投影する。attach/detach/orderと全件一致を検証する | `UT-VIEW-CONNECTOR-001` | complete / focused 2 tests、Core 173 tests、workspace check/minimum local pass。CI待ち |
+| `UNIT-CORE-082` | Runtime UI-thread上でattached Control treeをcaptureし、open Window generation・current clean LayoutSnapshot・tree revisionと照合してから非所有snapshotを返す | `UT-VIEW-CONNECTOR-001` | complete / focused 1 test、Core 174 tests、workspace check/minimum local pass。CI待ち |
+
+実装SHA `ab2c2733085f40564d0c862918b355536edff4bd` はcommit/push済み。CI待ち。Control treeからvisual inputを生成するlive connector、TextService/font/color、dirty-to-frame、renderer selection、Linux/Windows実機表示は未実装で、本unitのpassに含めない。
+
+UNIT-CORE-081はrevision付きfake tree snapshotとfake descriptorで順序・attach/detach・同revision制約を検証する。これをRuntime live tree captureやText/Buttonの実Visual供給完了として扱わない。
+
+UNIT-CORE-082の統合testはfake Platformを使い、Coreが所有する実Control/Logical Treeをattach・reorder・detachし、Layout再計算前のcapture拒否とclean revision後のcaptureを確認する。DrawOp descriptor供給や実描画は対象外。
+
+実行記録: `UNIT-CORE-079` は実装revisionでCore focused test（1件）、ABI focused test（1件）、`cargo test --workspace --all-targets --locked`（Rust wrapper unit/consumer 19件、C ABI 39件、Core 169件、Linux Platform 10件）、`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check`、`.venv/Scripts/python.exe tools/dev.py check` がlocal pass。`tools/check_docs.py`（76 documents / 7033 local links）、units manifest JSON parse、`git diff --check`もpass。CIおよびPlatform Adapter実機確認は未実施。本unitのlocal passを実機描画確認やwrapper背景色API実装完了として扱わない。
 
 TextServiceは未実装のため、本番のText/TextBox/Button intrinsic measurementを創作しない。providerを内部入力境界に保ち、試験ではfake providerを使う。TextServiceを必要とする実Leafの測定不能はpass全体を失敗させ、scene producer/public ABIは本unitに含めない。
 

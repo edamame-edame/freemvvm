@@ -12,10 +12,15 @@ freemvvm-core = { path = "../core-runtime" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 drm = "0.14"
+fontconfig = { version = "0.11", features = ["dlopen"] }
+freetype-rs = "0.38"
 gbm = { version = "0.18", default-features = false, features = ["drm-support"] }
 glow = "0.16"
+harfbuzz = { version = "0.8", default-features = false, features = ["std", "freetype"] }
 khronos-egl = { version = "6.0", default-features = false, features = ["dynamic", "1_5"] }
 libc = "0.2"
+sha2 = "0.10"
+unicode-segmentation = "1.12"
 
 [lints]
 workspace = true

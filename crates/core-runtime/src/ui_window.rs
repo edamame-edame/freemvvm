@@ -1,6 +1,8 @@
 use crate::handle_registry::registry::ObjectIdentity;
 use crate::platform::frame::{FrameError, FramePhase, FrameTicket, FrameTracker};
-use crate::platform::scene::{Damage, SceneSnapshot};
+use crate::platform::scene::{Damage, DeviceScale, SceneSnapshot};
+use crate::text_service::ResolvedTextSnapshot;
+use crate::text_service::TextService;
 use crate::ui_layout::LayoutSnapshot;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,10 +10,10 @@ use std::sync::Arc;
 /// Platform-facing peer contract exposed only through the private Core/C-ABI support surface.
 ///
 /// A peer owns one Window's native surface resources. Implementations must keep failed `open`
-/// attempts retryable, return the initial logical client area for the supplied generation, and
-/// must not mutate Core UI state.
+/// attempts retryable, return the initial environment for the supplied generation, and must not
+/// mutate Core UI state.
 pub trait PlatformWindowPeer: Send + Sync {
-    fn open(&self, generation: u64) -> Result<WindowClientArea, PlatformOperationError>;
+    fn open(&self, generation: u64) -> Result<WindowOpenInfo, PlatformOperationError>;
     /// Installs the UI-queue sink used by profiles that can change their client area after open.
     fn set_client_area_sink(&self, _sink: Arc<dyn PlatformWindowClientAreaSink>) {}
     fn close(&self) -> Result<(), PlatformOperationError>;
@@ -33,6 +35,13 @@ pub trait PlatformFrameCompletionSink: Send + Sync {
 pub struct WindowClientArea {
     pub width_dip: f64,
     pub height_dip: f64,
+}
+
+/// Initial logical client area and environment scale for one Window peer generation.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WindowOpenInfo {
+    pub client_area: WindowClientArea,
+    pub device_scale: DeviceScale,
 }
 
 impl WindowClientArea {
@@ -62,6 +71,11 @@ pub trait PlatformRuntimeFactory: Send + Sync {
         &self,
         completion_sink: Arc<dyn PlatformFrameCompletionSink>,
     ) -> Result<Arc<dyn PlatformWindowPeer>, PlatformOperationError>;
+
+    /// Returns the profile-owned service used to resolve and shape Control text.
+    fn text_service(&self) -> Option<Arc<dyn TextService>> {
+        None
+    }
 }
 
 /// Opaque failure at the platform SPI boundary; detailed diagnostics remain backend-owned.
@@ -69,7 +83,7 @@ pub trait PlatformRuntimeFactory: Send + Sync {
 pub struct PlatformOperationError;
 
 pub(crate) trait WindowPeerAdapter: Send + Sync {
-    fn open(&self, window: ObjectIdentity, generation: u64) -> Result<WindowClientArea, ()>;
+    fn open(&self, window: ObjectIdentity, generation: u64) -> Result<WindowOpenInfo, ()>;
     fn close(&self, window: ObjectIdentity) -> Result<(), ()>;
     fn submit_frame(&self, ticket: FrameTicket, scene: Arc<SceneSnapshot>) -> Result<(), ()>;
 }
@@ -77,7 +91,7 @@ pub(crate) trait WindowPeerAdapter: Send + Sync {
 pub(crate) struct FactoryWindowPeer(pub(crate) Arc<dyn PlatformWindowPeer>);
 
 impl WindowPeerAdapter for FactoryWindowPeer {
-    fn open(&self, _: ObjectIdentity, generation: u64) -> Result<WindowClientArea, ()> {
+    fn open(&self, _: ObjectIdentity, generation: u64) -> Result<WindowOpenInfo, ()> {
         self.0.open(generation).map_err(|_| ())
     }
 
@@ -100,6 +114,7 @@ pub enum CloseDecision {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum WindowLifecycleError {
     Unsupported,
+    InvalidColor,
     InvalidState,
     StaleRequest,
     IdentifierExhausted,
@@ -120,9 +135,12 @@ pub(crate) struct WindowLifecycle {
     pending: HashMap<u64, u64>,
     frames: FrameTracker,
     force_full_damage: bool,
+    background_rgb_override: Option<[f32; 3]>,
     client_area: Option<(u64, WindowClientArea)>,
+    device_scale: Option<(u64, DeviceScale)>,
     layout_revision: u64,
     layout_snapshot: Option<Arc<LayoutSnapshot>>,
+    text_snapshots: Arc<HashMap<ObjectIdentity, Arc<ResolvedTextSnapshot>>>,
 }
 
 pub(crate) struct PreparedWindowFrame {
@@ -132,6 +150,34 @@ pub(crate) struct PreparedWindowFrame {
 }
 
 impl WindowLifecycle {
+    pub(crate) fn background_rgb(&self) -> [f32; 3] {
+        self.background_rgb_override.unwrap_or([1.0, 1.0, 1.0])
+    }
+
+    pub(crate) fn set_background_rgb(
+        &mut self,
+        background_rgb: [f32; 3],
+    ) -> Result<(), WindowLifecycleError> {
+        if background_rgb
+            .iter()
+            .any(|channel| !channel.is_finite() || !(0.0..=1.0).contains(channel))
+        {
+            return Err(WindowLifecycleError::InvalidColor);
+        }
+        if self.background_rgb() != background_rgb {
+            self.background_rgb_override = Some(background_rgb);
+            self.force_full_damage = true;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn reset_background_rgb(&mut self) {
+        if self.background_rgb() != [1.0, 1.0, 1.0] {
+            self.force_full_damage = true;
+        }
+        self.background_rgb_override = None;
+    }
+
     pub(crate) fn set_peer(&mut self, peer: Arc<dyn WindowPeerAdapter>) {
         self.peer = Some(peer);
     }
@@ -151,6 +197,10 @@ impl WindowLifecycle {
     #[cfg(test)]
     pub(crate) fn client_area(&self) -> Option<(u64, WindowClientArea)> {
         self.client_area
+    }
+
+    pub(crate) fn device_scale(&self) -> Option<(u64, DeviceScale)> {
+        self.device_scale
     }
 
     pub(crate) fn update_client_area(&mut self, generation: u64, area: WindowClientArea) -> bool {
@@ -176,11 +226,16 @@ impl WindowLifecycle {
         self.layout_snapshot.clone()
     }
 
+    pub(crate) fn text_snapshots(&self) -> Arc<HashMap<ObjectIdentity, Arc<ResolvedTextSnapshot>>> {
+        Arc::clone(&self.text_snapshots)
+    }
+
     pub(crate) fn publish_layout(
         &mut self,
         generation: u64,
         area: WindowClientArea,
         mut snapshot: LayoutSnapshot,
+        text_snapshots: HashMap<ObjectIdentity, Arc<ResolvedTextSnapshot>>,
     ) -> Option<Arc<LayoutSnapshot>> {
         if !self.open
             || self.generation != generation
@@ -194,6 +249,7 @@ impl WindowLifecycle {
         let snapshot = Arc::new(snapshot);
         self.layout_revision = revision;
         self.layout_snapshot = Some(Arc::clone(&snapshot));
+        self.text_snapshots = Arc::new(text_snapshots);
         Some(snapshot)
     }
 
@@ -231,22 +287,24 @@ impl WindowLifecycle {
     pub(crate) fn finish_open(
         &mut self,
         generation: u64,
-        result: Result<WindowClientArea, ()>,
+        result: Result<WindowOpenInfo, ()>,
     ) -> Result<(), WindowLifecycleError> {
         if !self.opening || generation != self.generation.checked_add(1).unwrap_or(0) {
             return Err(WindowLifecycleError::StaleRequest);
         }
         self.opening = false;
-        let area = result.map_err(|()| WindowLifecycleError::PeerFailure)?;
-        if !area.is_valid() {
+        let info = result.map_err(|()| WindowLifecycleError::PeerFailure)?;
+        if !info.client_area.is_valid() {
             return Err(WindowLifecycleError::PeerFailure);
         }
         self.generation = generation;
         self.open = true;
         self.frames.reset();
         self.force_full_damage = true;
-        self.client_area = Some((generation, area));
+        self.client_area = Some((generation, info.client_area));
+        self.device_scale = Some((generation, info.device_scale));
         self.layout_snapshot = None;
+        self.text_snapshots = Arc::default();
         Ok(())
     }
 
@@ -287,7 +345,9 @@ impl WindowLifecycle {
         result.map_err(|()| WindowLifecycleError::PeerFailure)?;
         self.open = false;
         self.client_area = None;
+        self.device_scale = None;
         self.layout_snapshot = None;
+        self.text_snapshots = Arc::default();
         self.pending.clear();
         self.in_flight = None;
         self.frames.reset();
@@ -307,10 +367,11 @@ impl WindowLifecycle {
             .as_ref()
             .cloned()
             .ok_or(FrameError::InvalidTransition)?;
+        let scene = scene.with_background_rgb(self.background_rgb());
         let scene = if self.force_full_damage {
             Arc::new(scene.with_damage(Damage::Full))
         } else {
-            scene
+            Arc::new(scene)
         };
         let ticket = self.frames.begin(self.generation, Arc::clone(&scene))?;
         self.frames.mark_submitted(ticket)?;
@@ -420,6 +481,7 @@ impl WindowLifecycle {
         self.open = false;
         self.client_area = None;
         self.layout_snapshot = None;
+        self.text_snapshots = Arc::default();
         self.pending.clear();
         self.frames.reset();
         self.force_full_damage = true;
@@ -492,6 +554,7 @@ impl WindowLifecycle {
         self.open = false;
         self.client_area = None;
         self.layout_snapshot = None;
+        self.text_snapshots = Arc::default();
         self.pending.clear();
         self.in_flight = None;
     }
@@ -500,11 +563,12 @@ impl WindowLifecycle {
 #[cfg(test)]
 mod tests {
     use super::{
-        CloseDecision, WindowClientArea, WindowLifecycle, WindowLifecycleError, WindowPeerAdapter,
+        CloseDecision, WindowClientArea, WindowLifecycle, WindowLifecycleError, WindowOpenInfo,
+        WindowPeerAdapter,
     };
     use crate::handle_registry::registry::ObjectIdentity;
     use crate::platform::frame::FrameTicket;
-    use crate::platform::scene::SceneSnapshot;
+    use crate::platform::scene::{DeviceScale, SceneSnapshot};
     use std::num::NonZeroU64;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -517,14 +581,17 @@ mod tests {
     }
 
     impl WindowPeerAdapter for FakePeer {
-        fn open(&self, _: ObjectIdentity, _: u64) -> Result<WindowClientArea, ()> {
+        fn open(&self, _: ObjectIdentity, _: u64) -> Result<WindowOpenInfo, ()> {
             self.opens.fetch_add(1, Ordering::Relaxed);
             if self.fail_open {
                 Err(())
             } else {
-                Ok(WindowClientArea {
-                    width_dip: 640.0,
-                    height_dip: 480.0,
+                Ok(WindowOpenInfo {
+                    client_area: WindowClientArea {
+                        width_dip: 640.0,
+                        height_dip: 480.0,
+                    },
+                    device_scale: DeviceScale::new(1.25, 1.5).expect("valid test scale"),
                 })
             }
         }
@@ -566,6 +633,7 @@ mod tests {
             Err(WindowLifecycleError::PeerFailure)
         );
         assert!(!lifecycle.is_open());
+        assert_eq!(lifecycle.device_scale(), None);
 
         let working_peer = peer(false, false);
         lifecycle.set_peer(working_peer.clone());
@@ -587,6 +655,8 @@ mod tests {
             height_dip: 480.0,
         };
         assert_eq!(lifecycle.client_area(), Some((1, first)));
+        let scale = DeviceScale::new(1.25, 1.5).expect("expected scale");
+        assert_eq!(lifecycle.device_scale(), Some((1, scale)));
 
         let resized = WindowClientArea {
             width_dip: 800.0,
@@ -599,8 +669,10 @@ mod tests {
 
         lifecycle.close(identity()).expect("close Window");
         assert_eq!(lifecycle.client_area(), None);
+        assert_eq!(lifecycle.device_scale(), None);
         lifecycle.open(identity()).expect("reopen Window");
         assert_eq!(lifecycle.client_area(), Some((2, first)));
+        assert_eq!(lifecycle.device_scale(), Some((2, scale)));
         assert!(!lifecycle.update_client_area(1, resized));
         assert_eq!(lifecycle.client_area(), Some((2, first)));
     }
@@ -614,9 +686,12 @@ mod tests {
         assert_eq!(
             lifecycle.finish_open(
                 generation,
-                Ok(WindowClientArea {
-                    width_dip: f64::INFINITY,
-                    height_dip: 100.0,
+                Ok(WindowOpenInfo {
+                    client_area: WindowClientArea {
+                        width_dip: f64::INFINITY,
+                        height_dip: 100.0,
+                    },
+                    device_scale: DeviceScale::new(1.0, 1.0).expect("valid test scale"),
                 }),
             ),
             Err(WindowLifecycleError::PeerFailure)

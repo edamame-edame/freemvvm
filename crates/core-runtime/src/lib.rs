@@ -16,6 +16,8 @@ mod property;
 pub use property::ValidationError;
 mod runtime;
 mod runtime_handles;
+#[allow(dead_code)]
+mod text_service;
 mod ui_controls;
 mod ui_focus;
 #[allow(dead_code)]
@@ -25,6 +27,8 @@ mod ui_tree;
 mod ui_window;
 #[allow(dead_code)]
 mod value;
+#[allow(dead_code)]
+mod visual;
 
 /// Narrow support surface used by the C ABI crate while the Core remains private to wrappers.
 #[doc(hidden)]
@@ -51,6 +55,10 @@ pub mod abi_support {
         ShutdownCompletionState, ShutdownRequest, ShutdownRequestMode, ShutdownRequestOutcome,
     };
     use crate::runtime_handles::{RuntimeHandleError, process_runtime_handles};
+    pub use crate::text_service::{
+        FontRequest, ResolvedFontIdentity, ResolvedGlyphRun, ResolvedTextSnapshot, TextMetrics,
+        TextRequest, TextService, TextServiceError,
+    };
     use crate::ui_controls::{
         UiControlKind, UiControlProperty, UiControlPropertyOwner, UiControlState,
     };
@@ -62,7 +70,7 @@ pub mod abi_support {
     use crate::ui_window::WindowLifecycleError;
     pub use crate::ui_window::{
         CloseDecision, PlatformFrameCompletionSink, PlatformOperationError, PlatformRuntimeFactory,
-        PlatformWindowClientAreaSink, PlatformWindowPeer, WindowClientArea,
+        PlatformWindowClientAreaSink, PlatformWindowPeer, WindowClientArea, WindowOpenInfo,
     };
     use crate::value::{
         DecimalValue, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind,
@@ -1653,6 +1661,7 @@ pub mod abi_support {
     fn map_window_lifecycle_error(error: WindowLifecycleError) -> UiControlApiError {
         match error {
             WindowLifecycleError::Unsupported => UiControlApiError::Unsupported,
+            WindowLifecycleError::InvalidColor => UiControlApiError::InvalidArgument,
             WindowLifecycleError::InvalidState | WindowLifecycleError::StaleRequest => {
                 UiControlApiError::InvalidArgument
             }
@@ -2282,6 +2291,42 @@ pub mod abi_support {
             .map_err(map_window_lifecycle_error)
     }
 
+    pub fn window_background_rgb(window: u64) -> Result<[f32; 3], UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_background_rgb(identity)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_device_scale_for_test(
+        window: u64,
+    ) -> Result<DeviceScale, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_device_scale(identity)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    pub fn window_set_background_rgb(
+        window: u64,
+        red: f32,
+        green: f32,
+        blue: f32,
+    ) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_set_background_rgb(identity, [red, green, blue])
+            .map_err(map_window_lifecycle_error)
+    }
+
+    pub fn window_reset_background_rgb(window: u64) -> Result<(), UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_reset_background_rgb(identity)
+            .map_err(map_window_lifecycle_error)
+    }
+
     #[cfg(test)]
     pub fn window_client_area_for_test(
         window: u64,
@@ -2332,6 +2377,37 @@ pub mod abi_support {
     }
 
     #[cfg(test)]
+    pub(crate) fn window_calculate_layout_with_platform_text_for_test(
+        window: u64,
+    ) -> Result<Arc<LayoutSnapshot>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .calculate_window_layout_with_platform_text(identity)
+            .map_err(|_| UiControlApiError::Internal)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_layout_and_control_tree_with_text_for_test(
+        window: u64,
+    ) -> Result<
+        (
+            Arc<LayoutSnapshot>,
+            Option<crate::visual::ControlTreeSnapshot>,
+        ),
+        UiControlApiError,
+    > {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let layout = runtime
+            .window_layout_snapshot(identity)
+            .map_err(|_| UiControlApiError::Internal)?
+            .ok_or(UiControlApiError::Internal)?;
+        let tree = runtime
+            .capture_window_control_tree_snapshot(identity, &layout)
+            .map_err(|_| UiControlApiError::Internal)?;
+        Ok((layout, tree))
+    }
+
+    #[cfg(test)]
     pub(crate) fn window_calculate_layout_with_orientation_change_for_test(
         window: u64,
         panel: u64,
@@ -2357,6 +2433,20 @@ pub mod abi_support {
         let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
         runtime
             .window_layout_snapshot(identity)
+            .map_err(|_| UiControlApiError::Internal)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_control_tree_snapshot_for_test(
+        window: u64,
+    ) -> Result<Option<crate::visual::ControlTreeSnapshot>, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let layout = runtime
+            .window_layout_snapshot(identity)
+            .map_err(|_| UiControlApiError::Internal)?
+            .ok_or(UiControlApiError::Internal)?;
+        runtime
+            .capture_window_control_tree_snapshot(identity, &layout)
             .map_err(|_| UiControlApiError::Internal)
     }
 

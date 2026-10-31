@@ -1,12 +1,12 @@
 # Core UI Scene生成の次工程
 
-- 2026-10-30 progress: Plan v0.2 approved and recorded on `impl-rust/core-ui-layout-engine` (`a225113`). First DD/UI-test proposal drafts are ready on `impl-rust/core-scene-producer`; design approval and implementation authorization remain pending.
+- 2026-10-31 progress: `UNIT-CORE-080` (`ab2c273`), `UNIT-CORE-081` (`6885f91`), `UNIT-CORE-082` (`1747f33`), `UNIT-CORE-083` (`cf3ce05`), and `UNIT-CORE-084` (`b6c64ea`) are committed and pushed on `impl-rust/core-scene-rendering`. UNIT-PLATFORM-003 Linux Fontconfig/HarfBuzz/FreeType realization passes Debian 12 Docker workspace tests, Clippy, Rust 1.85 check, and fmt. `Window.open` is skipped in Linux C ABI test to keep CI off real DRM hardware. Hardware and CI confirmation remain pending.
 
-- 計画版: 0.2
-- 状態: 計画0.2、UI Tree/Layout DD 1.4、Platform DD 1.6、UI unit-test 0.8は利用者承認済み。実装unitの切出し中。Scene入力・Control visual realizationの未決契約を解決するまで製品コード実装は未着手
+- 計画版: 0.5 改訂案
+- 状態: 計画0.3/0.4/0.5利用者承認済み。UNIT-CORE-080/081/082/083/084 commit/push済み。UNIT-PLATFORM-003はlocal実装・検証済み。次の計画unitはUNIT-CORE-085（Text Control/Layout/Scene wiring）。全体計画は[Linux TextService・GlyphRun実装](linux-text-rendering-implementation.md)
 - 作成日: 2026-10-29
 - 対象version: `0.0.1`
-- 対象branch案: `impl-rust/core-scene-producer`（現Platform/Core branchのSceneSnapshot/Renderer seamに依存する子branch）
+- 対象branch案: `impl-rust/core-scene-rendering`（`impl-rust/core-apis-window-background`の子branch）
 - 独立して保留する作業: [Linux Platform hardware smoke](linux-platform-hardware-smoke.md)。本作業は実機確認を含めない
 
 ## 目的
@@ -52,6 +52,42 @@ Platform Adapterの実機確認は保留し、既存のWindow/Control/Logical Tr
 - Docker検証は利用可能なbackendの仮確認に限り、実機Platform Adapter確認やprofile適合の合格へ昇格しない。
 - 本計画・監査の文書チェックは実装testとは区別する。
 
+## 最初の実装slice（計画0.3案）
+
+### UNIT-CORE-080: ControlViewConnectorのgeometry/clip flattening
+
+- 承認済み`UT-VIEW-GEOMETRY-001`を使い、ephemeral `VisualNodeSnapshot`と同revision `LayoutSnapshot`からrenderer-neutral `SceneSnapshot`を構築する。
+- FinalBoundsは承認済みDD 1.4に従い親座標系として扱う。scene builderが親originを累積してabsolute DIPへ変換し、各nodeのclient clipと祖先clipの交差をClip operationとして出力する。Clipはlayout boundsを変更しない。
+- child orderと各nodeのlocal FillRect/GlyphRun orderを保ち、background RGB、DeviceScale、layout revision、damageを出力へ渡す。geometry/build failureではpartial SceneSnapshotを公開しない。
+- 完了した最小unitはVisual operation付きのephemeral inputからsceneを作るまで。live Runtime Control treeからvisual inputを組み立てる経路、TextService/font/profile/appearance、dirty-to-frame自動接続、renderer factory selection、Linux physical displayは本unitの完了に含めない。
+- focused command: `cargo test -p freemvvm-core control_view_connector_ --locked`。Core crate全test、Clippy、fmtも同一revisionで確認する。
+
+実装監査で、現行`LayoutEngine::arrange_node`が親座標を子FinalBoundsへ累積していたため、DD 1.4の「親座標系bounds」と不一致であることを発見した。UNIT-CORE-080の同revision修正で、FinalBoundsを親相対に保ち、scene generationでabsolute座標へ合成する。既存単層Layout testを維持し、nested geometry/clip testで新しい境界を検証する。
+
+## 次の実装slice（計画0.4案）
+
+### UNIT-CORE-081: Logical Control treeからVisualNodeSnapshotを構築
+
+- attached Logical Control treeを表すrevision-stamped identity snapshotと明示Visual descriptor mapを受け、同じLayoutSnapshotに含まれるidentityだけからephemeral `VisualNodeSnapshot`を構築する。tree captureのRuntime/UI-thread接続とproduction descriptor供給元は後続unitに分ける。
+- Visual descriptor（clip-child規則とlocal DrawOp列）は内部入力として明示的に渡し、Control treeの所有参照・Property callback・renderer/native handleをVisual snapshotへ持ち込まない。descriptorの欠落・余剰、layout/tree revision不一致、重複identityはSceneを部分公開せず失敗する。
+- 本unitはrevision-stamped tree snapshotからのtraversal / identity / ordering / all-or-nothing接続まで。Text shaping、font profile、Text/Button appearance、Clip policyのControl別既定値、Runtime live tree capture、dirty-to-frame schedulingは追加しない。descriptor供給元がないControlを空描画としてPresented成功させない。
+- 承認済み`UT-VIEW-CONNECTOR-001`からtree attach/detach/order・同revision・operation ordering・atomic failureの確認を切り出す。実装はtest専用fake descriptorを注入し、製品appearanceを創作しない。
+- focused command案: `cargo test -p freemvvm-core control_tree_visual_snapshot_ --locked`。Core tests、Clippy/fmt、`tools/dev.py check`、`tools/dev.py minimum`を同revisionで確認する。
+
+計画0.4は次sliceの責務を示す。Runtime live tree captureと、Control内容から実描画operationを供給するProduction Visual descriptor/TextServiceは後続設計課題であり、UNIT-CORE-081をLinux上のUI表示完了とは扱わない。
+
+## 次の実装slice（計画0.5案）
+
+### UNIT-CORE-082: Runtimeのattached Control treeをclean LayoutSnapshotと同revisionでcapture
+
+- UI thread上で開いているWindowのcontent root以下をLogical Treeから順序付き・非所有の`ControlTreeSnapshot`へcaptureする。
+- Window generation、現在Windowにpublish済みのLayoutSnapshot identity、tree revision、全Controlのlayout-dirty状態を照合する。いずれかが古い/dirty/不一致ならsnapshotを返さない。空contentは空sceneとして成功扱いせず、tree snapshotなしを明示する。
+- identity snapshotはControl/Tree ownerやProperty callbackを保持せず、DrawOp/Visual descriptorは含めない。UNIT-CORE-081の`build_from_control_tree`へ渡せる入力をCore Runtimeから供給するところまで。
+- attach/detach/order更新、未再計算layout、Window close/generation不一致、成功後のsame-revision captureを既存fake Platform test harnessで検証する。新しいC ABI/APIは追加しない。
+- focused command案: `cargo test -p freemvvm-core runtime_control_tree_snapshot_ --locked`。Core tests、Clippy/fmt、`tools/dev.py check`、`tools/dev.py minimum`を同revisionで確認する。
+
+UNIT-CORE-082はRuntime tree/layout snapshotの整合接続であり、production Visual descriptorやLinux上のControl paintingを完了とは扱わない。
+
 ## 対象外
 
 - Debian/RPi実機DRM/KMS操作、Platform Adapter hardware smoke、`/dev/dri` passthrough。
@@ -75,3 +111,12 @@ Platform Adapterの実機確認は保留し、既存のWindow/Control/Logical Tr
 | 2026-10-29 | 計画0.2 | 利用者承認 | Scene producer、TextService、scale/background供給元、Visual geometry/clip、frame接続に加え、backend-neutral View契約と複数renderer選択軸を反映。DD/UI test改訂案の作成を承認。 |
 | 2026-10-30 | DD/UI test改訂案 | review draft | ControlViewConnector→backend-neutral SceneSnapshot→選択可能RenderBackendの責務とfake-test proposalを3文書に作成。文書全体レビュー待ち。 |
 | 2026-10-30 | DD 1.4 / DD 1.6 / UT 0.8 | 利用者承認 | 「ok」により3文書全体を承認。実装・試験合格とは別管理。 |
+| 2026-10-31 | 計画0.3 / UNIT-CORE-080 | 利用者承認・実装済み | UNIT-CORE-080をcommit `ab2c273`でpush。focused 2件・Core 171件・`tools/dev.py check`・`tools/dev.py minimum` pass。CI・Linux実機未確認 |
+| 2026-10-31 | 計画0.4 / UNIT-CORE-081 | 利用者承認 | revision-stamped tree identity snapshotとfake descriptor mapからSceneを構造生成。focused 2件・Core 173件・`tools/dev.py check`・`tools/dev.py minimum` pass。Runtime live tree capture、production appearance/TextService/Control別clip policyは後続 |
+| 2026-10-31 | 計画0.5 / UNIT-CORE-082 | 利用者承認 | Runtime UI-thread tree captureを現行clean LayoutSnapshotへ照合。focused test pass。dirty/stale/closed stateを返さずsceneを部分公開しない |
+| 2026-10-31 | UNIT-CORE-082実績 | 実装・検証・commit/push済み | commit `1747f33`。詳細記録は同revisionのtest/manifestを参照 |
+| 2026-10-31 | DeviceScale transport 計画0.1 / DD 1.7 / UT 1.0 | 利用者承認 | Window peer openからCore-owned Scene入力へのDeviceScale供給を承認。UNIT-CORE-083を実装する |
+| 2026-10-31 | UNIT-CORE-083 | 実装・検証完了 | `WindowOpenInfo`からCore Window generationへDeviceScaleを保存し、Scene入力へ渡す。Linux KMS current profileは明示`(1,1)`。Core/Linux testsとall local gates pass、実機未確認、commit/push待ち |
+| 2026-10-31 | UNIT-CORE-083 commit/push | 完了 | `cf3ce05 WindowのDeviceScaleをCoreへ伝搬` |
+| 2026-10-31 | Linux text rendering profile 計画0.1 | 利用者承認 | Linux text profile/font/appearanceの候補をDD・test改訂案へ具体化する。特定候補採用・実装は別承認 |
+| 2026-10-31 | Linux text rendering implementation 計画0.3 / UNIT-PLATFORM-003 | 利用者承認・local実装検証済み | Fontconfig `sans-serif`・ordered fallback・HarfBuzz/FreeTypeとDebian 12 Docker corpus。workspace tests/Clippy/Rust 1.85/fmt pass。実機・CI・commit/pushは別管理 |
