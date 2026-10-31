@@ -64,7 +64,7 @@ pub mod abi_support {
     use crate::ui_window::WindowLifecycleError;
     pub use crate::ui_window::{
         CloseDecision, PlatformFrameCompletionSink, PlatformOperationError, PlatformRuntimeFactory,
-        PlatformWindowClientAreaSink, PlatformWindowPeer, WindowClientArea,
+        PlatformWindowClientAreaSink, PlatformWindowPeer, WindowClientArea, WindowOpenInfo,
     };
     use crate::value::{
         DecimalValue, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind,
@@ -2289,6 +2289,16 @@ pub mod abi_support {
         let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
         runtime
             .window_background_rgb(identity)
+            .map_err(map_window_lifecycle_error)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_device_scale_for_test(
+        window: u64,
+    ) -> Result<DeviceScale, UiControlApiError> {
+        let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime
+            .window_device_scale(identity)
             .map_err(map_window_lifecycle_error)
     }
 

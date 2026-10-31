@@ -10,7 +10,7 @@ use crate::handle_registry::registry::{
 };
 use crate::object_store::{UiObjectStore, UiObjectStoreError};
 use crate::platform::frame::{FramePhase, FrameTicket};
-use crate::platform::scene::SceneSnapshot;
+use crate::platform::scene::{DeviceScale, SceneSnapshot};
 use crate::property::{
     PropertyChangeQueue, PropertyHandleKind, PropertyState, PropertyValidator, Subscription,
     ValidationError, ValidatorResult,
@@ -2365,6 +2365,31 @@ impl RuntimeCore {
             .ok_or(WindowLifecycleError::InvalidState)
     }
 
+    pub(crate) fn window_device_scale(
+        &self,
+        identity: ObjectIdentity,
+    ) -> Result<DeviceScale, WindowLifecycleError> {
+        self.ensure_property_access_thread()
+            .map_err(|_| WindowLifecycleError::InvalidState)?;
+        let store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| WindowLifecycleError::InvalidState)?;
+        store
+            .resolve(identity)
+            .map_err(|_| WindowLifecycleError::InvalidState)?
+            .downcast_ref::<UiControlState>()
+            .filter(|state| state.kind == UiControlKind::Window)
+            .and_then(|state| state.window.as_ref())
+            .and_then(|window| {
+                window
+                    .device_scale()
+                    .filter(|(generation, _)| *generation == window.generation())
+                    .map(|(_, scale)| scale)
+            })
+            .ok_or(WindowLifecycleError::InvalidState)
+    }
+
     pub(crate) fn window_set_background_rgb(
         &self,
         identity: ObjectIdentity,
@@ -2468,7 +2493,10 @@ impl RuntimeCore {
         };
         if let Some(peer) = peer {
             let mut result = peer.open(identity, generation);
-            if result.as_ref().is_ok_and(|area| !area.is_valid()) {
+            if result
+                .as_ref()
+                .is_ok_and(|info| !info.client_area.is_valid())
+            {
                 let _ = peer.close(identity);
                 result = Err(());
             }

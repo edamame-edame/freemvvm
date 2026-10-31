@@ -92,8 +92,8 @@ impl UiControlState {
 #[cfg(test)]
 mod tests {
     use crate::abi_support::{
-        Damage, FramePhase, FrameTicket, PlatformWindowClientAreaSink, Rect, SceneSnapshot,
-        WindowClientArea,
+        Damage, DeviceScale, FramePhase, FrameTicket, PlatformWindowClientAreaSink, Rect,
+        SceneSnapshot, WindowClientArea, WindowOpenInfo,
     };
     use crate::abi_support::{
         UiControlApiError, handle_release, property_get_bool, property_get_utf8, property_set_bool,
@@ -112,12 +112,14 @@ mod tests {
         window_client_area_for_test, window_close, window_close_intent,
         window_close_intent_subscribed, window_close_request_current, window_close_request_defer,
         window_close_request_resolve, window_close_request_subscribe, window_content,
-        window_control_tree_snapshot_for_test, window_frame_phase, window_install_test_peer,
-        window_layout_snapshot_for_test, window_open, window_platform_activation,
-        window_reset_background_rgb, window_set_background_rgb, window_set_content,
-        window_set_content_with_peer, window_submit_frame,
+        window_control_tree_snapshot_for_test, window_device_scale_for_test, window_frame_phase,
+        window_install_test_peer, window_layout_snapshot_for_test, window_open,
+        window_platform_activation, window_reset_background_rgb, window_set_background_rgb,
+        window_set_content, window_set_content_with_peer, window_submit_frame,
     };
     use crate::ui_window::CloseDecision;
+    use crate::visual::{ControlViewConnector, VisualNodeDescriptor};
+    use std::collections::HashMap;
     use std::ffi::c_void;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -129,11 +131,14 @@ mod tests {
             &self,
             _: crate::handle_registry::registry::ObjectIdentity,
             _: u64,
-        ) -> Result<WindowClientArea, ()> {
+        ) -> Result<WindowOpenInfo, ()> {
             self.0.fetch_add(1, Ordering::Relaxed);
-            Ok(WindowClientArea {
-                width_dip: 640.0,
-                height_dip: 480.0,
+            Ok(WindowOpenInfo {
+                client_area: WindowClientArea {
+                    width_dip: 640.0,
+                    height_dip: 480.0,
+                },
+                device_scale: DeviceScale::new(1.25, 1.5).expect("valid test scale"),
             })
         }
 
@@ -192,11 +197,14 @@ mod tests {
         fn open(
             &self,
             _: u64,
-        ) -> Result<WindowClientArea, crate::abi_support::PlatformOperationError> {
+        ) -> Result<WindowOpenInfo, crate::abi_support::PlatformOperationError> {
             self.probe.opened.fetch_add(1, Ordering::SeqCst);
-            Ok(WindowClientArea {
-                width_dip: 640.0,
-                height_dip: 480.0,
+            Ok(WindowOpenInfo {
+                client_area: WindowClientArea {
+                    width_dip: 640.0,
+                    height_dip: 480.0,
+                },
+                device_scale: DeviceScale::new(1.25, 1.5).expect("valid test scale"),
             })
         }
 
@@ -497,6 +505,68 @@ mod tests {
         assert_eq!(
             window_control_tree_snapshot_for_test(window),
             Err(UiControlApiError::Internal)
+        );
+        runtime_shutdown(runtime).expect("shutdown test Runtime");
+    }
+
+    #[test]
+    fn runtime_window_device_scale_flows_into_scene_without_scaling_dip_client_area() {
+        let factory: Arc<dyn crate::abi_support::PlatformRuntimeFactory> =
+            Arc::new(TestPlatformFactory(Arc::new(PlatformProbe::default())));
+        let runtime = runtime_create_handle_with_platform_factory(factory)
+            .expect("create Runtime with fake peer");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let root = ui_control_create_stack_panel(runtime).expect("create content root");
+        let button = ui_control_create_button(runtime, b"button").expect("create Button");
+        window_set_content(window, root).expect("attach content root");
+        stack_panel_insert(root, 0, button).expect("attach Button");
+        assert_eq!(window_open(window), Ok(1));
+
+        let layout = window_calculate_layout_for_test(window, 640.0, 480.0, false)
+            .expect("calculate LayoutSnapshot");
+        let control_tree = window_control_tree_snapshot_for_test(window)
+            .expect("capture live control tree")
+            .expect("content tree exists");
+        let scale = window_device_scale_for_test(window).expect("Core owns open scale");
+        assert_eq!(scale, DeviceScale::new(1.25, 1.5).expect("expected scale"));
+        assert_eq!(layout.client_area().width, 640.0);
+        assert_eq!(layout.client_area().height, 480.0);
+
+        let descriptors = [
+            (
+                control_tree.root.identity,
+                VisualNodeDescriptor {
+                    clips_children: true,
+                    operations: Vec::new(),
+                },
+            ),
+            (
+                control_tree.root.children[0].identity,
+                VisualNodeDescriptor {
+                    clips_children: true,
+                    operations: Vec::new(),
+                },
+            ),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let scene = ControlViewConnector::build_from_control_tree(
+            &control_tree,
+            &layout,
+            &descriptors,
+            scale,
+            [1.0, 1.0, 1.0],
+            Damage::Full,
+        )
+        .expect("build scene with Core-owned scale");
+        assert_eq!(scene.device_scale(), scale);
+        assert_eq!(scene.layout_revision(), layout.layout_revision);
+
+        window_close(window).expect("close Window");
+        assert_eq!(
+            window_device_scale_for_test(window),
+            Err(UiControlApiError::InvalidArgument)
         );
         runtime_shutdown(runtime).expect("shutdown test Runtime");
     }

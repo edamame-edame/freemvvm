@@ -104,6 +104,19 @@ Text shaping/font profile/GlyphRun実描画は、本案のControl connector・fa
 
 実行記録（UNIT-CORE-082）: fake Platform上のCore Runtimeで実Control tree attach/reorder/detach、Layout dirty/stale時のcapture拒否、clean Layout revision一致時の順序付き非所有snapshotを `cargo test -p freemvvm-core runtime_control_tree_snapshot_ --locked`（1 test）、`cargo test -p freemvvm-core --locked`（174 tests）、`cargo clippy -p freemvvm-core --all-targets --locked -- -D warnings`、`cargo fmt --all -- --check`、`tools/dev.py check`、`tools/dev.py minimum`で確認。production Visual descriptor、Text/Button appearanceと描画は未実装。
 
+## Window environment DeviceScale transport（1.0改訂案）
+
+0.9承認済みbaselineを維持する。下記はPlatform peer openからCore Window/SceneSnapshotへDeviceScaleを渡す試験提案であり、文書全体承認前は実装oracle・CI pass条件として扱わない。fake peerの値はCore境界を検証するもので、Linux physical DPI/HiDPIやDRM実機確認を意味しない。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-window-scale-transport-001"></a>UT-WINDOW-SCALE-TRANSPORT-001 | fake Window peer openからclient areaと異方性DeviceScaleを返し、Window open、Core Scene生成、scene submit入力まで同じgenerationで進める。invalid値（zero、負、NaN、±Infinity）、open failure、close/reopen、旧generation値を独立fixtureで注入 | client areaはDIPのまま保持されscaleと相互乗算しない。valid scaleはCore Window stateとSceneSnapshotへ同値で渡されRendererが各軸変換へ利用する。invalid値/open failureはopenをcommitせず既存Core状態を保つ。close後はscaleを失効し、reopenでは新generationの値だけを使う。stale generationは現行scale/Sceneを変更しない | [RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-09-071](../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)<br/>[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-linux-kms-scale-profile-001"></a>UT-LINUX-KMS-SCALE-PROFILE-001 | Linux peerをfake surface openerで開き、open結果と同じgenerationの再open結果を観測する | 現Linux KMS profileはclient areaを変換せず返し、open recordに明示`DeviceScale(1,1)`を含める。これはprofile契約だけを検証し、physical DPI・実機HiDPI・monitor移動を判定しない | [RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01) |
+
+Linux adapter testでは現profileがopen infoに明示scale `(1.0, 1.0)`を返すことを確認する。これは現行mode pixel extentとlogical client areaを同じ数値で返すprofile契約の確認に限り、physical DPI、実機HiDPI、monitor移動、hardware displayの合格判定には使用しない。
+
+実行記録（UNIT-CORE-083）: Core fake peerの異方性scaleをWindow generationに保持し、DIP client areaを変えずControlViewConnector生成のSceneSnapshotまで渡すtestは `cargo test -p freemvvm-core runtime_window_device_scale_flows_into_scene_without_scaling_dip_client_area --locked` pass。Linux fake surface open recordの明示`(1,1)`は `cargo test -p freemvvm-platform-linux platform_device_open_failure_can_retry_and_close_releases_surface_once --locked` pass。Core 175 tests、Linux Platform 10 tests、workspace Clippy/fmt/build、Linux target `cargo check --workspace --all-targets`・Clippy、`.venv`の`tools/dev.py check`・`minimum` pass。Windows上のfake adapter/target compileでありLinux DRM実機・physical DPI/HiDPI未確認。
+
 ## 承認履歴
 
 | 日付 | 対象版 | 承認者 | 結論・根拠 |
@@ -125,6 +138,9 @@ Text shaping/font profile/GlyphRun実描画は、本案のControl connector・fa
 | 2026-10-30 | 0.8改訂案 | — | ControlViewConnector、geometry/clip、複数RendererFactory選択、backend-neutrality、dirty-to-frame経路のcase案。文書全体レビュー待ち。0.7承認baselineを維持 |
 | 2026-10-30 | 0.8全文 | 利用者 | 「ok」によりControlViewConnector、SceneSnapshot、renderer factory/selection、dirty-to-frame test caseを含む全文を承認。test実装・実行は別管理 |
 | 2026-10-30 | 0.9全文 | 利用者 | 「ok」によりWindow背景色のdefault/set/reset、invalid atomicity、paint-only invalidation、wrapper parityのtest案を含む全文を承認。実装・実行は別管理 |
+| 2026-10-31 | 1.0改訂案 | — | peer openからCore-owned DeviceScaleまでのtransport、異方性・invalid/stale/reopen・DIP非二重適用を提案。全文レビュー待ち。0.9承認baselineを維持 |
+| 2026-10-31 | 1.0全文 | 利用者 | 「ok」によりWindow environmentからCore Window/Scene入力へのScale transport caseとLinux現profile 1:1境界を含む全文を承認。実装・実行・実機確認は別管理 |
+| 2026-10-31 | UNIT-CORE-083 | Codex | 上記test caseをCore異方性scale transportとLinux profile open-infoで実装。fake testsとstatic/build gates pass、実機は未確認 |
 
 ## 改訂履歴
 
@@ -139,3 +155,4 @@ Text shaping/font profile/GlyphRun実描画は、本案のControl connector・fa
 | 0.7 | 2026-10-29 | Fake measurerによるLayout計算、Window root client-area通知、atomic snapshot/失敗保持を追加 | Codex | 文書全体レビュー待ち。実装・実行未開始 |
 | 0.8 | 2026-10-30 | backend-neutral Visual connector、geometry/clip、複数renderer factory/selection、frame接続test案を追加 | Codex | 文書全体承認済み。実装・実行未開始 |
 | 0.9 | 2026-10-30 | Window背景色のdefault/set/reset、invalid atomicity、paint-only invalidation、wrapper parityのtest案を追加 | Codex | 文書全体承認済み。新規testは未実装・未実行 |
+| 1.0 | 2026-10-31 | Window environmentからSceneSnapshotへのDeviceScale transport、Core異方性値とLinux現profile 1:1 test proposalを追加 | Codex | 文書全体承認済み。UNIT-CORE-083のfake test pass、実機確認は未実施 |

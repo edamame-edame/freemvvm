@@ -126,6 +126,20 @@ v1.4全文の承認範囲を維持し、既存の「Platformはroot領域をCore
 
 このprotocolはRust内部SPIであり公開C ABI signatureやlanguage wrapper surfaceを増やさない。論理client areaのOS/native pixelからの換算と値の由来は各Adapterが提供するが、Coreが受け取る表現はDIPに統一する。SceneSnapshotのDeviceScaleは別のCore値として従来どおりRendererへ渡す。
 
+### v1.7改訂案: Window environmentからScene DeviceScaleへの供給（文書全体レビュー待ち）
+
+v1.4の「Coreが環境由来DeviceScaleをSceneSnapshotへ格納する」とv1.5のDIP client-area入力を、実行時のWindow peer/Core間で接続する提案。v1.4/1.5の承認済み意味を変更せず、scaleの由来を曖昧なrenderer既定値に委ねない。
+
+| 対象 | 1.7提案 | 失敗・境界 |
+| --- | --- | --- |
+| open環境値 | `WindowOpenInfo { client_area: WindowClientArea, device_scale: DeviceScale }`相当のRust内部recordをpeer open成功結果とする。client areaは論理DIP、scaleは各軸finite positiveの環境/profile値 | 欠落・invalid値ではopenをcommitしない。DIP寸法へscaleを乗算せず、どちらも同じWindow generationへ結び付ける |
+| Core所有 | `WindowLifecycle`がgeneration単位でclient areaとDeviceScaleを保持し、CoreのScene producerへ値を渡す | renderer・Scene builderがOS/device情報からscaleを推定しない。無効値やstale generationで現行open状態を部分更新しない |
+| scale更新 | 本提案の最小実装ではscaleはopen generation中に不変とする。将来profileがscale変更を通知する必要が出た場合は、generation付きenvironment updateとしてclient areaとscaleを一体で更新する別unitを設ける | dynamic DPI/display migrationの意味・Layout/Scene invalidationは本提案で暗黙に決めない。変更通知を実装する前にその規則を設計・承認する |
+| Linux KMS profile | 現行adapterは選択modeのpixel extentを同じ数値のDIP extentとして返すため、本案ではprofile値`(1.0, 1.0)`を明示供給する。これはpixel-to-DIPを現profile内で1:1とする値であり、物理DPI測定・HiDPI対応・実機合格を表さない | 将来のprofile/UI scalingは別値を供給可能。実機のEDID/density確認やhotplugは本unitの外 |
+| Scene接続 | Coreが所有するDeviceScaleをSceneSnapshotへ渡し、既存Linux GLES変換がそれをpixel boundsへ使用する | scaleをSceneSnapshot生成箇所以外で再乗算しない。invalid値を1.0へfallbackしない |
+
+この提案はRust内部SPIのopen戻り値を具体化するものであり、公開C ABIやwrapper surfaceを増やさない。Linux KMSの現profile 1:1値は文書全体の承認後に限り確定設計として扱う。`RQ-09-067`はlogical sizeとdevice scaleの区別を要求するが、物理DPI推定・monitor migrationの振る舞いまでは定めない。
+
 ## Text engine・IME・OS Accessibility
 
 ### 実装規則
@@ -299,3 +313,5 @@ flowchart TB
 | 2026-10-29 | 1.5全文 | 利用者の「ok」によりclient-area通知・generation・DIP/DeviceScale契約を含む文書全体を承認。実装・試験・実機確認は別管理 |
 | 2026-10-30 | 1.6改訂案 | ControlViewConnector、renderer descriptor/factory registry、surface互換性と複数backend選択・failure boundaryを提案。1.5承認範囲を維持し全文レビュー待ち |
 | 2026-10-30 | 1.6全文 | 利用者の「ok」によりdescriptor/factory・Window surfaceとの互換性・複数backend選択案を含む全文を承認。実装・試験・実機確認は別管理 |
+| 2026-10-31 | 1.7改訂案 | Window open環境値からCore-owned DeviceScaleをSceneへ接続する内部record、Linux KMS現profileの明示1:1案、dynamic scale変更の境界を提案。全文レビュー待ち。1.4/1.5承認範囲を維持 |
+| 2026-10-31 | 1.7全文 | 利用者の「ok」によりWindow open environment、generation中scale固定、Linux KMS現profile 1:1案、物理DPI/動的切替の対象外を含む全文を承認。実装・試験・実機確認は別管理 |

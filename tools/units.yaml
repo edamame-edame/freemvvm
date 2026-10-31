@@ -3854,6 +3854,46 @@
           "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_control_tree_snapshot_", "--locked"]
         }
       ]
+    },
+    {
+      "id": "UNIT-CORE-083",
+      "state": "complete",
+      "scope": "window-open-device-scale-transport-to-core-scene-input",
+      "sources": [
+        "crates/core-runtime/src/ui_window.rs",
+        "crates/core-runtime/src/runtime.rs",
+        "crates/core-runtime/src/lib.rs",
+        "crates/core-runtime/src/ui_controls.rs",
+        "crates/platform-linux/src/lib.rs",
+        "crates/platform-linux/src/device.rs"
+      ],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "crates/platform-linux/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-082", "UNIT-PLATFORM-002"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.7 approved",
+          "section": "Window environment from peer open to Core-owned Scene DeviceScale"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.4 approved",
+          "section": "Window root input / logical DIP and device scale separation"
+        }
+      ],
+      "requirements": ["RQ-09-067", "RQ-09-071", "RQ-11-008", "RQ-11-020"],
+      "cases": ["TC-LAYOUT-01", "TC-PLAT-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-WINDOW-SCALE-TRANSPORT-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "runtime_window_device_scale_flows_into_scene_without_scaling_dip_client_area", "--locked"]
+        },
+        {
+          "id": "UT-LINUX-KMS-SCALE-PROFILE-001",
+          "command": ["cargo", "test", "-p", "freemvvm-platform-linux", "platform_device_open_failure_can_retry_and_close_releases_surface_once", "--locked"]
+        }
+      ]
     }
   ]
 }

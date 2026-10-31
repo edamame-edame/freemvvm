@@ -3,7 +3,7 @@ use drm::Device as DrmDevice;
 use drm::control::{
     Device as ControlDevice, Event, ModeTypeFlags, PageFlipFlags, connector, crtc, framebuffer,
 };
-use freemvvm_core::abi_support::{FrameTicket, SceneSnapshot, WindowClientArea};
+use freemvvm_core::abi_support::{DeviceScale, FrameTicket, SceneSnapshot, WindowClientArea};
 use gbm::{AsRaw, BufferObject, BufferObjectFlags, Device as GbmDevice, Format};
 use khronos_egl as egl;
 use std::ffi::c_void;
@@ -169,6 +169,11 @@ impl NativeSurface {
             width_dip: f64::from(self.size.0),
             height_dip: f64::from(self.size.1),
         }
+    }
+
+    /// The direct-KMS profile maps the selected mode's numeric pixel extent to the same DIP extent.
+    pub(super) fn device_scale(&self) -> DeviceScale {
+        DeviceScale::new(1.0, 1.0).expect("valid Linux KMS profile scale")
     }
 
     pub(super) fn close_surface(&mut self) -> Result<(), ()> {

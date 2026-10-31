@@ -2,8 +2,8 @@
 
 use crate::renderer::PlanError;
 use freemvvm_core::abi_support::{
-    FrameTicket, PlatformFrameCompletionSink, PlatformOperationError, PlatformRuntimeFactory,
-    PlatformWindowPeer, SceneSnapshot, WindowClientArea,
+    DeviceScale, FrameTicket, PlatformFrameCompletionSink, PlatformOperationError,
+    PlatformRuntimeFactory, PlatformWindowPeer, SceneSnapshot, WindowClientArea, WindowOpenInfo,
 };
 use std::sync::{Arc, Mutex, mpsc};
 
@@ -52,6 +52,7 @@ enum SurfaceSubmission {
 
 trait OpenedSurface {
     fn client_area(&self) -> WindowClientArea;
+    fn device_scale(&self) -> DeviceScale;
     fn submit(
         &mut self,
         ticket: FrameTicket,
@@ -65,6 +66,10 @@ trait OpenedSurface {
 impl OpenedSurface for device::NativeSurface {
     fn client_area(&self) -> WindowClientArea {
         device::NativeSurface::client_area(self)
+    }
+
+    fn device_scale(&self) -> DeviceScale {
+        device::NativeSurface::device_scale(self)
     }
 
     fn submit(
@@ -95,6 +100,10 @@ impl OpenedSurface for device::NativeSurface {
             width_dip: 0.0,
             height_dip: 0.0,
         }
+    }
+
+    fn device_scale(&self) -> DeviceScale {
+        DeviceScale::new(1.0, 1.0).expect("valid Linux KMS profile scale")
     }
 
     fn submit(
@@ -134,7 +143,7 @@ struct LinuxPeer {
 }
 
 enum WorkerCommand {
-    Open(u64, mpsc::SyncSender<Result<WindowClientArea, ()>>),
+    Open(u64, mpsc::SyncSender<Result<WindowOpenInfo, ()>>),
     Close(mpsc::SyncSender<Result<(), ()>>),
     Submit(
         FrameTicket,
@@ -187,7 +196,7 @@ impl Drop for LinuxPeer {
 }
 
 impl PlatformWindowPeer for LinuxPeer {
-    fn open(&self, generation: u64) -> Result<WindowClientArea, PlatformOperationError> {
+    fn open(&self, generation: u64) -> Result<WindowOpenInfo, PlatformOperationError> {
         let (reply, result) = mpsc::sync_channel(0);
         self.commands
             .send(WorkerCommand::Open(generation, reply))
@@ -284,13 +293,19 @@ fn surface_worker(
                 let result = if surface.is_some() {
                     surface
                         .as_ref()
-                        .map(|opened| opened.client_area())
+                        .map(|opened| WindowOpenInfo {
+                            client_area: opened.client_area(),
+                            device_scale: opened.device_scale(),
+                        })
                         .ok_or(())
                 } else {
                     opener.open().map(|opened| {
-                        let client_area = opened.client_area();
+                        let info = WindowOpenInfo {
+                            client_area: opened.client_area(),
+                            device_scale: opened.device_scale(),
+                        };
                         surface = Some(opened);
-                        client_area
+                        info
                     })
                 };
                 let _ = reply.send(result);
@@ -368,6 +383,10 @@ mod tests {
                 width_dip: 800.0,
                 height_dip: 600.0,
             }
+        }
+
+        fn device_scale(&self) -> DeviceScale {
+            DeviceScale::new(1.0, 1.0).expect("valid test scale")
         }
 
         fn submit(
@@ -518,12 +537,17 @@ mod tests {
         let (peer, _) = peer_and_completions(opener.clone());
 
         assert!(peer.open(1).is_err());
+        let info = peer.open(1).expect("open after retry");
         assert_eq!(
-            peer.open(1).expect("open after retry"),
+            info.client_area,
             WindowClientArea {
                 width_dip: 800.0,
                 height_dip: 600.0,
             }
+        );
+        assert_eq!(
+            info.device_scale,
+            DeviceScale::new(1.0, 1.0).expect("Linux KMS profile scale")
         );
         assert!(peer.open(1).is_ok());
         assert_eq!(opener.attempts.load(Ordering::SeqCst), 2);

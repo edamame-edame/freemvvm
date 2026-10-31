@@ -1,9 +1,9 @@
 # Core UI Scene生成の次工程
 
-- 2026-10-31 progress: `UNIT-CORE-080` (`ab2c273`) and `UNIT-CORE-081` (`6885f91`) are committed and pushed on `impl-rust/core-scene-rendering`. Plan 0.5's `UNIT-CORE-082` Runtime live tree capture is implemented; focused/Core/workspace/minimum checks pass locally. Production visual descriptors/TextService, CI and Linux hardware remain unverified for this unit.
+- 2026-10-31 progress: `UNIT-CORE-080` (`ab2c273`), `UNIT-CORE-081` (`6885f91`), and `UNIT-CORE-082` (`1747f33`) are committed and pushed on `impl-rust/core-scene-rendering`. `UNIT-CORE-083` DeviceScale transport passed local Core/Linux fake tests, Windows workspace checks and Linux target compile/clippy; commit/push pending. Production visual descriptors/TextService, CI and Linux hardware remain unverified.
 
 - 計画版: 0.5 改訂案
-- 状態: 計画0.3/0.4/0.5利用者承認済み。UNIT-CORE-080/081 commit/push済み。UNIT-CORE-082実装・local検証済み、commit/push待ち
+- 状態: 計画0.3/0.4/0.5利用者承認済み。UNIT-CORE-080/081/082 commit/push済み。DeviceScale transportは[別計画0.1](core-device-scale-transport.md)承認済み、UNIT-CORE-083検証済み・commit/push待ち
 - 作成日: 2026-10-29
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/core-scene-rendering`（`impl-rust/core-apis-window-background`の子branch）
@@ -114,3 +114,6 @@ UNIT-CORE-082はRuntime tree/layout snapshotの整合接続であり、productio
 | 2026-10-31 | 計画0.3 / UNIT-CORE-080 | 利用者承認・実装済み | UNIT-CORE-080をcommit `ab2c273`でpush。focused 2件・Core 171件・`tools/dev.py check`・`tools/dev.py minimum` pass。CI・Linux実機未確認 |
 | 2026-10-31 | 計画0.4 / UNIT-CORE-081 | 利用者承認 | revision-stamped tree identity snapshotとfake descriptor mapからSceneを構造生成。focused 2件・Core 173件・`tools/dev.py check`・`tools/dev.py minimum` pass。Runtime live tree capture、production appearance/TextService/Control別clip policyは後続 |
 | 2026-10-31 | 計画0.5 / UNIT-CORE-082 | 利用者承認 | Runtime UI-thread tree captureを現行clean LayoutSnapshotへ照合。focused test pass。dirty/stale/closed stateを返さずsceneを部分公開しない |
+| 2026-10-31 | UNIT-CORE-082実績 | 実装・検証・commit/push済み | commit `1747f33`。詳細記録は同revisionのtest/manifestを参照 |
+| 2026-10-31 | DeviceScale transport 計画0.1 / DD 1.7 / UT 1.0 | 利用者承認 | Window peer openからCore-owned Scene入力へのDeviceScale供給を承認。UNIT-CORE-083を実装する |
+| 2026-10-31 | UNIT-CORE-083 | 実装・検証完了 | `WindowOpenInfo`からCore Window generationへDeviceScaleを保存し、Scene入力へ渡す。Linux KMS current profileは明示`(1,1)`。Core/Linux testsとall local gates pass、実機未確認、commit/push待ち |
