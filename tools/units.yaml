@@ -3757,6 +3757,672 @@
         {"id": "UT-WINDOW-BACKGROUND-001", "command": ["cargo", "test", "-p", "freemvvm-core", "window_background_color_is_core_owned_validated_and_forwarded_to_scene", "--locked"]},
         {"id": "UT-ABI-WINDOW-BACKGROUND-001", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "window_background_color_abi_supports_get_set_and_reset_atomically", "--locked"]}
       ]
+    },
+{
+      "id": "UNIT-WRAP-PY-RUNTIME-001",
+      "state": "complete",
+      "scope": "python-runtime-owner-ui-context-shutdown-and-receipt",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": ["UNIT-ABI-001", "UNIT-ABI-004", "UNIT-ABI-005", "UNIT-ABI-007"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.2",
+          "section": "Runtime公開API / Runtime lifecycle and ownership"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "Runtime create / shutdown / shutdown request / UI thread query"
+        },
+        {
+          "path": ".docs/13_detail_design/build/toolchain-packages.md",
+          "version": "1.1",
+          "section": "Python wrapper and native runtime distribution boundary"
+        }
+      ],
+      "requirements": [
+        "RQ-03-014",
+        "RQ-03-016",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-04-022",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-06-005",
+        "RQ-06-006",
+        "RQ-06-007",
+        "RQ-06-012"
+      ],
+      "cases": ["TC-LIFE-01", "TC-THREAD-01", "TC-ERROR-01", "TC-WRAP-PY-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-RUNTIME-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-runtime-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-RUNTIME-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-runtime-consumer-test"]
+        }
+      ]
+    },
+{
+      "id": "UNIT-WRAP-PY-PROP-BOOL-I64-001",
+      "state": "complete",
+      "scope": "python-bool-i64-property-create-get-set-close",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": ["UNIT-WRAP-PY-RUNTIME-001", "UNIT-ABI-009", "UNIT-ABI-010", "UNIT-ABI-011"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.3",
+          "section": "BOOL/I64 Property公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "Property値のC ABI / Property create, typed get/set, handle release"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.3",
+          "section": "Property value kinds and UI-thread contract"
+        }
+      ],
+      "requirements": ["RQ-02-001", "RQ-02-002", "RQ-02-017", "RQ-05-012", "RQ-06-001"],
+      "cases": ["TC-PROP-01", "TC-LIFE-01", "TC-THREAD-01", "TC-ERROR-01", "TC-ABI-REP-01", "TC-WRAP-PY-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-PROP-BOOL-I64-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-bool-i64-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-PROP-BOOL-I64-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-bool-i64-consumer-test"]
+        }
+      ]
+    },
+{
+      "id": "UNIT-WRAP-PY-PROP-F64-001",
+      "state": "complete",
+      "scope": "python-f64-property-create-get-set-close",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-CORE-029",
+        "UNIT-ABI-009",
+        "UNIT-ABI-010",
+        "UNIT-ABI-011",
+        "UNIT-ABI-018",
+        "UNIT-WRAP-PY-PROP-BOOL-I64-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.5",
+          "section": "F64 Property公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "F64 Property create/get/set"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.3",
+          "section": "F64 equivalence and ValueStorage"
+        }
+      ],
+      "requirements": [
+        "RQ-02-001",
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-02-018",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "cases": ["TC-PROP-01", "TC-ABI-REP-01", "TC-LIFE-01", "TC-THREAD-01", "TC-ERROR-01", "TC-WRAP-PY-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-PROP-F64-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-f64-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-PROP-F64-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-f64-consumer-test"]
+        }
+      ]
+    },
+{
+      "id": "UNIT-WRAP-PY-PROP-UTF8-001",
+      "state": "complete",
+      "scope": "python-utf8-property-create-get-set-close-strict-buffer-mapping",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": ["UNIT-WRAP-PY-PROP-BOOL-I64-001", "UNIT-ABI-009", "UNIT-ABI-010", "UNIT-ABI-011"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.4",
+          "section": "UTF-8 Property公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "UTF-8 Property create/get/set / byte length and buffer retry"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.3",
+          "section": "UTF-8 and buffer ownership rules"
+        }
+      ],
+      "requirements": ["RQ-02-001", "RQ-02-002", "RQ-02-017", "RQ-04-003", "RQ-04-020", "RQ-04-021", "RQ-05-012", "RQ-06-001"],
+      "cases": ["TC-PROP-01", "TC-ABI-REP-01", "TC-LIFE-01", "TC-THREAD-01", "TC-ERROR-01", "TC-WRAP-PY-01"],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-PROP-UTF8-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-utf8-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-PROP-UTF8-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-utf8-consumer-test"]
+        }
+      ]
+    },
+{
+      "id": "UNIT-WRAP-PY-PROP-DECIMAL-001",
+      "state": "complete",
+      "scope": "python-decimal-property-exact-bits-mapping-create-get-set-close",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-CORE-031",
+        "UNIT-CORE-032",
+        "UNIT-CORE-033",
+        "UNIT-ABI-009",
+        "UNIT-ABI-010",
+        "UNIT-ABI-011",
+        "UNIT-ABI-018",
+        "UNIT-WRAP-PY-PROP-BOOL-I64-001",
+        "UNIT-WRAP-PY-PROP-F64-001",
+        "UNIT-WRAP-PY-PROP-UTF8-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.6",
+          "section": "DECIMAL Property公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "DECIMAL canonical encoding"
+        },
+        {
+          "path": ".docs/12_design/runtime-objects/model-values.md",
+          "version": "1.0",
+          "section": "型別値領域と比較・変換"
+        }
+      ],
+      "requirements": [
+        "RQ-02-001",
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-02-019",
+        "RQ-02-020",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "cases": [
+        "TC-PROP-01",
+        "TC-ABI-REP-01",
+        "TC-LIFE-01",
+        "TC-THREAD-01",
+        "TC-ERROR-01",
+        "TC-WRAP-PY-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-PROP-DECIMAL-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-decimal-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-PROP-DECIMAL-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-property-decimal-consumer-test"]
+        }
+      ]
+    },
+{
+      "id": "UNIT-WRAP-PY-BINDING-001",
+      "state": "complete",
+      "scope": "python-property-binding-modes-cancel-error-snapshot-lifecycle",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-014",
+        "UNIT-ABI-016",
+        "UNIT-ABI-018",
+        "UNIT-WRAP-PY-RUNTIME-001",
+        "UNIT-WRAP-PY-PROP-BOOL-I64-001",
+        "UNIT-WRAP-PY-PROP-F64-001",
+        "UNIT-WRAP-PY-PROP-UTF8-001",
+        "UNIT-WRAP-PY-PROP-DECIMAL-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.7",
+          "section": "Property間Binding公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "BindingのC ABI / 作成と解除 / Bindingエラーの読み取りと通知"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding graphと因果連鎖"
+        }
+      ],
+      "requirements": [
+        "RQ-05-002",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-07-001",
+        "RQ-07-002",
+        "RQ-07-003",
+        "RQ-07-004",
+        "RQ-07-005",
+        "RQ-07-006",
+        "RQ-07-007",
+        "RQ-07-008",
+        "RQ-07-009",
+        "RQ-07-010",
+        "RQ-07-011",
+        "RQ-07-015"
+      ],
+      "cases": [
+        "TC-BIND-01",
+        "TC-BIND-INIT-REJECT-01",
+        "TC-BIND-PROPAGATION-REJECT-01",
+        "TC-LIFE-01",
+        "TC-THREAD-01",
+        "TC-ERROR-01",
+        "TC-WRAP-PY-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-BINDING-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-binding-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-BINDING-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-binding-consumer-test"]
+        }
+      ]
+    },
+{
+      "id": "UNIT-WRAP-PY-COMMAND-001",
+      "state": "complete",
+      "scope": "python-async-command-worker-cancel-terminal-post-and-lifetime",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-CORE-066",
+        "UNIT-ABI-018",
+        "UNIT-WRAP-PY-RUNTIME-001",
+        "UNIT-WRAP-PY-PROP-BOOL-I64-001",
+        "UNIT-WRAP-PY-BINDING-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.8",
+          "section": "Python AsyncCommand公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/events/commands.md",
+          "version": "1.1",
+          "section": "Async Command execution, state, cancellation, completion, and ownership"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "Async Command C ABI / runtime_post"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "Runtime post queueとUI dispatch turn"
+        }
+      ],
+      "requirements": [
+        "RQ-02-004",
+        "RQ-03-004",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-04-022",
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-008",
+        "RQ-05-009",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-06-002",
+        "RQ-06-003",
+        "RQ-06-004",
+        "RQ-06-008",
+        "RQ-06-009",
+        "RQ-06-010",
+        "RQ-06-011",
+        "RQ-06-013"
+      ],
+      "cases": [
+        "TC-CMD-01",
+        "TC-ABI-COMP-01",
+        "TC-CALLBACK-01",
+        "TC-OWN-01",
+        "TC-THREAD-01",
+        "TC-LIFE-01",
+        "TC-ERROR-01",
+        "TC-WRAP-PY-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-COMMAND-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-command-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-COMMAND-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-command-consumer-test"]
+        }
+      ]
+    },
+{
+      "id": "UNIT-WRAP-PY-CONTROLS-001",
+      "state": "complete",
+      "scope": "python-ui-controls-tree-layout-focus-and-command-association",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-CORE-070",
+        "UNIT-CORE-071",
+        "UNIT-CORE-072",
+        "UNIT-ABI-020",
+        "UNIT-ABI-021",
+        "UNIT-WRAP-PY-RUNTIME-001",
+        "UNIT-WRAP-PY-PROP-BOOL-I64-001",
+        "UNIT-WRAP-PY-PROP-F64-001",
+        "UNIT-WRAP-PY-PROP-UTF8-001",
+        "UNIT-WRAP-PY-PROP-DECIMAL-001",
+        "UNIT-WRAP-PY-BINDING-001",
+        "UNIT-WRAP-PY-COMMAND-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "1.10",
+          "section": "Python UI Controls / Tree / Focus公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.1",
+          "section": "基本Controlの型と責務・機能委譲"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "Tree所属とStackPanel設定"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/input-focus.md",
+          "version": "1.1",
+          "section": "Focus要求の失敗境界"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "初期UI ControlのC ABI操作"
+        }
+      ],
+      "requirements": [
+        "RQ-03-004",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-07-001",
+        "RQ-07-002",
+        "RQ-07-003",
+        "RQ-07-005",
+        "RQ-07-006",
+        "RQ-07-011",
+        "RQ-09-001",
+        "RQ-09-002",
+        "RQ-09-003",
+        "RQ-09-004",
+        "RQ-09-005",
+        "RQ-09-006",
+        "RQ-09-007",
+        "RQ-09-009",
+        "RQ-09-043",
+        "RQ-09-044",
+        "RQ-09-045",
+        "RQ-09-046",
+        "RQ-09-047",
+        "RQ-09-048",
+        "RQ-09-049",
+        "RQ-09-059",
+        "RQ-09-067",
+        "RQ-09-070"
+      ],
+      "cases": [
+        "TC-PROP-01",
+        "TC-BIND-01",
+        "TC-CMD-01",
+        "TC-TREE-01",
+        "TC-LAYOUT-01",
+        "TC-FOCUS-01",
+        "TC-LIFE-01",
+        "TC-THREAD-01",
+        "TC-ERROR-01",
+        "TC-WRAP-PY-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-CONTROLS-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-controls-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-CONTROLS-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-controls-consumer-test"]
+        }
+      ]
+    },
+{
+      "id": "UNIT-WRAP-PY-WINDOW-001",
+      "state": "complete",
+      "scope": "python-window-peer-and-close-request-wrapper",
+      "sources": [
+        "wrappers/python/src/freemvvm/**/*.py",
+        "wrappers/python/tests/**/*.py",
+        "wrappers/python/examples/**/*.py",
+        "tools/dev.py"
+      ],
+      "config": [
+        "wrappers/python/pyproject.toml",
+        "crates/c-abi/include/freemvvm/abi.h",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tools/dev.py",
+        "tools/units.yaml",
+        ".github/workflows/bootstrap.yml"
+      ],
+      "depends_on": [
+        "UNIT-ABI-021",
+        "UNIT-WRAP-PY-CONTROLS-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "2.0",
+          "section": "Python Window peer / close-request公開API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "Window peerとclose requestの境界"
+        }
+      ],
+      "requirements": [
+        "RQ-03-004",
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-008",
+        "RQ-05-009",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-09-001",
+        "RQ-09-003",
+        "RQ-09-071"
+      ],
+      "cases": [
+        "TC-LIFE-01",
+        "TC-THREAD-01",
+        "TC-ERROR-01",
+        "TC-WRAP-PY-01"
+      ],
+      "test_design": ".docs/32_unit_test/wrappers.md",
+      "tests": [
+        {
+          "id": "UT-WRAP-PY-WINDOW-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-window-test"]
+        },
+        {
+          "id": "UT-CONSUMER-PY-WINDOW-001",
+          "command": [".venv/Scripts/python.exe", "tools/dev.py", "python-window-consumer-test"]
+        }
+      ]
     }
   ]
 }
