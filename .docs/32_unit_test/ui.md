@@ -98,7 +98,9 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 
 Text shaping/font profile/GlyphRun実描画は、本案のControl connector・factory契約から独立したTextService/backend unitで試験する。GlyphRun非対応backendは未対応を明示し、Text表示要求の合格をこのfake connector suiteから主張しない。実装単位ID/path/commandは設計全文の承認後にimplementation-test inventoryへ登録する。
 
-実行記録（UNIT-CORE-080）: 未commit作業treeで `cargo test -p freemvvm-core control_view_connector_ --locked`（2 tests）、`cargo test -p freemvvm-core --locked`（171 tests）、`cargo clippy -p freemvvm-core --all-targets --locked -- -D warnings`、`cargo fmt --all -- --check`、`tools/dev.py check`、`tools/dev.py minimum` がpass。CI・Linux実機描画は未実施。この記録はgeometry/clip projectionまでに限り、live Control treeからのVisual生成、Text表示、frame scheduling、実機表示の合格を意味しない。
+実行記録（UNIT-CORE-080）: 実装SHA `ab2c2733085f40564d0c862918b355536edff4bd` で `cargo test -p freemvvm-core control_view_connector_ --locked`（2 tests）、`cargo test -p freemvvm-core --locked`（171 tests）、`cargo clippy -p freemvvm-core --all-targets --locked -- -D warnings`、`cargo fmt --all -- --check`、`tools/dev.py check`、`tools/dev.py minimum` がpass。CI・Linux実機描画は未実施。この記録はgeometry/clip projectionまでに限り、live Control treeからのVisual生成、Text表示、frame scheduling、実機表示の合格を意味しない。
+
+実行記録（UNIT-CORE-081）: revision-stamped `ControlTreeSnapshot` + fake `VisualNodeDescriptor`からのattach/detach/reorder、same-revision、descriptor mismatchを実装SHA未commit作業treeで `cargo test -p freemvvm-core control_tree_visual_snapshot_ --locked`（2 tests）、`cargo test -p freemvvm-core --locked`（173 tests）、`cargo clippy -p freemvvm-core --all-targets --locked -- -D warnings`、`cargo fmt --all -- --check`、`tools/dev.py check`、`tools/dev.py minimum`がpass。Runtime live tree capture、production Visual descriptor、Text/Button appearanceは未実装。
 
 ## 承認履歴
 

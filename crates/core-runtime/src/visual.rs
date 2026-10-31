@@ -5,7 +5,7 @@ use crate::platform::scene::{
     Damage, DeviceScale, DrawOp, GlyphPlacement, GlyphRunSnapshot, Rect, SceneError, SceneSnapshot,
 };
 use crate::ui_layout::{LayoutSnapshot, Rect as LayoutRect};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// Local-coordinate drawing data supplied while the Core visual snapshot is assembled.
@@ -24,9 +24,32 @@ pub(crate) struct VisualNodeSnapshot {
     pub(crate) children: Vec<VisualNodeSnapshot>,
 }
 
+/// A revision-stamped, non-owning copy of the attached logical tree's ordered identities.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ControlTreeSnapshot {
+    pub(crate) tree_revision: u64,
+    pub(crate) root: ControlTreeNodeSnapshot,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ControlTreeNodeSnapshot {
+    pub(crate) identity: ObjectIdentity,
+    pub(crate) children: Vec<Self>,
+}
+
+/// Explicit visual data for one Control; it never owns a Control or renderer resource.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct VisualNodeDescriptor {
+    pub(crate) clips_children: bool,
+    pub(crate) operations: Vec<VisualOperation>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum VisualBuildError {
     MissingLayout,
+    RevisionMismatch,
+    MissingDescriptor,
+    UnexpectedDescriptor,
     InvalidGeometry,
     AllocationFailed,
     InvalidScene,
@@ -35,6 +58,62 @@ pub(crate) enum VisualBuildError {
 pub(crate) struct ControlViewConnector;
 
 impl ControlViewConnector {
+    pub(crate) fn build_from_control_tree(
+        tree: &ControlTreeSnapshot,
+        layout: &LayoutSnapshot,
+        descriptors: &HashMap<ObjectIdentity, VisualNodeDescriptor>,
+        device_scale: DeviceScale,
+        background_rgb: [f32; 3],
+        damage: Damage,
+    ) -> Result<SceneSnapshot, VisualBuildError> {
+        if tree.tree_revision != layout.tree_revision {
+            return Err(VisualBuildError::RevisionMismatch);
+        }
+        let mut visited = HashSet::new();
+        let root = Self::materialize_visual_node(&tree.root, descriptors, &mut visited)?;
+        if visited.len() != layout.node_count() {
+            return Err(VisualBuildError::MissingLayout);
+        }
+        if visited.len() != descriptors.len() {
+            return Err(VisualBuildError::UnexpectedDescriptor);
+        }
+        Self::build_snapshot(&root, layout, device_scale, background_rgb, damage)
+    }
+
+    fn materialize_visual_node(
+        node: &ControlTreeNodeSnapshot,
+        descriptors: &HashMap<ObjectIdentity, VisualNodeDescriptor>,
+        visited: &mut HashSet<ObjectIdentity>,
+    ) -> Result<VisualNodeSnapshot, VisualBuildError> {
+        visited
+            .try_reserve(1)
+            .map_err(|_| VisualBuildError::AllocationFailed)?;
+        if !visited.insert(node.identity) {
+            return Err(VisualBuildError::InvalidGeometry);
+        }
+        let descriptor = descriptors
+            .get(&node.identity)
+            .ok_or(VisualBuildError::MissingDescriptor)?;
+        let mut operations = Vec::new();
+        operations
+            .try_reserve(descriptor.operations.len())
+            .map_err(|_| VisualBuildError::AllocationFailed)?;
+        operations.extend(descriptor.operations.iter().cloned());
+        let mut children = Vec::new();
+        children
+            .try_reserve(node.children.len())
+            .map_err(|_| VisualBuildError::AllocationFailed)?;
+        for child in &node.children {
+            children.push(Self::materialize_visual_node(child, descriptors, visited)?);
+        }
+        Ok(VisualNodeSnapshot {
+            identity: node.identity,
+            clips_children: descriptor.clips_children,
+            operations,
+            children,
+        })
+    }
+
     pub(crate) fn build_snapshot(
         root: &VisualNodeSnapshot,
         layout: &LayoutSnapshot,
@@ -194,6 +273,183 @@ mod tests {
         ObjectIdentity::new(slot, NonZeroU64::new(1).unwrap())
     }
 
+    fn tree_node(
+        identity: ObjectIdentity,
+        children: Vec<ControlTreeNodeSnapshot>,
+    ) -> ControlTreeNodeSnapshot {
+        ControlTreeNodeSnapshot { identity, children }
+    }
+
+    fn descriptors(identities: &[ObjectIdentity]) -> HashMap<ObjectIdentity, VisualNodeDescriptor> {
+        identities
+            .iter()
+            .copied()
+            .map(|identity| {
+                (
+                    identity,
+                    VisualNodeDescriptor {
+                        clips_children: true,
+                        operations: vec![VisualOperation::FillRect {
+                            bounds: Rect::new(0.0, 0.0, 1.0, 1.0).unwrap(),
+                            rgba: [0.2, 0.3, 0.4, 1.0],
+                        }],
+                    },
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn control_tree_visual_snapshot_preserves_attach_detach_order_and_draw_operations() {
+        let root = identity(1);
+        let first = identity(2);
+        let second = identity(3);
+        let layout = calculate_layout(LayoutNodeSnapshot::stack_panel(
+            root,
+            Orientation::Vertical,
+            vec![
+                LayoutNodeSnapshot::leaf(first),
+                LayoutNodeSnapshot::leaf(second),
+            ],
+        ));
+        let scale = DeviceScale::new(1.0, 1.0).unwrap();
+        let damage = Damage::Full;
+
+        let attached = ControlTreeSnapshot {
+            tree_revision: layout.tree_revision,
+            root: tree_node(
+                root,
+                vec![tree_node(first, vec![]), tree_node(second, vec![])],
+            ),
+        };
+        let attached_scene = ControlViewConnector::build_from_control_tree(
+            &attached,
+            &layout,
+            &descriptors(&[root, first, second]),
+            scale,
+            [0.0, 0.0, 0.0],
+            damage,
+        )
+        .unwrap();
+        let fill_bounds = |scene: &SceneSnapshot| {
+            scene
+                .operations()
+                .iter()
+                .filter_map(|op| match op {
+                    DrawOp::FillRect { bounds, .. } => Some(*bounds),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let attached_bounds = fill_bounds(&attached_scene);
+        assert_eq!(attached_scene.layout_revision(), layout.layout_revision);
+        assert_eq!(attached_bounds.len(), 3);
+        assert!(attached_bounds[1].y() < attached_bounds[2].y());
+
+        let detached_layout = calculate_layout(LayoutNodeSnapshot::stack_panel(
+            root,
+            Orientation::Vertical,
+            vec![LayoutNodeSnapshot::leaf(second)],
+        ));
+        let detached = ControlTreeSnapshot {
+            tree_revision: detached_layout.tree_revision,
+            root: tree_node(root, vec![tree_node(second, vec![])]),
+        };
+        let detached_scene = ControlViewConnector::build_from_control_tree(
+            &detached,
+            &detached_layout,
+            &descriptors(&[root, second]),
+            scale,
+            [0.0, 0.0, 0.0],
+            damage,
+        )
+        .unwrap();
+        assert_eq!(fill_bounds(&detached_scene).len(), 2);
+
+        let reordered_layout = calculate_layout(LayoutNodeSnapshot::stack_panel(
+            root,
+            Orientation::Vertical,
+            vec![
+                LayoutNodeSnapshot::leaf(second),
+                LayoutNodeSnapshot::leaf(first),
+            ],
+        ));
+        let reordered = ControlTreeSnapshot {
+            tree_revision: reordered_layout.tree_revision,
+            root: tree_node(
+                root,
+                vec![tree_node(second, vec![]), tree_node(first, vec![])],
+            ),
+        };
+        let reordered_scene = ControlViewConnector::build_from_control_tree(
+            &reordered,
+            &reordered_layout,
+            &descriptors(&[root, first, second]),
+            scale,
+            [0.0, 0.0, 0.0],
+            damage,
+        )
+        .unwrap();
+        let reordered_bounds = fill_bounds(&reordered_scene);
+        assert!(reordered_bounds[1].y() < reordered_bounds[2].y());
+    }
+
+    #[test]
+    fn control_tree_visual_snapshot_rejects_revision_and_descriptor_mismatch_atomically() {
+        let root = identity(10);
+        let child = identity(11);
+        let layout = calculate_layout(LayoutNodeSnapshot::stack_panel(
+            root,
+            Orientation::Vertical,
+            vec![LayoutNodeSnapshot::leaf(child)],
+        ));
+        let tree = ControlTreeSnapshot {
+            tree_revision: layout.tree_revision + 1,
+            root: tree_node(root, vec![tree_node(child, vec![])]),
+        };
+        let args = (
+            &layout,
+            &descriptors(&[root, child]),
+            DeviceScale::new(1.0, 1.0).unwrap(),
+            [0.0, 0.0, 0.0],
+            Damage::Full,
+        );
+        assert_eq!(
+            ControlViewConnector::build_from_control_tree(
+                &tree, args.0, args.1, args.2, args.3, args.4
+            ),
+            Err(VisualBuildError::RevisionMismatch)
+        );
+
+        let tree = ControlTreeSnapshot {
+            tree_revision: layout.tree_revision,
+            root: tree_node(root, vec![tree_node(child, vec![])]),
+        };
+        assert_eq!(
+            ControlViewConnector::build_from_control_tree(
+                &tree,
+                &layout,
+                &descriptors(&[root]),
+                DeviceScale::new(1.0, 1.0).unwrap(),
+                [0.0, 0.0, 0.0],
+                Damage::Full,
+            ),
+            Err(VisualBuildError::MissingDescriptor)
+        );
+
+        assert_eq!(
+            ControlViewConnector::build_from_control_tree(
+                &tree,
+                &layout,
+                &descriptors(&[root, child, identity(12)]),
+                DeviceScale::new(1.0, 1.0).unwrap(),
+                [0.0, 0.0, 0.0],
+                Damage::Full,
+            ),
+            Err(VisualBuildError::UnexpectedDescriptor)
+        );
+    }
+
     struct FixedMeasure;
 
     impl IntrinsicMeasureProvider for FixedMeasure {
@@ -320,5 +576,10 @@ mod tests {
             ),
             Err(VisualBuildError::MissingLayout)
         );
+    }
+
+    fn calculate_layout(root: LayoutNodeSnapshot) -> LayoutSnapshot {
+        LayoutEngine::calculate(&root, 7, 9, Size::new(120.0, 80.0).unwrap(), &FixedMeasure)
+            .unwrap()
     }
 }

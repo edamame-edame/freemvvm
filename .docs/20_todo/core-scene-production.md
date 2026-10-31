@@ -1,9 +1,9 @@
 # Core UI Scene生成の次工程
 
-- 2026-10-31 progress: DD 1.4 / Platform DD 1.6 / UI test design 0.8 are approved. User authorized the next Linux-related implementation task. The first implementation slice is `UNIT-CORE-080` (ControlViewConnector geometry/clip flattening) on `impl-rust/core-scene-rendering`, parent `impl-rust/core-apis-window-background`. Focused/Core tests, workspace `tools/dev.py check`, and `tools/dev.py minimum` pass locally; plan revision 0.3 is under review and is not committed.
+- 2026-10-31 progress: Plan 0.3 and approved DD/UI test designs were accepted. `UNIT-CORE-080` (ControlViewConnector geometry/clip flattening) was committed and pushed on `impl-rust/core-scene-rendering` (`ab2c273`). Plan 0.4 proposes `UNIT-CORE-081`, which now passes focused/Core/Clippy/fmt local checks using only fake descriptors; Runtime live tree capture, production descriptor/TextService, CI and Linux hardware remain unverified.
 
-- 計画版: 0.3 改訂案
-- 状態: 計画0.2、UI Tree/Layout DD 1.4、Platform DD 1.6、UI unit-test 0.8は利用者承認済み。UNIT-CORE-080を実装・local検証済み。計画0.3（実装unit splitと検証結果）はレビュー待ちで未commit、CI待ち
+- 計画版: 0.4 改訂案
+- 状態: 計画0.3/0.4利用者承認済み。UNIT-CORE-080 commit/push済み。UNIT-CORE-081を実装・local検証済み、commit/push待ち
 - 作成日: 2026-10-29
 - 対象version: `0.0.1`
 - 対象branch案: `impl-rust/core-scene-rendering`（`impl-rust/core-apis-window-background`の子branch）
@@ -64,6 +64,18 @@ Platform Adapterの実機確認は保留し、既存のWindow/Control/Logical Tr
 
 実装監査で、現行`LayoutEngine::arrange_node`が親座標を子FinalBoundsへ累積していたため、DD 1.4の「親座標系bounds」と不一致であることを発見した。UNIT-CORE-080の同revision修正で、FinalBoundsを親相対に保ち、scene generationでabsolute座標へ合成する。既存単層Layout testを維持し、nested geometry/clip testで新しい境界を検証する。
 
+## 次の実装slice（計画0.4案）
+
+### UNIT-CORE-081: Logical Control treeからVisualNodeSnapshotを構築
+
+- attached Logical Control treeを表すrevision-stamped identity snapshotと明示Visual descriptor mapを受け、同じLayoutSnapshotに含まれるidentityだけからephemeral `VisualNodeSnapshot`を構築する。tree captureのRuntime/UI-thread接続とproduction descriptor供給元は後続unitに分ける。
+- Visual descriptor（clip-child規則とlocal DrawOp列）は内部入力として明示的に渡し、Control treeの所有参照・Property callback・renderer/native handleをVisual snapshotへ持ち込まない。descriptorの欠落・余剰、layout/tree revision不一致、重複identityはSceneを部分公開せず失敗する。
+- 本unitはrevision-stamped tree snapshotからのtraversal / identity / ordering / all-or-nothing接続まで。Text shaping、font profile、Text/Button appearance、Clip policyのControl別既定値、Runtime live tree capture、dirty-to-frame schedulingは追加しない。descriptor供給元がないControlを空描画としてPresented成功させない。
+- 承認済み`UT-VIEW-CONNECTOR-001`からtree attach/detach/order・同revision・operation ordering・atomic failureの確認を切り出す。実装はtest専用fake descriptorを注入し、製品appearanceを創作しない。
+- focused command案: `cargo test -p freemvvm-core control_tree_visual_snapshot_ --locked`。Core tests、Clippy/fmt、`tools/dev.py check`、`tools/dev.py minimum`を同revisionで確認する。
+
+計画0.4は次sliceの責務を示す。Runtime live tree captureと、Control内容から実描画operationを供給するProduction Visual descriptor/TextServiceは後続設計課題であり、UNIT-CORE-081をLinux上のUI表示完了とは扱わない。
+
 ## 対象外
 
 - Debian/RPi実機DRM/KMS操作、Platform Adapter hardware smoke、`/dev/dri` passthrough。
@@ -87,4 +99,5 @@ Platform Adapterの実機確認は保留し、既存のWindow/Control/Logical Tr
 | 2026-10-29 | 計画0.2 | 利用者承認 | Scene producer、TextService、scale/background供給元、Visual geometry/clip、frame接続に加え、backend-neutral View契約と複数renderer選択軸を反映。DD/UI test改訂案の作成を承認。 |
 | 2026-10-30 | DD/UI test改訂案 | review draft | ControlViewConnector→backend-neutral SceneSnapshot→選択可能RenderBackendの責務とfake-test proposalを3文書に作成。文書全体レビュー待ち。 |
 | 2026-10-30 | DD 1.4 / DD 1.6 / UT 0.8 | 利用者承認 | 「ok」により3文書全体を承認。実装・試験合格とは別管理。 |
-| 2026-10-31 | 計画0.3案 / UNIT-CORE-080 | 利用者レビュー待ち | 「つぎのLinux実装課題に進んでください」により次のCore/Linux共通scene unitを開始。parent-relative FinalBoundsとscene geometry flatteningを同revisionで実装。focused 2件・Core 171件・`tools/dev.py check`・`tools/dev.py minimum` pass。計画0.3のcommit/pushはレビュー待ち、CI・Linux実機は未実施 |
+| 2026-10-31 | 計画0.3 / UNIT-CORE-080 | 利用者承認・実装済み | UNIT-CORE-080をcommit `ab2c273`でpush。focused 2件・Core 171件・`tools/dev.py check`・`tools/dev.py minimum` pass。CI・Linux実機未確認 |
+| 2026-10-31 | 計画0.4 / UNIT-CORE-081 | 利用者承認 | revision-stamped tree identity snapshotとfake descriptor mapからSceneを構造生成。focused 2件・Core 173件・`tools/dev.py check`・`tools/dev.py minimum` pass。Runtime live tree capture、production appearance/TextService/Control別clip policyは後続 |

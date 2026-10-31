@@ -3760,7 +3760,7 @@
     },
     {
       "id": "UNIT-CORE-080",
-      "state": "ready",
+      "state": "complete",
       "scope": "control-view-scene-geometry-and-clip-flattening",
       "sources": [
         "crates/core-runtime/src/visual.rs",
@@ -3789,6 +3789,35 @@
         {
           "id": "UT-VIEW-GEOMETRY-001",
           "command": ["cargo", "test", "-p", "freemvvm-core", "control_view_connector_", "--locked"]
+        }
+      ]
+    },
+    {
+      "id": "UNIT-CORE-081",
+      "state": "complete",
+      "scope": "revision-checked-control-tree-snapshot-to-visual-scene-projection",
+      "sources": ["crates/core-runtime/src/visual.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/core-runtime/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-080"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.4 approved",
+          "section": "Control-View connector / same-revision SceneSnapshot"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.6 approved",
+          "section": "ControlViewConnector and renderer-neutral SceneSnapshot"
+        }
+      ],
+      "requirements": ["RQ-09-001", "RQ-09-006", "RQ-09-007", "RQ-09-008", "RQ-11-008", "RQ-11-020"],
+      "cases": ["TC-LAYOUT-01", "TC-LIFE-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-VIEW-CONNECTOR-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "control_tree_visual_snapshot_", "--locked"]
         }
       ]
     }
