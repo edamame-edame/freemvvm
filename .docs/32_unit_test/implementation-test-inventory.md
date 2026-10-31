@@ -85,7 +85,7 @@ TextServiceは未実装のため、本番のText/TextBox/Button intrinsic measur
 
 | unit | focused test | consumer test | local checks | CI |
 | --- | --- | --- | --- | --- |
-| `UNIT-WRAP-CS-WINDOW-BG-001` | `.venv/Scripts/python.exe tools/dev.py csharp-runtime-test` 成功（UiWindow生成、背景get/set/reset、status/exception伝播、failed release retry、active CallLease中のclose） | `.venv/Scripts/python.exe tools/dev.py csharp-runtime-consumer-test` 成功（実C ABI default/set/reset/close） | unit実装と同じworkspace revisionでpass | push後のCIは未確認 |
+| `UNIT-WRAP-CS-WINDOW-BG-001` | `.venv/Scripts/python.exe tools/dev.py csharp-runtime-test` 成功（UiWindow生成、背景get/set/reset、status/exception伝播、failed release retry、active CallLease中のclose） | `.venv/Scripts/python.exe tools/dev.py csharp-runtime-consumer-test` 成功（実C ABI default/set/reset/close） | `.venv/Scripts/python.exe tools/dev.py minimum` 成功。local `check`はC++ MSVC/標準ライブラリ不整合で停止 | [Windows/Linux CI success](https://github.com/edamame-edame/freemvvm/actions/runs/41174797910) |
 
 対応する承認設計はC# wrapper 1.6、wrapper試験設計0.4。要求根拠はRQ-09-001/RQ-09-074。focused検証結果は実装・consumerの範囲に限り、Platform peer open/closeや実画面表示を含まない。
 

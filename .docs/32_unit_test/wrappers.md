@@ -91,10 +91,10 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-24 | 0.2追加 | — | 承認済みC# wrapper DD v1.3と実装計画に基づきC# Property Binding試験を登録。試験実装・合格は別途記録 |
 | 2026-10-24 | 0.2実行記録 | — | `UNIT-WRAP-CS-BIND-001`のfocused fake ABI・real C ABI consumer、local check/minimum、Windows/Linux CI run 40060773110が成功 |
 | 2026-10-24 | 0.3追加 | — | 承認済みC# wrapper DD v1.4と実装開始指示に基づき`UNIT-WRAP-CS-COMMAND-001`のfocused fake ABI・real C ABI consumer試験を登録。試験実装・実行結果は別管理 |
-| 2026-10-31 | 0.4全文 | 利用者 | C# UiWindow / Window background RGB wrapperのfake ABI・real C ABI consumer試験を追加し、全文承認 |
 | 2026-10-24 | 0.3実行記録 | — | `tools/dev.py csharp-command-test`、`csharp-command-consumer-test`、`check`、`minimum`と[Windows/Linux CI run 40074886918](https://github.com/edamame-edame/freemvvm/actions/runs/40074886918)がsuccess |
-| 2026-10-31 | 0.4改訂案 | Codex | C# UiWindow fake ABI focused試験とreal C ABI consumer案を追加。全文レビュー待ち、未実装・未実行 |
+| 2026-10-31 | 0.4改訂案 | Codex | C# UiWindow fake ABI focused試験とreal C ABI consumer案を追加。全文レビュー待ち |
 | 2026-10-31 | 0.4全文 | 利用者 | 「ok」によりC# UiWindow fake ABIとC ABI consumer試験を含む全文を承認。実装・実行は別管理 |
+| 2026-10-31 | 0.4実行記録 | Codex | C# Window background focused/consumer試験およびWindows/Linux CI run 41174797910がsuccess |
 
 ## 改訂履歴
 
@@ -106,4 +106,4 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 0.1 | 2026-10-17 | テスト文書作成指示に基づき前提・操作・観測・期待値・後始末を具体化 | Codex | 本版全文のレビュー待ち。未実装・未実行 |
 | 0.2 | 2026-10-24 | C# Property Bindingのfake ABI focused testとreal C ABI consumerの試験設計を追加 | Codex | 利用者承認済みDD v1.3と実装開始指示の範囲。試験実行状態は別管理 |
 | 0.3 | 2026-10-24 | C#非同期Commandのfake ABI focused testとreal C ABI consumerの試験設計・実行記録を追加 | Codex | 利用者承認済みDD v1.4と実装開始指示の範囲。Windows/Linux CI成功 |
-| 0.4 | 2026-10-31 | C# UiWindow owner・Window背景RGB Try API・external consumer試験案を追加 | Codex | C# DD 1.6改訂案とともに文書全体レビュー待ち |
+| 0.4 | 2026-10-31 | C# UiWindow owner・Window背景RGB Try API・external consumer試験を追加 | Codex | 利用者が全文承認。実装検証は別管理 |
