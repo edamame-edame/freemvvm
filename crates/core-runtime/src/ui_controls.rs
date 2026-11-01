@@ -96,8 +96,8 @@ impl UiControlState {
 #[cfg(test)]
 mod tests {
     use crate::abi_support::{
-        Damage, DeviceScale, FramePhase, FrameTicket, PlatformWindowClientAreaSink, Rect,
-        SceneSnapshot, WindowClientArea, WindowOpenInfo,
+        Damage, DeviceScale, FramePhase, FrameTicket, PlatformWindowClientAreaSink,
+        PlatformWindowCloseRequestSink, Rect, SceneSnapshot, WindowClientArea, WindowOpenInfo,
     };
     use crate::abi_support::{
         UiControlApiError, handle_release, property_get_bool, property_get_utf8, property_set_bool,
@@ -168,6 +168,7 @@ mod tests {
         completion_sink:
             std::sync::Mutex<Option<Arc<dyn crate::abi_support::PlatformFrameCompletionSink>>>,
         client_area_sink: std::sync::Mutex<Option<Arc<dyn PlatformWindowClientAreaSink>>>,
+        close_request_sink: std::sync::Mutex<Option<Arc<dyn PlatformWindowCloseRequestSink>>>,
         submitted: std::sync::Mutex<Vec<(FrameTicket, Arc<SceneSnapshot>)>>,
         fail_next_submit: std::sync::atomic::AtomicBool,
         text_service: std::sync::Mutex<Option<Arc<dyn crate::abi_support::TextService>>>,
@@ -282,6 +283,14 @@ mod tests {
                 .client_area_sink
                 .lock()
                 .expect("client-area sink lock") = Some(sink);
+        }
+
+        fn set_close_request_sink(&self, sink: Arc<dyn PlatformWindowCloseRequestSink>) {
+            *self
+                .probe
+                .close_request_sink
+                .lock()
+                .expect("close-request sink lock") = Some(sink);
         }
 
         fn close(&self) -> Result<(), crate::abi_support::PlatformOperationError> {
@@ -1214,6 +1223,7 @@ mod tests {
     #[derive(Default)]
     struct CloseRequestProbe {
         requests: std::sync::Mutex<Vec<u64>>,
+        callback_threads: std::sync::Mutex<Vec<std::thread::ThreadId>>,
         destroys: AtomicUsize,
         action: std::sync::atomic::AtomicUsize,
     }
@@ -1221,6 +1231,11 @@ mod tests {
     unsafe extern "C" fn defer_close_request(userdata: *mut c_void) {
         // SAFETY: the owning test keeps this probe alive through subscription cancellation.
         let probe = unsafe { &*userdata.cast::<CloseRequestProbe>() };
+        probe
+            .callback_threads
+            .lock()
+            .expect("callback thread list lock")
+            .push(std::thread::current().id());
         let borrowed = window_close_request_current();
         match probe.action.load(Ordering::SeqCst) {
             0 => {
@@ -1669,6 +1684,94 @@ mod tests {
         handle_release(subscription).expect("release subscription token");
         handle_release(window).expect("release Window");
         runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(runtime).expect("release Runtime");
+    }
+
+    #[test]
+    fn platform_close_intents_dispatch_on_ui_thread_and_reject_stale_generations() {
+        let probe = Arc::new(PlatformProbe::default());
+        let factory: Arc<dyn crate::abi_support::PlatformRuntimeFactory> =
+            Arc::new(TestPlatformFactory(Arc::clone(&probe)));
+        let runtime = runtime_create_handle_with_platform_factory(factory)
+            .expect("create Runtime with fake peer");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        assert_eq!(window_open(window), Ok(1));
+        let sink = probe
+            .close_request_sink
+            .lock()
+            .expect("close-request sink lock")
+            .as_ref()
+            .expect("Core close-request sink")
+            .clone();
+
+        let worker_sink = Arc::clone(&sink);
+        std::thread::spawn(move || {
+            worker_sink
+                .close_requested(1)
+                .expect("enqueue native close intent");
+        })
+        .join()
+        .expect("close-intent worker");
+        assert_eq!(probe.closed.load(Ordering::SeqCst), 0);
+        assert!(
+            window_client_area_for_test(window)
+                .expect("query before dispatch")
+                .is_some()
+        );
+        runtime_dispatch_turn(runtime).expect("dispatch native close intent on UI thread");
+        assert_eq!(probe.closed.load(Ordering::SeqCst), 1);
+        assert_eq!(window_client_area_for_test(window), Ok(None));
+        assert_eq!(window_open(window), Ok(2));
+
+        sink.close_requested(1)
+            .expect("enqueue stale-generation close intent");
+        runtime_dispatch_turn(runtime).expect("discard stale-generation close intent");
+        assert_eq!(probe.closed.load(Ordering::SeqCst), 1);
+        assert_eq!(window_client_area_for_test(window).unwrap().unwrap().0, 2);
+
+        let close_probe = CloseRequestProbe::default();
+        let subscription = window_close_request_subscribe(
+            window,
+            defer_close_request,
+            (&close_probe as *const CloseRequestProbe) as usize,
+            destroy_close_probe,
+        )
+        .expect("subscribe to native close requests");
+        let ui_thread = std::thread::current().id();
+
+        close_probe.action.store(1, Ordering::SeqCst);
+        sink.close_requested(2)
+            .expect("enqueue Decline close intent");
+        runtime_dispatch_turn(runtime).expect("dispatch Decline close intent");
+        assert_eq!(probe.closed.load(Ordering::SeqCst), 1);
+        assert_eq!(window_client_area_for_test(window).unwrap().unwrap().0, 2);
+
+        close_probe.action.store(0, Ordering::SeqCst);
+        sink.close_requested(2)
+            .expect("enqueue deferred close intent");
+        runtime_dispatch_turn(runtime).expect("dispatch deferred close intent");
+        assert_eq!(probe.closed.load(Ordering::SeqCst), 1);
+        let request = close_probe.requests.lock().expect("request list lock")[0];
+        assert_eq!(
+            *close_probe
+                .callback_threads
+                .lock()
+                .expect("callback thread list lock"),
+            vec![ui_thread, ui_thread]
+        );
+        window_close_request_resolve(request, 1).expect("accept deferred close intent");
+        assert_eq!(probe.closed.load(Ordering::SeqCst), 2);
+        assert_eq!(window_client_area_for_test(window), Ok(None));
+        handle_release(request).expect("release resolved close request");
+
+        crate::abi_support::subscription_cancel(subscription).expect("cancel close subscription");
+        handle_release(subscription).expect("release close subscription");
+        assert_eq!(close_probe.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(window_open(window), Ok(3));
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        assert!(sink.close_requested(3).is_err());
+        handle_release(window).expect("release Window");
         handle_release(runtime).expect("release Runtime");
     }
 }

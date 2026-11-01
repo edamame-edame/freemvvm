@@ -12,6 +12,9 @@ WindowのOS close intent、C ABI Subscription、borrowed/deferred request handle
 - owned requestのretainは独立tokenを増やす。最後の未解決owner releaseはDeclineとなり、解決済み/stale requestのhandle releaseは通常のreleaseとして成功させる。
 - 共通Subscription owner registryはPropertyとWindow callbackの両方を保持できる。Window subscriberのcallback/destroyはcancelまたはowner teardownで一度だけ実行する。
 - `has_feature(8)`はControl APIとclose lifecycle一式が同revisionで揃った時だけtrueにする。
+- Platform native close intentはpeerからprivate sinkでRuntime UI dispatcherへ値としてpostし、Core/UI stateやC callbackをworker上で直接操作しない。dispatcher turn前にはcloseせず、UI turn内で既存subscriptionを使う。
+- Platform-origin close intentにはWindow `ObjectIdentity`とpeer generationを保持し、dispatcher実行時に現在generationを`begin_close_intent`前に照合する。古いHWND/peerから遅延したcloseが再open済みWindowを閉じないようにする。
+- C ABIの`window_close_intent_subscribed`はpublic Window handle tokenを入口にする。native sink側はtokenを保持・再利用せず、Core内部のidentity-based bridgeから同じsubscription/callback lifecycleを呼び出す。
 
 ## 関連
 

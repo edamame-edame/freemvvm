@@ -70,7 +70,8 @@ pub mod abi_support {
     use crate::ui_window::WindowLifecycleError;
     pub use crate::ui_window::{
         CloseDecision, PlatformFrameCompletionSink, PlatformOperationError, PlatformRuntimeFactory,
-        PlatformWindowClientAreaSink, PlatformWindowPeer, WindowClientArea, WindowOpenInfo,
+        PlatformWindowClientAreaSink, PlatformWindowCloseRequestSink, PlatformWindowPeer,
+        WindowClientArea, WindowOpenInfo,
     };
     use crate::value::{
         DecimalValue, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind,
@@ -2498,19 +2499,31 @@ pub mod abi_support {
         window: u64,
     ) -> Result<Option<(u64, u64)>, UiControlApiError> {
         let (_, runtime, identity) = validate_ui_control(window, UiControlKind::Window)?;
+        dispatch_window_close_intent(&runtime, identity, None)
+    }
+
+    pub(crate) fn platform_window_close_intent(
+        runtime: Arc<RuntimeCore>,
+        identity: ObjectIdentity,
+        generation: u64,
+    ) -> Result<(), PlatformOperationError> {
+        dispatch_window_close_intent(&runtime, identity, Some(generation))
+            .map(|_| ())
+            .map_err(|_| PlatformOperationError)
+    }
+
+    fn dispatch_window_close_intent(
+        runtime: &Arc<RuntimeCore>,
+        identity: ObjectIdentity,
+        expected_generation: Option<u64>,
+    ) -> Result<Option<(u64, u64)>, UiControlApiError> {
         let subscription = runtime
             .snapshot_window_close_subscription(identity)
             .map_err(map_ui_control_property_error)?;
-        let Some(subscription) = subscription else {
-            return runtime
-                .window_close_intent(identity, None)
-                .map_err(map_window_lifecycle_error);
-        };
-        let callback_runtime = Arc::clone(&runtime);
-        runtime
-            .window_close_intent(
-                identity,
-                Some(Box::new(move |request, generation| {
+        let callback: Option<Box<dyn FnOnce(u64, u64) -> CloseDecision>> = subscription.map(
+            |subscription| -> Box<dyn FnOnce(u64, u64) -> CloseDecision> {
+                let callback_runtime = Arc::clone(runtime);
+                Box::new(move |request, generation| {
                     let state = Arc::new(CloseRequestState {
                         callback_active: AtomicBool::new(true),
                         owned_handles: AtomicUsize::new(0),
@@ -2565,9 +2578,15 @@ pub mod abi_support {
                         }
                         decision
                     }
-                })),
-            )
-            .map_err(map_window_lifecycle_error)
+                })
+            },
+        );
+        let result = if let Some(generation) = expected_generation {
+            runtime.window_close_intent_for_generation(identity, generation, callback)
+        } else {
+            runtime.window_close_intent(identity, callback)
+        };
+        result.map_err(map_window_lifecycle_error)
     }
 
     /// Registers the Window's single close-request callback using the shared Subscription owner.

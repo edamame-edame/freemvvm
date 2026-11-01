@@ -18,6 +18,7 @@
 
 - `crates/platform-windows/src/win32.rs`は`WM_CLOSE`を受信すると、Core連携が未実装であるためpeerを閉じずに抑止している。
 - Core Runtime/C ABIにはWindow close-requestのsubscribe、callback中のAccept/Decline/Defer、deferred requestのresolve/releaseが実装済み。
+- 実装時のCore identity/generation bridgeの注意点は[Window close-request memory](../01_memory/abi-window-close-request.md)へ記録する。
 - [RQ-09-071](../11_requirements/RQ-09_ui-scope.md#rq-09-071)は、Window終了後もCore状態を保持して再表示できること、close判断の既定Accept、未解決request破棄時のDecline、Runtime shutdownを個別veto対象にしないことを定める。
 - [UIクラス設計](../13_detail_design/ui/controls.md)はCloseRequestとWindowの状態遷移を定める。
 - [Platform抽象化設計](../13_detail_design/platform/abstraction.md)はOS close intentをCore requestとして伝える。一方、close accepted後のpeer/Core状態関係には確認事項が残る。
@@ -62,6 +63,12 @@ Source変更前に、承認済みRQとDD間の未確定点を照合する。特�
 - Core unitとWindows Platform unitの各試験合格後、それぞれの層のbranchで日本語commit・pushする。
 - Windows GUIでのtitlebar close、Decline/Deferを含むprofile smokeはCIから切り離し、0.0.1 release qualificationへ記録する。Windows GUI表示確認とLinux DRM実機確認を未実施のまま合格扱いしない。
 - 関連する0.0.1 TODOが完了した段階で、まとめてmerge PRを作成する。
+
+## 実装・検証状況
+
+- `UNIT-CORE-090`をCore private Platform SPIへ実装し、`UT-CORE-PLATFORM-CLOSE-001`を追加した。off-UI-thread通知はRuntime dispatcherへpostされ、existing close subscriptionがUI threadで処理される。
+- local pass: focused close-intent test 1件、Core 185 tests、workspace all-target tests、workspace Clippy、Rust 1.85 workspace check、format check、document links 7133件。
+- 同revision CIはpush後に確認する。Windows Platform `UNIT-PLATFORM-WINDOWS-006`はCore unit CI確認後に着手する。
 
 ## レビュー履歴
 

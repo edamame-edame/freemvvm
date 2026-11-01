@@ -1297,6 +1297,11 @@ struct RuntimeWindowClientAreaSink {
     window: ObjectIdentity,
 }
 
+struct RuntimeWindowCloseRequestSink {
+    runtime: Weak<RuntimeCore>,
+    window: ObjectIdentity,
+}
+
 impl crate::ui_window::PlatformWindowClientAreaSink for RuntimeWindowClientAreaSink {
     fn client_area_changed(
         &self,
@@ -1317,6 +1322,27 @@ impl crate::ui_window::PlatformWindowClientAreaSink for RuntimeWindowClientAreaS
             .post_completion(PostedWork::callback(Box::new(move || {
                 if let Some(runtime) = runtime.upgrade() {
                     runtime.window_client_area_changed(window, generation, area);
+                }
+            })))
+            .map_err(|_| PlatformOperationError)
+    }
+}
+
+impl crate::ui_window::PlatformWindowCloseRequestSink for RuntimeWindowCloseRequestSink {
+    fn close_requested(&self, generation: u64) -> Result<(), PlatformOperationError> {
+        let runtime = self.runtime.upgrade().ok_or(PlatformOperationError)?;
+        let dispatcher = runtime
+            .dispatcher()
+            .map_err(|_| PlatformOperationError)?
+            .ok_or(PlatformOperationError)?;
+        let runtime = Arc::downgrade(&runtime);
+        let window = self.window;
+        dispatcher
+            .post_completion(PostedWork::callback(Box::new(move || {
+                if let Some(runtime) = runtime.upgrade() {
+                    let _ = crate::abi_support::platform_window_close_intent(
+                        runtime, window, generation,
+                    );
                 }
             })))
             .map_err(|_| PlatformOperationError)
@@ -2537,6 +2563,10 @@ impl RuntimeCore {
                 runtime: Arc::downgrade(self),
                 window: identity,
             }));
+            peer.set_close_request_sink(Arc::new(RuntimeWindowCloseRequestSink {
+                runtime: Arc::downgrade(self),
+                window: identity,
+            }));
             self.window_set_peer(identity, Arc::new(FactoryWindowPeer(peer)))
                 .map_err(|_| WindowLifecycleError::InvalidState)?;
         }
@@ -2774,6 +2804,24 @@ impl RuntimeCore {
         identity: ObjectIdentity,
         callback: Option<Box<dyn FnOnce(u64, u64) -> CloseDecision>>,
     ) -> Result<Option<(u64, u64)>, WindowLifecycleError> {
+        self.window_close_intent_if_generation(identity, None, callback)
+    }
+
+    pub(crate) fn window_close_intent_for_generation(
+        &self,
+        identity: ObjectIdentity,
+        expected_generation: u64,
+        callback: Option<Box<dyn FnOnce(u64, u64) -> CloseDecision>>,
+    ) -> Result<Option<(u64, u64)>, WindowLifecycleError> {
+        self.window_close_intent_if_generation(identity, Some(expected_generation), callback)
+    }
+
+    fn window_close_intent_if_generation(
+        &self,
+        identity: ObjectIdentity,
+        expected_generation: Option<u64>,
+        callback: Option<Box<dyn FnOnce(u64, u64) -> CloseDecision>>,
+    ) -> Result<Option<(u64, u64)>, WindowLifecycleError> {
         let request = {
             let mut store = self
                 .ui_objects
@@ -2785,11 +2833,16 @@ impl RuntimeCore {
                 .downcast_mut::<UiControlState>()
                 .filter(|state| state.kind == UiControlKind::Window)
                 .ok_or(WindowLifecycleError::InvalidState)?;
-            state
+            let window = state
                 .window
                 .as_mut()
-                .ok_or(WindowLifecycleError::InvalidState)?
-                .begin_close_intent()?
+                .ok_or(WindowLifecycleError::InvalidState)?;
+            if expected_generation
+                .is_some_and(|generation| !window.is_open() || window.generation() != generation)
+            {
+                return Err(WindowLifecycleError::StaleRequest);
+            }
+            window.begin_close_intent()?
         };
         let decision = callback.map_or(CloseDecision::Accept, |callback| {
             callback(request.0, request.1)

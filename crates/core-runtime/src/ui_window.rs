@@ -16,6 +16,8 @@ pub trait PlatformWindowPeer: Send + Sync {
     fn open(&self, generation: u64) -> Result<WindowOpenInfo, PlatformOperationError>;
     /// Installs the UI-queue sink used by profiles that can change their client area after open.
     fn set_client_area_sink(&self, _sink: Arc<dyn PlatformWindowClientAreaSink>) {}
+    /// Installs the UI-queue sink used by native window close-intent events.
+    fn set_close_request_sink(&self, _sink: Arc<dyn PlatformWindowCloseRequestSink>) {}
     fn close(&self) -> Result<(), PlatformOperationError>;
     fn submit_frame(
         &self,
@@ -64,6 +66,11 @@ pub trait PlatformWindowClientAreaSink: Send + Sync {
         generation: u64,
         area: WindowClientArea,
     ) -> Result<(), PlatformOperationError>;
+}
+
+/// Enqueues a native Window close intent for processing on the Runtime UI thread.
+pub trait PlatformWindowCloseRequestSink: Send + Sync {
+    fn close_requested(&self, generation: u64) -> Result<(), PlatformOperationError>;
 }
 
 /// Creates lightweight Window peers for one Runtime's selected platform profile.

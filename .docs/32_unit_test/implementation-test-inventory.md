@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
-- 文書版: 1.5
-- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsとclose-request unitsの試験設計は承認済み（2026-11-01）。UNIT-CORE-089とUNIT-PLATFORM-WINDOWS-005はlocal検証・同revision CI pass
+- 文書版: 1.6
+- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsとclose-request unitsの試験設計は承認済み（2026-11-01）。UNIT-CORE-089とUNIT-PLATFORM-WINDOWS-005はlocal検証・同revision CI pass。UNIT-CORE-090はlocal pass・CI確認待ち
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -59,7 +59,7 @@ Core dispatch unitを先行し、その完了後にWindows worker unitを実装�
 
 | unit | 責務 | test設計 | 状態 |
 | --- | --- | --- | --- |
-| `UNIT-CORE-090` | private Platform close-intent sinkからWindow identity/generationをRuntime dispatcherへpostし、UI threadで既存CloseRequest lifecycleを実行する。公開C ABIは変更しない | `UT-CORE-PLATFORM-CLOSE-001` | ready / source pathあり。対応focused test・同revision gates未実行 |
+| `UNIT-CORE-090` | private Platform close-intent sinkからWindow identity/generationをRuntime dispatcherへpostし、UI threadで既存CloseRequest lifecycleを実行する。公開C ABIは変更しない | `UT-CORE-PLATFORM-CLOSE-001` | ready / focused 1 test、Core 185、workspace all-target tests、Clippy、Rust 1.85 check、fmt、document links pass。同revision CI確認待ち |
 
 #### Windows Platform Adapter units（Windows Adapter / close-request計画とUI test design全文承認済み）
 
@@ -206,3 +206,4 @@ flowchart LR
 | 1.3 | 2026-11-01 | UNIT-PLATFORM-WINDOWS-005の対応試験・local検証状態を記録し、unitをreadyへ更新 | Codex |
 | 1.4 | 2026-11-01 | Core/Windows TextService unitの同revision Windows/Ubuntu CI結果を記録し、両unitをcompleteへ更新 | Codex |
 | 1.5 | 2026-11-01 | 承認済みnative close intent/Core dispatch試験をUNIT-CORE-090とUNIT-PLATFORM-WINDOWS-006へ対応付け | Codex |
+| 1.6 | 2026-11-01 | UNIT-CORE-090のlocal試験結果を記録し、同revision CI待ちの状態を反映 | Codex |
