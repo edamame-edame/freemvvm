@@ -39,6 +39,29 @@
 | Win32 visible peerのopen/close、Direct2D surface上のframe presentation | Windows GUI実機profile | 専用の手動smokeとして実行・記録する。CIから切り離す |
 | Windows x64 UI縦断とpackage consumer | 0.0.1 release qualification | 対象profileで実施し、unit/CI結果で代替しない |
 
+## 実装unit詳細案（追加レビュー待ち）
+
+既存のCore Platform SPIを使うWindows固有の変更に限定し、Core scene producerやLinux backendをこのbranchへ取り込まない。scene producerが別branchで進行中のため、backend unitは承認済み`SceneSnapshot`を直接入力する決定的試験とし、Controlからの自動scene生成をWindows Adapterの完了条件に混ぜない。
+
+| Unit | 責務・主な変更範囲 | 対応試験案 | 完了境界 |
+|---|---|---|---|
+| `UNIT-PLATFORM-WINDOWS-001` | Windows target向けfactory compositionとWin32 Window peer。明示open、初期client area、generation付きresize、close/reopen、失敗・shutdown順序を実装する。公開C ABIは追加しない | `UT-PLATFORM-WINDOWS-PEER-001`。Win32操作をfake可能な境界に隔離し、open失敗後retry、stale generation、close後再open、shutdown時の解放を検証 | 決定的fake試験とWindows target buildが成功。可視Windowの動作は未判定のまま |
+| `UNIT-PLATFORM-WINDOWS-002` | Win32 peerのsurfaceへDirect2D rendererを接続し、共通Clip/FillRect、背景色・scale、submitとPresented completionを実装する | `UT-PLATFORM-WINDOWS-RENDER-001`。fake可能なsurface/render境界で順序、pixel/command相当のoracle、completion/failure、stale ticketを検証 | headless/fake試験とWindows target buildが成功。実画面表示は別smoke |
+| `UNIT-PLATFORM-WINDOWS-003` | Core `GlyphRun`をDirectWriteで描画し、text/font resource lifecycleとrenderer close時の解放を接続する | `UT-PLATFORM-WINDOWS-TEXT-001`。入力GlyphRunとDirectWrite adapter呼出し、失敗時のFrame結果、資源解放を検証 | DirectWrite経路のfake/target試験が成功。OS既定font解決や文字品質のprofile確認は別途記録 |
+
+### 実装開始前の登録
+
+上記はunit/testの提案であり、承認済みDDを超える外部契約を確定しない。実装開始前に次を行う。
+
+1. `.docs/32_unit_test/ui.md`へ各unitの前提、action、observable、oracle、cleanup、commandを追加する。unit testは可視Windowを生成しない。
+2. `.docs/32_unit_test/implementation-test-inventory.md`と`tools/units.yaml`へ各unit、要求/設計参照、test path、変更path、依存関係を登録する。
+3. dependency選択とWindows SDK/COM boundaryをsource/Cargo workspaceと照合し、Linux/macOSでのcross-target compileを維持できない選択や新しい公開依存が必要なら、実装を始めず差分を提示する。
+4. 各unitの対応試験が通ったrevisionごとに日本語commit・pushする。Windows GUI実機smokeと0.0.1 release qualificationは全unit完了後も別記録とする。
+
+### branch依存の注意
+
+この計画branchは`impl-rust/core-apis-window-background`配下のCore SPIを利用する。別途進行中のCore scene producer (`impl-rust/core-scene-rendering`) はこのbranchの親・merge元にせず、backend検証には既知の`SceneSnapshot`を使う。後日、release縦断でproducerとbackendを接続して評価する際は、両変更を含む統合revisionを明記し、片方のCI結果を他方へ転記しない。
+
 ## 対象外
 
 - Linux DRM/KMS backendの変更とDebian/RPi実機確認
