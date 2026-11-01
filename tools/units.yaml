@@ -4295,7 +4295,7 @@
         },
     {
           "id": "UNIT-CORE-090",
-          "state": "ready",
+      "state": "complete",
           "scope": "core-platform-window-close-intent-dispatch-to-existing-close-request-lifecycle",
           "sources": ["crates/core-runtime/src/lib.rs", "crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/ui_window.rs", "crates/core-runtime/src/ui_controls.rs"],
           "config": ["tools/units.yaml"],
