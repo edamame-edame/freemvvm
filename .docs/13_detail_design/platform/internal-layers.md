@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 2.1
+- 文書版: 2.2
 - 文書ロール: detailed-design
 - 更新日: 2026-11-01
-- 状態: 1.6全文承認済み（利用者、2026-10-30）。Linux/Core 1.7～1.9全文承認済み（利用者、2026-10-31）。Windows GlyphRun 1.7全文承認済み（利用者、2026-11-01）。Window単位TextServiceとWindows worker所有の追加具体化2.1全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
+- 状態: 1.6全文承認済み（利用者、2026-10-30）。Linux/Core 1.7～1.9全文承認済み（利用者、2026-10-31）。Windows GlyphRun 1.7全文承認済み（利用者、2026-11-01）。Window単位TextServiceとWindows worker所有2.1全文承認済み（利用者、2026-11-01）。2.2全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -50,7 +50,7 @@ SceneSnapshotはCore UI値の不変copyを所有しRendererからControlをstron
 | Window open | Window peer作成・surface準備が成功した後にだけCore lifecycleをopenへcommitする。generation付きpeerをWindowへ関連付け、失敗時はCoreOnlyのまま明示retry可能 | surface準備成功とframe Presentedは別状態。`window_open`成功だけからpixel presentationを推論しない |
 | scene/frame | UI threadでlayout完了後にimmutable SceneSnapshotを作り、Rendererへ渡す。FrameStateのPresentedはbackend completionが同generation/revisionで確定した場合だけ公開する | submitはPresentedではない。stale completionは破棄し、描画failureでCore状態を巻き戻さない |
 | event/UI thread | DRM/backend completion eventをcopyし、既存RuntimeのUI-thread dispatch queueへenqueueする。backend threadからCore/user callbackを直接実行しない。`runtime_dispatch_turn`はshutdown controlの既定優先を保ちながら、bounded turn内でcompletionを反映する | 初期Window/scene sliceはraw keyboard/pointer/IME routingを実装しない。page-flip/present completionは対象に含む |
-| close/shutdown | 明示Window peer closeはUI thread上でsurface→EGL/GBM→DRM resourceを解放し、Core Window/Treeを維持する。Runtime shutdownは全peerを既定のsafe pointで停止・解放してからAdapterを破棄する | OS close intentとinputは後続unit。shutdown中の失敗は既存CleanupTicket/diagnostic契約に従い、worker破棄へ逃がさない |
+| close/shutdown | 明示Window peer closeはUI thread上でsurface→EGL/GBM→DRM resourceを解放し、Core Window/Treeを維持する。Runtime shutdownは全peerを既定のsafe pointで停止・解放してからAdapterを破棄する | 現行DRM/KMS直接表示profileにはwindow-manager close intentがない。raw inputは後続unit。shutdown中の失敗は既存CleanupTicket/diagnostic契約に従い、worker破棄へ逃がさない |
 
 v1.2ではLinux hardware profileの実画面・device accessをCore/CI fake結果と分離し、trait method signature、DRM connector/device選択、native dependency/link方式、既存ABI status/errorへのfailure mappingを後続検討事項として残した。以下はこれらを具体化したv1.3承認済み設計であり、1.2の承認範囲を維持する。
 
@@ -215,6 +215,23 @@ v1.3のDrawOp/GlyphRun未決事項を、Text/TextBox/Buttonの表示snapshot・L
 SPIの形は概ね`TextService::resolve_and_shape(TextDisplaySnapshot, FontRequest::PlatformDefault, TextEnvironment) -> Result<ResolvedTextSnapshot, TextError>`とする案。`TextEnvironment`はPlatformAdapterが保持し、CoreからOS-specific resolverを選択させない。`ResolvedTextSnapshot`内の各shaped runはCore sceneの`GlyphRunSnapshot`へ同一font identityを保持し、fallback先が変わる境界でrunを分ける。現在のScene型には32-byte font digestがあるため、1.9ではこのdigestを実際に解決したfaceのresource identityへ結び付け、必要なfamily/style/face index/resolver情報は同じsnapshot revisionのPlatform profile diagnosticsとして保持する案。選択Rendererは同じPlatformRuntimeのfont resource/raster serviceを使い、独自にdefault fontを再選択しない。
 
 Linux initial profileではFontconfigのsystem configurationを参照する案だが、headless DRM/KMSでは「システム既定」がdistribution設定のgeneric family/fallback chainを意味し、GNOME/KDE等のdesktop UI font settingを自動取得するものではない。exact resolution mode、process locale/language hint、fallback順、identityの診断・cache keyはimplementation/test planで具体化する。これらがRQ-11-023の「各profileのfont/文字対応識別」と一致することをレビューし、System defaultを一つのbundled font/hashへ置き換えない。
+
+### v2.2: Windows native close intent と Core request bridge（全文承認済み）
+
+この節はWindows Win32 peerの`WM_CLOSE`を既存Core close-request protocolへ接続するprivate SPIとthread flowを具体化する。公開C ABI、CloseRequestの利用者向け意味、Runtime shutdown契約は追加・変更しない。RQ-09-071とUI class DDに沿って、Accept時はpeerだけを閉じCore Window/Tree/Propertyを保持する。
+
+| 対象 | 実現仕様 | 失敗・所有境界 |
+| --- | --- | --- |
+| close intent sink | Coreがpeer生成時にWindow identityを束縛した`PlatformWindowCloseRequestSink`をpeerへ設定する。sinkはpeer generation付きclose intentをRuntime dispatcherへpostする | sinkはCore/UI stateや利用者callbackをworkerから直接操作しない。shutdown/dispatcher停止時のpost失敗はOS close成功へ読み替えず、Runtime shutdownが別経路でpeerを停止する |
+| Win32 message | Window worker上のWndProcは`WM_CLOSE`を既定処理へ渡さず、generation付きintentをsinkへpostした後すぐmessage loopへ戻る | HWNDをWndProc内で破棄せず、UI threadの判定を同期waitしない。dispatch失敗時もpeerを表示状態に保つ |
+| Core decision | UI dispatcher上でRuntimeがWindow identity/generationを検証し、既存のclose subscription/CloseRequest lifecycleを一度実行する。subscriberなしまたは既定AcceptではAcceptとする | Core callbackはUI threadでのみ動く。stale generation/closed Windowはpeerへcloseを適用しない |
+| Decline/Defer | Declineはpeerを維持する。Deferはpeerを維持してrequestを保留し、後続resolveをUI threadで処理する。未解決requestの最後のowner解放はDeclineとして扱う | deferred Accept/Declineは既存request IDとgenerationで照合する。Runtime shutdownは個別close decisionを待たない |
+| Acceptとworker close | CoreがAcceptを確定した後、既存Window peer close経路を呼ぶ。Win32 peerはworkerへclose commandを送り、worker上でrenderer/surface/HWNDを順に破棄してCoreへ結果を返す | WndProcはsink post後にworker loopへ戻っているため、UI threadからのpeer close commandとworkerの応答が相互待ちにならない。Core Window/Tree/Propertyを破棄しない |
+| Linux境界 | 現行Linux DRM/KMS直接表示profileにはnative window-manager close intent sourceがない。明示Window.close/Runtime shutdownを維持する | Wayland/X11等のwindow-manager adapterは、そのnative close sourceを同じCore protocolへ接続する別unitで扱う |
+
+**Windows close flow**: Win32 worker receives `WM_CLOSE` → generation付きvalue eventをCore sinkへpost → WndProc returns → Core UI dispatcherが既存close requestを実行 → Decline/Deferならpeerを維持、AcceptならCoreがpeer closeを呼ぶ → Win32 workerがresourceを破棄 → CoreはWindow semantic stateを保持し、再open可能にする。
+
+OS close eventの連打をdebounceする追加保証、Runtime shutdownへのveto、Window/Runtime全体の暗黙closeは追加しない。単体試験ではdecision・generation・dispatch/worker failureをfakeし、可視GUIでのtitlebar close確認とは分ける。
 
 ## GlyphRunのfont・color契約（1.7承認済み）
 
@@ -411,3 +428,5 @@ flowchart TB
 | 2026-11-01 | Windows GlyphRun 1.7全文 | 利用者の「ok」で黒既定、system font、明示TTF、face digest/lifecycleを承認。実装・試験は別管理 |
 | 2026-11-01 | 2.0統合 | Core/Linux 1.9とWindows 1.7の承認済み内容を統合。新たな設計判断なし |
 | 2026-11-01 | 2.1全文 | 利用者承認。Windows TextServiceをWindow peer/workerへ関連付け、COM objectをworker境界外へ渡さない。Linux等のRuntime共通serviceは維持。公開API・要求保証は追加せず、unit-test・実装状態は別管理 |
+| 2026-11-01 | 2.2改訂案 | Windows `WM_CLOSE`→Core close-request sinkのthread flow、decision別peer lifecycle、DRM/KMSにwindow-manager close sourceがない境界を提案。全文レビュー待ち。2.1承認範囲を維持 |
+| 2026-11-01 | 2.2全文 | 利用者の「おK」によりWindows native close intent/Core request bridge、decision別lifecycle、DRM/KMS profile境界を含む全文を承認。実装・試験状態は別管理 |

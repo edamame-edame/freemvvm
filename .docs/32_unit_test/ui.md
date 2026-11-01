@@ -1,7 +1,7 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
-- 文書版: 1.5
-- 状態: 0.8～1.2全文承認済み（利用者、2026-10-30～2026-10-31）。1.0～1.1全文承認済み（利用者、2026-11-01）。Window-bound TextService/worker routing試験設計1.4承認済み（利用者、2026-11-01）。具体profile oracle・試験実装・実行状態は別管理
+- 文書版: 1.6
+- 状態: 0.8～1.2全文承認済み（利用者、2026-10-30～2026-10-31）。1.0～1.1全文承認済み（利用者、2026-11-01）。Window-bound TextService/worker routing試験設計1.4承認済み（利用者、2026-11-01）。native close intent接続試験設計1.6全文承認済み（利用者、2026-11-01）。profile oracle・試験実装・実行状態は別管理
 - 更新日: 2026-11-01
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
@@ -117,6 +117,17 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 
 各testは可視Windowを起動せず、peer backend/worker command resolverをfakeする。DirectWriteのsystem font選択と可視Windows表示はprofile smokeとして別確認し、CIでは特定family名や文字pixelを期待値にしない。
 
+## Native close intent/Core dispatch試験設計（1.6全文承認済み）
+
+以下はRQ-09-071とUI class close-request lifecycleを、Platform-origin close intentへ接続するCore/Windows単体試験設計である。Platform abstraction 1.2、Platform internal layers 2.2と合わせて承認済み。試験実装・実行状態は別管理。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-platform-close-001"></a>UT-CORE-PLATFORM-CLOSE-001 | fake peerからoff-UI-threadでgeneration付きclose intentをsinkへ通知し、UI dispatcher turnを個別に進める。close subscriberのなし/Accept/Decline/Defer、deferred resolve/release、close後reopen、stale generation、dispatch/Runtime shutdownを制御する | sink通知中にCore callback/peer closeを実行しない。dispatcher turnでのみCore callbackがUI thread上で動く。Acceptはpeerだけを閉じCore Window/Tree/Propertyを保持し、Decline/Deferはpeerを保つ。deferred Acceptのみ対象peerを閉じ、stale generation/closed Runtimeは別peerを閉じない。post failureはclose成功にしない。Runtime shutdownはclose vetoを待たず別経路でpeerを停止する | [RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-071](../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-platform-windows-close-001"></a>UT-PLATFORM-WINDOWS-CLOSE-001 | fake Win32 worker receives `WM_CLOSE` for an open generation; control sink post success/failure and later Core-issued peer close/worker result, including repeated/stale message, stop and shutdown | WndProc suppresses default destruction and returns without waiting for Core/UI. A valid intent is posted once per message with its generation. Decline/Defer leaves HWND/surface alive; accepted close arrives later as a worker command and destroys the target peer exactly once. Post/worker failure never reports successful close or affects a replacement generation | [RQ-09-071](../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+
+このunit設計はfake peer/workerを使う。実Windows titlebar close、実screen表示、OS固有profile挙動の確認にはWindows GUI release smokeを別途行う。
+
 ## ControlViewConnector・複数renderer・Scene生成の試験設計（0.8改訂案）
 
 0.7承認済みtest baselineは維持する。以下は新たなbackend-neutral View/Visual contractとControl connectorの試験提案であり、0.8全文承認前はimplementation oracle・CI pass条件として扱わない。fake renderer/factoryはCore境界と複数実装可能性を検証し、Windows API/OpenGL/VulkanやLinux DRMの実機動作を意味しない。
@@ -208,6 +219,7 @@ UNIT-PLATFORM-003のDocker Debian 12実行結果: `cargo test -p freemvvm-platfo
 | 2026-11-01 | 1.0全文 | 利用者 | Windows peer/renderer/GlyphRun試験設計を承認。実装・実行は別管理 |
 | 2026-11-01 | 1.1全文 | 利用者 | Core GlyphRun黒既定とWindows DirectWrite font/color試験を承認。実装・実行は別管理 |
 | 2026-11-01 | 1.4全文 | 利用者 | Window-bound TextService routing、同一worker内resolve/shape/face登録/render、close/errorの試験設計を承認。実装・実行は別管理 |
+| 2026-11-01 | 1.6全文 | 利用者 | 「おK」によりCore UI dispatcher経由のnative close intentとWin32 `WM_CLOSE`接続のunit-test設計を承認。実装・実行は別管理 |
 
 ## 改訂履歴
 
@@ -228,3 +240,4 @@ UNIT-PLATFORM-003のDocker Debian 12実行結果: `cargo test -p freemvvm-platfo
 | 1.2 | 2026-10-31 | 未指定fontのPlatform default解決・fallback identity、Core/Platform seam、Linux headless profileのtest proposalを追加 | Codex | 文書全文承認済み。exact profile oracle、test実装・実行は別管理 |
 | 1.3 | 2026-11-01 | Linux/CoreのTextService・Scene試験設計へWindows peer/Direct2D/DirectWriteとGlyphRun default試験を統合 | Codex | 構成要素は個別に承認済み。試験実装・実行状態は別管理 |
 | 1.4 | 2026-11-01 | Window-bound TextService routing、Windows worker ownership、resolve/render/lifecycle failure testsを追加 | Codex | 利用者承認。試験実装・実行状態は別管理 |
+| 1.6 | 2026-11-01 | Core UI dispatcher経由のnative close intentとWin32 `WM_CLOSE` worker接続のunit-test案を追加 | Codex | 利用者承認。未実装・未実行 |

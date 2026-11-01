@@ -1,7 +1,7 @@
 # Windows WM_CLOSE と Core close-request の接続計画
 
 - 計画版: 0.2
-- 状態: 0.1利用者承認済み（2026-11-01）。0.2のCore/Platform unit分割と設計reconciliationは利用者レビュー待ち
+- 状態: 計画0.1/0.2利用者承認済み（2026-11-01）。unit実装・試験状態は別管理
 - 対象version: `0.0.1`
 - 対象: Win32 `WM_CLOSE` から既存Core Window close-request protocolへの通知とpeer lifecycle接続
 - Core APIs branch: `impl-rust/core-window-text-service`
@@ -68,4 +68,4 @@ Source変更前に、承認済みRQとDD間の未確定点を照合する。特�
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
 | 2026-11-01 | 計画0.1 | 利用者承認 | 利用者「OK」により計画を承認。計画のcommit/pushと、既存要求・設計との確認後に実装へ進む。試験合格・GUI確認は別管理 |
-| 2026-11-01 | 計画0.2 | 利用者レビュー待ち | 実コード調査でCore private close-intent sinkが不足と判明。Core APIs unitを先行させ、close後状態の設計reconciliationを実装開始前に追加 |
+| 2026-11-01 | 計画0.2 | 利用者承認 | 利用者「ok」によりCore APIs unit先行、設計reconciliation、続くWindows Platform unitの分割を承認。実装・試験・GUI確認は別管理 |

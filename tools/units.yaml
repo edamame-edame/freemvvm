@@ -4294,6 +4294,40 @@
           ]
         },
     {
+          "id": "UNIT-CORE-090",
+          "state": "ready",
+          "scope": "core-platform-window-close-intent-dispatch-to-existing-close-request-lifecycle",
+          "sources": ["crates/core-runtime/src/lib.rs", "crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/ui_window.rs", "crates/core-runtime/src/ui_controls.rs"],
+          "config": ["tools/units.yaml"],
+          "depends_on": ["UNIT-CORE-073", "UNIT-ABI-021"],
+          "design": [
+            {
+              "path": ".docs/13_detail_design/platform/abstraction.md",
+              "version": "1.2 approved",
+              "section": "Close and Runtime shutdown"
+            },
+            {
+              "path": ".docs/13_detail_design/platform/internal-layers.md",
+              "version": "2.2 approved",
+              "section": "Windows native close intent and Core request bridge"
+            },
+            {
+              "path": ".docs/13_detail_design/ui/controls.md",
+              "version": "1.5 approved",
+              "section": "Window close request lifecycle"
+            }
+          ],
+          "requirements": ["RQ-06-001", "RQ-09-071", "RQ-11-020"],
+          "cases": ["TC-LIFE-01", "TC-PLAT-01", "TC-ERROR-01"],
+          "test_design": ".docs/32_unit_test/ui.md",
+          "tests": [
+            {
+              "id": "UT-CORE-PLATFORM-CLOSE-001",
+              "command": ["cargo", "test", "-p", "freemvvm-core", "platform_close_intent", "--locked"]
+            }
+          ]
+        },
+    {
           "id": "UNIT-PLATFORM-WINDOWS-005",
           "state": "complete",
           "scope": "windows-window-bound-text-service-worker-dispatch-and-renderer-face-catalog-connection",
@@ -4314,6 +4348,30 @@
             {
               "id": "UT-PLATFORM-WINDOWS-TEXT-FLOW-001",
               "command": ["cargo", "test", "-p", "freemvvm-platform-windows", "platform_windows_text_flow", "--locked"]
+            }
+          ]
+        },
+    {
+          "id": "UNIT-PLATFORM-WINDOWS-006",
+          "state": "planned",
+          "scope": "windows-wm-close-intent-dispatch-and-generation-safe-peer-close-command",
+          "sources": ["crates/platform-windows/src/lib.rs", "crates/platform-windows/src/peer.rs", "crates/platform-windows/src/win32.rs"],
+          "config": ["tools/units.yaml", "crates/platform-windows/Cargo.toml"],
+          "depends_on": ["UNIT-CORE-090", "UNIT-PLATFORM-WINDOWS-001", "UNIT-PLATFORM-WINDOWS-005"],
+          "design": [
+            {
+              "path": ".docs/13_detail_design/platform/internal-layers.md",
+              "version": "2.2 approved",
+              "section": "Windows native close intent and Core request bridge"
+            }
+          ],
+          "requirements": ["RQ-09-071", "RQ-11-020"],
+          "cases": ["TC-LIFE-01", "TC-PLAT-01", "TC-ERROR-01"],
+          "test_design": ".docs/32_unit_test/ui.md",
+          "tests": [
+            {
+              "id": "UT-PLATFORM-WINDOWS-CLOSE-001",
+              "command": ["cargo", "test", "-p", "freemvvm-platform-windows", "platform_windows_close_intent", "--locked"]
             }
           ]
         }

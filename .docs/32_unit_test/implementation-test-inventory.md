@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
-- 文書版: 1.4
-- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsは設計承認済み（2026-11-01）。UNIT-CORE-089とUNIT-PLATFORM-WINDOWS-005はlocal検証・同revision CI pass
+- 文書版: 1.5
+- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsとclose-request unitsの試験設計は承認済み（2026-11-01）。UNIT-CORE-089とUNIT-PLATFORM-WINDOWS-005はlocal検証・同revision CI pass
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -53,7 +53,15 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | `UNIT-CORE-087` | dirty WindowをUI thread上でLayout→Visual/Scene→existing Platform submitへ接続し、generation/revision stale completion・failure retryを扱う | `UT-CORE-SCENE-FRAME-001` | complete / focused test 1件、Core 182件、workspace tests、Clippy、Rust 1.85 check、fmt、document links pass。commit `fed8a02` CI Windows/Ubuntu pass（run `41210812794`） |
 | `UNIT-CORE-089` | Runtime-wide TextService fallbackに加えて、Window peerのTextService endpointをWindowLifecycleへ関連付ける。Layout text resolveは対象Window serviceを優先し、service欠落・failureではpartial Layoutを公開しない | `UT-CORE-WINDOW-TEXT-001` | complete / focused・Core 184 tests・workspace tests・Clippy・Rust 1.85 check・format・document links pass。Windows/Ubuntu CI pass、run [41282511130](https://github.com/edamame-edame/freemvvm/actions/runs/41282511130) |
 
-#### Windows Platform Adapter units（計画0.2 / UI test design 1.1全文承認済み）
+#### Platform-origin Window close intent（DD abstraction 1.2 / internal-layers 2.2、UI test design 1.6承認済み）
+
+Core dispatch unitを先行し、その完了後にWindows worker unitを実装する。close intentはUI dispatcherへ値としてpostし、Runtime shutdownは別の優先経路でpeerを停止する。GUI smokeはCI unitから分離する。
+
+| unit | 責務 | test設計 | 状態 |
+| --- | --- | --- | --- |
+| `UNIT-CORE-090` | private Platform close-intent sinkからWindow identity/generationをRuntime dispatcherへpostし、UI threadで既存CloseRequest lifecycleを実行する。公開C ABIは変更しない | `UT-CORE-PLATFORM-CLOSE-001` | ready / source pathあり。対応focused test・同revision gates未実行 |
+
+#### Windows Platform Adapter units（Windows Adapter / close-request計画とUI test design全文承認済み）
 
 以下は`.docs/20_todo/windows-platform-adapter.md`で承認された実装unit分割を、test design 1.0案に対応づけたplanned登録案である。設計文書全文の承認と実装開始は別ゲート。Windows GUI実機smokeはunit/CIへ含めない。
 
@@ -64,6 +72,7 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | UNIT-PLATFORM-WINDOWS-003 | DirectWriteによる承認済みGlyphRunSnapshotの描画と資源lifecycle | UT-PLATFORM-WINDOWS-TEXT-001 | complete / focused 2件・Windows Adapter 14件・Windows x64 target check・Clippy・workspace tests pass。同revision [Windows/Linux CI 41273236568](https://github.com/edamame-edame/freemvvm/actions/runs/41273236568) success。digest一致faceのみ描画し欠損face・不正glyphをframe failureへ伝える。TextServiceから実faceを登録するRuntime接続とWindows GUI profile smokeは未実施 |
 | UNIT-PLATFORM-WINDOWS-004 | Windows DirectWrite TextServiceでsystem UI fontまたは明示TTFからGlyphRunをshapeし、同じface digestをrenderer catalogへ登録 | UT-PLATFORM-WINDOWS-TEXT-001 | complete / focused 3 tests、Windows crate 15 passed・2 ignored、workspace tests、Clippy、Rust 1.85 check、format pass。system default/明示TTFのheadless smoke 2件は手動専用でlocal pass。同revision `4bf0373baa2d24baaad780491bbcfd34892a9182` [Windows/Linux CI 41275875074](https://github.com/edamame-edame/freemvvm/actions/runs/41275875074) success。Core Control/Scene producer接続とWindows GUI profile smokeは未実施 |
 | `UNIT-PLATFORM-WINDOWS-005` | Core per-Window TextService endpointをWindows worker queueへ接続。worker内でDirectWrite resolve/shapeとrenderer catalog face登録を行い、immutable resultを返す | `UT-PLATFORM-WINDOWS-TEXT-FLOW-001` | complete / focused 2 tests、Windows Platform 17 passed・2 ignored、workspace all-targets tests、Clippy、Rust 1.85 check、fmt、document links pass。Windows/Ubuntu CI pass、run [41282934478](https://github.com/edamame-edame/freemvvm/actions/runs/41282934478)。Windows GUI profile smokeは0.0.1 release qualification |
+| `UNIT-PLATFORM-WINDOWS-006` | Win32 `WM_CLOSE`をgeneration付きCore sinkへ非同期postし、Coreからのclose commandをworkerで実行する | `UT-PLATFORM-WINDOWS-CLOSE-001` | planned / UNIT-CORE-090完了後に実装開始 |
 
 #### Core Layout kernel unit（DD 1.3 / test design 0.7承認済み）
 
@@ -196,3 +205,4 @@ flowchart LR
 | 1.1 | 2026-10-17 | 利用者の設計ID追跡廃止指示に従い、適用設計を文書・版・設計項目で示すschema 2へ変更。実装/test IDと実行規則は維持 | Codex |
 | 1.3 | 2026-11-01 | UNIT-PLATFORM-WINDOWS-005の対応試験・local検証状態を記録し、unitをreadyへ更新 | Codex |
 | 1.4 | 2026-11-01 | Core/Windows TextService unitの同revision Windows/Ubuntu CI結果を記録し、両unitをcompleteへ更新 | Codex |
+| 1.5 | 2026-11-01 | 承認済みnative close intent/Core dispatch試験をUNIT-CORE-090とUNIT-PLATFORM-WINDOWS-006へ対応付け | Codex |
