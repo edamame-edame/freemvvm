@@ -1,11 +1,11 @@
 # Windows WM_CLOSE と Core close-request の接続計画
 
-- 計画版: 0.1
-- 状態: 利用者承認済み（2026-11-01）。unit実装・試験状態は別管理
+- 計画版: 0.2
+- 状態: 0.1利用者承認済み（2026-11-01）。0.2のCore/Platform unit分割と設計reconciliationは利用者レビュー待ち
 - 対象version: `0.0.1`
 - 対象: Win32 `WM_CLOSE` から既存Core Window close-request protocolへの通知とpeer lifecycle接続
-- 実装branch案: `impl-rust/platform-adapter-windows-close-request`
-- 親branch案: `impl-rust/core-window-text-service`
+- Core APIs branch: `impl-rust/core-window-text-service`
+- Windows Platform子branch案: `impl-rust/platform-adapter-windows-close-request`
 - 関連計画: [Windows Platform Adapter](windows-platform-adapter.md)、[Windows TextService・Scene接続](windows-text-scene-producer-integration.md)
 
 ## 目的
@@ -25,21 +25,22 @@
 
 ## 実装前の設計確認
 
-Source変更前に、承認済みRQとDD間の未確定点を照合し、必要なら関係する設計文書全体の改訂案をレビューへ出す。
+Source変更前に、承認済みRQとDD間の未確定点を照合する。特にPlatform abstractionの「close accepted後のpeer/Core状態は確認が必要」という記述をRQ-09-071とUI class DDの合意内容へ揃え、対象設計文書全体を改訂・レビューする。設計レビューの完了前にsourceへ進まない。
 
 1. Core close requestのcallbackが実行されるthreadと、Win32 workerのmessage処理threadを確認する。
 2. `WM_CLOSE`処理中にCore callbackの終了を待つ必要があるか、またはUI threadへの非同期dispatch後にpeerをどの状態で保持するかを確定する。workerとUI threadの相互待ちを作らない。
 3. Accept時は対象generationのpeerを閉じ、Core Window/Tree/Propertyを保持する。DeclineまたはDefer中はpeerを開いたままにする。Defer後は対応するrequestのresolve結果だけを反映し、stale generationは無視する。
 4. 購読者がない場合、callbackが判断せず戻る場合、deferred requestの破棄、closeとRuntime shutdownの競合を既存Core契約へ対応付ける。
-5. 上記のいずれかが承認済みDDで一意に決まらない場合、実装都合だけで補わず、UI/Platform DDの差分を先に提示する。
+5. 上記のいずれかが承認済みDDで一意に決まらない場合、実装都合だけで補わず、UI/Platform DDの改訂案を先に提示する。
 
 ## 実装単位と試験案
 
 | Unit | 責務 | 完了条件 |
 | --- | --- | --- |
-| `UNIT-PLATFORM-WINDOWS-006`（候補） | Windows peerの`WM_CLOSE`をCore close-requestへ接続し、decisionとpeer generationに沿ってpeer lifecycleを更新する。Core状態とRuntime全体は暗黙終了しない | `UT-PLATFORM-WINDOWS-CLOSE-001`（候補）でAccept/Decline/Defer、deferred resolve/release、subscriberなし、stale generation、close/shutdown race、worker停止/dispatch失敗をfake境界で確認。Windows target build、既存workspace gates、Rust minimum、文書検査が同一revisionで成功 |
+| `UNIT-CORE-090`（候補） | private Platform SPIへclose-intent sinkを加え、RuntimeがWindow identity/generationをdispatcherへpostして既存close-request lifecycleをUI thread上で実行する。公開C ABIは変更しない | `UT-CORE-PLATFORM-CLOSE-001`（候補）でpost/dispatch、既定Accept、購読callbackのDecline/Defer、stale generation、dispatcher unavailable/shutdownをfake peerで確認。Core/workspace gates、Rust minimum、文書検査が同一revisionで成功 |
+| `UNIT-PLATFORM-WINDOWS-006`（候補） | Windows peerの`WM_CLOSE`をCore close-intent sinkへ渡し、decision結果としてCoreから呼ばれるpeer close commandをWin32 workerで安全に実行する | `UT-PLATFORM-WINDOWS-CLOSE-001`（候補）でclose intent forwarding、Accept/Decline/Defer、stale peer、worker停止、close/shutdown raceをfake境界で確認。Windows target build、workspace gates、Rust minimum、文書検査が同一revisionで成功 |
 
-実装着手前にunit/test識別子・path衝突を確認し、`.docs/32_unit_test/ui.md`、`.docs/32_unit_test/implementation-test-inventory.md`、`tools/units.yaml`へ対応RQ/DD/testを登録する。fake試験は実OS GUIでの可視close操作の代替ではない。
+設計reconciliationのレビュー後、unit/test識別子・path衝突を確認し、`.docs/32_unit_test/ui.md`、`.docs/32_unit_test/implementation-test-inventory.md`、`tools/units.yaml`へ両unitの対応RQ/DD/testを登録する。Core unitを親branchで実装・検証・commit/pushしてから、その更新済みCore branchを親にWindows Platform childを作成する。fake試験は実OS GUIでの可視close操作の代替ではない。
 
 ### 必須観測
 
@@ -49,6 +50,7 @@ Source変更前に、承認済みRQとDD間の未確定点を照合し、必要�
 - 古いrequest/generationや閉じたpeerの遅延dispatchは、新generationのpeerを閉じない。
 - `WM_CLOSE`の処理、Core callback dispatch、deferred resolve、Runtime shutdownでdeadlock・二重close・資源二重解放を起こさない。
 - Core callback/user codeをWin32 worker上で直接実行しない。既存のUI-thread規約に従う。
+- Native `WM_CLOSE` handlerはCore/UI threadへのdispatchを待って同期blockしない。handlerがmessage loopへ戻った後にCoreがacceptしてもpeer close commandを処理できる。
 
 ## Linux profileとの境界
 
@@ -57,7 +59,7 @@ Source変更前に、承認済みRQとDD間の未確定点を照合し、必要�
 ## 検証・Git記録
 
 - 対応focused test、workspace check/test、Windows target build、Clippy/format、Rust 1.85 minimum、文書link検査を実行し、同一SHAのWindows/Linux CIを記録する。
-- 対応unitの試験合格後、日本語commit・pushする。
+- Core unitとWindows Platform unitの各試験合格後、それぞれの層のbranchで日本語commit・pushする。
 - Windows GUIでのtitlebar close、Decline/Deferを含むprofile smokeはCIから切り離し、0.0.1 release qualificationへ記録する。Windows GUI表示確認とLinux DRM実機確認を未実施のまま合格扱いしない。
 - 関連する0.0.1 TODOが完了した段階で、まとめてmerge PRを作成する。
 
@@ -66,3 +68,4 @@ Source変更前に、承認済みRQとDD間の未確定点を照合し、必要�
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
 | 2026-11-01 | 計画0.1 | 利用者承認 | 利用者「OK」により計画を承認。計画のcommit/pushと、既存要求・設計との確認後に実装へ進む。試験合格・GUI確認は別管理 |
+| 2026-11-01 | 計画0.2 | 利用者レビュー待ち | 実コード調査でCore private close-intent sinkが不足と判明。Core APIs unitを先行させ、close後状態の設計reconciliationを実装開始前に追加 |
