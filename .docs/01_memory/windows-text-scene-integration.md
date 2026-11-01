@@ -1,7 +1,7 @@
 # カテゴリ: Platform / Windows TextServiceからScene・Window rendererへの接続
 
 - CoreのTextService seam、text control snapshot、same-revision Layout/Scene経路は`UNIT-CORE-084/085/086/087`で実装済み。
-- `UNIT-CORE-089` adds optional `PlatformWindowPeer::text_service()`, stores that service with `WindowLifecycle`, and uses it before the Runtime-wide fallback. The per-Window fake test verifies two peers do not mix requests, Runtime fallback is used only when no peer service exists, and failure retains the previous complete Layout/dirty state. Local Core/workspace tests, Clippy, Rust 1.85 check, formatting and document links passed; GitHub CI is pending.
+- `UNIT-CORE-089` adds optional `PlatformWindowPeer::text_service()`, stores that service with `WindowLifecycle`, and uses it before the Runtime-wide fallback. The per-Window fake test verifies two peers do not mix requests, Runtime fallback is used only when no peer service exists, and failure retains the previous complete Layout/dirty state. Local Core/workspace tests, Clippy, Rust 1.85 check, formatting and document links passed; same-revision Windows/Ubuntu CI passed in run `41282511130`.
 - Windows DirectWrite shapingとfont catalogの個別接続部品は`UNIT-PLATFORM-WINDOWS-004`で実装済みだが、Windows factoryからRuntimeへのTextService供給と、Core text requestから該当Window rendererのface catalogまでのcall flowは別実装範囲。
 - Windows TextServiceは`WindowsPeer`からpeer state共有のendpointを返し、Core requestを同期で同peerのbackendへ送る。Win32 backendは`ResolveText` commandをWindow workerへdispatchし、renderer内のDirectWrite `FontResources`がsystem message fontを14 DIPでshapeする。
 - DirectWrite callbackは実際に選択されたfont faceのfamily/style/indexとfile digestを記録し、face COM objectを同じrenderer catalogへ保持する。Coreへ返すのはmetricsと`ResolvedGlyphRun`の値であり、COM objectはworker外へ渡さない。

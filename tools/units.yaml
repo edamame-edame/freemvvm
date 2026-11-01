@@ -4266,7 +4266,7 @@
         },
     {
           "id": "UNIT-CORE-089",
-          "state": "ready",
+          "state": "complete",
           "scope": "core-window-bound-text-service-routing-with-runtime-service-fallback",
           "sources": ["crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/ui_window.rs"],
           "config": ["tools/units.yaml"],
