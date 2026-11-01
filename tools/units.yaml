@@ -4295,7 +4295,7 @@
         },
     {
           "id": "UNIT-PLATFORM-WINDOWS-005",
-          "state": "ready",
+          "state": "complete",
           "scope": "windows-window-bound-text-service-worker-dispatch-and-renderer-face-catalog-connection",
           "sources": ["crates/platform-windows/src/lib.rs", "crates/platform-windows/src/peer.rs", "crates/platform-windows/src/win32.rs", "crates/platform-windows/src/renderer.rs", "crates/platform-windows/src/text.rs"],
           "config": ["tools/units.yaml", "crates/platform-windows/Cargo.toml"],
