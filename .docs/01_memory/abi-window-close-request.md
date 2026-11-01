@@ -15,6 +15,7 @@ WindowのOS close intent、C ABI Subscription、borrowed/deferred request handle
 - Platform native close intentはpeerからprivate sinkでRuntime UI dispatcherへ値としてpostし、Core/UI stateやC callbackをworker上で直接操作しない。dispatcher turn前にはcloseせず、UI turn内で既存subscriptionを使う。
 - Platform-origin close intentにはWindow `ObjectIdentity`とpeer generationを保持し、dispatcher実行時に現在generationを`begin_close_intent`前に照合する。古いHWND/peerから遅延したcloseが再open済みWindowを閉じないようにする。
 - C ABIの`window_close_intent_subscribed`はpublic Window handle tokenを入口にする。native sink側はtokenを保持・再利用せず、Core内部のidentity-based bridgeから同じsubscription/callback lifecycleを呼び出す。
+- Windows peerはCore close sinkをnative backendの`open`へ渡し、各HWND stateへopen時のgenerationとともに保持する。WndProcはsinkを同期waitせず、通知の成功/失敗にかかわらず`WM_CLOSE`のdefault destructionを抑止する。HWNDの破棄はCoreが後続peer close commandを出したworker turnで行う。
 
 ## 関連
 
