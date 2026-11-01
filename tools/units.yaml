@@ -3698,12 +3698,12 @@
       "scope": "windows-directwrite-render-of-approved-glyph-run-snapshot-and-text-renderer-resource-lifecycle",
       "sources": ["crates/platform-windows/src/text.rs", "crates/platform-windows/src/renderer.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/platform-windows/Cargo.toml", "tools/units.yaml"],
-      "depends_on": ["UNIT-PLATFORM-WINDOWS-002"],
+      "depends_on": ["UNIT-PLATFORM-WINDOWS-002", "UNIT-CORE-080"],
       "design": [
         {
           "path": ".docs/13_detail_design/platform/internal-layers.md",
-          "version": "1.6 approved",
-          "section": "DirectWrite text backend; unresolved font asset/color decisions excluded"
+          "version": "1.7 approved",
+          "section": "GlyphRun font and color contract"
         }
       ],
       "requirements": ["RQ-09-053", "RQ-09-072", "RQ-11-023"],
@@ -3828,6 +3828,30 @@
       "tests": [
         {"id": "UT-WINDOW-BACKGROUND-001", "command": ["cargo", "test", "-p", "freemvvm-core", "window_background_color_is_core_owned_validated_and_forwarded_to_scene", "--locked"]},
         {"id": "UT-ABI-WINDOW-BACKGROUND-001", "command": ["cargo", "test", "-p", "freemvvm-c-abi", "window_background_color_abi_supports_get_set_and_reset_atomically", "--locked"]}
+      ]
+    },
+    {
+      "id": "UNIT-CORE-080",
+      "state": "complete",
+      "scope": "core-glyph-run-snapshot-default-opaque-black-text-color",
+      "sources": ["crates/core-runtime/src/platform/scene.rs"],
+      "config": ["tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-074"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.7 approved",
+          "section": "GlyphRun font and color contract"
+        }
+      ],
+      "requirements": ["RQ-09-053", "RQ-09-072"],
+      "cases": ["TC-PLAT-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-CORE-GLYPH-RUN-001",
+          "command": ["cargo", "test", "-p", "freemvvm-core", "glyph_run_defaults_to_opaque_black", "--locked"]
+        }
       ]
     }
   ]

@@ -40,7 +40,7 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | `UNIT-PLATFORM-001` | Linux DRM node/output選択とGBM/EGL surface lifecycle | `UT-PLATFORM-DEVICE-001` | complete / Linux focused 5 tests・Windows/Linux CI pass |
 | `UNIT-PLATFORM-002` | Core DeviceScale/背景色に基づくClip/FillRect GLES renderer、DRM page-flip completionとresource loss。GlyphRunは後続 | `UT-PLATFORM-PRESENT-001`、`UT-PLATFORM-LOSS-001`、`UT-PLATFORM-SCALE-CORE-001` | complete / local gates・同SHA Windows/Linux CI pass。実機profileは後続 |
 
-#### Windows Platform Adapter units（計画0.1 / UI test design 1.0全文承認済み）
+#### Windows Platform Adapter units（計画0.2 / UI test design 1.1全文承認済み）
 
 以下は`.docs/20_todo/windows-platform-adapter.md`で承認された実装unit分割を、test design 1.0案に対応づけたplanned登録案である。設計文書全文の承認と実装開始は別ゲート。Windows GUI実機smokeはunit/CIへ含めない。
 
@@ -48,7 +48,7 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | --- | --- | --- | --- |
 | `UNIT-PLATFORM-WINDOWS-001` | Windows target factory compositionとWin32 Window peer lifecycle。open/retry/resize generation/close/reopen/shutdown | `UT-PLATFORM-WINDOWS-PEER-001` | complete / focused 7 tests、workspace tests・Clippy・build、Linux/Windows target check、Rust 1.85 check、`tools/dev.py check`/`minimum` pass。同revision [Windows/Linux CI 41263860362](https://github.com/edamame-edame/freemvvm/actions/runs/41263860362) success |
 | `UNIT-PLATFORM-WINDOWS-002` | Direct2DによるCore SceneSnapshotのbackground/scale/Clip/FillRect描画とframe completion | `UT-PLATFORM-WINDOWS-RENDER-001` | complete / focused 5 tests、Windows crate 12 tests、Windows x64/Rust 1.85 target check、`tools/dev.py check`/`minimum` pass。同revision [Windows/Linux CI 41266800908](https://github.com/edamame-edame/freemvvm/actions/runs/41266800908) success。Windows実画面表示は未確認 |
-| UNIT-PLATFORM-WINDOWS-003 | DirectWriteによる承認済みGlyphRunSnapshotの描画と資源lifecycle | UT-PLATFORM-WINDOWS-TEXT-001 | planned / implementation not started。font asset/colorの未確定差分があれば保留 |
+| UNIT-PLATFORM-WINDOWS-003 | DirectWriteによる承認済みGlyphRunSnapshotの描画と資源lifecycle | UT-PLATFORM-WINDOWS-TEXT-001 | planned / UNIT-CORE-080完了後に実装。Windows system font/custom TTF契約はDD 1.7承認済み |
 
 #### Core Layout kernel unit（DD 1.3 / test design 0.7承認済み）
 
@@ -76,8 +76,11 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | --- | --- | --- | --- |
 | `UNIT-CORE-078` | Window client areaと実Control tree/StackPanel設定からimmutable LayoutNodeSnapshotを構築し、LayoutEngine成功時のみWindowのcomplete LayoutSnapshotを交換する。failureでは旧snapshotとdirtyを保持する | `UT-LAYOUT-ABI-001`、`UT-LAYOUT-ATOMIC-001` | complete / 同revision local検証pass |
 | `UNIT-CORE-079` | Windowごとの背景RGB規定値・override・resetをCoreで保持し、入力を検証してSceneSnapshotへ反映する。ABIのget/set/resetを含む | `UT-WINDOW-BACKGROUND-001`、`UT-ABI-WINDOW-BACKGROUND-001` | complete / 同revision local gates pass、CI待ち |
+| `UNIT-CORE-080` | GlyphRunSnapshotへopaque black defaultのRGBA text colorを追加し、clone/SceneSnapshotで保持する。任意色設定・公開ABIは追加しない | `UT-CORE-GLYPH-RUN-001` | complete / focused・Core全件・workspace tests、Clippy、Rust 1.85 check pass。CI待ち |
 
 実行記録: `UNIT-CORE-079` は実装revisionでCore focused test（1件）、ABI focused test（1件）、`cargo test --workspace --all-targets --locked`（Rust wrapper unit/consumer 19件、C ABI 39件、Core 169件、Linux Platform 10件）、`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check`、`.venv/Scripts/python.exe tools/dev.py check` がlocal pass。`tools/check_docs.py`（76 documents / 7033 local links）、units manifest JSON parse、`git diff --check`もpass。CIおよびPlatform Adapter実機確認は未実施。本unitのlocal passを実機描画確認やwrapper背景色API実装完了として扱わない。
+
+実行記録: `UNIT-CORE-080` / `UT-CORE-GLYPH-RUN-001` は `cargo test -p freemvvm-core glyph_run_defaults_to_opaque_black --locked` 1件、`cargo test -p freemvvm-core --locked` 170件、`cargo test --workspace --all-targets --locked`（Core 170件、Windows Platform 12件、Linux Platform 10件を含む全suite）、`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check` がlocal pass。`.venv/Scripts/python.exe tools/check_docs.py`（76 documents / 7057 local links）、`tools/units.yaml` JSON parse、`git diff --check`もpass。Windows/Linux CIはcommit/push後に確認する。実画面Text描画は後続UNIT-PLATFORM-WINDOWS-003とWindows GUI profile確認の対象。
 
 TextServiceは未実装のため、本番のText/TextBox/Button intrinsic measurementを創作しない。providerを内部入力境界に保ち、試験ではfake providerを使う。TextServiceを必要とする実Leafの測定不能はpass全体を失敗させ、scene producer/public ABIは本unitに含めない。
 

@@ -158,6 +158,7 @@ impl GlyphPlacement {
 pub struct GlyphRunSnapshot {
     font_digest: [u8; 32],
     font_size: f64,
+    text_color_rgba: [f32; 4],
     bounds: Rect,
     glyphs: Arc<[GlyphPlacement]>,
 }
@@ -175,6 +176,7 @@ impl GlyphRunSnapshot {
         Ok(Self {
             font_digest,
             font_size,
+            text_color_rgba: [0.0, 0.0, 0.0, 1.0],
             bounds,
             glyphs: glyphs.into(),
         })
@@ -186,6 +188,10 @@ impl GlyphRunSnapshot {
 
     pub fn font_size(&self) -> f64 {
         self.font_size
+    }
+
+    pub fn text_color_rgba(&self) -> [f32; 4] {
+        self.text_color_rgba
     }
 
     pub fn bounds(&self) -> Rect {
@@ -400,5 +406,30 @@ mod tests {
             DeviceScale::new(1.0, f64::INFINITY),
             Err(SceneError::InvalidScale)
         );
+    }
+
+    #[test]
+    fn glyph_run_defaults_to_opaque_black_and_preserves_it_in_scene_clones() {
+        let bounds = Rect::new(0.0, 0.0, 10.0, 8.0).expect("valid bounds");
+        let glyph = GlyphPlacement::new(23, 1.0, 2.0, 4.0, 0.0).expect("valid glyph");
+        let run = GlyphRunSnapshot::new([7; 32], 12.0, bounds, Arc::from([glyph]))
+            .expect("valid glyph run");
+        assert_eq!(run.text_color_rgba(), [0.0, 0.0, 0.0, 1.0]);
+
+        let snapshot = SceneSnapshot::new(
+            9,
+            DeviceScale::new(1.0, 1.0).expect("valid scale"),
+            [1.0, 1.0, 1.0],
+            Arc::from([DrawOp::GlyphRun(run)]),
+            Damage::Full,
+        )
+        .expect("valid snapshot");
+        let clone = snapshot.clone();
+
+        let [DrawOp::GlyphRun(cloned_run)] = clone.operations() else {
+            panic!("expected one glyph run operation");
+        };
+        assert_eq!(cloned_run.text_color_rgba(), [0.0, 0.0, 0.0, 1.0]);
+        assert_eq!(snapshot.operations(), clone.operations());
     }
 }

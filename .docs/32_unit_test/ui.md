@@ -1,14 +1,14 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
-- 文書版: 1.0
-- 状態: 0.9全文承認済み（利用者、2026-10-30）。1.0全文承認済み（利用者、2026-11-01）。実装・実行状態は別管理
+- 文書版: 1.1
+- 状態: 0.9全文承認済み（利用者、2026-10-30）。1.0全文・1.1全文承認済み（利用者、2026-11-01）。実装・実行状態は別管理
 - 更新日: 2026-11-01
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
 
 上位根拠: [単体試験方針](unit-test-strategy.md)、[実装unit台帳契約](implementation-test-inventory.md)、[共通fixture・実行記録](README.md)。
 
-設計根拠: [ui/tree-layout.md](../13_detail_design/ui/tree-layout.md) 1.3承認baseline（Tree/Layout）および1.4改訂案（ControlViewConnector/SceneSnapshot）、[runtime-objects/objects-values.md](../13_detail_design/runtime-objects/objects-values.md) 1.3「Tree内部ownerとpublic参照の独立管理」、[ui/controls.md](../13_detail_design/ui/controls.md) 1.2改訂案「Control API / Window / Layout委譲」、[ui/input-focus.md](../13_detail_design/ui/input-focus.md) 1.1「Focus状態 / 入力・IME接続」、[ui/text-editing.md](../13_detail_design/ui/text-editing.md) 1.1「入力検証 / IME / 編集候補と確定値」、[runtime-objects/abi.md](../13_detail_design/runtime-objects/abi.md) 1.3改訂案「初期UI ControlのC ABI操作」、[Platform internal layers](../13_detail_design/platform/internal-layers.md) 1.5承認baseline（Window client area）および1.6改訂案（renderer factory/selection）。
+設計根拠: [ui/tree-layout.md](../13_detail_design/ui/tree-layout.md) 1.3承認baseline（Tree/Layout）および1.4改訂案（ControlViewConnector/SceneSnapshot）、[runtime-objects/objects-values.md](../13_detail_design/runtime-objects/objects-values.md) 1.3「Tree内部ownerとpublic参照の独立管理」、[ui/controls.md](../13_detail_design/ui/controls.md) 1.2改訂案「Control API / Window / Layout委譲」、[ui/input-focus.md](../13_detail_design/ui/input-focus.md) 1.1「Focus状態 / 入力・IME接続」、[ui/text-editing.md](../13_detail_design/ui/text-editing.md) 1.1「入力検証 / IME / 編集候補と確定値」、[runtime-objects/abi.md](../13_detail_design/runtime-objects/abi.md) 1.3改訂案「初期UI ControlのC ABI操作」、[Platform internal layers](../13_detail_design/platform/internal-layers.md) 1.5承認baseline（Window client area）、1.6承認baseline（renderer factory/selection）、1.7改訂案（GlyphRun font/color）。
 
 ## Tree・Layout・Control
 
@@ -86,7 +86,17 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 
 実行記録: `UNIT-PLATFORM-002` / `UT-PLATFORM-PRESENT-001`・`UT-PLATFORM-LOSS-001`・`UT-PLATFORM-SCALE-CORE-001`は`cargo test -p freemvvm-core` 160 tests、`cargo test -p freemvvm-platform-linux` 10 tests、Linux target `cargo check --tests` / `cargo clippy --all-targets -- -D warnings`、`tools/dev.py check`、`tools/dev.py minimum`がlocal pass。Core指定の正規化RGB背景色をSceneSnapshotが保持し、damage-only copyでも維持することと、renderer planが同じ色をsurface clear色として使うことを確認。実装SHA `a7879aa3f66342cf7337d20ea1370e8cf8de4c84` の[同SHA Windows/Linux CI run 40514465626](https://github.com/edamame-edame/freemvvm/actions/runs/40514465626)もsuccess。実機描画は未確認。
 
-## Windows Platform Adapter試験設計（1.0承認済み）
+## Core GlyphRunSnapshot試験設計
+
+`UNIT-CORE-080`では、`GlyphRunSnapshot`がRGBA text colorを保持し、現段階の生成時defaultをopaque blackとする。既存のfont digest・size・bounds・glyph placementsは不変とし、cloneおよびSceneSnapshotへの格納でcolorが維持されることを確認する。色指定APIや任意色の設定機能はこのunitへ追加しない。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-glyph-run-001"></a>UT-CORE-GLYPH-RUN-001 | colorを指定せずGlyphRunを生成し、SceneSnapshotへの変換とcloneを確認する | colorはopaque black `[0,0,0,1]`。clone/SceneSnapshot後も維持される。font digest・glyph order・placement・boundsは既存値のまま。任意colorのsetterや公開APIは追加しない | [RQ-09-053](../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-072](../11_requirements/RQ-09_ui-scope.md#rq-09-072)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01) |
+
+これはCore層のunitであり、Windows UNIT-003より前にCore APIs branchで実装・試験する。C ABIや言語wrapperの公開面は追加しない。
+
+## Windows Platform Adapter試験設計（1.0承認済みbaseline / 1.1改訂案）
 
 0.9承認済みbaselineを維持する。Windows x64 adapter用のunit設計1.0は全文承認済み。fake Win32/Direct2D/DirectWrite境界で実装のlifecycle・operation forwarding・failure mappingを検証し、visible Window、GPU driver、画面pixel品質の実機動作とは分離する。
 
@@ -94,9 +104,9 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 | --- | --- | --- | --- |
 | <a id="ut-platform-windows-peer-001"></a>UT-PLATFORM-WINDOWS-PEER-001 | fake Win32 hostでopen成功/失敗、初期client area、resize通知、旧generation通知、close/reopen、shutdownを個別に制御する | Runtime生成だけでWindowを表示しない。open失敗後に再試行可能。resizeは対象generationの有効peerにだけ伝わり、close/reopen・shutdownでnative ownerを設計順に解放する。Core Window/Treeはpeer closeで破棄しない | [RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-11-009](../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 | <a id="ut-platform-windows-render-001"></a>UT-PLATFORM-WINDOWS-RENDER-001 | fake Direct2D targetへ既知SceneSnapshot（background RGB、DeviceScale、Clip、FillRect）とFrameTicketを渡し、同期失敗・Presented/failed completion・stale ticketを制御する | 設計済みDrawOp順序、scale、clip、背景色がbackend境界へ保たれる。submit受付とPresentedを混同せず、失敗/stale completionを成功として報告しない。未対応operationは成功扱いしない | [RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-019](../11_requirements/RQ-11_platform.md#rq-11-019)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
-| <a id="ut-platform-windows-text-001"></a>UT-PLATFORM-WINDOWS-TEXT-001 | fake DirectWrite boundaryへ承認済みGlyphRunSnapshotを渡し、文字/glyph data受け渡し、resource failure、renderer closeを制御する | GlyphRunの承認済み配置・scale情報を保持して描画境界へ渡す。failureはFrame failureへ伝え、resourceを重複解放しない。font fallback、色、hinting、pixel一致など設計未確定事項を試験期待へ追加しない | [RQ-09-053](../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-072](../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-platform-windows-text-001"></a>UT-PLATFORM-WINDOWS-TEXT-001 | fake font resolverへsystem defaultと明示TTF sourceを与え、生成されたGlyphRunSnapshotをfake DirectWrite boundaryへ渡す。face digest不一致・font欠落・不正file、描画failure、renderer closeを制御する | default RGBA blackがDirectWriteへopaque blackとして渡り、resolverが選択したfont face digest・glyph ID・配置を維持して描画する。fallbackをrendererで再解決しない。明示TTFの欠落/不正、digest解決不能、描画failureはFrame failureまたはshape failureとして成功扱いせず、資源を重複解放しない。OSの実family名・pixel出力はoracleにしない | [RQ-09-053](../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-072](../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 
-各testは可視Windowを起動せず、対象Windows API boundaryをfake可能な内部traitまたは専用test doubleで制御する。実装方式がCOM/Win32のどのAPI形態を採るか、具体的なsource path・symbol・focused commandは実装開始前のAPI/dependency監査で確定する。DirectWriteのfont asset/color契約に未確定差分が見つかった場合、UT-PLATFORM-WINDOWS-TEXT-001と対応unitはその差分の設計承認まで実装しない。
+各testは可視Windowを起動せず、対象Windows API boundaryをfake可能な内部traitまたは専用test doubleで制御する。実装方式がCOM/Win32のどのAPI形態を採るか、具体的なsource path・symbol・focused commandは実装開始前のAPI/dependency監査で確定する。OSのsystem font collection/fallback自体はfake resolver外のprofile smokeで確認し、CIでは特定family名や文字pixelを期待値にしない。
 
 ## ControlViewConnector・複数renderer・Scene生成の試験設計（0.8改訂案）
 
@@ -135,6 +145,8 @@ Text shaping/font profile/GlyphRun実描画は、本案のControl connector・fa
 | 2026-10-30 | 0.9全文 | 利用者 | 「ok」によりWindow背景色のdefault/set/reset、invalid atomicity、paint-only invalidation、wrapper parityのtest案を含む全文を承認。実装・実行は別管理 |
 | 2026-11-01 | 1.0改訂案 | — | Windows Platform AdapterのWin32 peer、Direct2D renderer、DirectWrite GlyphRunをunit単位に追加。0.9承認baselineを維持 |
 | 2026-11-01 | 1.0全文 | 利用者 | 「承認」によりWindows Platform Adapterの3 unit/test設計を含む文書全体を承認。試験実装・実行は別管理 |
+| 2026-11-01 | 1.1改訂案 | — | UNIT-PLATFORM-WINDOWS-003のcolor default、font resolver/system collection・明示TTF、digest/failure/resource test oracleを提案。1.0承認baselineを維持し文書全体レビュー待ち |
+| 2026-11-01 | 1.1全文 | 利用者 | 「ok」によりCore GlyphRun opaque black default unitとWindows DirectWrite font/color試験を含む全文を承認。試験実装・実行は別管理 |
 
 ## 改訂履歴
 
@@ -150,3 +162,4 @@ Text shaping/font profile/GlyphRun実描画は、本案のControl connector・fa
 | 0.8 | 2026-10-30 | backend-neutral Visual connector、geometry/clip、複数renderer factory/selection、frame接続test案を追加 | Codex | 文書全体承認済み。実装・実行未開始 |
 | 0.9 | 2026-10-30 | Window背景色のdefault/set/reset、invalid atomicity、paint-only invalidation、wrapper parityのtest案を追加 | Codex | 文書全体承認済み。新規testは未実装・未実行 |
 | 1.0 | 2026-11-01 | Windows Platform Adapter計画に基づくWin32 peer、Direct2D frame rendering、DirectWrite GlyphRunのfake boundary試験案を追加 | Codex | 利用者承認済み。実装・実行は別管理 |
+| 1.1 | 2026-11-01 | Core GlyphRun opaque black defaultとWindows DirectWriteのsystem font resolver・明示TTF・failure/resource oracleを追加 | Codex | 利用者全文承認済み。実装・実行は別管理 |

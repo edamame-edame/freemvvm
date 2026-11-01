@@ -1,7 +1,7 @@
 # 0.0.1 Windows Platform Adapter 実装計画
 
-- 計画版: 0.1
-- 状態: 計画承認済み（利用者、2026-10-31）。実装開始・試験合格は別ゲート
+- 計画版: 0.2
+- 状態: 0.1承認済み（利用者、2026-10-31）。0.2改訂計画承認済み（利用者、2026-11-01）。unitごとの実装・試験状態は別管理
 - 対象version: `0.0.1`
 - 対象: Windows x64 の Win32 Window peer と Direct2D/DirectWrite 描画接続
 - 実装branch案: `impl-rust/platform-adapter-windows`
@@ -68,6 +68,31 @@
 | `UNIT-PLATFORM-WINDOWS-002` | Win32 peerのsurfaceへDirect2D rendererを接続し、共通Clip/FillRect、背景色・scale、submitとPresented completionを実装する | `UT-PLATFORM-WINDOWS-RENDER-001`。fake可能なsurface/render境界で順序、pixel/command相当のoracle、completion/failure、stale ticketを検証 | headless/fake試験とWindows target buildが成功。実画面表示は別smoke |
 | `UNIT-PLATFORM-WINDOWS-003` | Core `GlyphRun`をDirectWriteで描画し、text/font resource lifecycleとrenderer close時の解放を接続する | `UT-PLATFORM-WINDOWS-TEXT-001`。入力GlyphRunとDirectWrite adapter呼出し、失敗時のFrame結果、資源解放を検証 | DirectWrite経路のfake/target試験が成功。OS既定font解決や文字品質のprofile確認は別途記録 |
 
+### UNIT-CORE-080 実装進捗
+
+- 状態: Core実装・local検証完了。Windows/Linux CIはcommit/push後に確認。
+- 変更: `GlyphRunSnapshot`へ不透明黒のRGBA defaultを追加。C ABI、wrapper、任意色設定APIは変更なし。
+- 試験: focused test 1件、Core 170件、workspace全test、workspace Clippy、Rust 1.85 workspace check、format、文書link検査がpass。
+
+### UNIT-003着手前のフォント契約（計画0.2承認済み）
+
+RQ-09 v0.7、`internal-layers.md` 1.7、`ui.md` 1.1の承認を受け、以下をUNIT-CORE-080/Windows UNIT-003の実装oracleとする。text color追加はCore snapshot型の変更を伴うため、Windows描画unitより先に同じRust/Core feature branchの独立unitとして実装・検証する。別言語wrapper branchへの切替は発生しない。
+
+- text colorの省略時値をopaque black (`#000000`) とする。Window背景色の既定opaque whiteとは独立したGlyphRun属性とする。
+- Windowsのsystem-font profileは、固定の`MS UI Gothic`名やフォントフォルダーの固定パスに依存させず、DirectWriteのsystem font collectionから実行環境にインストールされたfontを解決する。日本語UI向けのfamily選択・fallbackはOSのfont/profile情報に委ね、選ばれた具体的font face identityをshaping済みGlyphRunのdigestへ反映する。DirectWrite rendererはdigestに対応するfont faceでglyph IDを描画し、描画時に別fontへ黙って置換しない。
+- アプリ指定font assetは明示した`.ttf` fileをDirectWriteのfont-file/custom-font collection経由で読み込めるようにする。OS Fontsディレクトリを独自走査せず、インストール済みfontはsystem collection、アプリ指定fileはfile reference/custom collectionを使う。未指定fontと明示file指定を区別する。
+- digest/font faceの解決不能、明示fileの不在・不正は描画成功として扱わず、frame failureへ伝える。system fallbackはshaping時のprofile解決に限り、renderer内の暗黙fallbackを設けない。
+- `UT-PLATFORM-WINDOWS-TEXT-001`ではfont resolverとDirectWrite boundaryをfakeし、色、選択されたfont identity/glyph forwarding、欠損・不正assetのfailure、resource releaseを決定的に検証する。OSの実フォント選択や文字品質はWindows profile smokeへ分離する。
+
+#### 実装順（承認済み）
+
+1. 完了: RQ-09 v0.7、Platform internal layers v1.7、unit test ui v1.1の全文承認を記録。
+2. 現行Rust/Core feature branchで`UNIT-CORE-080`を実装する。`GlyphRunSnapshot`にopaque black defaultのRGBA colorを追加し、`UT-CORE-GLYPH-RUN-001`を同じrevisionで検証して日本語commit/pushする。公開C ABI・wrapper APIは変更しない。
+3. 同branch上でCore unit完了後に`UNIT-PLATFORM-WINDOWS-003`を実装する。DirectWriteはsystem font collection/custom TTF sourceから作られたfont faceをdigestで解決し、描画・failure・close lifecycleを`UT-PLATFORM-WINDOWS-TEXT-001`で検証する。branchの親Core API branchとの依存関係は維持し、別言語branchを親にしない。
+4. 両unitのCI完了後、font profile/system family選択と可視文字品質をWindows 11 GUI実機smokeで別途記録する。
+
+本提案を受けて`RQ-09_ui-scope.md` 0.7、`platform/internal-layers.md` 1.7、`ui.md` 1.1の改訂案を作成した。文書全体レビュー・承認後にCore unitからsource実装へ進む。Windows 11ではMicrosoftのTypography資料がSegoe UI VariableをWindowsアプリの既定UIフォントとして推奨し、日本語UI familyとしてYu Gothic UIを挙げているため、`MS UI Gothic`を固定の「現行Windows既定」とは扱わない。
+
 ### 実装開始前の登録
 
 上記はunit/testの提案であり、承認済みDDを超える外部契約を確定しない。実装開始前に次を行う。
@@ -105,3 +130,4 @@
 | 2026-10-31 | 計画0.1 | 利用者承認 | 利用者「計画はokです」により計画全体を承認。計画commit/pushを許可。実装開始・試験合格・0.0.1 release判断は別ゲート |
 | 2026-11-01 | 実装unit詳細案 | 利用者承認 | 利用者「ok」により3 unit分割とtest登録準備を承認。計画更新 `a77fac4` をpush |
 | 2026-11-01 | UI test design 1.0 / UNIT-PLATFORM-WINDOWS-001 | 利用者承認・実装開始 | 利用者「承認」によりUI test design 1.0全文を承認。その後「実装を開始」の指示によりUNIT-001の実装を開始。試験・CI合格およびGUI実機確認は別状態 |
+| 2026-11-01 | 計画0.2、RQ-09 v0.7、DD 1.7、UI test design 1.1 | 利用者承認 | 利用者「ok」によりopaque black default、OS system-font resolution、明示TTF source、Core UNIT-080先行とWindows UNIT-003の順序を承認。実装・test passは別状態 |
