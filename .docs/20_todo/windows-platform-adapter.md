@@ -70,7 +70,7 @@
 
 ### UNIT-CORE-080 実装進捗
 
-- 状態: Core実装・local検証完了。Windows/Linux CIはcommit/push後に確認。
+- 状態: Core実装・local検証・同SHA Windows/Linux CI完了。
 - 変更: `GlyphRunSnapshot`へ不透明黒のRGBA defaultを追加。C ABI、wrapper、任意色設定APIは変更なし。
 - 試験: focused test 1件、Core 170件、workspace全test、workspace Clippy、Rust 1.85 workspace check、format、文書link検査がpass。
 
