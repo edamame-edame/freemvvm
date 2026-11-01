@@ -1,9 +1,9 @@
 # 言語ラッパー：C#
 
-- 文書版: 1.4改訂案
+- 文書版: 1.5
 - 文書ロール: detailed-design
 - 更新日: 2026-10-24
-- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.2/1.3までの承認履歴を維持。実装・試験状態は別管理
+- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -533,6 +533,22 @@ sequenceDiagram
 - Command close/Runtime shutdownは新規実行・UI完了反映を止めるがworkerをjoinしない。遅延/古いoperation IDの報告を現在状態へ反映せず、shutdown後にterminal stateがUIから観測できる保証を加えない。
 - wrapperのstart callback exceptionはC ABIを越境させず、`CommandStart` failure kindで既存handlerへ報告する。未設定handler時の既定診断は既存`Trace.TraceError`規則を適用する。worker例外はアプリ側がdomain/code/messageへ明示変換し、wrapperが未定義の既定codeを追加しない。
 
+## Window background RGB wrapper API（1.5）
+
+C#は依存packageを増やさないreadonly `RgbColor`値型（3つのnormalized `float`）を使う。`Window.BackgroundRgb` getter/setterは対応するC ABI getter/setterを呼び、`Window.ResetBackgroundRgb()`で規定値へ戻す。未指定時のgetterはopaque white `#FFFFFF`を返す。呼出・error mappingは既存C# wrapper契約に従い、Window/property stateをwrapper側へ複製しない。
+
+```csharp
+public readonly struct RgbColor
+{
+    public float Red { get; }
+    public float Green { get; }
+    public float Blue { get; }
+}
+
+public RgbColor BackgroundRgb { get; set; }
+public void ResetBackgroundRgb();
+```
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -546,3 +562,5 @@ sequenceDiagram
 | 2026-10-24 | 1.3全文 | 利用者の「承認します、実装を進めてください」により文書全体を承認。実装・試験状態は別管理 |
 | 2026-10-24 | 1.4改訂案 | 非同期CommandのC#公開型、class diagram、実行/完了sequence、worker参照とfailure境界を追加。計画 `.docs/20_todo/csharp-async-command.md` に基づく |
 | 2026-10-24 | 1.4全文 | 利用者の「承認します。実装を進めてください」により文書全体を承認。実装・試験状態は別管理 |
+| 2026-10-30 | 1.5改訂案 | RQ-09-074に対応する`RgbColor`・`BackgroundRgb`・reset APIを提案。全文レビュー待ち |
+| 2026-10-30 | 1.5全文 | 利用者の「ok」によりC# Window `RgbColor`・`BackgroundRgb`・reset APIを含む全文を承認。実装・試験合格は別管理 |

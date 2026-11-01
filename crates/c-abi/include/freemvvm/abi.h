@@ -247,6 +247,14 @@ ui_status ui_abi_1_window_clear_content(ui_handle window,
                                         ui_handle *out_error);
 ui_status ui_abi_1_window_title_property(ui_handle window,
                                          ui_handle *out_owned_property);
+ui_status ui_abi_1_window_background_rgb(ui_handle window, float *out_red,
+                                         float *out_green, float *out_blue,
+                                         ui_handle *out_error);
+ui_status ui_abi_1_window_set_background_rgb(ui_handle window, float red,
+                                             float green, float blue,
+                                             ui_handle *out_error);
+ui_status ui_abi_1_window_reset_background_rgb(ui_handle window,
+                                               ui_handle *out_error);
 ui_status ui_abi_1_window_open(ui_handle window, ui_handle *out_error);
 ui_status ui_abi_1_window_close(ui_handle window, ui_handle *out_error);
 ui_status ui_abi_1_window_close_request_subscribe(

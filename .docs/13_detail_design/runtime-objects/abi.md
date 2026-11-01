@@ -1,9 +1,9 @@
 # 共通C ABI：宣言・検査・互換性
 
-- 文書版: 1.3
+- 文書版: 1.4
 - 文書ロール: detailed-design
-- 更新日: 2026-10-24
-- 状態: 1.2全文承認済み（利用者、2026-10-19）。1.3初期UI Control API改訂案全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
+- 更新日: 2026-10-30
+- 状態: 1.2全文承認済み（利用者、2026-10-19）。1.3初期UI Control API全文承認済み（利用者、2026-10-24）。1.4全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -723,6 +723,24 @@ feature IDは`8`（`core.ui.controls.v1`）を提案する。既存ID 1～7の�
 
 公開ABIは所有参照の取得・破棄と登録解除の操作境界を定める。利用者から見えるrelease/cancelの動作、解除契機および結果の正本はRQ-05-002/006とRQ-07-011である。この文書では各ABI関数・handle token・C境界がその契約をどう表すかを記す。
 
+### Window background RGB API（1.4）
+
+要求根拠: [RQ-09-074](../../11_requirements/RQ-09_ui-scope.md#rq-09-074)（改訂案）。既存固定幅値/`float` ABIを使い、Color構造体をby-value ABIへ追加しない。
+
+```c
+ui_status ui_abi_1_window_background_rgb(
+    ui_handle window, float *out_red, float *out_green, float *out_blue,
+    ui_handle *out_error);
+ui_status ui_abi_1_window_set_background_rgb(
+    ui_handle window, float red, float green, float blue, ui_handle *out_error);
+ui_status ui_abi_1_window_reset_background_rgb(
+    ui_handle window, ui_handle *out_error);
+```
+
+Getterはeffective RGB（overrideまたは規定値opaque white `#FFFFFF`）を3出力へ返す。Setterはfiniteかつ0.0～1.0の3成分を事前検証し、全成分が有効な場合だけWindow overrideをatomic commitする。Resetはoverrideを外してdefaultへ戻す。すべてUI thread限定の同期Window操作であり、setter/reset成功時はpaint/scene invalidationのみを起こす。失敗時は既存色・scene stateを保持する。
+
+output pointer null、無効handle/kind、wrong thread、invalid channelは既存status/error契約で拒否する。getterのout値は全validation成功後にまとめて書き、部分出力しない。abi header変更、C++/C#/Rust/Python wrapper形とfeature visibilityは文書全体レビュー待ちの提案であり、配布APIとして扱わない。
+
 ## 共通status・UI loop・終了境界
 
 ### 実現のcall/data/ownership flow
@@ -968,3 +986,5 @@ ApiInventoryEntryの所管は文書path/版/項目で示す案とし、既存sch
 | 2026-10-19 | 1.2全文 | 利用者がhost turnごとのdispatch入口として`runtime_dispatch_turn(runtime)`を選択。既存1.1承認内容を維持してdispatch call contractを追加。実装・試験状態は別管理 |
 | 2026-10-24 | 1.3改訂案 | Window/StackPanel/Text/TextBox/Buttonの生成、Property/Command接続、Logical Tree、Window peer/close request、feature契約を追加提案。1.2承認状態を維持し、1.3全文は利用者レビュー待ち |
 | 2026-10-24 | 1.3全文 | 利用者の「ok」により初期UI Control C ABI契約案全体を承認。実装・試験状態は別管理 |
+| 2026-10-30 | 1.4改訂案 | RQ-09-074のWindow background getter/set/reset C ABI宣言とvalidation/atomicity/paint invalidationを提案。1.3承認範囲を維持し全文レビュー待ち |
+| 2026-10-30 | 1.4全文 | 利用者の「ok」によりWindow background RGB getter/set/reset ABIとvalidation/atomicity契約を含む全文を承認。実装・試験合格は別管理 |

@@ -1,9 +1,9 @@
 # 言語ラッパー：Rust
 
-- 文書版: 1.6
+- 文書版: 1.7
 - 文書ロール: detailed-design
-- 更新日: 2026-10-24
-- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-24）。1.6全文承認済み（利用者、2026-10-24）。実装・試験状態は別管理
+- 更新日: 2026-10-30
+- 状態: 1.4～1.6全文承認済み（利用者、2026-10-24）。1.7全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -566,6 +566,23 @@ sequenceDiagram
 - callback内からのclose/execute禁止やcallback panicのstatus mappingはCommand/C ABI契約から拡張しない。
 - async Future、progress専用型、executor/thread-pool統合は本unitに含めず、既存C ABI `runtime_post`とPropertyを利用する。
 
+## Window background RGB wrapper API（1.7）
+
+要求根拠: [RQ-09-074](../../11_requirements/RQ-09_ui-scope.md#rq-09-074)（改訂案）。Rust wrapperはCore/C ABIが返すeffective RGBを`RgbColor`として公開し、値の妥当性検証・規定値の決定は重複実装しない。各呼出しは既存の`UiContext`/Window thread境界を適用し、C ABI失敗を`UiError`へ変換する。
+
+```rust
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RgbColor { pub red: f32, pub green: f32, pub blue: f32 }
+
+impl Window {
+    pub fn background_rgb(&self, ui: &UiContext<'_>) -> Result<RgbColor, UiError>;
+    pub fn set_background_rgb(&self, ui: &UiContext<'_>, color: RgbColor) -> Result<(), UiError>;
+    pub fn reset_background_rgb(&self, ui: &UiContext<'_>) -> Result<(), UiError>;
+}
+```
+
+getterはoverrideの有無によらずeffective valueを返す。setterは一回のC ABI呼出しに3成分を渡し、Coreが無効値を拒否する。reset成功後のgetterはopaque white `(1.0, 1.0, 1.0)`を返す。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -582,3 +599,5 @@ sequenceDiagram
 | 2026-10-24 | 1.4全文 | 利用者の「OK」によりRust `Property::subscribe`と`Subscription::cancel/close`、callback ownership/lifetimeを含む文書全体を承認。実装・試験状態は別管理 |
 | 2026-10-24 | 1.5全文 | 利用者の「OK」によりRust Property Bindingの3 mode、所有型、明示cancel、遅延error snapshot/subscription APIを含む全文を承認。実装・試験状態は別管理 |
 | 2026-10-24 | 1.6全文 | 利用者の「OK」によりAsync Command Rust safe API、worker lease、cancel/completion、state/failure取得を含む全文を承認。実装・試験状態は別管理 |
+| 2026-10-30 | 1.7改訂案 | RQ-09-074に対応する`RgbColor`とWindow background get/set/reset APIを提案。全文レビュー待ち |
+| 2026-10-30 | 1.7全文 | 利用者の「ok」によりRust `RgbColor`とWindow background get/set/reset APIを含む全文を承認。実装・試験合格は別管理 |

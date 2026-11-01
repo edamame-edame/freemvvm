@@ -200,8 +200,14 @@ impl GlyphRunSnapshot {
 #[derive(Clone, Debug, PartialEq)]
 pub enum DrawOp {
     Clip(Rect),
-    FillRect { bounds: Rect, rgba: [f32; 4] },
-    GlyphRun(GlyphRunSnapshot),
+    FillRect {
+        bounds: Rect,
+        rgba: [f32; 4],
+    },
+    GlyphRun {
+        run: GlyphRunSnapshot,
+        rgba: [f32; 4],
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -233,8 +239,12 @@ impl SceneSnapshot {
         if background_rgb
             .iter()
             .any(|channel| !channel.is_finite() || !(0.0..=1.0).contains(channel))
-            || operations.iter().any(|operation| {
-                matches!(operation, DrawOp::FillRect { rgba, .. } if rgba.iter().any(|channel| !channel.is_finite()))
+            || operations.iter().any(|operation| match operation {
+                DrawOp::FillRect { rgba, .. } => rgba.iter().any(|channel| !channel.is_finite()),
+                DrawOp::GlyphRun { rgba, .. } => rgba
+                    .iter()
+                    .any(|channel| !channel.is_finite() || !(0.0..=1.0).contains(channel)),
+                _ => false,
             })
         {
             return Err(SceneError::InvalidColor);
@@ -275,6 +285,21 @@ impl SceneSnapshot {
             background_rgb: self.background_rgb,
             operations: Arc::clone(&self.operations),
             damage,
+        }
+    }
+
+    pub(crate) fn with_background_rgb(&self, background_rgb: [f32; 3]) -> Self {
+        debug_assert!(
+            background_rgb
+                .iter()
+                .all(|channel| channel.is_finite() && (0.0..=1.0).contains(channel))
+        );
+        Self {
+            layout_revision: self.layout_revision,
+            device_scale: self.device_scale,
+            background_rgb,
+            operations: Arc::clone(&self.operations),
+            damage: self.damage,
         }
     }
 }
@@ -320,7 +345,10 @@ mod tests {
                     bounds,
                     rgba: [0.1, 0.2, 0.3, 1.0],
                 },
-                DrawOp::GlyphRun(run),
+                DrawOp::GlyphRun {
+                    run,
+                    rgba: [0.0, 0.0, 0.0, 1.0],
+                },
             ]),
             Damage::Rect(bounds),
         )
