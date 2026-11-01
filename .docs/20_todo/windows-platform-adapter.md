@@ -39,7 +39,7 @@
 | Win32 visible peerのopen/close、Direct2D surface上のframe presentation | Windows GUI実機profile | 専用の手動smokeとして実行・記録する。CIから切り離す |
 | Windows x64 UI縦断とpackage consumer | 0.0.1 release qualification | 対象profileで実施し、unit/CI結果で代替しない |
 
-## 実装unit詳細案（追加レビュー待ち）
+## 実装unit詳細案（利用者承認済み）
 
 既存のCore Platform SPIを使うWindows固有の変更に限定し、Core scene producerやLinux backendをこのbranchへ取り込まない。scene producerが別branchで進行中のため、backend unitは承認済み`SceneSnapshot`を直接入力する決定的試験とし、Controlからの自動scene生成をWindows Adapterの完了条件に混ぜない。
 
@@ -84,3 +84,4 @@
 | --- | --- | --- | --- |
 | 2026-10-31 | 計画0.1 | 利用者レビュー待ち | 0.0.1のWindows x64 target/UI縦断scopeを個別Platform実装計画へ具体化。承認・commit・実装開始は未実施 |
 | 2026-10-31 | 計画0.1 | 利用者承認 | 利用者「計画はokです」により計画全体を承認。計画commit/pushを許可。実装開始・試験合格・0.0.1 release判断は別ゲート |
+| 2026-11-01 | 実装unit詳細案 | 利用者承認 | 利用者「ok」により3 unit分割とtest登録準備を承認。計画更新 `a77fac4` をpush。test design全文承認と製品コード実装開始は別ゲート |
