@@ -28,6 +28,9 @@ mod win32 {
             &mut self,
             _generation: u64,
             _sink: Option<Arc<dyn freemvvm_core::abi_support::PlatformWindowClientAreaSink>>,
+            _close_request_sink: Option<
+                Arc<dyn freemvvm_core::abi_support::PlatformWindowCloseRequestSink>,
+            >,
         ) -> Result<WindowOpenInfo, PlatformOperationError> {
             Err(PlatformOperationError)
         }

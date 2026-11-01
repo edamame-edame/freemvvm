@@ -69,6 +69,8 @@ Source変更前に、承認済みRQとDD間の未確定点を照合する。特�
 - `UNIT-CORE-090`をCore private Platform SPIへ実装し、`UT-CORE-PLATFORM-CLOSE-001`を追加した。off-UI-thread通知はRuntime dispatcherへpostされ、existing close subscriptionがUI threadで処理される。
 - local pass: focused close-intent test 1件、Core 185 tests、workspace all-target tests、workspace Clippy、Rust 1.85 workspace check、format check、document links 7133件。
 - 同revision CI pass: `3de3ec5340c0b8a055a8ba8047ca14a5da3dccb8`、[Actions run 41307305993](https://github.com/edamame-edame/freemvvm/actions/runs/41307305993)（Ubuntu 24.04 / Windows 2022 success）。Windows Platform `UNIT-PLATFORM-WINDOWS-006`へ進む。
+- `UNIT-PLATFORM-WINDOWS-006`を実装し、Win32 `WM_CLOSE`をgeneration付きCore sinkへ通知する。通知中にHWNDを破棄せず、post失敗時もdefault closeを抑止し、Coreからの後続peer close commandだけがworker上でnative resourceを閉じる。
+- local pass: Windows crate 20 tests（2 manual profile smoke ignored）、workspace all-target tests、Clippy、Rust 1.85 workspace check、format check、document links 7133件。対象revisionのCIをpush後に確認する。
 
 ## レビュー履歴
 

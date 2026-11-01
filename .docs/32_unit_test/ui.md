@@ -130,6 +130,8 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 
 実行記録（UNIT-CORE-090）: `UT-CORE-PLATFORM-CLOSE-001`のfocused test、`cargo test -p freemvvm-core --locked`（185 tests）、`cargo test --workspace --all-targets --locked`、`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check`、`tools/check_docs.py`（76 documents / 7133 links）がlocal pass。commit `3de3ec5340c0b8a055a8ba8047ca14a5da3dccb8`の[同revision Windows/Linux CI 41307305993](https://github.com/edamame-edame/freemvvm/actions/runs/41307305993) success。
 
+実行記録（UNIT-PLATFORM-WINDOWS-006、CI確認待ち）: `cargo test -p freemvvm-platform-windows close_intent --locked`（3 tests）、`cargo test -p freemvvm-platform-windows --locked`（20 passed / 2 manual ignored）、`cargo test --workspace --all-targets --locked`、`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check`、`tools/check_docs.py`（76 documents / 7133 links）がlocal pass。対象commit SHAと同revision CIはpush後に追記する。
+
 ## ControlViewConnector・複数renderer・Scene生成の試験設計（0.8改訂案）
 
 0.7承認済みtest baselineは維持する。以下は新たなbackend-neutral View/Visual contractとControl connectorの試験提案であり、0.8全文承認前はimplementation oracle・CI pass条件として扱わない。fake renderer/factoryはCore境界と複数実装可能性を検証し、Windows API/OpenGL/VulkanやLinux DRMの実機動作を意味しない。

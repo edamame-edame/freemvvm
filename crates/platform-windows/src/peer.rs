@@ -1,7 +1,7 @@
 use freemvvm_core::abi_support::{
     FrameTicket, PlatformFrameCompletionSink, PlatformOperationError, PlatformWindowClientAreaSink,
-    PlatformWindowPeer, ResolvedTextSnapshot, SceneSnapshot, TextRequest, TextService,
-    TextServiceError, WindowClientArea, WindowOpenInfo,
+    PlatformWindowCloseRequestSink, PlatformWindowPeer, ResolvedTextSnapshot, SceneSnapshot,
+    TextRequest, TextService, TextServiceError, WindowClientArea, WindowOpenInfo,
 };
 use std::sync::{Arc, Mutex};
 
@@ -10,6 +10,7 @@ pub(crate) trait NativeWindowBackend: Send {
         &mut self,
         generation: u64,
         sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
+        close_request_sink: Option<Arc<dyn PlatformWindowCloseRequestSink>>,
     ) -> Result<WindowOpenInfo, PlatformOperationError>;
 
     fn close(&mut self) -> Result<(), PlatformOperationError>;
@@ -34,6 +35,7 @@ struct PeerState<B> {
 pub(crate) struct WindowsPeer<B: NativeWindowBackend> {
     state: Arc<Mutex<PeerState<B>>>,
     client_area_sink: Mutex<Option<Arc<dyn PlatformWindowClientAreaSink>>>,
+    close_request_sink: Mutex<Option<Arc<dyn PlatformWindowCloseRequestSink>>>,
     completion_sink: Mutex<Option<Arc<dyn PlatformFrameCompletionSink>>>,
 }
 
@@ -45,6 +47,7 @@ impl<B: NativeWindowBackend> WindowsPeer<B> {
                 generation: None,
             })),
             client_area_sink: Mutex::new(None),
+            close_request_sink: Mutex::new(None),
             completion_sink: Mutex::new(None),
         }
     }
@@ -73,12 +76,17 @@ impl<B: NativeWindowBackend + 'static> PlatformWindowPeer for WindowsPeer<B> {
             .lock()
             .map_err(|_| PlatformOperationError)?
             .clone();
+        let close_request_sink = self
+            .close_request_sink
+            .lock()
+            .map_err(|_| PlatformOperationError)?
+            .clone();
         let mut state = self.state.lock().map_err(|_| PlatformOperationError)?;
         if state.generation.is_some() {
             return Err(PlatformOperationError);
         }
 
-        let info = state.backend.open(generation, sink)?;
+        let info = state.backend.open(generation, sink, close_request_sink)?;
         if !valid_client_area(info.client_area) {
             let _ = state.backend.close();
             return Err(PlatformOperationError);
@@ -89,6 +97,12 @@ impl<B: NativeWindowBackend + 'static> PlatformWindowPeer for WindowsPeer<B> {
 
     fn set_client_area_sink(&self, sink: Arc<dyn PlatformWindowClientAreaSink>) {
         if let Ok(mut current) = self.client_area_sink.lock() {
+            *current = Some(sink);
+        }
+    }
+
+    fn set_close_request_sink(&self, sink: Arc<dyn PlatformWindowCloseRequestSink>) {
+        if let Ok(mut current) = self.close_request_sink.lock() {
             *current = Some(sink);
         }
     }
@@ -156,9 +170,9 @@ mod tests {
     use super::{NativeWindowBackend, WindowsPeer};
     use freemvvm_core::abi_support::{
         Damage, DeviceScale, DrawOp, FrameTicket, FrameTracker, PlatformFrameCompletionSink,
-        PlatformOperationError, PlatformWindowClientAreaSink, PlatformWindowPeer,
-        ResolvedTextSnapshot, SceneSnapshot, TextMetrics, TextRequest, TextServiceError,
-        WindowClientArea, WindowOpenInfo,
+        PlatformOperationError, PlatformWindowClientAreaSink, PlatformWindowCloseRequestSink,
+        PlatformWindowPeer, ResolvedTextSnapshot, SceneSnapshot, TextMetrics, TextRequest,
+        TextServiceError, WindowClientArea, WindowOpenInfo,
     };
     use std::collections::VecDeque;
     use std::sync::Arc;
@@ -170,6 +184,7 @@ mod tests {
         closes: usize,
         drop_probe: Option<Arc<std::sync::atomic::AtomicUsize>>,
         text_requests: Vec<String>,
+        close_request_sinks: Vec<Option<Arc<dyn PlatformWindowCloseRequestSink>>>,
     }
 
     impl NativeWindowBackend for FakeBackend {
@@ -177,8 +192,10 @@ mod tests {
             &mut self,
             generation: u64,
             sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
+            close_request_sink: Option<Arc<dyn PlatformWindowCloseRequestSink>>,
         ) -> Result<WindowOpenInfo, PlatformOperationError> {
             self.open_generations.push(generation);
+            self.close_request_sinks.push(close_request_sink);
             let area = self
                 .opens
                 .pop_front()
@@ -250,6 +267,15 @@ mod tests {
         }
     }
 
+    struct RecordingCloseRequestSink(Arc<std::sync::Mutex<Vec<u64>>>);
+
+    impl PlatformWindowCloseRequestSink for RecordingCloseRequestSink {
+        fn close_requested(&self, generation: u64) -> Result<(), PlatformOperationError> {
+            self.0.lock().unwrap().push(generation);
+            Ok(())
+        }
+    }
+
     struct RecordingCompletionSink(Arc<std::sync::Mutex<Vec<FrameTicket>>>);
 
     impl PlatformFrameCompletionSink for RecordingCompletionSink {
@@ -285,6 +311,7 @@ mod tests {
             closes: 0,
             drop_probe: None,
             text_requests: Vec::new(),
+            close_request_sinks: Vec::new(),
         });
 
         assert!(peer.open(1).is_err());
@@ -312,6 +339,7 @@ mod tests {
             closes: 0,
             drop_probe: None,
             text_requests: Vec::new(),
+            close_request_sinks: Vec::new(),
         });
 
         assert!(peer.open(1).is_err());
@@ -329,6 +357,7 @@ mod tests {
             closes: 0,
             drop_probe: None,
             text_requests: Vec::new(),
+            close_request_sinks: Vec::new(),
         });
 
         assert_eq!(peer.open(7), Ok(open_info()));
@@ -350,6 +379,7 @@ mod tests {
             closes: 0,
             drop_probe: None,
             text_requests: Vec::new(),
+            close_request_sinks: Vec::new(),
         });
 
         assert!(peer.open(0).is_err());
@@ -366,12 +396,45 @@ mod tests {
             closes: 0,
             drop_probe: None,
             text_requests: Vec::new(),
+            close_request_sinks: Vec::new(),
         });
         let received = Arc::new(std::sync::Mutex::new(Vec::new()));
         peer.set_client_area_sink(Arc::new(RecordingSink(Arc::clone(&received))));
 
         assert_eq!(peer.open(12), Ok(open_info()));
         assert_eq!(*received.lock().unwrap(), [(12, area())]);
+    }
+
+    #[test]
+    fn platform_windows_peer_forwards_native_close_intent_without_closing_until_core_command() {
+        let peer = WindowsPeer::new(FakeBackend {
+            opens: VecDeque::from([Ok(open_info())]),
+            close_results: VecDeque::new(),
+            open_generations: Vec::new(),
+            closes: 0,
+            drop_probe: None,
+            text_requests: Vec::new(),
+            close_request_sinks: Vec::new(),
+        });
+        let requested = Arc::new(std::sync::Mutex::new(Vec::new()));
+        peer.set_close_request_sink(Arc::new(RecordingCloseRequestSink(Arc::clone(&requested))));
+        peer.open(27).unwrap();
+
+        let close_sink = peer.state.lock().unwrap().backend.close_request_sinks[0]
+            .clone()
+            .unwrap();
+        close_sink.close_requested(27).unwrap();
+        {
+            let state = peer.state.lock().unwrap();
+            assert_eq!(*requested.lock().unwrap(), [27]);
+            assert_eq!(state.generation, Some(27));
+            assert_eq!(state.backend.closes, 0);
+        }
+
+        peer.close().unwrap();
+        let state = peer.state.lock().unwrap();
+        assert_eq!(state.backend.closes, 1);
+        assert_eq!(state.generation, None);
     }
 
     #[test]
@@ -383,6 +446,7 @@ mod tests {
             closes: 0,
             drop_probe: None,
             text_requests: Vec::new(),
+            close_request_sinks: Vec::new(),
         });
         let completed = Arc::new(std::sync::Mutex::new(Vec::new()));
         peer.set_completion_sink(Arc::new(RecordingCompletionSink(Arc::clone(&completed))));
@@ -407,6 +471,7 @@ mod tests {
             closes: 0,
             drop_probe: None,
             text_requests: Vec::new(),
+            close_request_sinks: Vec::new(),
         });
 
         assert_eq!(peer.open(15), Ok(open_info()));
@@ -428,6 +493,7 @@ mod tests {
             closes: 0,
             drop_probe: Some(Arc::clone(&drops)),
             text_requests: Vec::new(),
+            close_request_sinks: Vec::new(),
         });
         assert_eq!(peer.open(18), Ok(open_info()));
 
@@ -444,6 +510,7 @@ mod tests {
             closes: 0,
             drop_probe: None,
             text_requests: Vec::new(),
+            close_request_sinks: Vec::new(),
         });
         peer.open(23).unwrap();
 

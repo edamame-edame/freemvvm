@@ -2,8 +2,8 @@ use crate::peer::NativeWindowBackend;
 use crate::renderer::direct2d::HwndRenderer;
 use freemvvm_core::abi_support::{
     DeviceScale, FrameTicket, PlatformOperationError, PlatformWindowClientAreaSink,
-    ResolvedTextSnapshot, SceneSnapshot, TextRequest, TextServiceError, WindowClientArea,
-    WindowOpenInfo,
+    PlatformWindowCloseRequestSink, ResolvedTextSnapshot, SceneSnapshot, TextRequest,
+    TextServiceError, WindowClientArea, WindowOpenInfo,
 };
 use std::ffi::c_void;
 use std::mem::zeroed;
@@ -62,6 +62,7 @@ enum Command {
     Open {
         generation: u64,
         sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
+        close_request_sink: Option<Arc<dyn PlatformWindowCloseRequestSink>>,
         response: SyncSender<Result<WindowOpenInfo, PlatformOperationError>>,
     },
     Close {
@@ -190,12 +191,14 @@ impl NativeWindowBackend for Backend {
         &mut self,
         generation: u64,
         sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
+        close_request_sink: Option<Arc<dyn PlatformWindowCloseRequestSink>>,
     ) -> Result<WindowOpenInfo, PlatformOperationError> {
         let worker = self.ensure_worker()?;
         let (response, result) = mpsc::sync_channel(1);
         worker.send(Command::Open {
             generation,
             sink,
+            close_request_sink,
             response,
         })?;
         result.recv().map_err(|_| PlatformOperationError)?
@@ -240,6 +243,7 @@ impl NativeWindowBackend for Backend {
 struct WindowState {
     generation: u64,
     sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
+    close_request_sink: Option<Arc<dyn PlatformWindowCloseRequestSink>>,
     renderer: Option<HwndRenderer>,
     last_scene: Option<Arc<SceneSnapshot>>,
     pending_render: Option<PendingRender>,
@@ -281,12 +285,13 @@ fn worker_main(receiver: Receiver<Command>, ready: SyncSender<()>, wake_event: u
                     Ok(Command::Open {
                         generation,
                         sink,
+                        close_request_sink,
                         response,
                     }) => {
                         let result = if window.is_some() {
                             Err(PlatformOperationError)
                         } else {
-                            match open_native_window(generation, sink) {
+                            match open_native_window(generation, sink, close_request_sink) {
                                 Ok(opened) => {
                                     let info = opened.initial_info;
                                     window = Some(opened);
@@ -373,11 +378,13 @@ fn worker_main(receiver: Receiver<Command>, ready: SyncSender<()>, wake_event: u
 fn open_native_window(
     generation: u64,
     sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
+    close_request_sink: Option<Arc<dyn PlatformWindowCloseRequestSink>>,
 ) -> Result<NativeWindow, PlatformOperationError> {
     register_window_class()?;
     let mut state = Box::new(WindowState {
         generation,
         sink,
+        close_request_sink,
         renderer: None,
         last_scene: None,
         pending_render: None,
@@ -552,9 +559,18 @@ unsafe extern "system" fn window_proc(
     }
 
     if message == WM_CLOSE {
-        // Native close intent is handled by a later Core/Platform protocol unit. Keep the peer
-        // alive rather than letting DefWindowProc destroy an HWND while Core still marks it open.
-        return 0;
+        // Post only a generation-tagged intent. The Core decides whether and when to enqueue the
+        // worker close command; this message handler never waits for the UI dispatcher.
+        // SAFETY: GWLP_USERDATA is either null or the state pointer installed at WM_NCCREATE.
+        let state = unsafe { GetWindowLongPtrW(handle, GWLP_USERDATA) } as *mut WindowState;
+        let (generation, sink) = if !state.is_null() {
+            // SAFETY: state is retained by NativeWindow until DestroyWindow returns on this thread.
+            let state = unsafe { &*state };
+            (Some(state.generation), state.close_request_sink.as_ref())
+        } else {
+            (None, None)
+        };
+        return handle_close_message(generation, sink);
     }
 
     if message == WM_SIZE {
@@ -629,11 +645,35 @@ unsafe extern "system" fn window_proc(
     unsafe { DefWindowProcW(handle, message, wparam, lparam) }
 }
 
+fn post_close_intent(
+    generation: u64,
+    sink: Option<&Arc<dyn PlatformWindowCloseRequestSink>>,
+) -> Result<(), PlatformOperationError> {
+    let sink = sink.ok_or(PlatformOperationError)?;
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sink.close_requested(generation)
+    }))
+    .unwrap_or(Err(PlatformOperationError))
+}
+
+fn handle_close_message(
+    generation: Option<u64>,
+    sink: Option<&Arc<dyn PlatformWindowCloseRequestSink>>,
+) -> LRESULT {
+    if let Some(generation) = generation {
+        // Native default processing would destroy the HWND before Core accepts the request.
+        // Even a failed post keeps it alive; explicit close/shutdown commands own destruction.
+        let _ = post_close_intent(generation, sink);
+    }
+    0
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{WorkerTextResolver, resolve_text_command};
+    use super::{WorkerTextResolver, handle_close_message, resolve_text_command};
     use freemvvm_core::abi_support::{
-        ResolvedTextSnapshot, TextMetrics, TextRequest, TextServiceError,
+        PlatformOperationError, PlatformWindowCloseRequestSink, ResolvedTextSnapshot, TextMetrics,
+        TextRequest, TextServiceError,
     };
     use std::sync::{Arc, Mutex};
 
@@ -653,6 +693,44 @@ mod tests {
                 .push((request.revision, request.text.to_string()));
             self.result.clone()
         }
+    }
+
+    struct RecordingCloseSink {
+        requests: Arc<Mutex<Vec<u64>>>,
+        result: Result<(), PlatformOperationError>,
+    }
+
+    impl PlatformWindowCloseRequestSink for RecordingCloseSink {
+        fn close_requested(&self, generation: u64) -> Result<(), PlatformOperationError> {
+            self.requests.lock().unwrap().push(generation);
+            self.result
+        }
+    }
+
+    #[test]
+    fn platform_windows_close_intent_posts_generation_and_leaves_close_to_core_command() {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let sink: Arc<dyn PlatformWindowCloseRequestSink> = Arc::new(RecordingCloseSink {
+            requests: Arc::clone(&requests),
+            result: Ok(()),
+        });
+
+        assert_eq!(handle_close_message(Some(41), Some(&sink)), 0);
+        assert_eq!(*requests.lock().unwrap(), [41]);
+        assert_eq!(handle_close_message(Some(42), None), 0);
+        assert_eq!(handle_close_message(None, None), 0);
+    }
+
+    #[test]
+    fn platform_windows_close_intent_post_failure_keeps_default_close_suppressed() {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let sink: Arc<dyn PlatformWindowCloseRequestSink> = Arc::new(RecordingCloseSink {
+            requests: Arc::clone(&requests),
+            result: Err(PlatformOperationError),
+        });
+
+        assert_eq!(handle_close_message(Some(43), Some(&sink)), 0);
+        assert_eq!(*requests.lock().unwrap(), [43]);
     }
 
     #[test]
