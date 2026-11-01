@@ -1,6 +1,7 @@
 //! Windows Win32 window peer for the Core Platform SPI.
 
 mod peer;
+#[cfg(any(target_os = "windows", test))]
 mod renderer;
 
 #[cfg(target_os = "windows")]
