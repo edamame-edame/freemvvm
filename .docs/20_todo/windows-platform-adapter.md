@@ -42,10 +42,11 @@
 ## UNIT-PLATFORM-WINDOWS-001 実装進捗
 
 - 実装メモ: [Windows Platform Adapter / Win32 peer](../01_memory/platform-windows-adapter.md)
-- 状態: 実装・local検証済み。対象branchのWindows CI待ち。UNIT-002/003とWindows GUI実機確認は未着手。
+- 状態: UNIT-001実装・local検証・同revision Windows/Linux CI完了。UNIT-002/003とWindows GUI実機確認は未着手。
 - 実装: `crates/platform-windows`にWin32 peerと専用message workerを追加し、`Window.open()`時だけnative Windowを生成する。初期client areaと`WM_SIZE`をDIP・generation付きでCoreへ通知し、明示close後の再open、open失敗後のretry、shutdown時のworker/HWND解放を実装した。Windows C ABI artifactにはWindows factoryを接続し、Linux/その他targetの構成を維持した。
 - 境界: rendererはUNIT-002で追加するため、このunitの`submit_frame`は未実装を成功扱いせずfailureを返す。OS `WM_CLOSE`はCore close-request連携が未実装なので抑止する。このunitではtitlebar close・input動作を完了扱いしない。C ABI unit testは可視Windowを生成しないようtest build時にOS factoryから分離した。
-- local検証: `cargo fmt --all -- --check`、workspace Clippy、workspace build、`cargo test --workspace --all-targets --locked`（Windows peer 7件を含む）、Windows x64 target check、Rust 1.85 Windows target checkがpass。CI結果はpush後に記録する。
+- 検証: `cargo fmt --all -- --check`、workspace Clippy/build/tests、`cargo check --workspace --all-targets --target x86_64-unknown-linux-gnu --locked`、Windows x64 target check、Rust 1.85 Windows target check、`tools/dev.py check`、`tools/dev.py minimum`がlocal pass。Windows peer 7 testsもpass。
+- 同revision CI: `72f47f66418384b03eadaa1dfe6e79fd6757c676` の[Windows/Linux CI run 41263860362](https://github.com/edamame-edame/freemvvm/actions/runs/41263860362)がsuccess。直前の`c048d95`ではLinux host向けWindows backend stubにconstructorがなくclippy compileが失敗したため、`72f47f6`で修正し、Linux target cross-checkと再CI passを確認した。
 - GUI: 可視Windowを起動する実機smokeは未実施。今回のlocal/CI検証で置き換えない。
 
 ## 実装unit詳細案（利用者承認済み）

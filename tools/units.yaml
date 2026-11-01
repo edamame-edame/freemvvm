@@ -3646,7 +3646,7 @@
     },
     {
       "id": "UNIT-PLATFORM-WINDOWS-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "windows-target-factory-composition-and-win32-window-peer-open-resize-generation-close-reopen-shutdown",
       "sources": ["crates/platform-windows/src/lib.rs", "crates/platform-windows/src/peer.rs", "crates/platform-windows/src/win32.rs", "crates/c-abi/src/lib.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/c-abi/Cargo.toml", "crates/platform-windows/Cargo.toml", ".github/workflows/bootstrap.yml", "tools/units.yaml"],

@@ -5,3 +5,4 @@
 - Runtime/Factory作成でWindowを生成しない。明示openの失敗後はretry可能にし、closeはCore Window/Treeを破棄せずreopenできるようにする。Rendererが未接続の段階ではframe submitを成功扱いしない。
 - この実装単位ではOS WM_CLOSEをCore close-requestへ届けない。Core open状態とHWNDが分離しないようネイティブ破棄を抑止し、close-request sinkの別設計・実装までtitlebar close/input対応済みと扱わない。
 - Windows SDK呼び出しにはworkspace lockに存在するwindows-sys 0.61.2をtarget-specific private dependencyとして使用する。Linux hostのworkspace buildではWindows adapter stubをcompileし、Windows CIでfake peer lifecycle unitとWindows target checkを行う。
+- 非Windows cfg stubにもWindows factory compositionから呼ぶ`Backend::new()`を定義する。Windows host testとWindows target checkだけではLinux host stubのcompileが見えず、Linux CIで初めて不足が判明しうるため、Linux target cross-checkかLinux runnerも対象にする。
