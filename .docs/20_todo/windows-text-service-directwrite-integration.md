@@ -1,7 +1,7 @@
 # 0.0.1 Windows TextService・DirectWrite font catalog 接続計画
 
 - 計画版: 0.1
-- 状態: 計画承認済み（利用者、2026-11-01）。実装・試験合格は別管理
+- 状態: 対象実装unit完了（2026-11-01、同revision Windows/Linux CI pass）。Control/Scene producer接続とGUI実機表示は別残課題
 - 対象version: `0.0.1`
 - 対象: Windows profileのTextServiceからDirectWrite font sourceを解決し、生成GlyphRunのfaceを同じdigestでrendererへ登録する内部接続
 - 実装branch案: `impl-rust/platform-adapter-windows-text-service`
@@ -88,8 +88,8 @@ Windows DirectWrite rendererは、GlyphRunの`font_digest`から登録済み`IDW
 
 ## 実装・検証状態
 
-- `UNIT-PLATFORM-WINDOWS-004`を実装中。Windows crateのfocused tests、workspace tests、Clippy、Rust 1.85 check、formatはローカルpass。文書リンク検査と`tools/units.yaml` JSON parseもpass。
-- 手動専用headless DirectWrite smokeはこのWindows環境でsystem default/明示TTFともpass。Windows CI結果と可視Windowのprofile確認は未記録。
+- `UNIT-PLATFORM-WINDOWS-004`は実装・local検証完了。Windows crate focused tests 3件、Windows crate 15 passed / 2 ignored、workspace tests、Clippy、Rust 1.85 check、formatがpass。
+- 手動専用headless DirectWrite smokeはこのWindows環境でsystem default/明示TTFともpass。同revision `4bf0373baa2d24baaad780491bbcfd34892a9182` の[Windows/Linux CI run 41275875074](https://github.com/edamame-edame/freemvvm/actions/runs/41275875074)もsuccess（Linux bootstrap・Linux Platform device tests・Windows bootstrap・Windows Platform adapter tests）。
 - Control/Scene producerがTextServiceを呼ぶCore縦断経路はまだないため、このunitの成功をUI上のtext表示完了とは扱わない。
 
 ## 承認・改訂履歴

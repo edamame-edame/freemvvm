@@ -3718,7 +3718,7 @@
     },
     {
       "id": "UNIT-PLATFORM-WINDOWS-004",
-      "state": "ready",
+      "state": "complete",
       "scope": "windows-directwrite-text-service-system-default-and-ttf-shaping-with-exact-renderer-face-registration",
       "sources": ["crates/platform-windows/src/text.rs", "crates/platform-windows/src/renderer.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/platform-windows/Cargo.toml", "tools/units.yaml"],
