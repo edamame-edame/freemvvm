@@ -1,0 +1,88 @@
+# 0.0.1 Input / Focus event path実装開始計画
+
+- 計画版: 0.1（レビュー案）
+- 状態: 未承認。文書全体のレビュー待ち
+- 対象version: `0.0.1`
+- 親計画: [Input / Focus event path次工程計画](input-focus-event-path.md) 0.2（承認済み）
+- 目的: 承認済み共通設計に残る実装境界を閉じ、Core/C ABI・4 wrapper・Windows Adapterを依存順に実装・検証できる状態にする
+
+## 現状と開始条件
+
+共通Input/Focus設計とUI試験設計は承認済みだが、4言語wrapperのborrowed event facade、key identity/modifierとprimary pointer buttonの数値表、Windows keyboard/IME message mappingは未確定である。これらを実装都合で決めず、wrapper設計・試験設計の文書単位レビューで確定する。
+
+現在の作業branchは`impl-rust/core-window-text-service`で、`origin/version/0.0.1`より96 commit進み、release branchだけにあるclose-intent commitが1件ある。実装branchを切る前にこの差を明示的に同期する必要がある。確認時点ではworktreeはclean。
+
+## 作業範囲
+
+初期共通機能は承認済み範囲に限定する。
+
+- KeyDown / KeyUp、TextCommit、PrimaryPointerDown / PrimaryPointerUpをCoreへ配送する。
+- Widget単位のtyped Input subscription、target-to-Logical ancestor bubbling、handledによる後続処理停止を提供する。
+- Focus getter、disable/detach/shutdown時の状態無効化、Buttonのgeneration-bound pending pressを実装する。
+- callback内だけ有効なborrowed event viewを4 wrapperから安全に公開する。
+- Windows native eventを値copyしてgeneration付きsinkへ順序よく投入する。WndProcからuser callbackを呼ばない。
+
+Pointer move/wheel/capture、Tab traversal、shortcut、public Focus notification、OS固有IME composition APIは追加しない。
+
+## フェーズ
+
+| 順 | 成果物 | 完了条件 |
+| --- | --- | --- |
+| 1. API境界の具体化 | Rust/C++/C#/Python wrapper DD、共通C ABI DD、Windows platform DDのレビュー案 | 各言語のevent型・callback署名・subscription cancel/dispose・event view寿命・例外隔離、C ABI feature/payload、key/modifier/button表、Windows key/text/IME取得経路と順序を文書化。要求・承認済み共通設計との不整合がなく、全対象文書のレビュー承認を得る |
+| 2. 試験・unit登録 | `.docs/32_unit_test/wrappers.md`、必要な`ui.md`追補、`tools/units.yaml` | 各unitに実在source/test path・command・RQ/TC・承認済み設計文書/版/節を登録。`planned`で登録し、実装着手時にpath確認後`ready`へ更新する |
+| 3. Branch同期 | `version/0.0.1` → Core APIs child | `origin/version/0.0.1`を現Core APIs branchへ取り込み、close-intent差分が保持されたこととCI/差分を確認してpush。次に`impl-rust/core-input-focus`を同期済みCore APIs branchから作成 |
+| 4. Core / C ABI | `UNIT-CORE-091`、`UNIT-ABI-022`候補 | route/reentrancy/lifetime/focus/default actionのCore試験後、borrowed event callback/getter/handled setterをABI probesとreal ABI smokeで検証。各unitは同一revisionで必要gates pass後に日本語commit/push |
+| 5. Language wrappers | Rust、C++、C#、Python各wrapper unit | 4本をCore Input branchの同じ確定commitから独立に切る。各unitでfake ABI試験と利用者向けconsumer試験を実施し、callback root/cancel/borrow lifetime/例外隔離を確認。同一unitの試験pass後に各branchを日本語commit/push |
+| 6. Windows Adapter | `UNIT-PLATFORM-WINDOWS-007`候補 | Windows branchはCore Input branchから独立に切る。fake message mapping、stale generation、event order、shutdownを試験し、Windows build/CIを通す。実機IME/keyboard/mouse smokeはrelease qualificationに残す |
+| 7. 集約レビュー | Core・4 wrappers・Windows Adapterの変更一式 | unit台帳、対応試験、同revision CI、release testの未実施項目を照合。関連TODOが全て完了してからまとめてmerge PRを作成 |
+
+## Unit候補と責務
+
+以下のIDは空き番号確認に基づく候補で、試験設計・path確定後に正式登録する。番号の確定だけで設計承認や実装完了を意味しない。
+
+| 候補 | 責務と主な試験 |
+| --- | --- |
+| `UNIT-CORE-091` | InputRouter、route snapshot、handled、callback中detach/disable、Focus無効化、Button pending press。`UT-INPUT-001..005`、`UT-FOCUS-001..004` |
+| `UNIT-ABI-022` | feature 9、typed callback、callback中のみ有効なborrowed event view、payload getters、handled setter。C/C++ header probeと実ABI smokeを含める |
+| `UNIT-WRAP-RS-INPUT-001` | Rust borrowed event facade、closure root、Subscription解除・drop中callback |
+| `UNIT-WRAP-CPP-INPUT-001` | C++ borrowed facade、move-only Subscription、例外無効/有効両profileのtrampoline隔離 |
+| `UNIT-WRAP-CS-INPUT-001` | C# event view、delegate GC root、Dispose/callback競合、例外handler |
+| `UNIT-WRAP-PY-INPUT-001` | Python event facade、callable root、GIL/foreign callback境界、例外隔離とGC |
+| `UNIT-PLATFORM-WINDOWS-007` | Win32 keyboard/TextCommit/primary pointer/focus messageからCore sinkへのgeneration-aware copy/order |
+
+Pythonには既存のwrapper unit IDがないため、初回登録時に既存の命名・CI選択規約との整合を確認する。`.docs/32_unit_test/implementation-test-inventory.md`のunit/schema規則に従い、planned状態を実行可能扱いしない。
+
+## Branch依存
+
+```text
+main
+└─ version/0.0.1
+   └─ impl-rust/core-window-text-service (close-intent commitを同期)
+      └─ impl-rust/core-input-focus
+         ├─ impl-rust-wrapper/input-focus
+         ├─ impl-cpp-wrapper/input-focus
+         ├─ impl-csharp-wrapper/input-focus
+         ├─ impl-python-wrapper/input-focus
+         └─ impl-rust/platform-adapter-windows-input
+```
+
+Core branch同期と新規実装branch作成はこの計画のレビュー承認後に行う。wrapperは相互に親とせず、Windows Adapterもwrapper branchを親にしない。実装完了後の統合はCore APIsを先に、その後4 wrapperとPlatform Adapterをまとめる。
+
+## 試験・完了条件
+
+- Core/UIのfake event試験でroute順序、handled、detach/disable後の停止、非再入、Focus遷移、Buttonのpress/release・stale generationを個別に確認する。
+- C ABIではcallback中だけborrowed handleが使え、callback終了後は無効化されること、unknown event値拒否、feature query、C/C++ header compile、実ABI経由の登録/解除を確認する。
+- wrapperごとにcallback state rootの確保/登録失敗/解除/close/drop、callback自己解除、callback例外の隔離、短命event viewの保存拒否または明示copyを確認する。
+- Windows fakeではnative message mapping・keyboard/textの区別・IME commit・DIP変換済みpointer座標・event順・stale window generation・shutdownを確認する。OS実機確認はCI合格と分ける。
+- 各実装unitのtestとsourceは同一revisionで検証する。必要なworkspace check、Rust minimum、C/C++/C#/Python checks、document links、`git diff --check`をunit境界に応じて行う。
+- Unit全件の状態・証跡が揃うまでrelease全体の完了・実機合格とは扱わない。
+
+## レビュー対象
+
+この計画0.1の承認は、承認済み範囲内のwrapper/API詳細設計を作成する開始許可とbranch同期手順への合意を示す。計画中の未確定APIの確定、設計文書承認、実装・試験開始、commit/pushを一括承認したものとは扱わない。フェーズ1の改訂文書は別途、文書単位でレビュー・承認する。
+
+## レビュー履歴
+
+| 日付 | 対象 | 状態 | 備考 |
+| --- | --- | --- | --- |
+| 2026-11-01 | 計画0.1 | レビュー待ち | 承認済み共通設計からwrapper/API詳細化・unit登録・branch同期・実装順を具体化 |
