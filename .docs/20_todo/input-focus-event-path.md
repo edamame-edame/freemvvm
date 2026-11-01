@@ -1,7 +1,7 @@
 # 0.0.1 Input / Focus event pathの次工程計画
 
 - 計画版: 0.1案
-- 状態: 利用者レビュー待ち。未commit・未実装
+- 状態: 計画承認済み（利用者、2026-11-01）。設計改訂案は別途文書単位レビュー待ち。未実装
 - 対象version: `0.0.1`
 - 対象: 承認済みInput/Focus要求を、Core UI処理とWindows native event sourceへつなぐ前の設計・実装unit計画
 - Core APIs branch案: `impl-rust/core-input-focus`
@@ -45,6 +45,37 @@ Windows close-request接続までのCore/Windows unitは同revision CIを通過�
 - Focus callback/public event APIの有無を実装上の都合で決めない。
 - Windows実機keyboard/mouse/IME動作はfake/CIと区別し、必要なGUI smokeを0.0.1 release qualificationへ記録する。
 
+## 設計照合結果・レビュー提案（2026-11-01）
+
+### 確認できた整合と不足
+
+- RQ-09-009/010/046/047/049/055/056/059/068/070は承認済み。特にRQ-09-068はInputをLogical祖先へ配送し、handled指定で以後の配送と既定動作を止めることを初期共通基盤の要求としている。
+- DD `ui/input-focus.md` 1.1はCore側の`InputRouter`/`RouteSnapshot`案、Focus遷移、keyboard/text区別を記載する一方、route方式を確認候補とし、subscription・handled/default action・公開ABIを基本Control DDへ委譲したままである。
+- DD `ui/controls.md` 1.5はPointer activationとAccessibility invokeからButtonのsemantic activationを呼ぶ案を記載するが、Input event handlerを登録・解除し、handledを返す利用者向けの接点を定義していない。
+- 共通ABI DDには引数なしcallbackのProperty subscriptionがあるが、Input event payloadとhandled stateを渡す契約には流用できない。
+- UT-INPUT-001はhandledによる祖先配送・既定動作の停止、detach再検証、非再帰入力を明示している。現行CoreにはFocus状態管理だけがあり、InputRouter/route deliveryは未実装。Windows WndProcにもkeyboard/text/pointer接続はない。
+
+### 推奨する最小の設計解決
+
+`ui/input-focus.md`、`ui/controls.md`、共通C ABI DD、`ui.md`の文書単位改訂案を作り、次の初期契約をレビューする。
+
+1. CoreをInput routingとFocus状態の唯一の正本とし、targetからLogical parentへbubbleする。各handlerの後に所属・有効状態を再検証し、detach等でrouteが無効になれば残りを止める。
+2. 外部handlerがhandledを設定できる型付きInput event subscriptionを用意する。handledなら後続の祖先handlerとControlの既定動作（Button activation等）を止める。Property subscriptionの引数なしcallbackは使い回さない。
+3. 初期共通eventはkeyboard key-down/up、committed text、Button activationに必要なprimary pointer down/upとする。pointer move/wheel/capture、特定key割当、Tab traversal、shortcutは採用しない。TextBoxの文字編集とIME sessionは既存TextBox DDに接続し、OS固有composition詳細をこのunitへ持ち込まない。
+4. Focus状態の取得APIとFocus変更notificationを区別して定義する。RQ-09-049の順序保証を満たすため、notificationを公開する場合はFocusLost→FocusGained順と非再入配送を明記する。公開notificationを採用しない場合、要求の「変更後の状態を観測できる」をどう満たすかをDD上で明示する。
+5. C ABI event payload、subscription解除・callback破棄、handledの変更可能期間、callback中のdetach/Focus変更、エラー時の既定動作、各wrapperへの対応を一緒に定義する。宣言だけのC snippetを実装済みAPIと誤認させない。
+
+この案はRQ-09-068を満たすため公開event subscriptionを含むため、Coreだけに閉じた実装ではない。APIの詳細と対応範囲を文書全体で承認後、Rust Core、Rust/C++/C#/Python wrapperの影響を見積もって実装unitを再分割する。
+
+### 残る判断点
+
+- 初期Input subscriptionを各Widgetへ設けるか、Runtime一元登録でtarget/routeを受け取るか。
+- Focus変更notificationをC ABIで公開するか、getterによる観測だけを要求適合とするか。現行UTのevent-order oracleとの整合を含める。
+- keyboard eventの安定key identity/modifier/source fieldsとtext commit payloadのABI型。特定キー割当やIME composition payloadは別扱いとする。
+- Pointer down/upを一般Input subscriptionへ公開するか、Buttonの既定activationへだけ使うか。
+
+上記の判断はこの計画の推奨案を確定仕様とするものではない。文書全体のレビュー承認後に実装計画・unit inventoryを更新する。
+
 ## ブランチ・Git
 
 - 計画のレビュー承認前にcommit/pushしない。
@@ -56,4 +87,4 @@ Windows close-request接続までのCore/Windows unitは同revision CIを通過�
 
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
-| 2026-11-01 | 計画0.1案 | 利用者レビュー待ち | Windows close-request統合後の候補。計画承認・commit・実装開始・公開C ABI追加を意味しない |
+| 2026-11-01 | 計画0.1案 | 利用者承認 | Windows close-request統合後の候補。計画承認は設計改訂案の承認・実装開始を意味しない |
