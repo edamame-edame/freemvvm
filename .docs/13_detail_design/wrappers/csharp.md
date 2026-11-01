@@ -1,9 +1,9 @@
 # 言語ラッパー：C#
 
-- 文書版: 1.5
+- 文書版: 1.6
 - 文書ロール: detailed-design
-- 更新日: 2026-10-24
-- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
+- 更新日: 2026-11-02
+- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-30）。1.6全文承認済み（利用者、2026-11-02）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -549,6 +549,30 @@ public RgbColor BackgroundRgb { get; set; }
 public void ResetBackgroundRgb();
 ```
 
+## Input event wrapper API（1.6改訂案・全文レビュー待ち）
+
+要求根拠: [RQ-03-002](../../11_requirements/RQ-03_language-support.md#rq-03-002)、[RQ-03-006](../../11_requirements/RQ-03_language-support.md#rq-03-006)、[RQ-04-008](../../11_requirements/RQ-04_abi-boundary.md#rq-04-008)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-068](../../11_requirements/RQ-09_ui-scope.md#rq-09-068)。
+
+各public Widget wrapperに同じ操作を追加する。InputEventViewはC ABI borrowed handleを内包するcallback-only viewで、native tokenをretainしない。利用者が参照を保存した場合、callback終了後のKind propertyはInvalidOperationExceptionを投げ、Try* accessorはUI_INVALID_HANDLEを含むfailure resultを返す。
+
+    public UiResult<UiSubscription> TrySubscribeInput(
+        InputEventMask kinds,
+        Action<InputEventView> callback);
+
+    public sealed class InputEventView
+    {
+        public InputEventKind Kind { get; }
+        public UiResult<KeyIdentity> TryGetKey();
+        public UiResult<Modifiers> TryGetModifiers();
+        public UiResult<string> TryGetText();
+        public UiResult<PointDip> TryGetPointerPosition();
+        public UiResult<bool> TrySetHandled();
+    }
+
+Text getterはcallback中にUTF-8をmanaged stringへcopyし、pointer位置はclient DIPとする。kindとpayloadが一致しないgetterはUI_WRONG_TYPEを含む失敗結果を返す。
+
+registration失敗時はGC rootをC#側で解放し、成功時はnative destroyまでrootする。UiSubscription.TryCancel()は新規callback開始を止める。TryClose()/Dispose()はhandleをreleaseするだけでcancelの代わりにしない。delegate例外はunmanaged trampoline内で捕捉し既存callback failure handlerへ渡し、handler未設定時はstderrへ診断を出す。eventをhandledへしてdefault actionを止め、handler自身の例外もunmanaged境界へ出さない。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -564,3 +588,4 @@ public void ResetBackgroundRgb();
 | 2026-10-24 | 1.4全文 | 利用者の「承認します。実装を進めてください」により文書全体を承認。実装・試験状態は別管理 |
 | 2026-10-30 | 1.5改訂案 | RQ-09-074に対応する`RgbColor`・`BackgroundRgb`・reset APIを提案。全文レビュー待ち |
 | 2026-10-30 | 1.5全文 | 利用者の「ok」によりC# Window `RgbColor`・`BackgroundRgb`・reset APIを含む全文を承認。実装・試験合格は別管理 |
+| 2026-11-02 | 1.6全文 | 利用者の「ok」により、Input event callback/view、lifetime、cancelと例外境界を含む全文を承認。実装・試験状態は別管理 |

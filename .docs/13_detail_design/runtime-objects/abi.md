@@ -1,9 +1,9 @@
 # 共通C ABI：宣言・検査・互換性
 
-- 文書版: 1.5
+- 文書版: 1.6
 - 文書ロール: detailed-design
-- 更新日: 2026-11-01
-- 状態: 1.2全文承認済み（利用者、2026-10-19）。1.3初期UI Control API全文承認済み（利用者、2026-10-24）。1.4全文承認済み（利用者、2026-10-30）。Input event subscription 1.5全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
+- 更新日: 2026-11-02
+- 状態: 1.2全文承認済み（利用者、2026-10-19）。1.3初期UI Control API全文承認済み（利用者、2026-10-24）。1.4全文承認済み（利用者、2026-10-30）。Input event subscription 1.5全文承認済み（利用者、2026-11-01）。1.6全文承認済み（利用者、2026-11-02）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -972,6 +972,26 @@ ui_status ui_abi_1_widget_has_focus(ui_handle widget,
 
 この案のcallback引数・borrowed event lifetime・handled setterは各language wrapperに反映する。C ABIを承認しても各wrapper APIや実装・試験が完了したことにはならない。
 
+### UI Input event値表（1.6改訂案・全文レビュー待ち）
+
+要求根拠: [RQ-04-008](../../11_requirements/RQ-04_abi-boundary.md#rq-04-008)、[RQ-04-010](../../11_requirements/RQ-04_abi-boundary.md#rq-04-010)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-068](../../11_requirements/RQ-09_ui-scope.md#rq-09-068)。1.5で承認済みのsymbol/signature、feature ID 9、callback borrow、handled規則は維持し、未確定値だけを次のとおり提案する。
+
+| 値 | 数値・意味 |
+| --- | --- |
+| ui_input_event_kind | 1=KEY_DOWN、2=KEY_UP、3=TEXT_COMMIT、4=PRIMARY_POINTER_DOWN、5=PRIMARY_POINTER_UP。mask bitは1ULL << (kind - 1) |
+| ui_key_identity | [USB HID Usage Tables 1.7](https://usb.org/sites/default/files/hut1_7.pdf)のKeyboard/Keypad Usage Page 0x07で定義済みのUsage IDを返す。例: A=0x04、Enter=0x28、Backspace=0x2A、LeftControl=0xE0、RightGUI=0xE7。0はunknown/unmapped。予約値・未割当値は返さない |
+| UI_MODIFIER_SHIFT | 0x01 |
+| UI_MODIFIER_CONTROL | 0x02 |
+| UI_MODIFIER_ALT | 0x04 |
+| UI_MODIFIER_META | 0x08 |
+| UI_POINTER_BUTTON_PRIMARY | 1。初期pointer down/up eventはこのbuttonだけを返す |
+
+Key identityはkeycap文字ではなくphysical key identityであり、文字入力は別のTEXT_COMMIT eventを使う。左右のmodifier keyはHID Usageの個別identityを返す一方、modifier maskは左右のどちらかが押下中なら対応bitを立てる。CapsLock/NumLockのtoggle状態はmodifier maskに含めない。OSから識別できないkeyは0を返し、OS固有virtual-key値へfallbackしない。
+
+input_event_textはUTF-8 bytesとlengthを返し、容量不足時はrequired lengthだけを出力しbufferを部分更新しない。pointer getterはprimary buttonとclient DIP位置を返す。各getterのkind不一致、callback外borrowed handle、未知event kindは既承認のstatus/error mappingに従い失敗する。
+
+USB HID Usage Page 0x07を用いることで、layout依存の文字値と物理key identityを分ける。採用可否、Usage IDの将来追加/非キーボードdeviceの扱いは本版全文のレビュー対象である。
+
 ## クラス設計の補足（1.1承認済み）
 
 既承認1.0の実現規則を支える型・関連・所有・主要操作を整理した。内部型名とメソッドの分担は本改訂で補足する内部設計であり、既存公開APIの署名や外部保証を追加・変更するものではない。この節のクラス構成と追加図は1.1版全文の承認対象であり、実装・試験完了の証明とは区別する。
@@ -1043,3 +1063,4 @@ ApiInventoryEntryの所管は文書path/版/項目で示す案とし、既存sch
 | 2026-10-30 | 1.4全文 | 利用者の「ok」によりWindow background RGB getter/set/reset ABIとvalidation/atomicity契約を含む全文を承認。実装・試験合格は別管理 |
 | 2026-11-01 | 1.5改訂案 | RQ-09-068向けWidget Input subscription、borrowed event view、handled setter、Focus getter、feature ID 9を提案。1.4承認baselineを維持 |
 | 2026-11-01 | 1.5全文 | 利用者の「ok」によりInput callback ABI、borrowed event lifetime、handled setter、Focus getter、feature ID 9を含む全文を承認。宣言の実装・配布状態は別管理 |
+| 2026-11-02 | 1.6全文 | 利用者の「ok」によりHID key identity、modifier bit、primary pointer button数値とText getter結果を含む全文を承認。実装・配布状態は別管理 |

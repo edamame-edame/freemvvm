@@ -1,9 +1,9 @@
 # 言語ラッパー：Rust
 
-- 文書版: 1.7
+- 文書版: 1.8
 - 文書ロール: detailed-design
-- 更新日: 2026-10-30
-- 状態: 1.4～1.6全文承認済み（利用者、2026-10-24）。1.7全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
+- 更新日: 2026-11-02
+- 状態: 1.4～1.6全文承認済み（利用者、2026-10-24）。1.7全文承認済み（利用者、2026-10-30）。1.8全文承認済み（利用者、2026-11-02）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -583,6 +583,30 @@ impl Window {
 
 getterはoverrideの有無によらずeffective valueを返す。setterは一回のC ABI呼出しに3成分を渡し、Coreが無効値を拒否する。reset成功後のgetterはopaque white `(1.0, 1.0, 1.0)`を返す。
 
+## Input event wrapper API（1.8改訂案・全文レビュー待ち）
+
+要求根拠: [RQ-03-003](../../11_requirements/RQ-03_language-support.md#rq-03-003)、[RQ-03-007](../../11_requirements/RQ-03_language-support.md#rq-03-007)、[RQ-04-008](../../11_requirements/RQ-04_abi-boundary.md#rq-04-008)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-068](../../11_requirements/RQ-09_ui-scope.md#rq-09-068)。
+
+共通C ABI 1.6改訂案のborrowed event handleをRustのcallback期間borrowへ写す。全Widget wrapper型で同じ登録面を提供し、publicな共通Widget base class/traitは追加しない。
+
+    pub enum InputEvent<'event> {
+        KeyDown { key: KeyIdentity, modifiers: Modifiers },
+        KeyUp { key: KeyIdentity, modifiers: Modifiers },
+        TextCommit { text: &'event str },
+        PrimaryPointerDown { position: PointDip },
+        PrimaryPointerUp { position: PointDip },
+    }
+    impl InputEvent<'_> { pub fn set_handled(&mut self) -> Result<(), UiError>; }
+    For each concrete Widget wrapper, expose this method shape:
+        pub fn subscribe_input<F>(
+            &self, ui: &UiContext<'_>, kinds: InputEventMask, callback: F,
+        ) -> Result<Subscription, UiError>
+        where F: for<'event> FnMut(&mut InputEvent<'event>) + 'static;
+
+KeyIdentityはlayout非依存のphysical key identity、Modifiersはイベント時のShift/Control/Alt/Meta状態を表す。TextCommitの&strはUTF-8妥当性をC ABIで確認済みのcallback borrowとし、保存する場合はcallback内でto_owned()する。pointer位置は対象Window client DIP。set_handled()はfalseからtrueへのみ変更する。
+
+callbackはUI threadで直列・非再帰。登録失敗ではclosureをRust側が保持・破棄し、成功時だけCoreへ移す。既存Subscription::cancelは後続callbackの開始を止め、close/Dropはhandleをreleaseするだけでcancelの代わりにしない。panicはtrampolineでcatchし、元panic hookの診断を保ち、eventをhandledへしてdefault actionを止める。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -601,3 +625,4 @@ getterはoverrideの有無によらずeffective valueを返す。setterは一回
 | 2026-10-24 | 1.6全文 | 利用者の「OK」によりAsync Command Rust safe API、worker lease、cancel/completion、state/failure取得を含む全文を承認。実装・試験状態は別管理 |
 | 2026-10-30 | 1.7改訂案 | RQ-09-074に対応する`RgbColor`とWindow background get/set/reset APIを提案。全文レビュー待ち |
 | 2026-10-30 | 1.7全文 | 利用者の「ok」によりRust `RgbColor`とWindow background get/set/reset APIを含む全文を承認。実装・試験合格は別管理 |
+| 2026-11-02 | 1.8全文 | 利用者の「ok」により、Input event callback/view、lifetime、cancelと例外境界を含む全文を承認。実装・試験状態は別管理 |

@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 2.3
+- 文書版: 2.4
 - 文書ロール: detailed-design
-- 更新日: 2026-11-01
-- 状態: 1.6全文承認済み（利用者、2026-10-30）。Linux/Core 1.7～1.9全文承認済み（利用者、2026-10-31）。Windows GlyphRun 1.7全文承認済み（利用者、2026-11-01）。Window単位TextServiceとWindows worker所有2.1全文承認済み（利用者、2026-11-01）。2.2全文承認済み（利用者、2026-11-01）。Windows native input bridge 2.3全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
+- 更新日: 2026-11-02
+- 状態: 1.6全文承認済み（利用者、2026-10-30）。Linux/Core 1.7～1.9全文承認済み（利用者、2026-10-31）。Windows GlyphRun 1.7全文承認済み（利用者、2026-11-01）。Window単位TextServiceとWindows worker所有2.1全文承認済み（利用者、2026-11-01）。2.2全文承認済み（利用者、2026-11-01）。Windows native input bridge 2.3全文承認済み（利用者、2026-11-01）。2.4全文承認済み（利用者、2026-11-02）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -417,6 +417,22 @@ flowchart TB
 
 登録方法（compile-time feature、platform crate、または明示factory injection）、descriptor schema、auto-selection policy、diagnostic formatはこの案で固定しない。現実装のLinux factoryを壊さず、新backend追加がControl/Scene producerを変更しないことを設計上の適合条件にする。
 
+### v2.4改訂案: Windows native messageからneutral Input valuesへの変換（全文レビュー待ち）
+
+要求根拠: [RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-046](../../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-049](../../11_requirements/RQ-09_ui-scope.md#rq-09-049)、[RQ-09-056](../../11_requirements/RQ-09_ui-scope.md#rq-09-056)、[RQ-09-068](../../11_requirements/RQ-09_ui-scope.md#rq-09-068)。v2.3 sink/dispatcher/generation境界は維持し、共通ABI 1.6改訂案のneutral valuesへ次のnative inputを写す。OS固有値はCore/C ABIへ渡さない。
+
+| Windows source | neutral eventへの写像 | 順序・重複・範囲 |
+| --- | --- | --- |
+| WM_KEYDOWN / WM_KEYUP、WM_SYSKEYDOWN / WM_SYSKEYUP | [MicrosoftのScan 1/HID usage表](https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input)で定義されたscan codeとextended bitをHID Keyboard/Keypad Usage 0x07へ表引きし、左右modifierを区別。message処理時点のmodifier stateをShift/Control/Alt/Meta maskへ写す | 不明scan codeはkey identity 0。wParamのVK値はABIへ渡さない。system keyもnative default procedureへ引き渡しつつneutral eventをpostする。Core handledはnative messageを同期的に消費しない |
+| message pumpでTranslateMessageを通したUnicode WM_CHAR | Unicode scalarをUTF-8へencodeしTEXT_COMMITとしてpost。surrogate pairは一scalarへ結合 | WM_DEADCHAR/WM_SYSCHARはcommitしない。IME composition中のpreeditは本bridgeでは送らない。[Windows既定IME message処理](https://learn.microsoft.com/en-us/windows/win32/intl/ime-messages)へ委譲し、bridgeはWM_IME_CHAR/GCS_RESULTSTRを別経路で読む契約を追加せず、WM_CHARだけをcommit sourceとする。IME resultを二重postしない。IME実機試験でOS別に観測する |
+| WM_LBUTTONDOWN / WM_LBUTTONUP | mouse primary pointer down/up、button=UI_POINTER_BUTTON_PRIMARY | GET_X_LPARAM/GET_Y_LPARAM相当のsigned client pixelをopen時generationのDeviceScaleでDIPへ一度だけ変換する。 |
+| [WM_POINTERDOWN / WM_POINTERUP](https://learn.microsoft.com/en-us/windows/win32/inputmsg/wm-pointerdown)（PT_TOUCH / PT_PEN） | IS_POINTER_PRIMARY_WPARAMとIS_POINTER_FIRSTBUTTON_WPARAMがともにtrueのcontactだけをprimary pointer down/upとしてpostする。PT_MOUSEはWM_LBUTTON pathへ一本化する | WM_POINTERのscreen pixelをScreenToClientでclient pixelへ変換後、同じgeneration DeviceScaleでDIPへ変換する。採用したtouch/pen messageは0を返しDefWindowProcによるmouse promotionを止める。[EnableMouseInPointer](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enablemouseinpointer)はprocess-globalなので呼ばない。OS captureは利用者/APIのpointer captureとして公開せず、Core hit-test/default actionも変更しない。pointer move/wheelは追加しない |
+| WM_SETFOCUS / WM_KILLFOCUSとWindow activation | generation付きnative focus/activation intentを既存Core sinkへpost | Core FocusManagerが意味状態を更新する。native message workerからWidget callbackを呼ばない |
+
+message loopはkey messageにTranslateMessageを一度実行し、各WndProcは値copyしてsinkへpostした後すぐ戻る。全eventは同一peer generationのFIFOで処理する。stale/closed/shutdown peerでは破棄する。TextCommitとfocus-lossの競合は受信順を保ち、FocusLost後に遅延commitを別targetへ付け替えない。
+
+この提案はWindows mouseと、OSがprimaryとして示すtouch/pen contactのprimary actionを対象とする。OS IMEの候補UIはWindows既定処理へ委ね、Core TextBoxへ確定文字だけを渡す。IME実機でWM_CHAR/IMEメッセージの重複やsurrogate処理を確認するまで実装仕様として承認しない。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -448,3 +464,4 @@ flowchart TB
 | 2026-11-01 | 2.2全文 | 利用者の「おK」によりWindows native close intent/Core request bridge、decision別lifecycle、DRM/KMS profile境界を含む全文を承認。実装・試験状態は別管理 |
 | 2026-11-01 | 2.3改訂案 | Windows input sink、native event順序、DIP変換、IME commit順、Core focus/route責務を提案。2.2承認範囲を維持 |
 | 2026-11-01 | 2.3全文 | 利用者の「ok」によりWindows native input bridge、event順序、DIP変換、Core focus/route境界を含む全文を承認。具体native API・実装・試験は別管理 |
+| 2026-11-02 | 2.4全文 | 利用者の「ok」によりWindows key/text/IME、mouseとprimary touch/pen、DIP/order bridgeを含む全文を承認。native実機試験は別管理 |

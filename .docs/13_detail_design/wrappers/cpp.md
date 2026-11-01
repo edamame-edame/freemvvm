@@ -1,9 +1,9 @@
 # 言語ラッパー：C++
 
-- 文書版: 1.4 改訂案
+- 文書版: 1.5
 - 文書ロール: detailed-design
-- 更新日: 2026-10-30
-- 状態: 1.2全文・1.3 Binding API補足承認済み。1.4全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
+- 更新日: 2026-11-02
+- 状態: 1.2全文・1.3 Binding API補足承認済み。1.4全文承認済み（利用者、2026-10-30）。1.5全文承認済み（利用者、2026-11-02）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -488,6 +488,32 @@ Result<void> Window::set_background_rgb(RgbColor color);
 Result<void> Window::reset_background_rgb();
 ```
 
+## Input event wrapper API（1.5改訂案・全文レビュー待ち）
+
+要求根拠: [RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-03-005](../../11_requirements/RQ-03_language-support.md#rq-03-005)、[RQ-04-008](../../11_requirements/RQ-04_abi-boundary.md#rq-04-008)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-068](../../11_requirements/RQ-09_ui-scope.md#rq-09-068)。
+
+各公開Widget型へ同じ入力登録memberを追加し、共通の公開Widget base classは導入しない。InputEventViewはcallback中のborrowed viewで、copy/moveを禁止する。callback中のborrowed handleだけを参照する。
+
+    class InputEventView final {
+     public:
+      Result<InputEventKind> kind() const noexcept;
+      Result<KeyIdentity> key() const noexcept;
+      Result<Modifiers> modifiers() const noexcept;
+      Result<std::string> text() const noexcept;
+      Result<PointDip> pointer_position() const noexcept;
+      Result<void> set_handled() noexcept;
+      InputEventView(const InputEventView&) = delete;
+      InputEventView(InputEventView&&) = delete;
+    };
+    using InputHandler = std::function<void(InputEventView&)>;
+    // This member shape is added to each concrete Widget wrapper.
+    Result<Subscription> subscribe_input(
+        InputEventMask kinds, InputHandler handler) noexcept;
+
+kindに応じたpayload getterは不一致をUI_WRONG_TYPEで返す。Textはcallback内でUTF-8内容を所有stringへcopyし、pointer位置はclient DIPである。set_handled()はcallback中のみ成功する。
+
+登録時は既存callback root/cleanup規則に従い、成功した場合だけuserdataをCoreへ移す。Subscription::cancel()は以後のcallback開始を止め、close()/destructorはregistration handleをreleaseするだけである。callbackからのC++例外はnoexcept trampolineで捕捉し、既存callback failure handlerへ渡し、handler未設定時はstderrへ診断を出した後eventをhandledへしてdefault actionを止める。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -501,3 +527,4 @@ Result<void> Window::reset_background_rgb();
 | 2026-10-24 | 1.3 Binding API補足 | 利用者が承認済み計画/API案を承認。`Property<T>::bind_to`、OneTime optional、cancel/release分離、error snapshotとSubscriptionを具体化。実装・試験状態は別管理 |
 | 2026-10-30 | 1.4改訂案 | RQ-09-074に対応する`RgbColor`とWindow background get/set/reset APIを追加提案。全文レビュー待ち |
 | 2026-10-30 | 1.4全文 | 利用者の「ok」により`Result`ベースのWindow background get/set/reset APIを含む全文を承認。実装・試験合格は別管理 |
+| 2026-11-02 | 1.5全文 | 利用者の「ok」により、Input event callback/view、lifetime、cancelと例外境界を含む全文を承認。実装・試験状態は別管理 |
