@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 1.9
+- 文書版: 2.0
 - 文書ロール: detailed-design
-- 更新日: 2026-10-31
-- 状態: 1.6全文承認済み（利用者、2026-10-30）。1.7 / 1.8 / 1.9全文承認済み（利用者、2026-10-31）。font source/resolution exact profile valuesと実装・試験状態は別管理
+- 更新日: 2026-11-01
+- 状態: 1.6全文承認済み（利用者、2026-10-30）。Linux/Core 1.7～1.9全文承認済み（利用者、2026-10-31）。Windows GlyphRun 1.7全文承認済み（利用者、2026-11-01）。承認済み内容を統合。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -200,6 +200,19 @@ SPIの形は概ね`TextService::resolve_and_shape(TextDisplaySnapshot, FontReque
 
 Linux initial profileではFontconfigのsystem configurationを参照する案だが、headless DRM/KMSでは「システム既定」がdistribution設定のgeneric family/fallback chainを意味し、GNOME/KDE等のdesktop UI font settingを自動取得するものではない。exact resolution mode、process locale/language hint、fallback順、identityの診断・cache keyはimplementation/test planで具体化する。これらがRQ-11-023の「各profileのfont/文字対応識別」と一致することをレビューし、System defaultを一つのbundled font/hashへ置き換えない。
 
+## GlyphRunのfont・color契約（1.7承認済み）
+
+本節はRQ-09-053/072およびRQ-11-023に対応する、初期Text描画の共通値とWindows profileでのfont解決を定める。Windows profileのfont family名・画素単位の描画結果は固定しない。
+
+- `GlyphRunSnapshot`はRGBA text colorを保持し、省略時は不透明な黒 `[0, 0, 0, 1]` とする。Windowの背景色とは別の値としてDrawOpに含める。色値は既存DrawOpと同じnormalized RGBA範囲を使う。
+- TextServiceはglyph shaping前にprofileのfont sourceを解決する。font family未指定時はOS profileのsystem font resolutionを使用し、特定のfamily名（例: `MS UI Gothic`）やWindows Fontsディレクトリの固定パスを共通既定値にしない。WindowsではDirectWrite system font collectionとOSの言語/script fallbackを用い、OSが実際に選んだfont faceを使ってshapingする。Windows 11の日本語profileでOSが示す日本語UI font/fallbackを利用し、固定familyへのpinはしない。
+- shaping結果の各GlyphRunは、そのglyph IDを生成した具体的font faceを識別するdigestを保持する。font fallbackで一つのtext範囲に複数faceが必要な場合はfaceごとにrunを分割する。rendererはdigestに対応する同一font faceを使い、描画時に別faceへ暗黙置換しない。
+- profileまたは利用者が`.ttf` fileを明示した場合、Windows adapterはDirectWriteのfont file reference/custom font collectionから読み込む。Windows Fonts directoryへの独自走査・fontのOS登録は行わない。未指定system fontと明示file sourceを区別し、明示fileの欠落・形式不正・digest不一致はTextServiceの明示失敗とする。font resolverが既存GlyphRunのdigestをrenderer側で解決できない場合はframe failureとし、Presented成功にしない。
+- TextService/rendererはfont faceとglyph cacheをfont digest + size + scale + glyph IDで分離する。Windows DirectWrite object/file referenceはbackend内のownerが保持し、renderer close時に一度だけ解放する。system font自体の登録・削除・書換えは行わない。
+- この契約はfont familyの固定やpixel-identical renderingを保証しない。profile実機記録ではWindows version、選択されたfont face/digest、language、asset sourceを識別し、CI unitではOSごとの実font選択を期待値にしない。
+
+Windows profileの一次資料: [Windows Typography](https://learn.microsoft.com/en-us/windows/apps/design/signature-experiences/typography)はSegoe UI VariableをWindows app UI向け推奨fontとし、日本語UI familyにYu Gothic UIを掲載する。[DirectWrite system font collection](https://learn.microsoft.com/en-us/windows/win32/api/dwrite/nf-dwrite-idwritefactory-getsystemfontcollection)はインストール済みfontを取得し、[custom font collection](https://learn.microsoft.com/en-us/windows/win32/directwrite/custom-font-collections)はアプリ固有font fileの取込を扱う。旧[SystemFonts.DefaultFont資料](https://learn.microsoft.com/en-us/dotnet/api/system.drawing.systemfonts.defaultfont?view=windowsdesktop-10.0)でMS UI Gothicが記載されるのはWindows NT 4.x日本語環境であり、現行Windowsの一律default familyとはしない。
+
 ## Text engine・IME・OS Accessibility
 
 ### 実装規則
@@ -379,3 +392,5 @@ flowchart TB
 | 2026-10-31 | 1.8全文 | 利用者の「ok」により提案された実現契約・失敗境界・候補比較を含む文書全文を承認。font source/version/digest、color、size、coverage corpusの採用値は未選定であり、実装開始・依存追加を意味しない |
 | 2026-10-31 | 1.9改訂案 | font未指定時はsystem/platform defaultを使う利用者指示を反映。Core-neutral request、Platform解決、ResolvedTextSnapshot、解決faceごとのidentity/fallback記録とheadless Linux境界を提案。全文レビュー待ち |
 | 2026-10-31 | 1.9全文 | 利用者の「ok」によりPlatformDefault request、Platform TextService、font identity付きResolvedTextSnapshot、system fallback、headless Linux境界を含む全文を承認。exact Linux resolution mode・locale hint・package/fallback orderは別途unit設計で確定 |
+| 2026-11-01 | Windows GlyphRun 1.7全文 | 利用者の「ok」で黒既定、system font、明示TTF、face digest/lifecycleを承認。実装・試験は別管理 |
+| 2026-11-01 | 2.0統合 | Core/Linux 1.9とWindows 1.7の承認済み内容を統合。新たな設計判断なし |

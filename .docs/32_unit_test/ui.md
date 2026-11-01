@@ -1,8 +1,8 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
-- 文書版: 1.2
-- 状態: 0.8～1.2全文承認済み（利用者、2026-10-30～2026-10-31）。具体profile oracle・試験実装・実行状態は別管理
-- 更新日: 2026-10-31
+- 文書版: 1.3
+- 状態: 0.8～1.2全文承認済み（利用者、2026-10-30～2026-10-31）。1.0～1.1全文承認済み（利用者、2026-11-01）。具体profile oracle・試験実装・実行状態は別管理
+- 更新日: 2026-11-01
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
 
@@ -83,6 +83,28 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 実行記録: `UNIT-CORE-073` / `UT-PLATFORM-ADAPTER-001` はfocused command `cargo test -p freemvvm-core platform_factory_` で2 tests pass。実装SHA `153a0d07afe7c869258fc021f149b9b271a0140c` の[Windows/Linux CI run 40314950652](https://github.com/edamame-edame/freemvvm/actions/runs/40314950652)はsuccess。全体`tools/dev.py check`と`tools/dev.py minimum`も同一実装revisionでlocal pass。
 
 実行記録: `UNIT-PLATFORM-002` / `UT-PLATFORM-PRESENT-001`・`UT-PLATFORM-LOSS-001`・`UT-PLATFORM-SCALE-CORE-001`は`cargo test -p freemvvm-core` 160 tests、`cargo test -p freemvvm-platform-linux` 10 tests、Linux target `cargo check --tests` / `cargo clippy --all-targets -- -D warnings`、`tools/dev.py check`、`tools/dev.py minimum`がlocal pass。Core指定の正規化RGB背景色をSceneSnapshotが保持し、damage-only copyでも維持することと、renderer planが同じ色をsurface clear色として使うことを確認。実装SHA `a7879aa3f66342cf7337d20ea1370e8cf8de4c84` の[同SHA Windows/Linux CI run 40514465626](https://github.com/edamame-edame/freemvvm/actions/runs/40514465626)もsuccess。実機描画は未確認。
+
+## Core GlyphRunSnapshot試験設計
+
+`UNIT-CORE-088`では、`GlyphRunSnapshot`がRGBA text colorを保持し、現段階の生成時defaultをopaque blackとする。既存のfont digest・size・bounds・glyph placementsは不変とし、cloneおよびSceneSnapshotへの格納でcolorが維持されることを確認する。色指定APIや任意色の設定機能はこのunitへ追加しない。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-glyph-run-001"></a>UT-CORE-GLYPH-RUN-001 | colorを指定せずGlyphRunを生成し、SceneSnapshotへの変換とcloneを確認する | colorはopaque black `[0,0,0,1]`。clone/SceneSnapshot後も維持される。font digest・glyph order・placement・boundsは既存値のまま。任意colorのsetterや公開APIは追加しない | [RQ-09-053](../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-072](../11_requirements/RQ-09_ui-scope.md#rq-09-072)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01) |
+
+これはCore層の独立unit `UNIT-CORE-088`であり、Windows GlyphRun描画より前に実装・試験する。C ABIや言語wrapperの公開面は追加しない。
+
+## Windows Platform Adapter試験設計（1.0～1.1全文承認済み）
+
+0.9承認済みbaselineを維持する。Windows x64 adapter用のunit設計1.0は全文承認済み。fake Win32/Direct2D/DirectWrite境界で実装のlifecycle・operation forwarding・failure mappingを検証し、visible Window、GPU driver、画面pixel品質の実機動作とは分離する。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-platform-windows-peer-001"></a>UT-PLATFORM-WINDOWS-PEER-001 | fake Win32 hostでopen成功/失敗、初期client area、resize通知、旧generation通知、close/reopen、shutdownを個別に制御する | Runtime生成だけでWindowを表示しない。open失敗後に再試行可能。resizeは対象generationの有効peerにだけ伝わり、close/reopen・shutdownでnative ownerを設計順に解放する。Core Window/Treeはpeer closeで破棄しない | [RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-11-009](../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-platform-windows-render-001"></a>UT-PLATFORM-WINDOWS-RENDER-001 | fake Direct2D targetへ既知SceneSnapshot（background RGB、DeviceScale、Clip、FillRect）とFrameTicketを渡し、同期失敗・Presented/failed completion・stale ticketを制御する | 設計済みDrawOp順序、scale、clip、背景色がbackend境界へ保たれる。submit受付とPresentedを混同せず、失敗/stale completionを成功として報告しない。未対応operationは成功扱いしない | [RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-019](../11_requirements/RQ-11_platform.md#rq-11-019)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-platform-windows-text-001"></a>UT-PLATFORM-WINDOWS-TEXT-001 | fake font resolverへsystem defaultと明示TTF sourceを与え、生成されたGlyphRunSnapshotをfake DirectWrite boundaryへ渡す。face digest不一致・font欠落・不正file、描画failure、renderer closeを制御する | default RGBA blackがDirectWriteへopaque blackとして渡り、resolverが選択したfont face digest・glyph ID・配置を維持して描画する。fallbackをrendererで再解決しない。明示TTFの欠落/不正、digest解決不能、描画failureはFrame failureまたはshape failureとして成功扱いせず、資源を重複解放しない。OSの実family名・pixel出力はoracleにしない | [RQ-09-053](../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-072](../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+
+各testは可視Windowを起動せず、対象Windows API boundaryをfake可能な内部traitまたは専用test doubleで制御する。実装方式がCOM/Win32のどのAPI形態を採るか、具体的なsource path・symbol・focused commandは実装開始前のAPI/dependency監査で確定する。OSのsystem font collection/fallback自体はfake resolver外のprofile smokeで確認し、CIでは特定family名や文字pixelを期待値にしない。
 
 ## ControlViewConnector・複数renderer・Scene生成の試験設計（0.8改訂案）
 
@@ -172,6 +194,8 @@ UNIT-PLATFORM-003のDocker Debian 12実行結果: `cargo test -p freemvvm-platfo
 | 2026-10-31 | 1.1全文 | 利用者 | 「ok」によりtest caseとfailure oracle案の全文を承認。font/profile/color/size/corpusの具体oracle選定とtest実装・実行は別管理 |
 | 2026-10-31 | 1.2改訂案 | — | font未指定時のPlatform system default/fallback、Core-neutral request/ResolvedTextSnapshot、Linux headless Fontconfig profile testを追加。1.1 approved testsの既存baselineを維持し全文レビュー待ち |
 | 2026-10-31 | 1.2全文 | 利用者 | 「ok」によりPlatform default resolution、fallback identity、Core/Layout/Scene snapshot共有、Linux headless Fontconfig test案を含む全文を承認。具体resolver mode・corpus・test実装/実行は別管理 |
+| 2026-11-01 | 1.0全文 | 利用者 | Windows peer/renderer/GlyphRun試験設計を承認。実装・実行は別管理 |
+| 2026-11-01 | 1.1全文 | 利用者 | Core GlyphRun黒既定とWindows DirectWrite font/color試験を承認。実装・実行は別管理 |
 
 ## 改訂履歴
 
@@ -189,3 +213,4 @@ UNIT-PLATFORM-003のDocker Debian 12実行結果: `cargo test -p freemvvm-platfo
 | 1.0 | 2026-10-31 | Window environmentからSceneSnapshotへのDeviceScale transport、Core異方性値とLinux現profile 1:1 test proposalを追加 | Codex | 文書全体承認済み。UNIT-CORE-083のfake test pass、実機確認は未実施 |
 | 1.1 | 2026-10-31 | Linux TextService/GlyphRun asset lock、same-metrics layout/scene、profile failureとGLES render test proposalを追加 | Codex | 文書全文承認済み。profile/color/size/corpusの具体oracle選定、test実装・実行は別段階 |
 | 1.2 | 2026-10-31 | 未指定fontのPlatform default解決・fallback identity、Core/Platform seam、Linux headless profileのtest proposalを追加 | Codex | 文書全文承認済み。exact profile oracle、test実装・実行は別管理 |
+| 1.3 | 2026-11-01 | Linux/CoreのTextService・Scene試験設計へWindows peer/Direct2D/DirectWriteとGlyphRun default試験を統合 | Codex | 構成要素は個別に承認済み。試験実装・実行状態は別管理 |

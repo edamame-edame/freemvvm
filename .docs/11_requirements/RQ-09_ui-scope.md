@@ -1,8 +1,8 @@
 # RQ-09: UI機能と段階的な対象範囲
 
 - 文書版: 0.7
-- 状態: 0.6全文承認済み（利用者、2026-10-30）。0.7全文承認済み（利用者、2026-10-31）。既存承認内容を維持
-- 更新日: 2026-10-31
+- 状態: 0.6全文承認済み（利用者、2026-10-30）。0.7全文承認済み（利用者、2026-10-31、2026-11-01）。既存承認内容を維持
+- 更新日: 2026-11-01
 - 入口: [要求仕様索引](reqirements-specification.md)
 
 ## 概要
@@ -86,7 +86,7 @@
 | <a id="rq-09-069"></a>RQ-09-069 | 再所属失敗と再試行 | 切離し対象の表示資源再作成に失敗してもDetached構造・確定値・登録を保持し、明示再試行できること。所属だけを成功として公開しないこと。 | 初期共通基盤 |
 | <a id="rq-09-070"></a>RQ-09-070 | Containerのfocusable範囲 | 初期版ではWindow/StackPanelの明示focusable=trueへの変更を受け付けないこと。Windowのactive状態は子のkeyboard focusと区別すること。 | 初期共通基盤 |
 | <a id="rq-09-071"></a>RQ-09-071 | Window開閉とclose判断 | Windowの表示開始・終了を明示でき、終了後もCore状態を保持して再表示できること。close要求をAccept/Decline/Deferで判断でき、既定Accept、未解決判断の破棄はDeclineとすること。Runtime終了は個別vetoの対象にしないこと。 | 初期共通基盤 |
-| <a id="rq-09-072"></a>RQ-09-072 | 初期text表示の範囲 | 初期Textは単一paragraphの表示、client clipを提供し、soft-wrap/ellipsis/選択copyの追加を必須に含めないこと。Buttonの表示labelとAccessibility nameは独立すること。 | 初期共通基盤 |
+| <a id="rq-09-072"></a>RQ-09-072 | 初期text表示の範囲 | 初期Textは単一paragraphの表示、client clipを提供し、text color未指定時は不透明な黒を使用すること。soft-wrap/ellipsis/選択copyの追加を必須に含めないこと。Buttonの表示labelとAccessibility nameは独立すること。 | 初期共通基盤 |
 | <a id="rq-09-073"></a>RQ-09-073 | 次段階Style/Theme/Resource/Template | 次段階でtyped表示設定の再利用、共有外観切替、local→Logical祖先→Runtime themeのResource参照、Logical identityを保つ内部表示差替えを提供すること。未定義/型不一致/cycleを明示失敗とし、任意script実行を必須に含めないこと。 | 次段階 |
 | <a id="rq-09-074"></a>RQ-09-074（改訂案） | Window背景色 | 各Windowの背景色を利用者が指定・取得でき、未指定時は不透明な白（RGB #FFFFFF）を使用すること。指定解除後は規定値に戻ること。色はnormalized RGB各成分0～1で指定し、非有限値・範囲外値は拒否して既存色を保つ。背景色はwindow client領域へ適用され、Layout寸法・子Controlの表示色・Button label・Accessibility nameを変更しないこと。 | 初期共通基盤 |
 | <a id="rq-09-075"></a>RQ-09-075 | 未指定fontの既定表示 | fontが明示指定されていない初期Text系Controlは、実行中のPlatform profileが提供するsystem default fontを用いて表示すること。Platform profile間でfamily・字形・pixel outputが異なることを許容し、同一font appearanceを要求しない。 | 初期共通基盤 |
@@ -134,6 +134,8 @@
 | 2026-10-30 | 0.6全文 / RQ-09-074 | 利用者 | 「ok」によりWindow背景色、未指定時のopaque white、normalized RGB範囲、invalid値拒否と既存値保持を含む全文を承認。設計実装・test合格は別管理 |
 | 2026-10-31 | 0.7改訂案 / RQ-09-075 | — | 利用者指示「指定無しならシステムのデフォルトフォント駆動で動かしたい」に基づきsystem default使用とplatform間の見た目差を提案。全文レビュー待ち。0.6承認baselineを維持 |
 | 2026-10-31 | 0.7全文 / RQ-09-075 | 利用者 | 「ok」により未指定時Platform profile system default使用とprofile間appearance差を含む全文を承認。Platform固有resolution方式は設計へ委譲し、実装・test合格は別管理 |
+| 2026-11-01 | 0.7改訂案 / RQ-09-072 | — | 初期Textの未指定colorをopaque blackとする提案。0.6承認範囲を維持し全文レビュー待ち |
+| 2026-11-01 | 0.7全文 / RQ-09-072 | 利用者 | 「ok」により初期Textの未指定colorを不透明な黒とする変更を含む全文を承認。下流設計・実装・試験は別管理 |
 
 ## 改訂履歴（具体化適用）
 
@@ -141,4 +143,4 @@
 | --- | --- | --- | --- |
 | 0.5 | 2026-10-17 | 要求変更 RQ-09-062, RQ-09-063, RQ-09-064, RQ-09-065, RQ-09-066, RQ-09-067, RQ-09-068, RQ-09-069, RQ-09-070, RQ-09-071, RQ-09-072, RQ-09-073を正本へ適用し、旧判断との対応を保持 | Codex |
 | 0.6 | 2026-10-30 | Window背景色を未指定時opaque white・Window単位で指定可能とするRQ-09-074を追加。全文承認済み、既存73要求の承認状態を維持 | Codex |
-| 0.7 | 2026-10-31 | 未指定fontはPlatform profile system defaultを使い、profile間のfont appearance差を許容するRQ-09-075を追加。利用者全文承認済み | Codex |
+| 0.7 | 2026-10-31～2026-11-01 | RQ-09-075の未指定font既定とRQ-09-072の未指定color既定を反映。両変更を含む全文承認済み | Codex |

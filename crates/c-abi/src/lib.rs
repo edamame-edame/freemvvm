@@ -74,7 +74,9 @@ use freemvvm_core::abi_support::{
     window_set_content as core_window_set_content,
 };
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(test)))]
+use freemvvm_core::abi_support::runtime_create_handle_with_platform_factory;
+#[cfg(all(target_os = "windows", not(test)))]
 use freemvvm_core::abi_support::runtime_create_handle_with_platform_factory;
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
 use std::ffi::c_void;
@@ -247,9 +249,14 @@ pub unsafe extern "C" fn ui_abi_1_runtime_create(
         return UI_INVALID_ARGUMENT;
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(test)]
+    let create = || freemvvm_core::abi_support::runtime_create_handle();
+    #[cfg(all(target_os = "linux", not(test)))]
     let create = || runtime_create_handle_with_platform_factory(freemvvm_platform_linux::factory());
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(all(target_os = "windows", not(test)))]
+    let create =
+        || runtime_create_handle_with_platform_factory(freemvvm_platform_windows::factory());
+    #[cfg(all(not(test), not(any(target_os = "linux", target_os = "windows"))))]
     let create = || freemvvm_core::abi_support::runtime_create_handle();
 
     match catch_runtime_creation(create) {

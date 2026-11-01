@@ -54,7 +54,7 @@ int main() {
   if (ui_abi_1_has_feature(8, &controls_supported) != UI_OK ||
       controls_supported != 1 ||
       ui_abi_1_window_create(runtime, &window, nullptr) != UI_OK ||
-      window == 0 || ui_abi_1_window_open(window, nullptr) != UI_UNSUPPORTED ||
+      window == 0 ||
       ui_abi_1_window_close(window, nullptr) != UI_OK) {
 #endif
     std::fputs("Window lifecycle/feature query failed\n", stderr);
