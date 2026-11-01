@@ -1,7 +1,7 @@
 # 0.0.1 利用可能なUIライブラリを目指す実装・リリース計画
 
-- 計画版: 0.1
-- 状態: 計画承認済み（利用者、2026-10-24）。release判断・tag・公開は別途
+- 計画版: 0.2改訂案
+- 状態: 0.1は計画承認済み（利用者、2026-10-24）。Windows/LinuxのOS close intent連携を0.0.1残課題へ追加。commit前レビュー待ち。release判断・tag・公開は別途
 - 作成日: 2026-10-24
 - 対象: 0.0.0を基点に、利用者アプリから実際にUIを構築・表示・操作できる0.0.1候補を完成させる
 - 要求の正本: [要求仕様索引](../11_requirements/reqirements-specification.md)と各RQ章
@@ -21,6 +21,13 @@
 - 既存要求や承認済み設計にない外部保証・Control動作・Platform選択を、この計画だけで追加しない。差異が見つかった場合は、要求・設計・試験への影響と変更案を分けてレビューする。
 - 別作業のRust inner WebEngine crate branchは自動的に統合しない。適用要求、既存Platform設計との適合、独立した試験結果を確認してから、0.0.1への採否を別途レビューする。
 
+## 0.0.1に残すPlatform close-intent課題
+
+- [ ] Windows Win32とLinux DRM/KMSの各Platform Adapterで、OS/native Windowのclose intentを既存Core Window close-request経路へ接続する。
+- close intentを受けたことだけでRuntimeやCommand/screen ownerを暗黙shutdownしない。既存Core close-requestの判断・lifecycle契約に従う。
+- 詳細設計、unit分割、各OS eventの具体的な取り込み方法とtest oracleは後段で具体化する。ここでは新しいclose policyや公開APIを決めない。
+- WindowsとLinuxの両targetで接続とCoreへの伝達を検証し、該当するprofile evidenceを0.0.1候補SHAへ結び付ける。両targetの未実装・未検証が残る間はrelease完了としない。
+
 ## 完了条件
 
 以下をすべて満たした候補だけを0.0.1 release reviewへ進める。
@@ -32,6 +39,7 @@
 5. [共通UI縦断・profile・配布物](../30_release_test/system-scenarios.md)の対象scenario、要求test、unit test、version回帰を候補の同一commitで実施し、report・対象SHA・profileを記録する。
 6. 文書link、`tools/dev.py check`、`tools/dev.py minimum`、対象platform build、全unit/consumer testが成功し、対象要求とtestの未対応・孤立がない。
 7. README、利用者向け導入手順、対応target/profile、未対応範囲、既知制約が実成果物と一致する。
+8. [0.0.1に残すPlatform close-intent課題](#001に残すplatform-close-intent課題)をWindows/Linux両targetで実装・検証し、OS close intentがCore close-requestへ届き、Runtime全体を暗黙shutdownしないことを確認する。
 
 ## 作業段階
 
@@ -51,6 +59,7 @@
 ### Platform、描画、入力、Accessibility
 
 - Platform境界、Window/surface、OS event loop、描画、keyboard/text/IME、Accessibility接続を、承認済みPlatform設計と要求に従って実装する。
+- Windows/LinuxのOS close intentからCore Window close-requestへの接続を、既存Core lifecycleを再利用して実装・検証する。具体化は上記残課題の後段unitで行う。
 - 初期targetと組み込みLinux profileを分けてbuild・実行する。cross-build成功、OS上のUI実行、代表boardでの実機確認を別証拠として記録する。
 - TextBox編集、Focus移動、IME commit/cancel、遅延event、Accessibility name/role/actionを、release scenarioと対応付けて検証する。
 - 新しいRenderer、text engine、OS API、WebEngineを採用する必要が生じた場合は、実装前に該当設計文書全体のレビューを行う。
@@ -96,3 +105,4 @@
 | --- | --- | --- | --- |
 | 2026-10-24 | 0.1 / 0.0.1利用可能UIライブラリ計画 | 利用者レビュー待ち | READMEと承認済みRQ/設計/release testを照合して初版作成。承認・実装開始・公開を意味しない |
 | 2026-10-24 | 0.1 / 0.0.1候補の実装計画・version branch運用 | 利用者 | 「0.0.1のブランチとして切ってから進めて」「Aで進めましょう」により計画とA方針を承認。各unitの設計承認、release合格、tag、公開は個別に判断する |
+| 2026-11-01 | 0.2改訂案 / Windows・Linux OS close intent | commit前レビュー待ち | 利用者指示により既存Platform close-request接続を0.0.1残課題とrelease gateへ追加。詳細設計・unit・test oracleは未具体化 |
