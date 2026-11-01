@@ -42,7 +42,7 @@
 ## UNIT-PLATFORM-WINDOWS-001 実装進捗
 
 - 実装メモ: [Windows Platform Adapter / Win32 peer](../01_memory/platform-windows-adapter.md)
-- 状態: UNIT-001は実装・local検証・同revision Windows/Linux CI完了。UNIT-002は実装・local検証完了（同revisionCI待ち）。UNIT-003、Windows GUI実機確認は未着手。
+- 状態: UNIT-001/002は実装・local検証・同revision Windows/Linux CI完了。UNIT-003、Windows GUI実機確認は未着手。
 - 実装: `crates/platform-windows`にWin32 peerと専用message workerを追加し、`Window.open()`時だけnative Windowを生成する。初期client areaと`WM_SIZE`をDIP・generation付きでCoreへ通知し、明示close後の再open、open失敗後のretry、shutdown時のworker/HWND解放を実装した。Windows C ABI artifactにはWindows factoryを接続し、Linux/その他targetの構成を維持した。
 - 境界: rendererはUNIT-002で追加するため、このunitの`submit_frame`は未実装を成功扱いせずfailureを返す。OS `WM_CLOSE`はCore close-request連携が未実装なので抑止する。このunitではtitlebar close・input動作を完了扱いしない。C ABI unit testは可視Windowを生成しないようtest build時にOS factoryから分離した。
 - 検証: `cargo fmt --all -- --check`、workspace Clippy/build/tests、`cargo check --workspace --all-targets --target x86_64-unknown-linux-gnu --locked`、Windows x64 target check、Rust 1.85 Windows target check、`tools/dev.py check`、`tools/dev.py minimum`がlocal pass。Windows peer 7 testsもpass。
@@ -51,10 +51,11 @@
 
 ### UNIT-PLATFORM-WINDOWS-002 実装進捗
 
-- 状態: Direct2D renderer実装・local検証完了。同revision Windows/Linux CIはpush後に確認する。GUI実機smokeは未実施。
+- 状態: Direct2D renderer実装・local検証・同revision Windows/Linux CI完了。GUI実機smokeは未実施。
 - 実装: Windows専用private依存`windows` 0.62.2を追加し、Direct2D HWND render targetをWin32 worker上で所有する。96 DPI targetへCore DeviceScaleをrect edge単位で適用し、background clear→SceneSnapshot順のClip/FillRect→EndDrawを行う。WM_SIZEでtarget sizeを更新し、WM_PAINTで直近成功sceneを再描画する。
 - 完了境界: DirectWrite未対応のGlyphRunは描画開始前に拒否し、Presented扱いにしない。同期render成功後にだけ対象FrameTicketのCore completion sinkを呼ぶ。公開C ABI・Core SPI・scene producer・WM_CLOSE連携に変更なし。
 - 検証: `cargo test -p freemvvm-platform-windows platform_windows_render_ --locked` 5 tests pass、`cargo test -p freemvvm-platform-windows --all-targets --locked` 12 tests pass、workspace Clippy pass、Windows x64 target check pass、Rust 1.85 Windows target check pass、`tools/dev.py check`と`tools/dev.py minimum` pass。
+- 同revision CI: 実装SHA `aac97d553168c1c6845221fb7dda7cf4020fa332` の[Windows/Linux CI run 41266800908](https://github.com/edamame-edame/freemvvm/actions/runs/41266800908) success。Linux `-D warnings`で未使用renderer helperが検出された先行SHA `7439860` は、Windows production/test-only module cfgを分離して修正。Windows CI専用stepもpeer限定からAdapter全unit実行へ拡張した。
 - Windows GUI実機上のvisible frame presentationは未確認で、別の手動smoke/release qualificationに残す。OS `WM_CLOSE`→Core close-request連携も0.0.1残課題として後段に残す。
 
 ## 実装unit詳細案（利用者承認済み）
