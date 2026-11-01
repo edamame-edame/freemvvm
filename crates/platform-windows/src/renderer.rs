@@ -63,7 +63,7 @@ fn to_pixels(rect: Rect, scene: &SceneSnapshot) -> Result<PixelRect, ()> {
 #[cfg(target_os = "windows")]
 pub(crate) mod direct2d {
     use super::{DrawTarget, PixelRect, render_scene};
-    use crate::text::directwrite::FontResources;
+    use crate::text::directwrite::{FontResources, FontSource};
     use freemvvm_core::abi_support::GlyphRunSnapshot;
     use freemvvm_core::abi_support::{PlatformOperationError, SceneSnapshot};
     use std::path::Path;
@@ -148,6 +148,17 @@ pub(crate) mod direct2d {
 
         pub(crate) fn render(&mut self, scene: &SceneSnapshot) -> Result<(), ()> {
             render_scene(self, scene)
+        }
+
+        #[allow(dead_code)] // Called by the Windows Control/Scene text connector when it lands.
+        pub(crate) fn shape_text(
+            &mut self,
+            text: &str,
+            font_size: f64,
+            max_width: f64,
+            source: FontSource<'_>,
+        ) -> Result<Vec<GlyphRunSnapshot>, ()> {
+            self.text.shape_text(text, font_size, max_width, source)
         }
     }
 

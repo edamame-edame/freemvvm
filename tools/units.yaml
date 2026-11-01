@@ -3717,6 +3717,30 @@
       ]
     },
     {
+      "id": "UNIT-PLATFORM-WINDOWS-004",
+      "state": "ready",
+      "scope": "windows-directwrite-text-service-system-default-and-ttf-shaping-with-exact-renderer-face-registration",
+      "sources": ["crates/platform-windows/src/text.rs", "crates/platform-windows/src/renderer.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/platform-windows/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-PLATFORM-WINDOWS-003"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.7 approved",
+          "section": "GlyphRun font and color contract"
+        }
+      ],
+      "requirements": ["RQ-09-053", "RQ-09-054", "RQ-09-072", "RQ-11-023"],
+      "cases": ["TC-PLAT-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-PLATFORM-WINDOWS-TEXT-001",
+          "command": ["cargo", "test", "-p", "freemvvm-platform-windows", "platform_windows_text_", "--locked"]
+        }
+      ]
+    },
+    {
       "id": "UNIT-CORE-076",
       "state": "complete",
       "scope": "core-layout-measure-arrange-kernel-and-atomic-layout-snapshot",

@@ -32,6 +32,8 @@ Windows DirectWrite rendererは、GlyphRunの`font_digest`から登録済み`IDW
 4. face/file reference/cacheのownerと解放時点を明確にし、renderer close後に一度だけ解放する。失敗途中の生成物も漏らさず解放する。
 5. `UT-PLATFORM-WINDOWS-TEXT-001`を用いて、fake font source/resolver・fake DirectWrite boundaryで登録から描画までを検証する。特定OS family名やpixel outputをCI oracleにしない。
 
+実装では、system default familyをWindowsの`NONCLIENTMETRICS`から取得し、user localeをDirectWriteへ渡してsystem collectionのlanguage/script fallbackを使う。明示TTFはDirectWrite font set/custom collectionへ追加する。GlyphRun digestは選ばれたfaceのfont file bytesとface indexからSHA-256で生成し、renderer所有workerのcatalogへ登録する。OS family/pixelを判定するnative headless smokeは手動専用で、CI unit oracleには含めない。
+
 ## 実装unit案
 
 | Unit | 責務 | 対応試験と完了条件 |
@@ -83,6 +85,12 @@ Windows DirectWrite rendererは、GlyphRunの`font_digest`から登録済み`IDW
 - face/font file/cacheが合意したownerに保持され、normal closeと途中failureで漏れ・二重解放がないことをunit-testで確認する。
 - 対象unitのWindows CI/target checksが同revisionで成功し、inventoryにSHA・command・結果を記録する。
 - Core Control/Scene producer接続およびGUI実機表示は別残課題として識別された状態である。
+
+## 実装・検証状態
+
+- `UNIT-PLATFORM-WINDOWS-004`を実装中。Windows crateのfocused tests、workspace tests、Clippy、Rust 1.85 check、formatはローカルpass。文書リンク検査と`tools/units.yaml` JSON parseもpass。
+- 手動専用headless DirectWrite smokeはこのWindows環境でsystem default/明示TTFともpass。Windows CI結果と可視Windowのprofile確認は未記録。
+- Control/Scene producerがTextServiceを呼ぶCore縦断経路はまだないため、このunitの成功をUI上のtext表示完了とは扱わない。
 
 ## 承認・改訂履歴
 
