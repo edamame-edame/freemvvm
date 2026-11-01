@@ -68,10 +68,11 @@ fn to_pixels(rect: Rect, scene: &SceneSnapshot) -> Result<PixelRect, ()> {
 #[cfg(target_os = "windows")]
 pub(crate) mod direct2d {
     use super::{DrawTarget, PixelRect, render_scene};
-    use crate::text::directwrite::{FontResources, FontSource};
+    use crate::text::directwrite::FontResources;
     use freemvvm_core::abi_support::GlyphRunSnapshot;
-    use freemvvm_core::abi_support::{PlatformOperationError, SceneSnapshot};
-    use std::path::Path;
+    use freemvvm_core::abi_support::{
+        PlatformOperationError, ResolvedTextSnapshot, SceneSnapshot, TextRequest, TextServiceError,
+    };
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Direct2D::Common::{
         D2D_RECT_F, D2D_SIZE_U, D2D1_COLOR_F, D2D1_PIXEL_FORMAT,
@@ -82,9 +83,7 @@ pub(crate) mod direct2d {
         D2D1_RENDER_TARGET_PROPERTIES, D2D1_RENDER_TARGET_TYPE_DEFAULT,
         D2D1_RENDER_TARGET_USAGE_NONE, D2D1CreateFactory, ID2D1Factory, ID2D1HwndRenderTarget,
     };
-    use windows::Win32::Graphics::DirectWrite::{
-        DWRITE_GLYPH_RUN, DWRITE_MEASURING_MODE_NATURAL, IDWriteFontFace,
-    };
+    use windows::Win32::Graphics::DirectWrite::{DWRITE_GLYPH_RUN, DWRITE_MEASURING_MODE_NATURAL};
 
     pub(crate) struct HwndRenderer {
         target: ID2D1HwndRenderTarget,
@@ -128,20 +127,6 @@ pub(crate) mod direct2d {
             })
         }
 
-        #[allow(dead_code)] // The profile/TextService integration supplies fonts in a later unit.
-        pub(crate) fn load_ttf(&mut self, digest: [u8; 32], path: &Path) -> Result<(), ()> {
-            self.text.load_ttf(digest, path)
-        }
-
-        #[allow(dead_code)] // The profile/TextService integration supplies faces in a later unit.
-        pub(crate) fn register_system_face(
-            &mut self,
-            digest: [u8; 32],
-            face: IDWriteFontFace,
-        ) -> Result<(), ()> {
-            self.text.register_system_face(digest, face)
-        }
-
         pub(crate) fn resize(&mut self, width_px: u32, height_px: u32) -> Result<(), ()> {
             let size = D2D_SIZE_U {
                 width: width_px,
@@ -155,15 +140,11 @@ pub(crate) mod direct2d {
             render_scene(self, scene)
         }
 
-        #[allow(dead_code)] // Called by the Windows Control/Scene text connector when it lands.
-        pub(crate) fn shape_text(
+        pub(crate) fn resolve_text(
             &mut self,
-            text: &str,
-            font_size: f64,
-            max_width: f64,
-            source: FontSource<'_>,
-        ) -> Result<Vec<GlyphRunSnapshot>, ()> {
-            self.text.shape_text(text, font_size, max_width, source)
+            request: &TextRequest,
+        ) -> Result<ResolvedTextSnapshot, TextServiceError> {
+            self.text.resolve_text(request)
         }
     }
 

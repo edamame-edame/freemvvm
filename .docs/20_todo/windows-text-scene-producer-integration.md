@@ -1,11 +1,11 @@
 # 0.0.1 Windows TextService・Scene・Window renderer 縦断接続計画
 
 - 計画版: 0.3
-- 状態: Window単位TextService方式を利用者承認済み。DD 2.1/UI DD 1.5/unit-test設計1.4を更新済み。実装中
+- 状態: Window単位TextService方式を利用者承認済み。DD 2.1/UI DD 1.5/unit-test設計1.5を更新済み。Core/Windows Platform units実装・local gates・同revision Windows/Ubuntu CI完了。merge PR待ち
 - 対象: Core Controlのtext snapshotからWindows system default fontのGlyphRunを生成し、同じfont faceでWindowへ描画する内部接続
 - 前提branch: `impl-rust/core-scene-producer`
-- Core APIs branch: `impl-rust/core-window-text-service`（現在のbranch）
-- Windows Platform子branch案: `impl-rust/platform-adapter-windows-text-scene`
+- Core APIs branch: `impl-rust/core-window-text-service`（親branch）
+- Windows Platform子branch: `impl-rust/platform-adapter-windows-text-scene`（現在のbranch）
 
 ## 目的
 
@@ -76,7 +76,7 @@ System default fontを使い、family名・固定Fonts path・OS別pixel出力�
 | Unit | 責務 | 対応試験案・完了条件 |
 |---|---|---|
 | `UNIT-CORE-089`（planned） | Runtime-wide fallbackに加えてWindow peer-bound TextService endpointをCore private SPIへ追加し、WindowLifecycleへserviceを関連付ける。Layout text resolveは対象Windowのserviceを優先し、なければRuntime共通serviceを使う。公開C ABIは変更しない | 新規`UT-CORE-WINDOW-TEXT-001`で、per-window service選択・Window間分離・Runtime fallback・service欠落/失敗時のpartial Layout拒否をfake peer/serviceで検証する。Core focused/all tests、workspace check、Clippy、Rust minimum、formatが同一revisionで成功 |
-| `UNIT-PLATFORM-WINDOWS-005`（planned） | Windows peerから同じWindow workerへdispatchするTextServiceを実装する。workerがDirectWrite resolve/shapeと同一renderer catalogへのface登録を行い、Coreにはimmutable snapshotだけ返す。COM objectをworker外へ出さない | `UT-PLATFORM-WINDOWS-TEXT-FLOW-001`でworker内resolve/shape/register/render順、same-revision result、worker/close/error mapping、resource releaseを検証する。Windows/Workspace gatesとRust 1.85 minimum checkが同一revisionで成功 |
+| `UNIT-PLATFORM-WINDOWS-005` | Windows peerから同じWindow workerへdispatchするTextServiceを実装する。workerがDirectWrite resolve/shapeと同一renderer catalogへのface登録を行い、Coreにはimmutable snapshotだけ返す。COM objectをworker外へ出さない | `UT-PLATFORM-WINDOWS-TEXT-FLOW-001`でfake peer backend/worker resolverのrevision・close・failureを検証し、既存DirectWrite catalog/render testsと合わせてface identity経路を確認する。Windows/Workspace gatesとRust 1.85 minimum checkが同一revisionで成功 |
 
 実装着手時にunit/test名とpath衝突を再確認し、`.docs/32_unit_test/implementation-test-inventory.md`、`tools/units.yaml`、必要なunit-test設計へ登録する。接続試験は特定Windows family名・実画面pixelをoracleにしない。公開仕様の要求testやWindows GUI実機smokeの代替にはしない。
 
@@ -150,6 +150,7 @@ System default fontを使い、family名・固定Fonts path・OS別pixel出力�
 
 ## 実装・検証状況
 
-- `UNIT-CORE-089`は実装済み。`UT-CORE-WINDOW-TEXT-001`、Core 184 tests、workspace all-targets tests、workspace Clippy、Rust 1.85 check、format、document linksがlocal pass。同revision CI待ち。
-- `UNIT-PLATFORM-WINDOWS-005`はCore API branchへのpush/CI完了後、Windows Platform child branchで着手する。
+- `UNIT-CORE-089`は実装済み。`UT-CORE-WINDOW-TEXT-001`、Core 184 tests、workspace all-targets tests、workspace Clippy、Rust 1.85 check、format、document linksがlocal pass。同revision Windows/Ubuntu CI pass: [run 41282511130](https://github.com/edamame-edame/freemvvm/actions/runs/41282511130)。
+- `UNIT-PLATFORM-WINDOWS-005`はWindow peer TextService、Win32 worker queue command、DirectWrite metrics/face identity生成、同じrenderer catalogへのface保持を実装済み。focused 2 tests、Windows Platform 17 passed/2 ignored、workspace all-targets tests、workspace Clippy、Rust 1.85 check、format、document linksがlocal pass。同revision Windows/Ubuntu CI pass: [run 41282934478](https://github.com/edamame-edame/freemvvm/actions/runs/41282934478)。
+- Windows GUI profile smokeは本unitのCI pass条件外で、0.0.1 release qualificationに残す。
 

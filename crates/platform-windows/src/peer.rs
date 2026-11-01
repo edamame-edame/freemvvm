@@ -1,6 +1,7 @@
 use freemvvm_core::abi_support::{
     FrameTicket, PlatformFrameCompletionSink, PlatformOperationError, PlatformWindowClientAreaSink,
-    PlatformWindowPeer, SceneSnapshot, WindowClientArea, WindowOpenInfo,
+    PlatformWindowPeer, ResolvedTextSnapshot, SceneSnapshot, TextRequest, TextService,
+    TextServiceError, WindowClientArea, WindowOpenInfo,
 };
 use std::sync::{Arc, Mutex};
 
@@ -18,6 +19,11 @@ pub(crate) trait NativeWindowBackend: Send {
         ticket: FrameTicket,
         scene: Arc<SceneSnapshot>,
     ) -> Result<(), PlatformOperationError>;
+
+    fn resolve_text(
+        &mut self,
+        request: &TextRequest,
+    ) -> Result<ResolvedTextSnapshot, TextServiceError>;
 }
 
 struct PeerState<B> {
@@ -26,7 +32,7 @@ struct PeerState<B> {
 }
 
 pub(crate) struct WindowsPeer<B: NativeWindowBackend> {
-    state: Mutex<PeerState<B>>,
+    state: Arc<Mutex<PeerState<B>>>,
     client_area_sink: Mutex<Option<Arc<dyn PlatformWindowClientAreaSink>>>,
     completion_sink: Mutex<Option<Arc<dyn PlatformFrameCompletionSink>>>,
 }
@@ -34,10 +40,10 @@ pub(crate) struct WindowsPeer<B: NativeWindowBackend> {
 impl<B: NativeWindowBackend> WindowsPeer<B> {
     pub(crate) fn new(backend: B) -> Self {
         Self {
-            state: Mutex::new(PeerState {
+            state: Arc::new(Mutex::new(PeerState {
                 backend,
                 generation: None,
-            }),
+            })),
             client_area_sink: Mutex::new(None),
             completion_sink: Mutex::new(None),
         }
@@ -51,6 +57,12 @@ impl<B: NativeWindowBackend> WindowsPeer<B> {
 }
 
 impl<B: NativeWindowBackend + 'static> PlatformWindowPeer for WindowsPeer<B> {
+    fn text_service(&self) -> Option<Arc<dyn TextService>> {
+        Some(Arc::new(WindowTextService {
+            state: Arc::clone(&self.state),
+        }))
+    }
+
     fn open(&self, generation: u64) -> Result<WindowOpenInfo, PlatformOperationError> {
         if generation == 0 {
             return Err(PlatformOperationError);
@@ -112,6 +124,26 @@ impl<B: NativeWindowBackend + 'static> PlatformWindowPeer for WindowsPeer<B> {
     }
 }
 
+struct WindowTextService<B> {
+    state: Arc<Mutex<PeerState<B>>>,
+}
+
+impl<B: NativeWindowBackend> TextService for WindowTextService<B> {
+    fn resolve_and_shape(
+        &self,
+        request: &TextRequest,
+    ) -> Result<ResolvedTextSnapshot, TextServiceError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| TextServiceError::Unavailable)?;
+        if state.generation.is_none() {
+            return Err(TextServiceError::Unavailable);
+        }
+        state.backend.resolve_text(request)
+    }
+}
+
 fn valid_client_area(area: WindowClientArea) -> bool {
     area.width_dip.is_finite()
         && area.height_dip.is_finite()
@@ -124,7 +156,8 @@ mod tests {
     use super::{NativeWindowBackend, WindowsPeer};
     use freemvvm_core::abi_support::{
         Damage, DeviceScale, DrawOp, FrameTicket, FrameTracker, PlatformFrameCompletionSink,
-        PlatformOperationError, PlatformWindowClientAreaSink, PlatformWindowPeer, SceneSnapshot,
+        PlatformOperationError, PlatformWindowClientAreaSink, PlatformWindowPeer,
+        ResolvedTextSnapshot, SceneSnapshot, TextMetrics, TextRequest, TextServiceError,
         WindowClientArea, WindowOpenInfo,
     };
     use std::collections::VecDeque;
@@ -136,6 +169,7 @@ mod tests {
         open_generations: Vec<u64>,
         closes: usize,
         drop_probe: Option<Arc<std::sync::atomic::AtomicUsize>>,
+        text_requests: Vec<String>,
     }
 
     impl NativeWindowBackend for FakeBackend {
@@ -166,6 +200,18 @@ mod tests {
             _scene: Arc<SceneSnapshot>,
         ) -> Result<(), PlatformOperationError> {
             Ok(())
+        }
+
+        fn resolve_text(
+            &mut self,
+            request: &TextRequest,
+        ) -> Result<ResolvedTextSnapshot, TextServiceError> {
+            self.text_requests.push(request.text.to_string());
+            Ok(ResolvedTextSnapshot::new(
+                request.revision,
+                TextMetrics::new(request.text.len() as f64, 14.0)?,
+                Arc::<[freemvvm_core::abi_support::ResolvedGlyphRun]>::from([]),
+            ))
         }
     }
 
@@ -238,6 +284,7 @@ mod tests {
             open_generations: Vec::new(),
             closes: 0,
             drop_probe: None,
+            text_requests: Vec::new(),
         });
 
         assert!(peer.open(1).is_err());
@@ -264,6 +311,7 @@ mod tests {
             open_generations: Vec::new(),
             closes: 0,
             drop_probe: None,
+            text_requests: Vec::new(),
         });
 
         assert!(peer.open(1).is_err());
@@ -280,6 +328,7 @@ mod tests {
             open_generations: Vec::new(),
             closes: 0,
             drop_probe: None,
+            text_requests: Vec::new(),
         });
 
         assert_eq!(peer.open(7), Ok(open_info()));
@@ -300,6 +349,7 @@ mod tests {
             open_generations: Vec::new(),
             closes: 0,
             drop_probe: None,
+            text_requests: Vec::new(),
         });
 
         assert!(peer.open(0).is_err());
@@ -315,6 +365,7 @@ mod tests {
             open_generations: Vec::new(),
             closes: 0,
             drop_probe: None,
+            text_requests: Vec::new(),
         });
         let received = Arc::new(std::sync::Mutex::new(Vec::new()));
         peer.set_client_area_sink(Arc::new(RecordingSink(Arc::clone(&received))));
@@ -331,6 +382,7 @@ mod tests {
             open_generations: Vec::new(),
             closes: 0,
             drop_probe: None,
+            text_requests: Vec::new(),
         });
         let completed = Arc::new(std::sync::Mutex::new(Vec::new()));
         peer.set_completion_sink(Arc::new(RecordingCompletionSink(Arc::clone(&completed))));
@@ -354,6 +406,7 @@ mod tests {
             open_generations: Vec::new(),
             closes: 0,
             drop_probe: None,
+            text_requests: Vec::new(),
         });
 
         assert_eq!(peer.open(15), Ok(open_info()));
@@ -374,10 +427,40 @@ mod tests {
             open_generations: Vec::new(),
             closes: 0,
             drop_probe: Some(Arc::clone(&drops)),
+            text_requests: Vec::new(),
         });
         assert_eq!(peer.open(18), Ok(open_info()));
 
         drop(peer);
         assert_eq!(drops.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn platform_windows_text_flow_peer_service_resolves_through_its_backend() {
+        let peer = WindowsPeer::new(FakeBackend {
+            opens: VecDeque::from([Ok(open_info())]),
+            close_results: VecDeque::new(),
+            open_generations: Vec::new(),
+            closes: 0,
+            drop_probe: None,
+            text_requests: Vec::new(),
+        });
+        peer.open(23).unwrap();
+
+        let service = peer
+            .text_service()
+            .expect("Windows peer has a text service");
+        let result = service
+            .resolve_and_shape(&TextRequest::platform_default(4, "Hello"))
+            .unwrap();
+
+        assert_eq!(result.revision, 4);
+        assert_eq!(result.metrics.width_dip(), 5.0);
+        assert_eq!(peer.state.lock().unwrap().backend.text_requests, ["Hello"]);
+        peer.close().unwrap();
+        assert_eq!(
+            service.resolve_and_shape(&TextRequest::platform_default(5, "closed")),
+            Err(TextServiceError::Unavailable)
+        );
     }
 }

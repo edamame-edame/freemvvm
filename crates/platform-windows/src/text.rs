@@ -43,17 +43,20 @@ impl<F> FontFaceCatalog<F> {
 #[cfg(target_os = "windows")]
 pub(crate) mod directwrite {
     use super::FontFaceCatalog;
-    use freemvvm_core::abi_support::{GlyphPlacement, GlyphRunSnapshot, Rect};
+    use freemvvm_core::abi_support::{
+        FontRequest, GlyphPlacement, GlyphRunSnapshot, Rect, ResolvedFontIdentity,
+        ResolvedGlyphRun, ResolvedTextSnapshot, TextMetrics, TextRequest, TextServiceError,
+    };
     use sha2::{Digest, Sha256};
-    use std::{cell::RefCell, fs, path::Path, ptr};
+    use std::{cell::RefCell, fs, path::Path, ptr, sync::Arc};
     use windows::Win32::Graphics::DirectWrite::{
         DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_FACE_TYPE_TRUETYPE, DWRITE_FONT_FILE_TYPE_TRUETYPE,
         DWRITE_FONT_SIMULATIONS_NONE, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL,
         DWRITE_FONT_WEIGHT_NORMAL, DWRITE_GLYPH_RUN, DWRITE_GLYPH_RUN_DESCRIPTION, DWRITE_MATRIX,
         DWRITE_MEASURING_MODE, DWRITE_TEXT_METRICS, DWRITE_WORD_WRAPPING_NO_WRAP,
         DWriteCreateFactory, IDWriteFactory, IDWriteFactory5, IDWriteFontCollection,
-        IDWriteFontFace, IDWriteFontFile, IDWriteLocalFontFileLoader, IDWritePixelSnapping_Impl,
-        IDWriteTextRenderer, IDWriteTextRenderer_Impl,
+        IDWriteFontFace, IDWriteFontFace3, IDWriteFontFile, IDWriteLocalFontFileLoader,
+        IDWritePixelSnapping_Impl, IDWriteTextRenderer, IDWriteTextRenderer_Impl,
     };
     use windows::core::implement;
     use windows::core::{ComObject, Error, HRESULT, Interface, PCWSTR};
@@ -144,7 +147,7 @@ pub(crate) mod directwrite {
 
         /// Shapes one paragraph and retains the exact DirectWrite faces used by its glyph runs.
         /// The caller and this resource owner must be the same Windows worker.
-        #[allow(dead_code)] // Called by the Windows Control/Scene text connector when it lands.
+        #[allow(dead_code)] // Used by isolated DirectWrite resolver tests.
         pub(crate) fn shape_text(
             &mut self,
             text: &str,
@@ -152,6 +155,47 @@ pub(crate) mod directwrite {
             max_width: f64,
             source: FontSource<'_>,
         ) -> Result<Vec<GlyphRunSnapshot>, ()> {
+            self.shape_text_detailed(text, font_size, max_width, source)
+                .map(|(_, _, runs)| runs.into_iter().map(|run| run.glyphs).collect())
+        }
+
+        pub(crate) fn resolve_text(
+            &mut self,
+            request: &TextRequest,
+        ) -> Result<ResolvedTextSnapshot, TextServiceError> {
+            if request.font != FontRequest::PlatformDefault {
+                return Err(TextServiceError::FontResolutionFailed);
+            }
+            if request.text.is_empty() {
+                return Ok(ResolvedTextSnapshot::new(
+                    request.revision,
+                    TextMetrics::new(0.0, 0.0)?,
+                    Arc::<[ResolvedGlyphRun]>::from([]),
+                ));
+            }
+
+            let (width, height, glyph_runs) = self
+                .shape_text_detailed(
+                    &request.text,
+                    14.0,
+                    f64::from(f32::MAX),
+                    FontSource::SystemDefault,
+                )
+                .map_err(|_| TextServiceError::ShapingFailed)?;
+            Ok(ResolvedTextSnapshot::new(
+                request.revision,
+                TextMetrics::new(width, height)?,
+                Arc::<[ResolvedGlyphRun]>::from(glyph_runs),
+            ))
+        }
+
+        fn shape_text_detailed(
+            &mut self,
+            text: &str,
+            font_size: f64,
+            max_width: f64,
+            source: FontSource<'_>,
+        ) -> Result<(f64, f64, Vec<ResolvedGlyphRun>), ()> {
             if !font_size.is_finite()
                 || font_size <= 0.0
                 || !max_width.is_finite()
@@ -162,7 +206,7 @@ pub(crate) mod directwrite {
                 return Err(());
             }
             if text.is_empty() {
-                return Ok(Vec::new());
+                return Ok((0.0, 0.0, Vec::new()));
             }
 
             let (family_name, collection) = match source {
@@ -228,7 +272,27 @@ pub(crate) mod directwrite {
             if runs.is_empty() {
                 return Err(());
             }
-            Ok(runs)
+            let resolved = runs
+                .into_iter()
+                .map(|run| {
+                    ResolvedGlyphRun::new(
+                        ResolvedFontIdentity {
+                            resolver_profile: Arc::from("windows-directwrite-system-message-font"),
+                            family: Arc::from(run.family),
+                            style: Arc::from(run.style),
+                            asset_digest: *run.glyphs.font_digest(),
+                            face_index: run.face_index,
+                        },
+                        run.glyphs,
+                    )
+                    .map_err(|_| ())
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((
+                f64::from(metrics.widthIncludingTrailingWhitespace),
+                f64::from(metrics.height),
+                resolved,
+            ))
         }
 
         fn ttf_collection(
@@ -298,7 +362,15 @@ pub(crate) mod directwrite {
     struct GlyphCapture<'a> {
         bounds: Rect,
         faces: RefCell<&'a mut FontFaceCatalog<IDWriteFontFace>>,
-        runs: RefCell<Vec<GlyphRunSnapshot>>,
+        runs: RefCell<Vec<CapturedGlyphRun>>,
+    }
+
+    #[derive(Clone)]
+    struct CapturedGlyphRun {
+        glyphs: GlyphRunSnapshot,
+        family: String,
+        style: String,
+        face_index: u32,
     }
 
     impl IDWritePixelSnapping_Impl for GlyphCapture_Impl<'_> {
@@ -360,7 +432,7 @@ pub(crate) mod directwrite {
             let mut faces = self.faces.borrow_mut();
             if faces.resolve(&digest).is_none() {
                 faces
-                    .register(digest, face)
+                    .register(digest, face.clone())
                     .map_err(|_| Error::from_hresult(HRESULT(0x80004005u32 as i32)))?;
             }
             if run.glyphCount == 0 || run.glyphIndices.is_null() || run.glyphAdvances.is_null() {
@@ -396,7 +468,27 @@ pub(crate) mod directwrite {
             let snapshot =
                 GlyphRunSnapshot::new(digest, f64::from(run.fontEmSize), self.bounds, glyphs)
                     .map_err(|_| Error::from_hresult(HRESULT(0x80004005u32 as i32)))?;
-            self.runs.borrow_mut().push(snapshot);
+            let face3: IDWriteFontFace3 = face
+                .cast()
+                .map_err(|_| Error::from_hresult(HRESULT(0x80004005u32 as i32)))?;
+            // SAFETY: face3 is the same live face selected by DirectWrite for this glyph run.
+            let family = unsafe { face3.GetFamilyNames() }
+                .map_err(|_| Error::from_hresult(HRESULT(0x80004005u32 as i32)))?;
+            // SAFETY: face3 is the same live face selected by DirectWrite for this glyph run.
+            let style = unsafe { face3.GetFaceNames() }
+                .map_err(|_| Error::from_hresult(HRESULT(0x80004005u32 as i32)))?;
+            let family = localized_first_string(&family)
+                .map_err(|_| Error::from_hresult(HRESULT(0x80004005u32 as i32)))?;
+            let style = localized_first_string(&style)
+                .map_err(|_| Error::from_hresult(HRESULT(0x80004005u32 as i32)))?;
+            // SAFETY: face remains live for this synchronous metadata query.
+            let face_index = unsafe { face.GetIndex() };
+            self.runs.borrow_mut().push(CapturedGlyphRun {
+                glyphs: snapshot,
+                family,
+                style,
+                face_index,
+            });
             Ok(())
         }
 
@@ -481,6 +573,17 @@ pub(crate) mod directwrite {
         let family = unsafe { collection.GetFontFamily(0) }.map_err(|_| ())?;
         // SAFETY: family is a live DirectWrite interface.
         let names = unsafe { family.GetFamilyNames() }.map_err(|_| ())?;
+        // SAFETY: names is live and index zero is a valid localized-name entry.
+        let length = unsafe { names.GetStringLength(0) }.map_err(|_| ())? as usize;
+        let mut buffer = vec![0u16; length + 1];
+        // SAFETY: buffer has room for the string and its terminator.
+        unsafe { names.GetString(0, &mut buffer) }.map_err(|_| ())?;
+        String::from_utf16(&buffer[..length]).map_err(|_| ())
+    }
+
+    fn localized_first_string(
+        names: &windows::Win32::Graphics::DirectWrite::IDWriteLocalizedStrings,
+    ) -> Result<String, ()> {
         // SAFETY: names is live and index zero is a valid localized-name entry.
         let length = unsafe { names.GetStringLength(0) }.map_err(|_| ())? as usize;
         let mut buffer = vec![0u16; length + 1];

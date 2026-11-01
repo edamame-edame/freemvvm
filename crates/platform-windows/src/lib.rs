@@ -10,7 +10,9 @@ mod win32;
 #[cfg(not(target_os = "windows"))]
 mod win32 {
     use crate::peer::NativeWindowBackend;
-    use freemvvm_core::abi_support::{PlatformOperationError, WindowOpenInfo};
+    use freemvvm_core::abi_support::{
+        PlatformOperationError, ResolvedTextSnapshot, TextRequest, TextServiceError, WindowOpenInfo,
+    };
     use std::sync::Arc;
 
     pub(super) struct Backend;
@@ -40,6 +42,13 @@ mod win32 {
             _scene: Arc<freemvvm_core::abi_support::SceneSnapshot>,
         ) -> Result<(), PlatformOperationError> {
             Err(PlatformOperationError)
+        }
+
+        fn resolve_text(
+            &mut self,
+            _request: &TextRequest,
+        ) -> Result<ResolvedTextSnapshot, TextServiceError> {
+            Err(TextServiceError::Unavailable)
         }
     }
 }

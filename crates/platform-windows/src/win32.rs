@@ -1,8 +1,9 @@
 use crate::peer::NativeWindowBackend;
 use crate::renderer::direct2d::HwndRenderer;
 use freemvvm_core::abi_support::{
-    DeviceScale, FrameTicket, PlatformOperationError, PlatformWindowClientAreaSink, SceneSnapshot,
-    WindowClientArea, WindowOpenInfo,
+    DeviceScale, FrameTicket, PlatformOperationError, PlatformWindowClientAreaSink,
+    ResolvedTextSnapshot, SceneSnapshot, TextRequest, TextServiceError, WindowClientArea,
+    WindowOpenInfo,
 };
 use std::ffi::c_void;
 use std::mem::zeroed;
@@ -69,6 +70,10 @@ enum Command {
     SubmitFrame {
         scene: Arc<SceneSnapshot>,
         response: SyncSender<Result<(), PlatformOperationError>>,
+    },
+    ResolveText {
+        request: TextRequest,
+        response: SyncSender<Result<ResolvedTextSnapshot, TextServiceError>>,
     },
     Shutdown,
 }
@@ -142,6 +147,31 @@ pub(super) struct Backend {
     worker: Option<Worker>,
 }
 
+trait WorkerTextResolver {
+    fn resolve_text(
+        &mut self,
+        request: &TextRequest,
+    ) -> Result<ResolvedTextSnapshot, TextServiceError>;
+}
+
+impl WorkerTextResolver for HwndRenderer {
+    fn resolve_text(
+        &mut self,
+        request: &TextRequest,
+    ) -> Result<ResolvedTextSnapshot, TextServiceError> {
+        HwndRenderer::resolve_text(self, request)
+    }
+}
+
+fn resolve_text_command(
+    renderer: Option<&mut dyn WorkerTextResolver>,
+    request: &TextRequest,
+) -> Result<ResolvedTextSnapshot, TextServiceError> {
+    renderer
+        .ok_or(TextServiceError::Unavailable)?
+        .resolve_text(request)
+}
+
 impl Backend {
     pub(super) fn new() -> Self {
         Self { worker: None }
@@ -189,6 +219,21 @@ impl NativeWindowBackend for Backend {
         let (response, result) = mpsc::sync_channel(1);
         worker.send(Command::SubmitFrame { scene, response })?;
         result.recv().map_err(|_| PlatformOperationError)?
+    }
+
+    fn resolve_text(
+        &mut self,
+        request: &TextRequest,
+    ) -> Result<ResolvedTextSnapshot, TextServiceError> {
+        let worker = self.worker.as_ref().ok_or(TextServiceError::Unavailable)?;
+        let (response, result) = mpsc::sync_channel(1);
+        worker
+            .send(Command::ResolveText {
+                request: request.clone(),
+                response,
+            })
+            .map_err(|_| TextServiceError::Unavailable)?;
+        result.recv().map_err(|_| TextServiceError::Unavailable)?
     }
 }
 
@@ -282,6 +327,14 @@ fn worker_main(receiver: Receiver<Command>, ready: SyncSender<()>, wake_event: u
                         } else {
                             Err(PlatformOperationError)
                         };
+                        let _ = response.send(result);
+                    }
+                    Ok(Command::ResolveText { request, response }) => {
+                        let renderer = window
+                            .as_mut()
+                            .and_then(|opened| opened._state.renderer.as_mut())
+                            .map(|renderer| renderer as &mut dyn WorkerTextResolver);
+                        let result = resolve_text_command(renderer, &request);
                         let _ = response.send(result);
                     }
                     Ok(Command::Shutdown) => {
@@ -574,4 +627,72 @@ unsafe extern "system" fn window_proc(
 
     // SAFETY: all messages not handled above follow the standard Win32 default procedure.
     unsafe { DefWindowProcW(handle, message, wparam, lparam) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{WorkerTextResolver, resolve_text_command};
+    use freemvvm_core::abi_support::{
+        ResolvedTextSnapshot, TextMetrics, TextRequest, TextServiceError,
+    };
+    use std::sync::{Arc, Mutex};
+
+    struct FakeResolver {
+        requests: Arc<Mutex<Vec<(u64, String)>>>,
+        result: Result<ResolvedTextSnapshot, TextServiceError>,
+    }
+
+    impl WorkerTextResolver for FakeResolver {
+        fn resolve_text(
+            &mut self,
+            request: &TextRequest,
+        ) -> Result<ResolvedTextSnapshot, TextServiceError> {
+            self.requests
+                .lock()
+                .unwrap()
+                .push((request.revision, request.text.to_string()));
+            self.result.clone()
+        }
+    }
+
+    #[test]
+    fn platform_windows_text_flow_worker_dispatches_revision_to_window_resolver() {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let snapshot = ResolvedTextSnapshot::new(
+            29,
+            TextMetrics::new(31.0, 14.0).unwrap(),
+            Arc::<[freemvvm_core::abi_support::ResolvedGlyphRun]>::from([]),
+        );
+        let mut resolver = FakeResolver {
+            requests: Arc::clone(&requests),
+            result: Ok(snapshot.clone()),
+        };
+
+        let result = resolve_text_command(
+            Some(&mut resolver),
+            &TextRequest::platform_default(29, "worker request"),
+        )
+        .unwrap();
+
+        assert_eq!(result, snapshot);
+        assert_eq!(
+            *requests.lock().unwrap(),
+            [(29, "worker request".to_owned())]
+        );
+        assert_eq!(
+            resolve_text_command(None, &TextRequest::platform_default(30, "closed")),
+            Err(TextServiceError::Unavailable)
+        );
+        let mut failed_resolver = FakeResolver {
+            requests: Arc::clone(&requests),
+            result: Err(TextServiceError::ShapingFailed),
+        };
+        assert_eq!(
+            resolve_text_command(
+                Some(&mut failed_resolver),
+                &TextRequest::platform_default(31, "invalid"),
+            ),
+            Err(TextServiceError::ShapingFailed)
+        );
+    }
 }
