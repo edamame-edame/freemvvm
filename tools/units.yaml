@@ -4263,6 +4263,59 @@
               "command": ["cargo", "test", "-p", "freemvvm-core", "glyph_run_defaults_to_opaque_black", "--locked"]
             }
           ]
+        },
+    {
+          "id": "UNIT-CORE-089",
+          "state": "ready",
+          "scope": "core-window-bound-text-service-routing-with-runtime-service-fallback",
+          "sources": ["crates/core-runtime/src/runtime.rs", "crates/core-runtime/src/ui_window.rs"],
+          "config": ["tools/units.yaml"],
+          "depends_on": ["UNIT-CORE-085", "UNIT-CORE-087"],
+          "design": [
+            {
+              "path": ".docs/13_detail_design/platform/internal-layers.md",
+              "version": "2.1 approved",
+              "section": "Window-bound TextService and Windows worker ownership"
+            },
+            {
+              "path": ".docs/13_detail_design/ui/controls.md",
+              "version": "1.5 approved",
+              "section": "Control text PlatformDefault service association"
+            }
+          ],
+          "requirements": ["RQ-06-001", "RQ-06-002", "RQ-09-053", "RQ-09-072", "RQ-09-075", "RQ-11-023"],
+          "cases": ["TC-PLAT-01", "TC-LAYOUT-01", "TC-ERROR-01"],
+          "test_design": ".docs/32_unit_test/ui.md",
+          "tests": [
+            {
+              "id": "UT-CORE-WINDOW-TEXT-001",
+              "command": ["cargo", "test", "-p", "freemvvm-core", "window_text_service", "--locked"]
+            }
+          ]
+        },
+    {
+          "id": "UNIT-PLATFORM-WINDOWS-005",
+          "state": "planned",
+          "scope": "windows-window-bound-text-service-worker-dispatch-and-renderer-face-catalog-connection",
+          "sources": ["crates/platform-windows/src/lib.rs", "crates/platform-windows/src/peer.rs", "crates/platform-windows/src/win32.rs", "crates/platform-windows/src/renderer.rs", "crates/platform-windows/src/text.rs"],
+          "config": ["tools/units.yaml", "crates/platform-windows/Cargo.toml"],
+          "depends_on": ["UNIT-CORE-089", "UNIT-PLATFORM-WINDOWS-004"],
+          "design": [
+            {
+              "path": ".docs/13_detail_design/platform/internal-layers.md",
+              "version": "2.1 approved",
+              "section": "Window-bound TextService and Windows worker ownership"
+            }
+          ],
+          "requirements": ["RQ-06-001", "RQ-06-002", "RQ-09-053", "RQ-09-072", "RQ-09-075", "RQ-11-023"],
+          "cases": ["TC-PLAT-01", "TC-ERROR-01"],
+          "test_design": ".docs/32_unit_test/ui.md",
+          "tests": [
+            {
+              "id": "UT-PLATFORM-WINDOWS-TEXT-FLOW-001",
+              "command": ["cargo", "test", "-p", "freemvvm-platform-windows", "platform_windows_text_flow", "--locked"]
+            }
+          ]
         }
   ]
 }

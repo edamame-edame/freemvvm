@@ -1,9 +1,9 @@
 # UIクラス：Window・基本Control・次段階Control
 
-- 文書版: 1.4
+- 文書版: 1.5
 - 文書ロール: detailed-design
-- 更新日: 2026-10-31
-- 状態: 1.2全文承認済み（利用者、2026-10-29）。1.3 / 1.4全文承認済み（利用者、2026-10-30～2026-10-31）。実装・試験状態は別管理
+- 更新日: 2026-11-01
+- 状態: 1.2全文承認済み（利用者、2026-10-29）。1.3 / 1.4全文承認済み（利用者、2026-10-30～2026-10-31）。Window単位TextServiceの関連付け1.5全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -284,7 +284,7 @@ Window close/reopenではoverrideを保持し、Runtime shutdown時は通常のW
 
 ### v1.4: Control textの未指定fontとPlatform default（全文承認済み）
 
-Text/TextBox/Buttonの初期Controlはfont未指定で作成され、CoreはOS固有font名ではなく`PlatformDefault` requestをTextServiceへ渡す。TextServiceのplatform実装がsystem defaultと必要なsystem fallbackを解決し、metricsと各GlyphRunのfont identityを含むimmutable resultを返す。Coreは同一resolved resultをMeasureとSceneで共有する。初期public Font APIは追加しない。詳細なSPI、Linux headless profile、failure/reproducibility境界は[Platform internal layers 1.9](../platform/internal-layers.md)を参照する。
+Text/TextBox/Buttonの初期Controlはfont未指定で作成され、CoreはOS固有font名ではなく`PlatformDefault` requestを対象WindowのTextServiceへ渡す。TextServiceのplatform実装がsystem defaultと必要なsystem fallbackを解決し、metricsと各GlyphRunのfont identityを含むimmutable resultを返す。Coreは同一resolved resultをMeasureとSceneで共有する。Window単位native resourceを持たないprofileはRuntime共通TextServiceを使える。Windows DirectWriteでは同じWindow workerがresolve・shape・face登録・render・releaseを行い、COM objectをCore/worker境界へ渡さない。初期public Font APIは追加しない。詳細なSPIとfailure/lifecycle境界は[Platform internal layers 2.1](../platform/internal-layers.md)を参照する。
 
 ## 文書の承認・改訂履歴
 
@@ -299,3 +299,4 @@ Text/TextBox/Buttonの初期Controlはfont未指定で作成され、CoreはOS�
 | 2026-10-30 | 1.3全文 | 利用者の「ok」によりRQ-09-074のWindow背景色API、default/set/reset semanticsを含む文書全体を承認。実装・試験合格は別管理 |
 | 2026-10-31 | 1.4改訂案 | Text-familyの未指定fontをCore-neutral PlatformDefault requestとし、Platform resolver経由で同一metrics/GlyphRun resultをLayout・Sceneで共有する案を追加。全文レビュー待ち |
 | 2026-10-31 | 1.4全文 | 利用者の「ok」により未指定font requestとMeasure/Scene同一resolved snapshotの接続を含む文書全体を承認。実装・試験合格は別管理 |
+| 2026-11-01 | 1.5全文 | 利用者承認。TextServiceをWindow peerへ関連付け、Windows worker内でresolve/shape/face登録/render/releaseを行う。Linux等のRuntime共通serviceは維持。Platform DD 2.1と一体承認。実装・試験合格は別管理 |

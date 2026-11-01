@@ -3101,7 +3101,7 @@ impl RuntimeCore {
             }
         };
         let text_snapshots =
-            self.resolve_control_text_snapshots(root.as_ref(), next_layout_revision)?;
+            self.resolve_control_text_snapshots(identity, root.as_ref(), next_layout_revision)?;
         let measurement_snapshots = text_snapshots.clone();
         let measurer = ResolvedTextMeasurer(&measurement_snapshots);
         self.calculate_window_layout_with_text(identity, &measurer, text_snapshots)
@@ -3109,6 +3109,7 @@ impl RuntimeCore {
 
     fn resolve_control_text_snapshots(
         &self,
+        window_identity: ObjectIdentity,
         root: Option<&LayoutTreeInput>,
         revision: u64,
     ) -> Result<HashMap<ObjectIdentity, Arc<ResolvedTextSnapshot>>, LayoutError> {
@@ -3175,9 +3176,21 @@ impl RuntimeCore {
         if text_inputs.is_empty() {
             return Ok(HashMap::new());
         }
-        let service = self
-            .text_service
-            .as_deref()
+        let window_service = {
+            let controls = self
+                .ui_objects
+                .lock()
+                .map_err(|_| LayoutError::InvalidTree)?;
+            controls
+                .resolve(window_identity)
+                .map_err(|_| LayoutError::InvalidTree)?
+                .downcast_ref::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::Window)
+                .and_then(|state| state.window.as_ref())
+                .and_then(|window| window.text_service())
+        };
+        let service = window_service
+            .or_else(|| self.text_service.clone())
             .ok_or(LayoutError::MeasurementFailed)?;
         let mut snapshots = HashMap::new();
         snapshots
@@ -3185,8 +3198,8 @@ impl RuntimeCore {
             .map_err(|_| LayoutError::AllocationFailed)?;
         for (identity, text) in text_inputs {
             let request = TextRequest::platform_default(revision, text);
-            let snapshot =
-                resolve_text(service, &request).map_err(|_| LayoutError::MeasurementFailed)?;
+            let snapshot = resolve_text(service.as_ref(), &request)
+                .map_err(|_| LayoutError::MeasurementFailed)?;
             snapshots.insert(identity, Arc::new(snapshot));
         }
         Ok(snapshots)

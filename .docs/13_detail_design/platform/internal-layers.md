@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 2.0
+- 文書版: 2.1
 - 文書ロール: detailed-design
 - 更新日: 2026-11-01
-- 状態: 1.6全文承認済み（利用者、2026-10-30）。Linux/Core 1.7～1.9全文承認済み（利用者、2026-10-31）。Windows GlyphRun 1.7全文承認済み（利用者、2026-11-01）。承認済み内容を統合。実装・試験状態は別管理
+- 状態: 1.6全文承認済み（利用者、2026-10-30）。Linux/Core 1.7～1.9全文承認済み（利用者、2026-10-31）。Windows GlyphRun 1.7全文承認済み（利用者、2026-11-01）。Window単位TextServiceとWindows worker所有の追加具体化2.1全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -194,7 +194,23 @@ v1.3のDrawOp/GlyphRun未決事項を、Text/TextBox/Buttonの表示snapshot・L
 | Profile/reproducibility | runtimeではsystem defaultに従い、profile record/diagnosticへ実際に解決したfont identitiesを記録する | 異なるOS/distribution/hostで同じfamily・metrics・pixelを要求しない。CI/Dockerでは検証用font package/configurationを固定し、実機は実機で解決されたidentityを記録する。機械間差をUI仕様の差と混同しない |
 | Invalidation | 解決済みsnapshotはtext/property/layout revisionに結び付け、Layout/Sceneでは同じ結果を使用する | system font configが実行中に変化した際の自動再解決通知は今回の初期scopeに含めず、profile/Runtime再初期化の契約を別途決める |
 
-**Core接続フロー案**: `Control text + PlatformDefault request` → Core内部`TextService` trait → platform実装がsystem default/fallbackを解決・shape・measure → `ResolvedTextSnapshot { metrics, glyph_runs[resolved_font_identity] }` → CoreがLayoutSnapshotとSceneSnapshotに同一revisionを適用 → Rendererは解決済GlyphRunだけを描画する。Coreはfontの取得APIやOSを知らず、PlatformはControl tree/Property ownershipを知らない。
+**Core接続フロー**: `Control text + PlatformDefault request` → 対象WindowのTextService → platform実装がsystem default/fallbackを解決・shape・measure → `ResolvedTextSnapshot { metrics, glyph_runs[resolved_font_identity] }` → CoreがLayoutSnapshotとSceneSnapshotに同一revisionを適用 → Rendererは解決済GlyphRunだけを描画する。Coreはfontの取得APIやOSを知らず、PlatformはControl tree/Property ownershipを知らない。profileの資源所有がWindowに結び付かない場合は、Runtime共通TextServiceを利用できる。
+
+### v2.1: Window単位TextServiceとWindows worker所有（全文承認済み）
+
+2026-11-01のWindows TextService・Scene接続作業で確認されたthread/owner境界を反映する。Windows Core接続はRuntime共通TextServiceを使わず、各Window peerに対応するTextService sessionを使う。LinuxなどWindow単位のnative font resourceを持たないprofileは既存のRuntime共通TextServiceを使える。
+
+| 責務 | 契約 | 失敗・所有境界 |
+|---|---|---|
+| Window serviceの関連付け | `PlatformWindowPeer`がそのpeerに対応するoptional `TextService` endpointを提供する。CoreはWindow lifecycleにpeerと同じ寿命のservice参照を保持する。Window単位serviceがないprofileではRuntime共通serviceへfallbackする | Text requestは必ずlayout対象Windowのserviceを使う。別Windowのfont resource/catalogを参照しない。どちらのserviceもない場合、textを含むLayoutはfailureとなりpartial Layout/Sceneを公開しない |
+| Coreからworkerへの呼出し | Core UI threadはWindowのtext snapshotを解決するとき対応serviceを同期呼出しする。Windows endpointは不変の`TextRequest`値をそのWindow workerへ送り、immutable `ResolvedTextSnapshot`を返す | shape command中にCore/user callbackを実行せず、Core UI stateをworkerから操作しない。worker終了・queue切断・close開始後の要求はTextService failureへ変換し、成功snapshotとして扱わない |
+| Windows DirectWrite ownership | DirectWrite system font resolution、shaping、font faceのdigest登録は対象Window worker上で行う。登録先は同じworkerのrendererが使う`FontResources` catalogとする | `IDWrite*`/`ID2D1*` COM objectはworker境界を越えて渡さない。Coreへ返すのはmetrics、glyph values、font identity/digest等の不変値だけ。rendererは受け取ったdigestに対応するfaceのみ描画し、描画時に別faceへfallbackしない |
+| queue/lifecycle | text resolve commandとopen/close/render commandは当該workerで直列化する。Windowがopenしてrendererが利用可能なときだけresolveする。同期replyを受ける前にCoreは対応Layout/Sceneを公開しない | close/shutdownでworkerが終了する際、保留中requestはfailureで完了させ、DirectWrite/renderer resourceをowner worker上でreleaseする。request failure時は既存のCore layout failure atomicity・dirty retryを維持する |
+| 既存profileとの互換 | Linux等はfactory-level Runtime共通TextServiceを継続できる。Windowsはpeer-bound serviceを優先する | ABIや利用者向けText APIを追加しない。公開要求、font family固定、profile間pixel一致を追加しない |
+
+**Windows接続フロー**: Core UI thread `resolve_and_shape` → Window peerのservice endpoint → 同じWindow workerへtext request → worker-owned DirectWrite resolve/shape → worker-owned renderer font catalogへface登録 → 値snapshotをCoreへreply → Coreが同一revisionでLayout/Sceneをbuild → 同じworkerへscene submit/draw。peer close、Runtime shutdown、worker errorはresolve request failureとnative resource releaseを順序化する。
+
+この具体化でUI threadはWindow workerのshape replyを同期で待つ。shape処理中にUI dispatcherへ再入しない。requestが失敗した場合は既存のtext input validationとworker error伝達に従う。新しいtimeout・入力長保証は追加しない。platform factory作成時にWindow/workerを先行openしない。
 
 SPIの形は概ね`TextService::resolve_and_shape(TextDisplaySnapshot, FontRequest::PlatformDefault, TextEnvironment) -> Result<ResolvedTextSnapshot, TextError>`とする案。`TextEnvironment`はPlatformAdapterが保持し、CoreからOS-specific resolverを選択させない。`ResolvedTextSnapshot`内の各shaped runはCore sceneの`GlyphRunSnapshot`へ同一font identityを保持し、fallback先が変わる境界でrunを分ける。現在のScene型には32-byte font digestがあるため、1.9ではこのdigestを実際に解決したfaceのresource identityへ結び付け、必要なfamily/style/face index/resolver情報は同じsnapshot revisionのPlatform profile diagnosticsとして保持する案。選択Rendererは同じPlatformRuntimeのfont resource/raster serviceを使い、独自にdefault fontを再選択しない。
 
@@ -394,3 +410,4 @@ flowchart TB
 | 2026-10-31 | 1.9全文 | 利用者の「ok」によりPlatformDefault request、Platform TextService、font identity付きResolvedTextSnapshot、system fallback、headless Linux境界を含む全文を承認。exact Linux resolution mode・locale hint・package/fallback orderは別途unit設計で確定 |
 | 2026-11-01 | Windows GlyphRun 1.7全文 | 利用者の「ok」で黒既定、system font、明示TTF、face digest/lifecycleを承認。実装・試験は別管理 |
 | 2026-11-01 | 2.0統合 | Core/Linux 1.9とWindows 1.7の承認済み内容を統合。新たな設計判断なし |
+| 2026-11-01 | 2.1全文 | 利用者承認。Windows TextServiceをWindow peer/workerへ関連付け、COM objectをworker境界外へ渡さない。Linux等のRuntime共通serviceは維持。公開API・要求保証は追加せず、unit-test・実装状態は別管理 |

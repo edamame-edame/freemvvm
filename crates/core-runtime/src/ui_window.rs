@@ -22,6 +22,10 @@ pub trait PlatformWindowPeer: Send + Sync {
         ticket: FrameTicket,
         scene: Arc<SceneSnapshot>,
     ) -> Result<(), PlatformOperationError>;
+    /// Returns a text service bound to this Window peer's resource owner, when required.
+    fn text_service(&self) -> Option<Arc<dyn TextService>> {
+        None
+    }
 }
 
 /// Posts a completed or failed backend frame to the Runtime's UI dispatcher.
@@ -86,6 +90,9 @@ pub(crate) trait WindowPeerAdapter: Send + Sync {
     fn open(&self, window: ObjectIdentity, generation: u64) -> Result<WindowOpenInfo, ()>;
     fn close(&self, window: ObjectIdentity) -> Result<(), ()>;
     fn submit_frame(&self, ticket: FrameTicket, scene: Arc<SceneSnapshot>) -> Result<(), ()>;
+    fn text_service(&self) -> Option<Arc<dyn TextService>> {
+        None
+    }
 }
 
 pub(crate) struct FactoryWindowPeer(pub(crate) Arc<dyn PlatformWindowPeer>);
@@ -101,6 +108,10 @@ impl WindowPeerAdapter for FactoryWindowPeer {
 
     fn submit_frame(&self, ticket: FrameTicket, scene: Arc<SceneSnapshot>) -> Result<(), ()> {
         self.0.submit_frame(ticket, scene).map_err(|_| ())
+    }
+
+    fn text_service(&self) -> Option<Arc<dyn TextService>> {
+        self.0.text_service()
     }
 }
 
@@ -126,6 +137,7 @@ pub(crate) enum WindowLifecycleError {
 #[derive(Default)]
 pub(crate) struct WindowLifecycle {
     peer: Option<Arc<dyn WindowPeerAdapter>>,
+    text_service: Option<Arc<dyn TextService>>,
     generation: u64,
     next_request: u64,
     open: bool,
@@ -179,7 +191,12 @@ impl WindowLifecycle {
     }
 
     pub(crate) fn set_peer(&mut self, peer: Arc<dyn WindowPeerAdapter>) {
+        self.text_service = peer.text_service();
         self.peer = Some(peer);
+    }
+
+    pub(crate) fn text_service(&self) -> Option<Arc<dyn TextService>> {
+        self.text_service.clone()
     }
 
     pub(crate) fn has_peer(&self) -> bool {

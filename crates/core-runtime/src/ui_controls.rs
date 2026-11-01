@@ -126,7 +126,7 @@ mod tests {
     use crate::ui_layout::Size;
     use crate::ui_window::CloseDecision;
     use crate::visual::{ControlViewConnector, VisualNodeDescriptor};
-    use std::collections::HashMap;
+    use std::collections::{HashMap, VecDeque};
     use std::ffi::c_void;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -171,6 +171,7 @@ mod tests {
         submitted: std::sync::Mutex<Vec<(FrameTicket, Arc<SceneSnapshot>)>>,
         fail_next_submit: std::sync::atomic::AtomicBool,
         text_service: std::sync::Mutex<Option<Arc<dyn crate::abi_support::TextService>>>,
+        window_text_services: std::sync::Mutex<VecDeque<Arc<dyn crate::abi_support::TextService>>>,
     }
 
     struct TestPlatformFactory(Arc<PlatformProbe>);
@@ -189,9 +190,16 @@ mod tests {
             }
             *self.0.completion_sink.lock().expect("completion sink lock") =
                 Some(Arc::clone(&completion_sink));
+            let text_service = self
+                .0
+                .window_text_services
+                .lock()
+                .expect("window text services lock")
+                .pop_front();
             Ok(Arc::new(TestPlatformWindowPeer {
                 probe: Arc::clone(&self.0),
                 _completion_sink: completion_sink,
+                text_service,
             }))
         }
 
@@ -250,6 +258,7 @@ mod tests {
     struct TestPlatformWindowPeer {
         probe: Arc<PlatformProbe>,
         _completion_sink: Arc<dyn crate::abi_support::PlatformFrameCompletionSink>,
+        text_service: Option<Arc<dyn crate::abi_support::TextService>>,
     }
 
     impl crate::abi_support::PlatformWindowPeer for TestPlatformWindowPeer {
@@ -294,6 +303,10 @@ mod tests {
                 return Err(crate::abi_support::PlatformOperationError);
             }
             Ok(())
+        }
+
+        fn text_service(&self) -> Option<Arc<dyn crate::abi_support::TextService>> {
+            self.text_service.clone()
         }
     }
 
@@ -643,6 +656,105 @@ mod tests {
             .expect("query Layout after failure")
             .expect("last complete Layout remains available");
         assert!(Arc::ptr_eq(&previous, &retained));
+        runtime_shutdown(runtime).expect("shutdown test Runtime");
+    }
+
+    #[test]
+    fn window_text_service_is_scoped_to_peer_with_runtime_fallback() {
+        let probe = Arc::new(PlatformProbe::default());
+        let window_one_service = Arc::new(TextServiceProbe::default());
+        let window_two_service = Arc::new(TextServiceProbe::default());
+        let runtime_service = Arc::new(TextServiceProbe::default());
+        {
+            let mut services = probe
+                .window_text_services
+                .lock()
+                .expect("window text services lock");
+            services.push_back(window_one_service.clone());
+            services.push_back(window_two_service.clone());
+        }
+        *probe
+            .text_service
+            .lock()
+            .expect("runtime text service lock") = Some(runtime_service.clone());
+        let factory: Arc<dyn crate::abi_support::PlatformRuntimeFactory> =
+            Arc::new(TestPlatformFactory(Arc::clone(&probe)));
+        let runtime = runtime_create_handle_with_platform_factory(factory)
+            .expect("create Runtime with runtime and peer services");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+
+        let window_one = ui_control_create_window(runtime).expect("create first Window");
+        let window_two = ui_control_create_window(runtime).expect("create second Window");
+        let window_three = ui_control_create_window(runtime).expect("create fallback Window");
+        let text_one = ui_control_create_text(runtime, b"first window").expect("create Text");
+        let text_two = ui_control_create_text(runtime, b"second window").expect("create Text");
+        let text_three = ui_control_create_text(runtime, b"runtime fallback").expect("create Text");
+        window_set_content(window_one, text_one).expect("attach first text");
+        window_set_content(window_two, text_two).expect("attach second text");
+        window_set_content(window_three, text_three).expect("attach fallback text");
+        window_open(window_one).expect("open first Window");
+        window_open(window_two).expect("open second Window");
+        window_open(window_three).expect("open fallback Window");
+
+        let first_layout = window_calculate_layout_with_platform_text_for_test(window_one)
+            .expect("resolve through first peer service");
+        let second_layout = window_calculate_layout_with_platform_text_for_test(window_two)
+            .expect("resolve through second peer service");
+        let fallback_layout = window_calculate_layout_with_platform_text_for_test(window_three)
+            .expect("resolve through Runtime fallback service");
+        assert_eq!(first_layout.layout_revision, second_layout.layout_revision);
+        assert_eq!(
+            second_layout.layout_revision,
+            fallback_layout.layout_revision
+        );
+        assert_eq!(
+            window_one_service
+                .requests
+                .lock()
+                .expect("first service requests")
+                .iter()
+                .map(|(_, text)| text.as_str())
+                .collect::<Vec<_>>(),
+            ["first window"]
+        );
+        assert_eq!(
+            window_two_service
+                .requests
+                .lock()
+                .expect("second service requests")
+                .iter()
+                .map(|(_, text)| text.as_str())
+                .collect::<Vec<_>>(),
+            ["second window"]
+        );
+        assert_eq!(
+            runtime_service
+                .requests
+                .lock()
+                .expect("runtime service requests")
+                .iter()
+                .map(|(_, text)| text.as_str())
+                .collect::<Vec<_>>(),
+            ["runtime fallback"]
+        );
+
+        let retained = window_layout_snapshot_for_test(window_two)
+            .expect("query second Layout")
+            .expect("second Layout exists");
+        window_two_service.fail.store(true, Ordering::SeqCst);
+        let property = ui_control_text_content_property(text_two).expect("get Text property");
+        property_set_utf8(property, b"failed second window update").expect("change second text");
+        assert_eq!(
+            window_calculate_layout_with_platform_text_for_test(window_two),
+            Err(UiControlApiError::Internal)
+        );
+        assert!(Arc::ptr_eq(
+            &retained,
+            &window_layout_snapshot_for_test(window_two)
+                .expect("query retained Layout")
+                .expect("last complete Layout remains available")
+        ));
+        assert!(ui_control_layout_dirty(window_two).expect("failed Window remains dirty"));
         runtime_shutdown(runtime).expect("shutdown test Runtime");
     }
 

@@ -1,7 +1,7 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
-- 文書版: 1.3
-- 状態: 0.8～1.2全文承認済み（利用者、2026-10-30～2026-10-31）。1.0～1.1全文承認済み（利用者、2026-11-01）。具体profile oracle・試験実装・実行状態は別管理
+- 文書版: 1.4
+- 状態: 0.8～1.2全文承認済み（利用者、2026-10-30～2026-10-31）。1.0～1.1全文承認済み（利用者、2026-11-01）。Window-bound TextService/worker routing試験設計1.4承認済み（利用者、2026-11-01）。具体profile oracle・試験実装・実行状態は別管理
 - 更新日: 2026-11-01
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
@@ -94,6 +94,16 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 
 これはCore層の独立unit `UNIT-CORE-088`であり、Windows GlyphRun描画より前に実装・試験する。C ABIや言語wrapperの公開面は追加しない。
 
+## Window単位TextService関連付け試験設計
+
+`UNIT-CORE-089`では、CoreがLayout対象Windowのpeer-bound TextServiceを優先してtext snapshotを解決し、peer serviceを持たないprofileではRuntime共通serviceへfallbackする。serviceの選択はWindowごとに独立し、どちらも未設定またはservice failureなら既存Layout failure atomicityを維持する。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-core-window-text-001"></a>UT-CORE-WINDOW-TEXT-001 | fake factory/runtime-wide TextServiceと、異なる結果またはfailureを返す2つのfake Window peer-bound TextServiceを準備し、各Windowへ異なるtext controlをattachしてLayoutを実行する。peer serviceなし/failureも投入する | peer-bound serviceがそのWindowのrequestだけを受け、別Windowへ混線しない。peer serviceがない場合だけRuntime serviceを使う。service failure/双方未設定では新しいLayout/Text/Scene snapshotを部分公開せず、既存dirty/failure契約を保つ。公開C ABIは変更しない | [RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-09-053](../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-072](../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-09-075](../11_requirements/RQ-09_ui-scope.md#rq-09-075)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+
+このtestはCore factory/peer seamをfakeし、Windows worker・DirectWrite・visible Windowの実動作は検証しない。Windows側のworker内処理は`UT-PLATFORM-WINDOWS-TEXT-FLOW-001`で別に検証する。
+
 ## Windows Platform Adapter試験設計（1.0～1.1全文承認済み）
 
 0.9承認済みbaselineを維持する。Windows x64 adapter用のunit設計1.0は全文承認済み。fake Win32/Direct2D/DirectWrite境界で実装のlifecycle・operation forwarding・failure mappingを検証し、visible Window、GPU driver、画面pixel品質の実機動作とは分離する。
@@ -103,6 +113,7 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 | <a id="ut-platform-windows-peer-001"></a>UT-PLATFORM-WINDOWS-PEER-001 | fake Win32 hostでopen成功/失敗、初期client area、resize通知、旧generation通知、close/reopen、shutdownを個別に制御する | Runtime生成だけでWindowを表示しない。open失敗後に再試行可能。resizeは対象generationの有効peerにだけ伝わり、close/reopen・shutdownでnative ownerを設計順に解放する。Core Window/Treeはpeer closeで破棄しない | [RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-11-009](../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 | <a id="ut-platform-windows-render-001"></a>UT-PLATFORM-WINDOWS-RENDER-001 | fake Direct2D targetへ既知SceneSnapshot（background RGB、DeviceScale、Clip、FillRect）とFrameTicketを渡し、同期失敗・Presented/failed completion・stale ticketを制御する | 設計済みDrawOp順序、scale、clip、背景色がbackend境界へ保たれる。submit受付とPresentedを混同せず、失敗/stale completionを成功として報告しない。未対応operationは成功扱いしない | [RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-019](../11_requirements/RQ-11_platform.md#rq-11-019)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 | <a id="ut-platform-windows-text-001"></a>UT-PLATFORM-WINDOWS-TEXT-001 | fake font resolverへsystem defaultと明示TTF sourceを与え、生成されたGlyphRunSnapshotをfake DirectWrite boundaryへ渡す。face digest不一致・font欠落・不正file、描画failure、renderer closeを制御する | default RGBA blackがDirectWriteへopaque blackとして渡り、resolverが選択したfont face digest・glyph ID・配置を維持して描画する。fallbackをrendererで再解決しない。明示TTFの欠落/不正、digest解決不能、描画failureはFrame failureまたはshape failureとして成功扱いせず、資源を重複解放しない。OSの実family名・pixel出力はoracleにしない | [RQ-09-053](../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-072](../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-platform-windows-text-flow-001"></a>UT-PLATFORM-WINDOWS-TEXT-FLOW-001 | fake Windows workerへWindowに対応したTextRequestを送り、DirectWrite resolve/shape、renderer catalog登録、Scene描画、close/shutdown、worker切断を制御する | resolve/shape/face登録/render/releaseが同じWindow workerで実行され、COM objectはworker外へ渡らない。replyは同revisionのmetrics/GlyphRun valueを含む。未open・close後・worker error・face登録/draw failureは成功snapshot/presentとして扱わず、資源をworker owner上で一度だけ解放する。OS family名・pixel出力はoracleにしない | [RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-09-053](../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-072](../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-09-075](../11_requirements/RQ-09_ui-scope.md#rq-09-075)、[RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 
 各testは可視Windowを起動せず、対象Windows API boundaryをfake可能な内部traitまたは専用test doubleで制御する。実装方式がCOM/Win32のどのAPI形態を採るか、具体的なsource path・symbol・focused commandは実装開始前のAPI/dependency監査で確定する。OSのsystem font collection/fallback自体はfake resolver外のprofile smokeで確認し、CIでは特定family名や文字pixelを期待値にしない。
 
@@ -196,6 +207,7 @@ UNIT-PLATFORM-003のDocker Debian 12実行結果: `cargo test -p freemvvm-platfo
 | 2026-10-31 | 1.2全文 | 利用者 | 「ok」によりPlatform default resolution、fallback identity、Core/Layout/Scene snapshot共有、Linux headless Fontconfig test案を含む全文を承認。具体resolver mode・corpus・test実装/実行は別管理 |
 | 2026-11-01 | 1.0全文 | 利用者 | Windows peer/renderer/GlyphRun試験設計を承認。実装・実行は別管理 |
 | 2026-11-01 | 1.1全文 | 利用者 | Core GlyphRun黒既定とWindows DirectWrite font/color試験を承認。実装・実行は別管理 |
+| 2026-11-01 | 1.4全文 | 利用者 | Window-bound TextService routing、同一worker内resolve/shape/face登録/render、close/errorの試験設計を承認。実装・実行は別管理 |
 
 ## 改訂履歴
 
@@ -214,3 +226,4 @@ UNIT-PLATFORM-003のDocker Debian 12実行結果: `cargo test -p freemvvm-platfo
 | 1.1 | 2026-10-31 | Linux TextService/GlyphRun asset lock、same-metrics layout/scene、profile failureとGLES render test proposalを追加 | Codex | 文書全文承認済み。profile/color/size/corpusの具体oracle選定、test実装・実行は別段階 |
 | 1.2 | 2026-10-31 | 未指定fontのPlatform default解決・fallback identity、Core/Platform seam、Linux headless profileのtest proposalを追加 | Codex | 文書全文承認済み。exact profile oracle、test実装・実行は別管理 |
 | 1.3 | 2026-11-01 | Linux/CoreのTextService・Scene試験設計へWindows peer/Direct2D/DirectWriteとGlyphRun default試験を統合 | Codex | 構成要素は個別に承認済み。試験実装・実行状態は別管理 |
+| 1.4 | 2026-11-01 | Window-bound TextService routing、Windows worker ownership、resolve/render/lifecycle failure testsを追加 | Codex | 利用者承認。試験実装・実行状態は別管理 |
