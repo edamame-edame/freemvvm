@@ -1,7 +1,7 @@
 # 0.0.1 Windows TextService・DirectWrite font catalog 接続計画
 
 - 計画版: 0.1
-- 状態: レビュー待ち。実装・計画commitは未開始
+- 状態: 計画承認済み（利用者、2026-11-01）。実装・試験合格は別管理
 - 対象version: `0.0.1`
 - 対象: Windows profileのTextServiceからDirectWrite font sourceを解決し、生成GlyphRunのfaceを同じdigestでrendererへ登録する内部接続
 - 実装branch案: `impl-rust/platform-adapter-windows-text-service`
@@ -88,4 +88,4 @@ Windows DirectWrite rendererは、GlyphRunの`font_digest`から登録済み`IDW
 
 | 日付 | 対象版 | 結果 |
 |---|---|---|
-| 2026-11-01 | 計画0.1 | レビュー待ち。ユーザー承認後に計画をcommit/pushし、実装開始を別途進める |
+| 2026-11-01 | 計画0.1 | 利用者が「OK」と承認。実装・試験合格は別管理 |
