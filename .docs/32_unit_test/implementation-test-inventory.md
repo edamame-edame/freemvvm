@@ -48,7 +48,7 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | --- | --- | --- | --- |
 | `UNIT-PLATFORM-WINDOWS-001` | Windows target factory compositionとWin32 Window peer lifecycle。open/retry/resize generation/close/reopen/shutdown | `UT-PLATFORM-WINDOWS-PEER-001` | complete / focused 7 tests、workspace tests・Clippy・build、Linux/Windows target check、Rust 1.85 check、`tools/dev.py check`/`minimum` pass。同revision [Windows/Linux CI 41263860362](https://github.com/edamame-edame/freemvvm/actions/runs/41263860362) success |
 | `UNIT-PLATFORM-WINDOWS-002` | Direct2DによるCore SceneSnapshotのbackground/scale/Clip/FillRect描画とframe completion | `UT-PLATFORM-WINDOWS-RENDER-001` | complete / focused 5 tests、Windows crate 12 tests、Windows x64/Rust 1.85 target check、`tools/dev.py check`/`minimum` pass。同revision [Windows/Linux CI 41266800908](https://github.com/edamame-edame/freemvvm/actions/runs/41266800908) success。Windows実画面表示は未確認 |
-| UNIT-PLATFORM-WINDOWS-003 | DirectWriteによる承認済みGlyphRunSnapshotの描画と資源lifecycle | UT-PLATFORM-WINDOWS-TEXT-001 | planned / UNIT-CORE-080完了後に実装。Windows system font/custom TTF契約はDD 1.7承認済み |
+| UNIT-PLATFORM-WINDOWS-003 | DirectWriteによる承認済みGlyphRunSnapshotの描画と資源lifecycle | UT-PLATFORM-WINDOWS-TEXT-001 | complete / digest一致faceのみ描画し、欠損face・不正glyphをframe failureへ伝える。TextServiceから実faceを登録するRuntime接続は未実装 |
 
 #### Core Layout kernel unit（DD 1.3 / test design 0.7承認済み）
 

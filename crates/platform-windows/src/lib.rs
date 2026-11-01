@@ -3,6 +3,7 @@
 mod peer;
 #[cfg(any(target_os = "windows", test))]
 mod renderer;
+mod text;
 
 #[cfg(target_os = "windows")]
 mod win32;

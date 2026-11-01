@@ -3694,7 +3694,7 @@
     },
     {
       "id": "UNIT-PLATFORM-WINDOWS-003",
-      "state": "planned",
+      "state": "complete",
       "scope": "windows-directwrite-render-of-approved-glyph-run-snapshot-and-text-renderer-resource-lifecycle",
       "sources": ["crates/platform-windows/src/text.rs", "crates/platform-windows/src/renderer.rs"],
       "config": ["Cargo.toml", "Cargo.lock", "crates/platform-windows/Cargo.toml", "tools/units.yaml"],

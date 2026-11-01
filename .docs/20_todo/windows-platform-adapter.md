@@ -74,6 +74,14 @@
 - 変更: `GlyphRunSnapshot`へ不透明黒のRGBA defaultを追加。C ABI、wrapper、任意色設定APIは変更なし。
 - 試験: focused test 1件、Core 170件、workspace全test、workspace Clippy、Rust 1.85 workspace check、format、文書link検査がpass。
 
+### UNIT-PLATFORM-WINDOWS-003 実装進捗
+
+- 状態: adapter実装・local試験・Windows x64 target check・Clippy pass。CI結果はpush後に記録する。
+- 実装: `renderer.rs`はscene内GlyphRunをDirect2D `DrawGlyphRun`へ渡し、Coreのface digest・glyph ID・glyph位置・色・scaleを保持する。各glyphはsnapshot内の絶対位置に描画する。digest未登録、glyph IDがDirectWriteの16-bit範囲外、寸法変換不正はframe failure。scene内の既存ClipとDrawOp順序を維持する。
+- font owner: `text.rs`のDirectWrite font catalogがdigest→`IDWriteFontFace`をWindow renderer lifetimeで保持する。明示TTFはDirectWrite file referenceから検査・作成し、OSへのfont登録は行わない。system faceはTextServiceが選んだ同一faceをdigest付きで登録する入口を用意した。renderer closeでface referencesを一度だけ解放する。
+- 試験: focused 2件、Windows Adapter全14件、Windows x64 target check、対象crate Clippy、format、`git diff --check`がpass。Fake試験はfamily名やpixel出力をoracleにしない。
+- 未接続境界: 現行RuntimeにTextServiceのfont選択・shaping・face登録call siteがないため、system defaultの実face選択、fallback shaping、アプリTTF指定からWindow rendererへの登録は未実装。未登録digestを描画成功として扱わない。この実装だけで可視文字表示済みとはしない。TextService/Scene producerの接続とWindows GUI profile smokeを後続課題に残す。
+
 ### UNIT-003着手前のフォント契約（計画0.2承認済み）
 
 RQ-09 v0.7、`internal-layers.md` 1.7、`ui.md` 1.1の承認を受け、以下をUNIT-CORE-080/Windows UNIT-003の実装oracleとする。text color追加はCore snapshot型の変更を伴うため、Windows描画unitより先に同じRust/Core feature branchの独立unitとして実装・検証する。別言語wrapper branchへの切替は発生しない。

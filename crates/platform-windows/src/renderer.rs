@@ -1,4 +1,4 @@
-use freemvvm_core::abi_support::{DrawOp, Rect, SceneSnapshot};
+use freemvvm_core::abi_support::{DrawOp, GlyphRunSnapshot, Rect, SceneSnapshot};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PixelRect {
@@ -13,20 +13,11 @@ pub(crate) trait DrawTarget {
     fn clear(&mut self, rgb: [f32; 3]) -> Result<(), ()>;
     fn set_clip(&mut self, rect: PixelRect) -> Result<(), ()>;
     fn fill_rect(&mut self, rect: PixelRect, rgba: [f32; 4]) -> Result<(), ()>;
+    fn draw_glyph_run(&mut self, run: &GlyphRunSnapshot, scale: (f64, f64)) -> Result<(), ()>;
     fn finish(&mut self) -> Result<(), ()>;
 }
 
 pub(crate) fn render_scene(target: &mut impl DrawTarget, scene: &SceneSnapshot) -> Result<(), ()> {
-    // DirectWrite/GlyphRun support belongs to UNIT-PLATFORM-WINDOWS-003. Reject the entire
-    // snapshot before opening a draw batch so partial drawing is never reported as presented.
-    if scene
-        .operations()
-        .iter()
-        .any(|operation| matches!(operation, DrawOp::GlyphRun(_)))
-    {
-        return Err(());
-    }
-
     target.begin()?;
     let result = (|| {
         target.clear(scene.background_rgb())?;
@@ -36,7 +27,10 @@ pub(crate) fn render_scene(target: &mut impl DrawTarget, scene: &SceneSnapshot) 
                 DrawOp::FillRect { bounds, rgba } => {
                     target.fill_rect(to_pixels(*bounds, scene)?, *rgba)?
                 }
-                DrawOp::GlyphRun(_) => unreachable!("unsupported operation checked above"),
+                DrawOp::GlyphRun(run) => {
+                    let scale = scene.device_scale();
+                    target.draw_glyph_run(run, (scale.x(), scale.y()))?;
+                }
             }
         }
         Ok(())
@@ -69,7 +63,10 @@ fn to_pixels(rect: Rect, scene: &SceneSnapshot) -> Result<PixelRect, ()> {
 #[cfg(target_os = "windows")]
 pub(crate) mod direct2d {
     use super::{DrawTarget, PixelRect, render_scene};
+    use crate::text::directwrite::FontResources;
+    use freemvvm_core::abi_support::GlyphRunSnapshot;
     use freemvvm_core::abi_support::{PlatformOperationError, SceneSnapshot};
+    use std::path::Path;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Direct2D::Common::{
         D2D_RECT_F, D2D_SIZE_U, D2D1_COLOR_F, D2D1_PIXEL_FORMAT,
@@ -80,9 +77,13 @@ pub(crate) mod direct2d {
         D2D1_RENDER_TARGET_PROPERTIES, D2D1_RENDER_TARGET_TYPE_DEFAULT,
         D2D1_RENDER_TARGET_USAGE_NONE, D2D1CreateFactory, ID2D1Factory, ID2D1HwndRenderTarget,
     };
+    use windows::Win32::Graphics::DirectWrite::{
+        DWRITE_GLYPH_RUN, DWRITE_MEASURING_MODE_NATURAL, IDWriteFontFace,
+    };
 
     pub(crate) struct HwndRenderer {
         target: ID2D1HwndRenderTarget,
+        text: FontResources,
         active_clip: bool,
     }
 
@@ -117,8 +118,23 @@ pub(crate) mod direct2d {
                 .map_err(|_| PlatformOperationError)?;
             Ok(Self {
                 target,
+                text: FontResources::new().map_err(|_| PlatformOperationError)?,
                 active_clip: false,
             })
+        }
+
+        #[allow(dead_code)] // The profile/TextService integration supplies fonts in a later unit.
+        pub(crate) fn load_ttf(&mut self, digest: [u8; 32], path: &Path) -> Result<(), ()> {
+            self.text.load_ttf(digest, path)
+        }
+
+        #[allow(dead_code)] // The profile/TextService integration supplies faces in a later unit.
+        pub(crate) fn register_system_face(
+            &mut self,
+            digest: [u8; 32],
+            face: IDWriteFontFace,
+        ) -> Result<(), ()> {
+            self.text.register_system_face(digest, face)
         }
 
         pub(crate) fn resize(&mut self, width_px: u32, height_px: u32) -> Result<(), ()> {
@@ -197,6 +213,59 @@ pub(crate) mod direct2d {
             Ok(())
         }
 
+        fn draw_glyph_run(&mut self, run: &GlyphRunSnapshot, scale: (f64, f64)) -> Result<(), ()> {
+            let face = self.text.resolve(run.font_digest()).ok_or(())?;
+            let color = run.text_color_rgba();
+            let color = D2D1_COLOR_F {
+                r: color[0],
+                g: color[1],
+                b: color[2],
+                a: color[3],
+            };
+            // SAFETY: the brush is a COM resource retained through this draw call.
+            let brush =
+                unsafe { self.target.CreateSolidColorBrush(&color, None) }.map_err(|_| ())?;
+
+            for glyph in run.glyphs() {
+                let glyph_id = u16::try_from(glyph.glyph_id()).map_err(|_| ())?;
+                let (x, y) = glyph.position();
+                let baseline = windows_numerics::Vector2 {
+                    X: (x * scale.0) as f32,
+                    Y: (y * scale.1) as f32,
+                };
+                if !baseline.X.is_finite() || !baseline.Y.is_finite() {
+                    return Err(());
+                }
+                let mut glyph_run = DWRITE_GLYPH_RUN {
+                    fontFace: std::mem::ManuallyDrop::new(Some(face.clone())),
+                    fontEmSize: (run.font_size() * scale.1) as f32,
+                    glyphCount: 1,
+                    glyphIndices: &glyph_id,
+                    glyphAdvances: std::ptr::null(),
+                    glyphOffsets: std::ptr::null(),
+                    isSideways: false.into(),
+                    bidiLevel: 0,
+                };
+                if !glyph_run.fontEmSize.is_finite() || glyph_run.fontEmSize <= 0.0 {
+                    // SAFETY: this run initialized the manually managed COM face reference.
+                    unsafe { std::mem::ManuallyDrop::drop(&mut glyph_run.fontFace) };
+                    return Err(());
+                }
+                // SAFETY: glyph arrays and face remain alive through the synchronous Direct2D call.
+                unsafe {
+                    self.target.DrawGlyphRun(
+                        baseline,
+                        &glyph_run,
+                        &brush,
+                        DWRITE_MEASURING_MODE_NATURAL,
+                    )
+                };
+                // SAFETY: release the face reference retained in the ABI struct exactly once.
+                unsafe { std::mem::ManuallyDrop::drop(&mut glyph_run.fontFace) };
+            }
+            Ok(())
+        }
+
         fn finish(&mut self) -> Result<(), ()> {
             if self.active_clip {
                 // SAFETY: active_clip tracks the matching PushAxisAlignedClip call.
@@ -207,12 +276,20 @@ pub(crate) mod direct2d {
             unsafe { self.target.EndDraw(None, None) }.map_err(|_| ())
         }
     }
+
+    impl Drop for HwndRenderer {
+        fn drop(&mut self) {
+            self.text.close();
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{DrawTarget, PixelRect, render_scene};
-    use freemvvm_core::abi_support::{Damage, DeviceScale, DrawOp, Rect, SceneSnapshot};
+    use freemvvm_core::abi_support::{
+        Damage, DeviceScale, DrawOp, GlyphPlacement, GlyphRunSnapshot, Rect, SceneSnapshot,
+    };
     use std::sync::Arc;
 
     #[derive(Default)]
@@ -238,6 +315,15 @@ mod tests {
         fn fill_rect(&mut self, rect: PixelRect, rgba: [f32; 4]) -> Result<(), ()> {
             self.calls.push(format!("fill:{rgba:?}"));
             self.rects.push(rect);
+            Ok(())
+        }
+        fn draw_glyph_run(&mut self, run: &GlyphRunSnapshot, scale: (f64, f64)) -> Result<(), ()> {
+            self.calls.push(format!(
+                "glyph:{:?}:{:?}:{scale:?}:{:?}",
+                run.font_digest(),
+                run.text_color_rgba(),
+                run.glyphs()
+            ));
             Ok(())
         }
         fn finish(&mut self) -> Result<(), ()> {
@@ -292,18 +378,23 @@ mod tests {
     }
 
     #[test]
-    fn platform_windows_render_rejects_glyph_run_before_begin_draw() {
-        use freemvvm_core::abi_support::GlyphRunSnapshot;
+    fn platform_windows_render_forwards_glyph_run_digest_color_glyphs_and_scale() {
+        let placement = GlyphPlacement::new(23, 1.0, 2.0, 4.0, 0.0).unwrap();
         let glyphs = GlyphRunSnapshot::new(
-            [0; 32],
+            [7; 32],
             12.0,
             Rect::new(0.0, 0.0, 4.0, 4.0).unwrap(),
-            Arc::from([]),
+            Arc::from([placement]),
         )
         .unwrap();
         let mut target = RecordingTarget::default();
-        assert!(render_scene(&mut target, &scene(vec![DrawOp::GlyphRun(glyphs)])).is_err());
-        assert!(target.calls.is_empty());
+        render_scene(&mut target, &scene(vec![DrawOp::GlyphRun(glyphs)])).unwrap();
+        assert_eq!(target.calls[0], "begin");
+        assert_eq!(target.calls[1], "clear:[0.1, 0.2, 0.3]");
+        assert!(target.calls[2].contains("[7, 7, 7, 7"));
+        assert!(target.calls[2].contains("[0.0, 0.0, 0.0, 1.0]"));
+        assert!(target.calls[2].contains("(2.0, 1.5)"));
+        assert_eq!(target.calls[3], "finish");
     }
 
     #[test]
@@ -342,6 +433,10 @@ mod tests {
                 self.0.push("fill-failed");
                 Err(())
             }
+            fn draw_glyph_run(&mut self, _: &GlyphRunSnapshot, _: (f64, f64)) -> Result<(), ()> {
+                self.0.push("glyph-failed");
+                Err(())
+            }
             fn finish(&mut self) -> Result<(), ()> {
                 self.0.push("finish");
                 Ok(())
@@ -360,5 +455,45 @@ mod tests {
             .is_err()
         );
         assert_eq!(target.0, ["begin", "clear", "fill-failed", "finish"]);
+    }
+
+    #[test]
+    fn platform_windows_text_draw_failure_finishes_batch_and_fails_frame() {
+        let run = GlyphRunSnapshot::new(
+            [9; 32],
+            12.0,
+            Rect::new(0.0, 0.0, 4.0, 4.0).unwrap(),
+            Arc::from([]),
+        )
+        .unwrap();
+        struct FailingTextTarget(Vec<&'static str>);
+        impl DrawTarget for FailingTextTarget {
+            fn begin(&mut self) -> Result<(), ()> {
+                self.0.push("begin");
+                Ok(())
+            }
+            fn clear(&mut self, _: [f32; 3]) -> Result<(), ()> {
+                self.0.push("clear");
+                Ok(())
+            }
+            fn set_clip(&mut self, _: PixelRect) -> Result<(), ()> {
+                Ok(())
+            }
+            fn fill_rect(&mut self, _: PixelRect, _: [f32; 4]) -> Result<(), ()> {
+                Ok(())
+            }
+            fn draw_glyph_run(&mut self, _: &GlyphRunSnapshot, _: (f64, f64)) -> Result<(), ()> {
+                self.0.push("font-face-missing");
+                Err(())
+            }
+            fn finish(&mut self) -> Result<(), ()> {
+                self.0.push("finish");
+                Ok(())
+            }
+        }
+
+        let mut target = FailingTextTarget(Vec::new());
+        assert!(render_scene(&mut target, &scene(vec![DrawOp::GlyphRun(run)])).is_err());
+        assert_eq!(target.0, ["begin", "clear", "font-face-missing", "finish"]);
     }
 }
