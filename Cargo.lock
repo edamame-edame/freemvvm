@@ -103,6 +103,7 @@ version = "0.0.0"
 dependencies = [
  "freemvvm-core",
  "freemvvm-platform-linux",
+ "freemvvm-platform-windows",
 ]
 
 [[package]]
@@ -119,6 +120,14 @@ dependencies = [
  "glow",
  "khronos-egl",
  "libc",
+]
+
+[[package]]
+name = "freemvvm-platform-windows"
+version = "0.0.0"
+dependencies = [
+ "freemvvm-core",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

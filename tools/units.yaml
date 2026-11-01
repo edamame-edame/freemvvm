@@ -3646,10 +3646,10 @@
     },
     {
       "id": "UNIT-PLATFORM-WINDOWS-001",
-      "state": "planned",
+      "state": "ready",
       "scope": "windows-target-factory-composition-and-win32-window-peer-open-resize-generation-close-reopen-shutdown",
-      "sources": ["crates/platform-windows/src/lib.rs", "crates/platform-windows/src/peer.rs", "crates/platform-windows/src/window.rs", "crates/c-abi/src/lib.rs"],
-      "config": ["Cargo.toml", "Cargo.lock", "crates/c-abi/Cargo.toml", "crates/platform-windows/Cargo.toml", "tools/units.yaml"],
+      "sources": ["crates/platform-windows/src/lib.rs", "crates/platform-windows/src/peer.rs", "crates/platform-windows/src/win32.rs", "crates/c-abi/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/c-abi/Cargo.toml", "crates/platform-windows/Cargo.toml", ".github/workflows/bootstrap.yml", "tools/units.yaml"],
       "depends_on": ["UNIT-CORE-073", "UNIT-CORE-074"],
       "design": [
         {
@@ -3658,7 +3658,7 @@
           "section": "Windows peer, native surface ownership, generation and lifecycle"
         }
       ],
-      "requirements": ["RQ-09-005", "RQ-11-004", "RQ-11-009", "RQ-11-020", "RQ-11-022", "RQ-11-024"],
+      "requirements": ["RQ-09-001", "RQ-11-004", "RQ-11-009", "RQ-11-020", "RQ-11-022", "RQ-11-024"],
       "cases": ["TC-LIFE-01", "TC-PLAT-01", "TC-ERROR-01"],
       "test_design": ".docs/32_unit_test/ui.md",
       "tests": [

@@ -1,7 +1,7 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
 - 文書版: 1.0
-- 状態: 0.9全文承認済み（利用者、2026-10-30）。1.0 Windows Platform Adapter試験設計案はレビュー待ち。実装・実行状態は別管理
+- 状態: 0.9全文承認済み（利用者、2026-10-30）。1.0全文承認済み（利用者、2026-11-01）。実装・実行状態は別管理
 - 更新日: 2026-11-01
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
@@ -84,13 +84,13 @@ Debian/RPi hardware profile確認はunit testではなく、既存[REL-PROFILE-0
 
 実行記録: `UNIT-PLATFORM-002` / `UT-PLATFORM-PRESENT-001`・`UT-PLATFORM-LOSS-001`・`UT-PLATFORM-SCALE-CORE-001`は`cargo test -p freemvvm-core` 160 tests、`cargo test -p freemvvm-platform-linux` 10 tests、Linux target `cargo check --tests` / `cargo clippy --all-targets -- -D warnings`、`tools/dev.py check`、`tools/dev.py minimum`がlocal pass。Core指定の正規化RGB背景色をSceneSnapshotが保持し、damage-only copyでも維持することと、renderer planが同じ色をsurface clear色として使うことを確認。実装SHA `a7879aa3f66342cf7337d20ea1370e8cf8de4c84` の[同SHA Windows/Linux CI run 40514465626](https://github.com/edamame-edame/freemvvm/actions/runs/40514465626)もsuccess。実機描画は未確認。
 
-## Windows Platform Adapter試験設計（1.0改訂案）
+## Windows Platform Adapter試験設計（1.0承認済み）
 
-0.9承認済みbaselineを維持する。以下はWindows x64 adapter用のunit試験提案で、1.0全文承認前は確定oracleやCI pass条件として扱わない。fake Win32/Direct2D/DirectWrite境界で実装のlifecycle・operation forwarding・failure mappingを検証し、visible Window、GPU driver、画面pixel品質の実機動作とは分離する。
+0.9承認済みbaselineを維持する。Windows x64 adapter用のunit設計1.0は全文承認済み。fake Win32/Direct2D/DirectWrite境界で実装のlifecycle・operation forwarding・failure mappingを検証し、visible Window、GPU driver、画面pixel品質の実機動作とは分離する。
 
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
 | --- | --- | --- | --- |
-| <a id="ut-platform-windows-peer-001"></a>UT-PLATFORM-WINDOWS-PEER-001 | fake Win32 hostでopen成功/失敗、初期client area、resize通知、旧generation通知、close/reopen、shutdownを個別に制御する | Runtime生成だけでWindowを表示しない。open失敗後に再試行可能。resizeは対象generationの有効peerにだけ伝わり、close/reopen・shutdownでnative ownerを設計順に解放する。Core Window/Treeはpeer closeで破棄しない | [RQ-09-005](../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-11-009](../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-platform-windows-peer-001"></a>UT-PLATFORM-WINDOWS-PEER-001 | fake Win32 hostでopen成功/失敗、初期client area、resize通知、旧generation通知、close/reopen、shutdownを個別に制御する | Runtime生成だけでWindowを表示しない。open失敗後に再試行可能。resizeは対象generationの有効peerにだけ伝わり、close/reopen・shutdownでnative ownerを設計順に解放する。Core Window/Treeはpeer closeで破棄しない | [RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-11-009](../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024)<br/>[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 | <a id="ut-platform-windows-render-001"></a>UT-PLATFORM-WINDOWS-RENDER-001 | fake Direct2D targetへ既知SceneSnapshot（background RGB、DeviceScale、Clip、FillRect）とFrameTicketを渡し、同期失敗・Presented/failed completion・stale ticketを制御する | 設計済みDrawOp順序、scale、clip、背景色がbackend境界へ保たれる。submit受付とPresentedを混同せず、失敗/stale completionを成功として報告しない。未対応operationは成功扱いしない | [RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-019](../11_requirements/RQ-11_platform.md#rq-11-019)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 | <a id="ut-platform-windows-text-001"></a>UT-PLATFORM-WINDOWS-TEXT-001 | fake DirectWrite boundaryへ承認済みGlyphRunSnapshotを渡し、文字/glyph data受け渡し、resource failure、renderer closeを制御する | GlyphRunの承認済み配置・scale情報を保持して描画境界へ渡す。failureはFrame failureへ伝え、resourceを重複解放しない。font fallback、色、hinting、pixel一致など設計未確定事項を試験期待へ追加しない | [RQ-09-053](../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-072](../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)<br/>[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
 
@@ -131,7 +131,8 @@ Text shaping/font profile/GlyphRun実描画は、本案のControl connector・fa
 | 2026-10-30 | 0.8改訂案 | — | ControlViewConnector、geometry/clip、複数RendererFactory選択、backend-neutrality、dirty-to-frame経路のcase案。文書全体レビュー待ち。0.7承認baselineを維持 |
 | 2026-10-30 | 0.8全文 | 利用者 | 「ok」によりControlViewConnector、SceneSnapshot、renderer factory/selection、dirty-to-frame test caseを含む全文を承認。test実装・実行は別管理 |
 | 2026-10-30 | 0.9全文 | 利用者 | 「ok」によりWindow背景色のdefault/set/reset、invalid atomicity、paint-only invalidation、wrapper parityのtest案を含む全文を承認。実装・実行は別管理 |
-| 2026-11-01 | 1.0改訂案 | — | Windows Platform AdapterのWin32 peer、Direct2D renderer、DirectWrite GlyphRunをunit単位に追加。0.9承認baselineを維持し、文書全体レビュー待ち。実装・実行未開始 |
+| 2026-11-01 | 1.0改訂案 | — | Windows Platform AdapterのWin32 peer、Direct2D renderer、DirectWrite GlyphRunをunit単位に追加。0.9承認baselineを維持 |
+| 2026-11-01 | 1.0全文 | 利用者 | 「承認」によりWindows Platform Adapterの3 unit/test設計を含む文書全体を承認。試験実装・実行は別管理 |
 
 ## 改訂履歴
 
@@ -146,4 +147,4 @@ Text shaping/font profile/GlyphRun実描画は、本案のControl connector・fa
 | 0.7 | 2026-10-29 | Fake measurerによるLayout計算、Window root client-area通知、atomic snapshot/失敗保持を追加 | Codex | 文書全体レビュー待ち。実装・実行未開始 |
 | 0.8 | 2026-10-30 | backend-neutral Visual connector、geometry/clip、複数renderer factory/selection、frame接続test案を追加 | Codex | 文書全体承認済み。実装・実行未開始 |
 | 0.9 | 2026-10-30 | Window背景色のdefault/set/reset、invalid atomicity、paint-only invalidation、wrapper parityのtest案を追加 | Codex | 文書全体承認済み。新規testは未実装・未実行 |
-| 1.0 | 2026-11-01 | Windows Platform Adapter計画に基づくWin32 peer、Direct2D frame rendering、DirectWrite GlyphRunのfake boundary試験案を追加 | Codex | review draft。実装開始前の文書全体承認待ち |
+| 1.0 | 2026-11-01 | Windows Platform Adapter計画に基づくWin32 peer、Direct2D frame rendering、DirectWrite GlyphRunのfake boundary試験案を追加 | Codex | 利用者承認済み。実装・実行は別管理 |

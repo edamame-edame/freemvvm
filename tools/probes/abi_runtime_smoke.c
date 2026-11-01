@@ -66,7 +66,6 @@ int main(void) {
 #else
   if (ui_abi_1_has_feature(8, &controls_supported) != UI_OK ||
       controls_supported != 1 ||
-      ui_abi_1_window_open(window, 0) != UI_UNSUPPORTED ||
       ui_abi_1_window_close(window, 0) != UI_OK) {
 #endif
     fputs("Window lifecycle/feature query failed\n", stderr);

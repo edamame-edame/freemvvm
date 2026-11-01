@@ -17,5 +17,8 @@ freemvvm-core = { path = "../core-runtime" }
 [target.'cfg(target_os = "linux")'.dependencies]
 freemvvm-platform-linux = { path = "../platform-linux" }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+freemvvm-platform-windows = { path = "../platform-windows" }
+
 [lints]
 workspace = true

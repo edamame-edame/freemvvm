@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
 - 文書版: 1.2
-- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Platform Adapter unit登録案はレビュー待ち（2026-11-01）
+- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsは設計承認済み（2026-11-01）。UNIT-PLATFORM-WINDOWS-001はlocal検証済み・Windows CI待ち
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -40,15 +40,15 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | `UNIT-PLATFORM-001` | Linux DRM node/output選択とGBM/EGL surface lifecycle | `UT-PLATFORM-DEVICE-001` | complete / Linux focused 5 tests・Windows/Linux CI pass |
 | `UNIT-PLATFORM-002` | Core DeviceScale/背景色に基づくClip/FillRect GLES renderer、DRM page-flip completionとresource loss。GlyphRunは後続 | `UT-PLATFORM-PRESENT-001`、`UT-PLATFORM-LOSS-001`、`UT-PLATFORM-SCALE-CORE-001` | complete / local gates・同SHA Windows/Linux CI pass。実機profileは後続 |
 
-#### Windows Platform Adapter units（計画0.1承認済み / UI test design 1.0改訂案）
+#### Windows Platform Adapter units（計画0.1 / UI test design 1.0全文承認済み）
 
 以下は`.docs/20_todo/windows-platform-adapter.md`で承認された実装unit分割を、test design 1.0案に対応づけたplanned登録案である。設計文書全文の承認と実装開始は別ゲート。Windows GUI実機smokeはunit/CIへ含めない。
 
 | unit | 責務 | test設計 | 状態 |
 | --- | --- | --- | --- |
-| `UNIT-PLATFORM-WINDOWS-001` | Windows target factory compositionとWin32 Window peer lifecycle。open/retry/resize generation/close/reopen/shutdown | `UT-PLATFORM-WINDOWS-PEER-001` | planned / test design review draft |
-| `UNIT-PLATFORM-WINDOWS-002` | Direct2DによるCore SceneSnapshotのbackground/scale/Clip/FillRect描画とframe completion | `UT-PLATFORM-WINDOWS-RENDER-001` | planned / test design review draft |
-| `UNIT-PLATFORM-WINDOWS-003` | DirectWriteによる承認済みGlyphRunSnapshotの描画と資源lifecycle | `UT-PLATFORM-WINDOWS-TEXT-001` | planned / test design review draft。font asset/colorの未確定差分があれば設計解消まで保留 |
+| `UNIT-PLATFORM-WINDOWS-001` | Windows target factory compositionとWin32 Window peer lifecycle。open/retry/resize generation/close/reopen/shutdown | `UT-PLATFORM-WINDOWS-PEER-001` | ready / focused 7 tests、workspace tests・Clippy、Windows x64 target check、Rust 1.85 Windows check pass。CI待ち |
+| UNIT-PLATFORM-WINDOWS-002 | Direct2DによるCore SceneSnapshotのbackground/scale/Clip/FillRect描画とframe completion | UT-PLATFORM-WINDOWS-RENDER-001 | planned / implementation not started |
+| UNIT-PLATFORM-WINDOWS-003 | DirectWriteによる承認済みGlyphRunSnapshotの描画と資源lifecycle | UT-PLATFORM-WINDOWS-TEXT-001 | planned / implementation not started。font asset/colorの未確定差分があれば保留 |
 
 #### Core Layout kernel unit（DD 1.3 / test design 0.7承認済み）
 

@@ -39,6 +39,15 @@
 | Win32 visible peerのopen/close、Direct2D surface上のframe presentation | Windows GUI実機profile | 専用の手動smokeとして実行・記録する。CIから切り離す |
 | Windows x64 UI縦断とpackage consumer | 0.0.1 release qualification | 対象profileで実施し、unit/CI結果で代替しない |
 
+## UNIT-PLATFORM-WINDOWS-001 実装進捗
+
+- 実装メモ: [Windows Platform Adapter / Win32 peer](../01_memory/platform-windows-adapter.md)
+- 状態: 実装・local検証済み。対象branchのWindows CI待ち。UNIT-002/003とWindows GUI実機確認は未着手。
+- 実装: `crates/platform-windows`にWin32 peerと専用message workerを追加し、`Window.open()`時だけnative Windowを生成する。初期client areaと`WM_SIZE`をDIP・generation付きでCoreへ通知し、明示close後の再open、open失敗後のretry、shutdown時のworker/HWND解放を実装した。Windows C ABI artifactにはWindows factoryを接続し、Linux/その他targetの構成を維持した。
+- 境界: rendererはUNIT-002で追加するため、このunitの`submit_frame`は未実装を成功扱いせずfailureを返す。OS `WM_CLOSE`はCore close-request連携が未実装なので抑止する。このunitではtitlebar close・input動作を完了扱いしない。C ABI unit testは可視Windowを生成しないようtest build時にOS factoryから分離した。
+- local検証: `cargo fmt --all -- --check`、workspace Clippy、workspace build、`cargo test --workspace --all-targets --locked`（Windows peer 7件を含む）、Windows x64 target check、Rust 1.85 Windows target checkがpass。CI結果はpush後に記録する。
+- GUI: 可視Windowを起動する実機smokeは未実施。今回のlocal/CI検証で置き換えない。
+
 ## 実装unit詳細案（利用者承認済み）
 
 既存のCore Platform SPIを使うWindows固有の変更に限定し、Core scene producerやLinux backendをこのbranchへ取り込まない。scene producerが別branchで進行中のため、backend unitは承認済み`SceneSnapshot`を直接入力する決定的試験とし、Controlからの自動scene生成をWindows Adapterの完了条件に混ぜない。
@@ -84,4 +93,5 @@
 | --- | --- | --- | --- |
 | 2026-10-31 | 計画0.1 | 利用者レビュー待ち | 0.0.1のWindows x64 target/UI縦断scopeを個別Platform実装計画へ具体化。承認・commit・実装開始は未実施 |
 | 2026-10-31 | 計画0.1 | 利用者承認 | 利用者「計画はokです」により計画全体を承認。計画commit/pushを許可。実装開始・試験合格・0.0.1 release判断は別ゲート |
-| 2026-11-01 | 実装unit詳細案 | 利用者承認 | 利用者「ok」により3 unit分割とtest登録準備を承認。計画更新 `a77fac4` をpush。test design全文承認と製品コード実装開始は別ゲート |
+| 2026-11-01 | 実装unit詳細案 | 利用者承認 | 利用者「ok」により3 unit分割とtest登録準備を承認。計画更新 `a77fac4` をpush |
+| 2026-11-01 | UI test design 1.0 / UNIT-PLATFORM-WINDOWS-001 | 利用者承認・実装開始 | 利用者「承認」によりUI test design 1.0全文を承認。その後「実装を開始」の指示によりUNIT-001の実装を開始。試験・CI合格およびGUI実機確認は別状態 |
