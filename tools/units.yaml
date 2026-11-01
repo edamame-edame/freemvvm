@@ -3645,6 +3645,78 @@
       ]
     },
     {
+      "id": "UNIT-PLATFORM-WINDOWS-001",
+      "state": "planned",
+      "scope": "windows-target-factory-composition-and-win32-window-peer-open-resize-generation-close-reopen-shutdown",
+      "sources": ["crates/platform-windows/src/lib.rs", "crates/platform-windows/src/peer.rs", "crates/platform-windows/src/window.rs", "crates/c-abi/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/c-abi/Cargo.toml", "crates/platform-windows/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-073", "UNIT-CORE-074"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.6 approved",
+          "section": "Windows peer, native surface ownership, generation and lifecycle"
+        }
+      ],
+      "requirements": ["RQ-09-005", "RQ-11-004", "RQ-11-009", "RQ-11-020", "RQ-11-022", "RQ-11-024"],
+      "cases": ["TC-LIFE-01", "TC-PLAT-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-PLATFORM-WINDOWS-PEER-001",
+          "command": ["cargo", "test", "-p", "freemvvm-platform-windows", "platform_windows_peer_", "--locked"]
+        }
+      ]
+    },
+    {
+      "id": "UNIT-PLATFORM-WINDOWS-002",
+      "state": "planned",
+      "scope": "windows-direct2d-render-of-core-scene-background-scale-clip-fillrect-and-frame-completion",
+      "sources": ["crates/platform-windows/src/renderer.rs", "crates/platform-windows/src/surface.rs", "crates/platform-windows/src/lib.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/platform-windows/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-CORE-074", "UNIT-CORE-075", "UNIT-PLATFORM-WINDOWS-001"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.6 approved",
+          "section": "Core SceneSnapshot, renderer factory and Direct2D backend boundary"
+        }
+      ],
+      "requirements": ["RQ-09-067", "RQ-11-008", "RQ-11-019", "RQ-11-020", "RQ-11-022"],
+      "cases": ["TC-PLAT-01", "TC-LAYOUT-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-PLATFORM-WINDOWS-RENDER-001",
+          "command": ["cargo", "test", "-p", "freemvvm-platform-windows", "platform_windows_render_", "--locked"]
+        }
+      ]
+    },
+    {
+      "id": "UNIT-PLATFORM-WINDOWS-003",
+      "state": "planned",
+      "scope": "windows-directwrite-render-of-approved-glyph-run-snapshot-and-text-renderer-resource-lifecycle",
+      "sources": ["crates/platform-windows/src/text.rs", "crates/platform-windows/src/renderer.rs"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/platform-windows/Cargo.toml", "tools/units.yaml"],
+      "depends_on": ["UNIT-PLATFORM-WINDOWS-002"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.6 approved",
+          "section": "DirectWrite text backend; unresolved font asset/color decisions excluded"
+        }
+      ],
+      "requirements": ["RQ-09-053", "RQ-09-072", "RQ-11-023"],
+      "cases": ["TC-PLAT-01", "TC-ERROR-01"],
+      "test_design": ".docs/32_unit_test/ui.md",
+      "tests": [
+        {
+          "id": "UT-PLATFORM-WINDOWS-TEXT-001",
+          "command": ["cargo", "test", "-p", "freemvvm-platform-windows", "platform_windows_text_", "--locked"]
+        }
+      ]
+    },
+    {
       "id": "UNIT-CORE-076",
       "state": "complete",
       "scope": "core-layout-measure-arrange-kernel-and-atomic-layout-snapshot",
