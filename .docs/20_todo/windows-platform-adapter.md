@@ -76,10 +76,11 @@
 
 ### UNIT-PLATFORM-WINDOWS-003 実装進捗
 
-- 状態: adapter実装・local試験・Windows x64 target check・Clippy pass。CI結果はpush後に記録する。
+- 状態: adapter実装・local試験・Windows x64 target check・Clippy・同一SHA Windows/Linux CI完了。
 - 実装: `renderer.rs`はscene内GlyphRunをDirect2D `DrawGlyphRun`へ渡し、Coreのface digest・glyph ID・glyph位置・色・scaleを保持する。各glyphはsnapshot内の絶対位置に描画する。digest未登録、glyph IDがDirectWriteの16-bit範囲外、寸法変換不正はframe failure。scene内の既存ClipとDrawOp順序を維持する。
 - font owner: `text.rs`のDirectWrite font catalogがdigest→`IDWriteFontFace`をWindow renderer lifetimeで保持する。明示TTFはDirectWrite file referenceから検査・作成し、OSへのfont登録は行わない。system faceはTextServiceが選んだ同一faceをdigest付きで登録する入口を用意した。renderer closeでface referencesを一度だけ解放する。
 - 試験: focused 2件、Windows Adapter全14件、Windows x64 target check、対象crate Clippy、format、`git diff --check`がpass。Fake試験はfamily名やpixel出力をoracleにしない。
+- 同revision CI: `02bb2a32c84c9f2fc0ff6c7d9198bacd28c4ea84` の[Windows/Linux CI run 41273236568](https://github.com/edamame-edame/freemvvm/actions/runs/41273236568) success。
 - 未接続境界: 現行RuntimeにTextServiceのfont選択・shaping・face登録call siteがないため、system defaultの実face選択、fallback shaping、アプリTTF指定からWindow rendererへの登録は未実装。未登録digestを描画成功として扱わない。この実装だけで可視文字表示済みとはしない。TextService/Scene producerの接続とWindows GUI profile smokeを後続課題に残す。
 
 ### UNIT-003着手前のフォント契約（計画0.2承認済み）
