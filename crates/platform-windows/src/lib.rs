@@ -12,6 +12,12 @@ mod win32 {
 
     pub(super) struct Backend;
 
+    impl Backend {
+        pub(super) fn new() -> Self {
+            Self
+        }
+    }
+
     impl NativeWindowBackend for Backend {
         fn open(
             &mut self,
