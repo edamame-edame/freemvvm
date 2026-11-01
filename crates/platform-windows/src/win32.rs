@@ -1,6 +1,8 @@
 use crate::peer::NativeWindowBackend;
+use crate::renderer::direct2d::HwndRenderer;
 use freemvvm_core::abi_support::{
-    PlatformOperationError, PlatformWindowClientAreaSink, WindowClientArea,
+    FrameTicket, PlatformOperationError, PlatformWindowClientAreaSink, SceneSnapshot,
+    WindowClientArea,
 };
 use std::ffi::c_void;
 use std::mem::zeroed;
@@ -11,7 +13,9 @@ use std::thread::{self, JoinHandle};
 use windows_sys::Win32::Foundation::{
     CloseHandle, GetLastError, HWND, LPARAM, LRESULT, WAIT_FAILED, WAIT_OBJECT_0, WPARAM,
 };
-use windows_sys::Win32::Graphics::Gdi::{BeginPaint, EndPaint, PAINTSTRUCT, UpdateWindow};
+use windows_sys::Win32::Graphics::Gdi::{
+    BeginPaint, EndPaint, InvalidateRect, PAINTSTRUCT, UpdateWindow,
+};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::{CreateEventW, INFINITE, ResetEvent, SetEvent};
 use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
@@ -60,6 +64,10 @@ enum Command {
         response: SyncSender<Result<WindowClientArea, PlatformOperationError>>,
     },
     Close {
+        response: SyncSender<Result<(), PlatformOperationError>>,
+    },
+    SubmitFrame {
+        scene: Arc<SceneSnapshot>,
         response: SyncSender<Result<(), PlatformOperationError>>,
     },
     Shutdown,
@@ -171,12 +179,31 @@ impl NativeWindowBackend for Backend {
         worker.send(Command::Close { response })?;
         result.recv().map_err(|_| PlatformOperationError)?
     }
+
+    fn submit_frame(
+        &mut self,
+        _ticket: FrameTicket,
+        scene: Arc<SceneSnapshot>,
+    ) -> Result<(), PlatformOperationError> {
+        let worker = self.worker.as_ref().ok_or(PlatformOperationError)?;
+        let (response, result) = mpsc::sync_channel(1);
+        worker.send(Command::SubmitFrame { scene, response })?;
+        result.recv().map_err(|_| PlatformOperationError)?
+    }
 }
 
 struct WindowState {
     generation: u64,
     sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
+    renderer: Option<HwndRenderer>,
+    last_scene: Option<Arc<SceneSnapshot>>,
+    pending_render: Option<PendingRender>,
 }
+
+type PendingRender = (
+    Arc<SceneSnapshot>,
+    SyncSender<Result<(), PlatformOperationError>>,
+);
 
 struct NativeWindow {
     handle: HWND,
@@ -229,6 +256,34 @@ fn worker_main(receiver: Receiver<Command>, ready: SyncSender<()>, wake_event: u
                         let result = close_native_window(&mut window);
                         let _ = response.send(result);
                     }
+                    Ok(Command::SubmitFrame { scene, response }) => {
+                        let result = if let Some(opened) = window.as_mut() {
+                            let state = &mut opened._state;
+                            if state.pending_render.is_some() {
+                                Err(PlatformOperationError)
+                            } else {
+                                state.pending_render = Some((scene, response));
+                                // SAFETY: opened.handle is live and owned by this worker thread.
+                                if unsafe { InvalidateRect(opened.handle, null(), 0) } == 0 {
+                                    if let Some((_, response)) = state.pending_render.take() {
+                                        let _ = response.send(Err(PlatformOperationError));
+                                    }
+                                } else {
+                                    // SAFETY: invalidation above guarantees an update region.
+                                    let updated = unsafe { UpdateWindow(opened.handle) };
+                                    if updated == 0 {
+                                        if let Some((_, response)) = state.pending_render.take() {
+                                            let _ = response.send(Err(PlatformOperationError));
+                                        }
+                                    }
+                                }
+                                continue;
+                            }
+                        } else {
+                            Err(PlatformOperationError)
+                        };
+                        let _ = response.send(result);
+                    }
                     Ok(Command::Shutdown) => {
                         let _ = close_native_window(&mut window);
                         break 'worker;
@@ -267,7 +322,13 @@ fn open_native_window(
     sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
 ) -> Result<NativeWindow, PlatformOperationError> {
     register_window_class()?;
-    let mut state = Box::new(WindowState { generation, sink });
+    let mut state = Box::new(WindowState {
+        generation,
+        sink,
+        renderer: None,
+        last_scene: None,
+        pending_render: None,
+    });
     let state_pointer = (&mut *state) as *mut WindowState;
     // SAFETY: pointers refer to static UTF-16 strings or state retained by NativeWindow. The
     // Win32 message loop and the handle are owned by this worker thread.
@@ -289,6 +350,27 @@ fn open_native_window(
     };
     if handle.is_null() {
         return Err(PlatformOperationError);
+    }
+
+    let (width_px, height_px) = match client_area_pixels(handle) {
+        Ok(size) => size,
+        Err(error) => {
+            // SAFETY: the HWND is live and owned by this worker thread.
+            unsafe { DestroyWindow(handle) };
+            return Err(error);
+        }
+    };
+    match HwndRenderer::new(
+        windows::Win32::Foundation::HWND(handle),
+        width_px,
+        height_px,
+    ) {
+        Ok(renderer) => state.renderer = Some(renderer),
+        Err(error) => {
+            // SAFETY: the HWND is live and owned by this worker thread.
+            unsafe { DestroyWindow(handle) };
+            return Err(error);
+        }
     }
 
     // SAFETY: handle is a live top-level Window created by this worker thread.
@@ -324,12 +406,7 @@ fn close_native_window(window: &mut Option<NativeWindow>) -> Result<(), Platform
 }
 
 fn client_area(handle: HWND) -> Result<WindowClientArea, PlatformOperationError> {
-    // SAFETY: RECT is a plain Win32 output struct whose all-zero state is valid before the call.
-    let mut rect = unsafe { zeroed() };
-    // SAFETY: handle is live on its owning thread and rect is writable.
-    if unsafe { GetClientRect(handle, &mut rect) } == 0 {
-        return Err(PlatformOperationError);
-    }
+    let (width_px, height_px) = client_area_pixels(handle)?;
     // SAFETY: handle is a live Window on its owning thread.
     let dpi = unsafe { GetDpiForWindow(handle) };
     if dpi == 0 {
@@ -337,9 +414,22 @@ fn client_area(handle: HWND) -> Result<WindowClientArea, PlatformOperationError>
     }
     let scale = 96.0 / f64::from(dpi);
     Ok(WindowClientArea {
-        width_dip: f64::from((rect.right - rect.left).max(0)) * scale,
-        height_dip: f64::from((rect.bottom - rect.top).max(0)) * scale,
+        width_dip: f64::from(width_px) * scale,
+        height_dip: f64::from(height_px) * scale,
     })
+}
+
+fn client_area_pixels(handle: HWND) -> Result<(u32, u32), PlatformOperationError> {
+    // SAFETY: RECT is a plain Win32 output struct whose all-zero state is valid before the call.
+    let mut rect = unsafe { zeroed() };
+    // SAFETY: handle is live on its owning thread and rect is writable.
+    if unsafe { GetClientRect(handle, &mut rect) } == 0 {
+        return Err(PlatformOperationError);
+    }
+    Ok((
+        (rect.right - rect.left).max(0) as u32,
+        (rect.bottom - rect.top).max(0) as u32,
+    ))
 }
 
 fn register_window_class() -> Result<(), PlatformOperationError> {
@@ -400,12 +490,19 @@ unsafe extern "system" fn window_proc(
     }
 
     if message == WM_SIZE {
-        // SAFETY: GWLP_USERDATA is either null or the WindowState pointer installed at WM_NCCREATE.
+        // SAFETY: GWLP_USERDATA is either null or the state installed at WM_NCCREATE.
         let state = unsafe { GetWindowLongPtrW(handle, GWLP_USERDATA) } as *mut WindowState;
         if !state.is_null() {
+            // SAFETY: state is retained until DestroyWindow returns; this is its owner thread.
+            let state = unsafe { &mut *state };
+            if let Some(renderer) = &mut state.renderer {
+                if let Ok((width, height)) = client_area_pixels(handle) {
+                    if renderer.resize(width, height).is_err() {
+                        state.renderer = None;
+                    }
+                }
+            }
             if let Ok(area) = client_area(handle) {
-                // SAFETY: state remains owned by NativeWindow until after DestroyWindow returns.
-                let state = unsafe { &*state };
                 if let Some(sink) = &state.sink {
                     let sink = Arc::clone(sink);
                     let generation = state.generation;
@@ -425,6 +522,32 @@ unsafe extern "system" fn window_proc(
         let context = unsafe { BeginPaint(handle, &mut paint) };
         // SAFETY: this balances the successful BeginPaint call above.
         unsafe { EndPaint(handle, &paint) };
+        // SAFETY: GWLP_USERDATA is either null or the state installed at WM_NCCREATE.
+        let state = unsafe { GetWindowLongPtrW(handle, GWLP_USERDATA) } as *mut WindowState;
+        if !state.is_null() {
+            // SAFETY: state remains owned by NativeWindow through this window procedure call.
+            let state = unsafe { &mut *state };
+            let pending = state.pending_render.take();
+            let scene = pending
+                .as_ref()
+                .map(|(scene, _)| Arc::clone(scene))
+                .or_else(|| state.last_scene.clone());
+            let result = match (state.renderer.as_mut(), scene.as_ref()) {
+                (Some(renderer), Some(scene)) => {
+                    renderer.render(scene).map_err(|_| PlatformOperationError)
+                }
+                (Some(_), None) => Ok(()),
+                (None, _) => Err(PlatformOperationError),
+            };
+            if result.is_ok() {
+                if let Some((scene, _)) = &pending {
+                    state.last_scene = Some(Arc::clone(scene));
+                }
+            }
+            if let Some((_, response)) = pending {
+                let _ = response.send(result);
+            }
+        }
         let _ = context;
         return 0;
     }

@@ -1,6 +1,7 @@
 //! Windows Win32 window peer for the Core Platform SPI.
 
 mod peer;
+mod renderer;
 
 #[cfg(target_os = "windows")]
 mod win32;
@@ -30,6 +31,14 @@ mod win32 {
         fn close(&mut self) -> Result<(), PlatformOperationError> {
             Ok(())
         }
+
+        fn submit_frame(
+            &mut self,
+            _ticket: freemvvm_core::abi_support::FrameTicket,
+            _scene: Arc<freemvvm_core::abi_support::SceneSnapshot>,
+        ) -> Result<(), PlatformOperationError> {
+            Err(PlatformOperationError)
+        }
     }
 }
 
@@ -48,8 +57,10 @@ struct WindowsFactory;
 impl PlatformRuntimeFactory for WindowsFactory {
     fn create_window_peer(
         &self,
-        _completion_sink: Arc<dyn PlatformFrameCompletionSink>,
+        completion_sink: Arc<dyn PlatformFrameCompletionSink>,
     ) -> Result<Arc<dyn PlatformWindowPeer>, PlatformOperationError> {
-        Ok(Arc::new(peer::WindowsPeer::new(win32::Backend::new())))
+        let peer = peer::WindowsPeer::new(win32::Backend::new());
+        peer.set_completion_sink(completion_sink);
+        Ok(Arc::new(peer))
     }
 }

@@ -1,6 +1,6 @@
 use freemvvm_core::abi_support::{
-    FrameTicket, PlatformOperationError, PlatformWindowClientAreaSink, PlatformWindowPeer,
-    SceneSnapshot, WindowClientArea,
+    FrameTicket, PlatformFrameCompletionSink, PlatformOperationError, PlatformWindowClientAreaSink,
+    PlatformWindowPeer, SceneSnapshot, WindowClientArea,
 };
 use std::sync::{Arc, Mutex};
 
@@ -12,6 +12,12 @@ pub(crate) trait NativeWindowBackend: Send {
     ) -> Result<WindowClientArea, PlatformOperationError>;
 
     fn close(&mut self) -> Result<(), PlatformOperationError>;
+
+    fn submit_frame(
+        &mut self,
+        ticket: FrameTicket,
+        scene: Arc<SceneSnapshot>,
+    ) -> Result<(), PlatformOperationError>;
 }
 
 struct PeerState<B> {
@@ -22,6 +28,7 @@ struct PeerState<B> {
 pub(crate) struct WindowsPeer<B: NativeWindowBackend> {
     state: Mutex<PeerState<B>>,
     client_area_sink: Mutex<Option<Arc<dyn PlatformWindowClientAreaSink>>>,
+    completion_sink: Mutex<Option<Arc<dyn PlatformFrameCompletionSink>>>,
 }
 
 impl<B: NativeWindowBackend> WindowsPeer<B> {
@@ -32,6 +39,13 @@ impl<B: NativeWindowBackend> WindowsPeer<B> {
                 generation: None,
             }),
             client_area_sink: Mutex::new(None),
+            completion_sink: Mutex::new(None),
+        }
+    }
+
+    pub(crate) fn set_completion_sink(&self, sink: Arc<dyn PlatformFrameCompletionSink>) {
+        if let Ok(mut current) = self.completion_sink.lock() {
+            *current = Some(sink);
         }
     }
 }
@@ -80,15 +94,21 @@ impl<B: NativeWindowBackend + 'static> PlatformWindowPeer for WindowsPeer<B> {
     fn submit_frame(
         &self,
         ticket: FrameTicket,
-        _scene: Arc<SceneSnapshot>,
+        scene: Arc<SceneSnapshot>,
     ) -> Result<(), PlatformOperationError> {
-        let state = self.state.lock().map_err(|_| PlatformOperationError)?;
+        let mut state = self.state.lock().map_err(|_| PlatformOperationError)?;
         if state.generation != Some(ticket.surface_generation()) {
             return Err(PlatformOperationError);
         }
 
-        // Rendering is added by UNIT-PLATFORM-WINDOWS-002. Never accept a frame without a renderer.
-        Err(PlatformOperationError)
+        state.backend.submit_frame(ticket, scene)?;
+        self.completion_sink
+            .lock()
+            .map_err(|_| PlatformOperationError)?
+            .as_ref()
+            .ok_or(PlatformOperationError)?
+            .complete_frame(ticket)
+            .map_err(|_| PlatformOperationError)
     }
 }
 
@@ -103,7 +123,9 @@ fn valid_client_area(area: WindowClientArea) -> bool {
 mod tests {
     use super::{NativeWindowBackend, WindowsPeer};
     use freemvvm_core::abi_support::{
-        PlatformOperationError, PlatformWindowClientAreaSink, PlatformWindowPeer, WindowClientArea,
+        Damage, DeviceScale, DrawOp, FrameTicket, FrameTracker, PlatformFrameCompletionSink,
+        PlatformOperationError, PlatformWindowClientAreaSink, PlatformWindowPeer, SceneSnapshot,
+        WindowClientArea,
     };
     use std::collections::VecDeque;
     use std::sync::Arc;
@@ -137,6 +159,14 @@ mod tests {
             self.closes += 1;
             self.close_results.pop_front().unwrap_or(Ok(()))
         }
+
+        fn submit_frame(
+            &mut self,
+            _ticket: FrameTicket,
+            _scene: Arc<SceneSnapshot>,
+        ) -> Result<(), PlatformOperationError> {
+            Ok(())
+        }
     }
 
     impl Drop for FakeBackend {
@@ -165,6 +195,32 @@ mod tests {
             self.0.lock().unwrap().push((generation, area));
             Ok(())
         }
+    }
+
+    struct RecordingCompletionSink(Arc<std::sync::Mutex<Vec<FrameTicket>>>);
+
+    impl PlatformFrameCompletionSink for RecordingCompletionSink {
+        fn complete_frame(&self, ticket: FrameTicket) -> Result<(), PlatformOperationError> {
+            self.0.lock().unwrap().push(ticket);
+            Ok(())
+        }
+
+        fn fail_frame(&self, _: FrameTicket) -> Result<(), PlatformOperationError> {
+            Err(PlatformOperationError)
+        }
+    }
+
+    fn scene() -> Arc<SceneSnapshot> {
+        Arc::new(
+            SceneSnapshot::new(
+                3,
+                DeviceScale::new(1.0, 1.0).unwrap(),
+                [0.0, 0.0, 0.0],
+                Arc::<[DrawOp]>::from([]),
+                Damage::Full,
+            )
+            .unwrap(),
+        )
     }
 
     #[test]
@@ -255,6 +311,29 @@ mod tests {
 
         assert_eq!(peer.open(12), Ok(area()));
         assert_eq!(*received.lock().unwrap(), [(12, area())]);
+    }
+
+    #[test]
+    fn platform_windows_render_completes_only_the_active_generation_ticket() {
+        let peer = WindowsPeer::new(FakeBackend {
+            opens: VecDeque::from([Ok(area())]),
+            close_results: VecDeque::new(),
+            open_generations: Vec::new(),
+            closes: 0,
+            drop_probe: None,
+        });
+        let completed = Arc::new(std::sync::Mutex::new(Vec::new()));
+        peer.set_completion_sink(Arc::new(RecordingCompletionSink(Arc::clone(&completed))));
+        peer.open(4).unwrap();
+
+        let mut frames = FrameTracker::default();
+        let ticket = frames.begin(4, scene()).unwrap();
+        peer.submit_frame(ticket, scene()).unwrap();
+        assert_eq!(*completed.lock().unwrap(), [ticket]);
+
+        let stale = frames.begin(5, scene()).unwrap();
+        assert!(peer.submit_frame(stale, scene()).is_err());
+        assert_eq!(*completed.lock().unwrap(), [ticket]);
     }
 
     #[test]
