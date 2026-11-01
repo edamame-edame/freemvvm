@@ -1,9 +1,9 @@
 # UIクラス：Window・基本Control・次段階Control
 
-- 文書版: 1.5
+- 文書版: 1.6
 - 文書ロール: detailed-design
 - 更新日: 2026-11-01
-- 状態: 1.2全文承認済み（利用者、2026-10-29）。1.3 / 1.4全文承認済み（利用者、2026-10-30～2026-10-31）。Window単位TextServiceの関連付け1.5全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
+- 状態: 1.2全文承認済み（利用者、2026-10-29）。1.3 / 1.4全文承認済み（利用者、2026-10-30～2026-10-31）。Window単位TextServiceの関連付け1.5全文承認済み（利用者、2026-11-01）。Widget Input subscription 1.6全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -161,6 +161,23 @@ stateDiagram-v2
 
 CloseRequestはWindow弱参照・peer generation・request IDを持つ。resolveはUI thread、成功後はConsumed。未解決requestをreleaseした場合はDeclineとしてWindowを表示維持する案で、source ownerが失われたためWindowを黙って閉じない。shutdownはveto/deferを経由せず全peerをUIでtear downする。
 
+## Widget Input subscription（1.6全文承認済み）
+
+本節は[RQ-09-068](../../11_requirements/RQ-09_ui-scope.md#rq-09-068)をControl APIへ接続する実現仕様として承認された。公開C ABI宣言は[共通C ABI](../runtime-objects/abi.md) 1.5と対応する。
+
+| 対象 | 追加する操作・意味 | 所有・変更点 |
+|---|---|---|
+| Widget | `input_subscribe(event_mask, callback)`、`has_focus()` | callbackはcurrent Widget・元target・event viewを受ける。InputSubscriptionはWidget/Runtimeに登録され、cancelまたはWidget/Runtime終了までCoreがcallback/userdataを所有。Focus notification callbackは初期追加せずgetterで現在値を読む |
+| InputSubscription | `cancel()` | cancelとhandle releaseは別操作。登録解除後もsubscription handleは明示releaseまで解放されない。in-flight callback中のself-cancelはcallback復帰後にdestroy |
+| Button default action | handledでないprimary pointer down/up pair後に既存semantic activationへ一度接続 | InputRouterがWindow generation付きweak pending pressを保持し、same Buttonへの有効upで一度だけ消費。別target/up handled/detach/disable/closeで破棄。captureはしない。Commandなし/CanExecute=false/disabled/ancestor-disabledは既存Button契約どおりno-op |
+| TextBox default action | handledでないTextCommitを既存TextBoxState edit/validation入口へ渡す | UTF-8 copy、session、Validator、確定値/編集状態はTextBox設計の所管。FocusLostをcommit/cancelへ読み替えない |
+
+event subscriptionは各Widgetに0個以上設定でき、RuntimeのInputRouterがtargetからLogical parentへrouteする。1 Widget内では登録順に呼び、handled後は同Widgetの残りcallback・親route・default actionを止める。callback中にWidgetがdetachまたはeffective-disabledとなった場合も残りrouteとdefault actionを止める。event payload viewはcallback中だけ有効で、利用者に保持させない。
+
+この案では対象eventをKeyDown/KeyUp/TextCommit/PrimaryPointerDown/PrimaryPointerUpに限定する。Button起動の意味上のsource of truthはCore Buttonであり、Platform native button/command動作を直接呼ばない。Focus取得をpointer downへ自動連動させる動作、pointer capture/move/wheel、keyboard shortcut、Tab traversalは追加しない。
+
+wrapperの言語別closure形、C ABI symbol、event-kindの固定数値とpointer button enumはこのControl文書だけでは確定しない。これらはC ABI 1.5案を承認した後、各wrapperの文書とunitを更新して定める。
+
 
 ## クラス設計の補足（1.1承認済み）
 
@@ -300,3 +317,5 @@ Text/TextBox/Buttonの初期Controlはfont未指定で作成され、CoreはOS�
 | 2026-10-31 | 1.4改訂案 | Text-familyの未指定fontをCore-neutral PlatformDefault requestとし、Platform resolver経由で同一metrics/GlyphRun resultをLayout・Sceneで共有する案を追加。全文レビュー待ち |
 | 2026-10-31 | 1.4全文 | 利用者の「ok」により未指定font requestとMeasure/Scene同一resolved snapshotの接続を含む文書全体を承認。実装・試験合格は別管理 |
 | 2026-11-01 | 1.5全文 | 利用者承認。TextServiceをWindow peerへ関連付け、Windows worker内でresolve/shape/face登録/render/releaseを行う。Linux等のRuntime共通serviceは維持。Platform DD 2.1と一体承認。実装・試験合格は別管理 |
+| 2026-11-01 | 1.6改訂案 | RQ-09-068のWidget Input subscription、Button/TextBox default action、handled順序、Focus getterを提案。1.5承認baselineを維持 |
+| 2026-11-01 | 1.6全文 | 利用者の「ok」によりWidgetごとのInput subscription、Button/TextBox default action、handled順序、Focus getterを含む全文を承認。実装・試験状態は別管理 |

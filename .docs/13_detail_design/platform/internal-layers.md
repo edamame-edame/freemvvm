@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 2.2
+- 文書版: 2.3
 - 文書ロール: detailed-design
 - 更新日: 2026-11-01
-- 状態: 1.6全文承認済み（利用者、2026-10-30）。Linux/Core 1.7～1.9全文承認済み（利用者、2026-10-31）。Windows GlyphRun 1.7全文承認済み（利用者、2026-11-01）。Window単位TextServiceとWindows worker所有2.1全文承認済み（利用者、2026-11-01）。2.2全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
+- 状態: 1.6全文承認済み（利用者、2026-10-30）。Linux/Core 1.7～1.9全文承認済み（利用者、2026-10-31）。Windows GlyphRun 1.7全文承認済み（利用者、2026-11-01）。Window単位TextServiceとWindows worker所有2.1全文承認済み（利用者、2026-11-01）。2.2全文承認済み（利用者、2026-11-01）。Windows native input bridge 2.3全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -233,6 +233,22 @@ Linux initial profileではFontconfigのsystem configurationを参照する案�
 
 OS close eventの連打をdebounceする追加保証、Runtime shutdownへのveto、Window/Runtime全体の暗黙closeは追加しない。単体試験ではdecision・generation・dispatch/worker failureをfakeし、可視GUIでのtitlebar close確認とは分ける。
 
+### v2.3: Windows native inputからCore InputRouterへのbridge（全文承認済み）
+
+本節はRQ-09-010/046/049/056/068とUI Input/Focus 1.2・共通ABI 1.5をWindows peerへ接続する実現仕様として承認された。2.2 close intent flow、Coreを意味状態のsource of truthとする境界、TextService worker所有は維持する。OS固有message codeをpublic C ABIへ出さない。
+
+| 対象 | 提案責務 | 順序・失敗境界 |
+|---|---|---|
+| `PlatformWindowInputSink` | peer作成時にWindow identity/generationへ束縛し、normalized key/text/pointer/focus eventをCore UI dispatcherへpost | worker/WndProcからCore Controlや利用者callbackを直接呼ばない。sinkはeventを値copyし、呼出し元へCore処理完了を同期waitしない |
+| Windows message loop | native keyboard down/up、system text commit/IME commit、primary pointer down/up、native Window activation/focus changeを個別に取得 | 具体native message・TSF/IME API・keyboard layout mapはWindows unit designで決める。key downをTextCommitへ合成せず、同一文字入力をWM_CHAR等とIME commitの両方から二重投入しない |
+| coordinate conversion | pointer client pixelをpeer open時のDeviceScaleと座標原点に基づくclient DIPへ変換しnormalized eventへcopy | 変換はAdapterで一回のみ。Coreは同じDIP/Layout bounds/ancestor clipでhit-testし、Renderer/Control geometryを再計算しない |
+| event queue | 同一peer generationから受けたkeyboard/text/pointer/focus eventを受信順にCore UI dispatcherへ投入 | Window generation stale、shutdown開始後、closed peerのeventは破棄。commitとfocus-loss競合はRQ-09-056の受信順を保ち、終了済みIME session eventを適用しない |
+| Core feedback | Core Focus stateをnative focus request結果と同期し、同じ遷移のOS折返しを抑止 | Core stateを唯一の意味上の正本とする。OS failureはnative Focusが同期できない診断で、別Focus stateを作らない |
+
+Adapterは初期primary pointer down/upをhit-test target付き共通eventに正規化し、Core InputRouterへ渡す。Coreがtarget route、handled、Button default activationを決定する。OS Button controlやOS commandを呼び出さない。pointer move/wheel/capture、secondary button、複数pointerは本改訂案に含めない。
+
+この案はWindows peerからCoreへの責務境界のみを定め、Win32 message番号、keyboard key identity数値表、IME API選択、実機GUI合格条件を確定しない。これらは共通Input/ABI文書の承認後、Windows platform実装unitの具体設計でレビューする。
+
 ## GlyphRunのfont・color契約（1.7承認済み）
 
 本節はRQ-09-053/072およびRQ-11-023に対応する、初期Text描画の共通値とWindows profileでのfont解決を定める。Windows profileのfont family名・画素単位の描画結果は固定しない。
@@ -430,3 +446,5 @@ flowchart TB
 | 2026-11-01 | 2.1全文 | 利用者承認。Windows TextServiceをWindow peer/workerへ関連付け、COM objectをworker境界外へ渡さない。Linux等のRuntime共通serviceは維持。公開API・要求保証は追加せず、unit-test・実装状態は別管理 |
 | 2026-11-01 | 2.2改訂案 | Windows `WM_CLOSE`→Core close-request sinkのthread flow、decision別peer lifecycle、DRM/KMSにwindow-manager close sourceがない境界を提案。全文レビュー待ち。2.1承認範囲を維持 |
 | 2026-11-01 | 2.2全文 | 利用者の「おK」によりWindows native close intent/Core request bridge、decision別lifecycle、DRM/KMS profile境界を含む全文を承認。実装・試験状態は別管理 |
+| 2026-11-01 | 2.3改訂案 | Windows input sink、native event順序、DIP変換、IME commit順、Core focus/route責務を提案。2.2承認範囲を維持 |
+| 2026-11-01 | 2.3全文 | 利用者の「ok」によりWindows native input bridge、event順序、DIP変換、Core focus/route境界を含む全文を承認。具体native API・実装・試験は別管理 |

@@ -1,9 +1,9 @@
 # 共通C ABI：宣言・検査・互換性
 
-- 文書版: 1.4
+- 文書版: 1.5
 - 文書ロール: detailed-design
-- 更新日: 2026-10-30
-- 状態: 1.2全文承認済み（利用者、2026-10-19）。1.3初期UI Control API全文承認済み（利用者、2026-10-24）。1.4全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
+- 更新日: 2026-11-01
+- 状態: 1.2全文承認済み（利用者、2026-10-19）。1.3初期UI Control API全文承認済み（利用者、2026-10-24）。1.4全文承認済み（利用者、2026-10-30）。Input event subscription 1.5全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -676,7 +676,7 @@ ui_status ui_abi_1_button_command(ui_handle button,
                                   ui_handle *out_error);
 ```
 
-feature IDは`8`（`core.ui.controls.v1`）を提案する。既存ID 1～7の次候補だが、本改訂の承認までは正式割当ではない。`has_feature(8)`は、このfeatureに含む全symbolと契約が提供される場合に限りtrueとする。一部Controlだけを提供する場合は、別feature定義をレビューする。
+feature ID `8`（`core.ui.controls.v1`）は本書1.3全文（2026-10-24）の承認対象として採用済みである。宣言された全symbolと契約が提供される場合だけ`has_feature(8)`をtrueとする。一部Controlだけを提供する場合は、別feature定義をレビューする。実装・試験状態は別管理とする。
 
 #### 生成・所有・失敗の共通契約
 
@@ -891,7 +891,7 @@ ui_status ui_abi_1_runtime_dispatch_turn(ui_handle runtime);
 | --- | --- |
 | DD内API表を共通schemaで統合し、入力/出力、owned/borrowed、thread/context、commit、failure ownership、feature/versionを必須fieldにする。 | 上記の根拠RQ |
 | 失敗優先順はrequired output妥当性→token→kind→Runtime→thread/context→lifecycle→値/容量→資源準備。API固有例外は表に列挙する。 | 上記の根拠RQ |
-| feature IDは0 invalid、1 core.mvvm.v1、2 values.f64_decimal.v1、3 numeric.f32_bridge.v1、4 host.shutdown_receipt.v1、5 collection.v1、6 textbox.snapshot.v1、7 runtime.post_dispatch.v1。 | 上記の根拠RQ |
+| feature IDは0 invalid、1 core.mvvm.v1、2 values.f64_decimal.v1、3 numeric.f32_bridge.v1、4 host.shutdown_receipt.v1、5 collection.v1、6 textbox.snapshot.v1、7 runtime.post_dispatch.v1、8 core.ui.controls.v1（1.3承認済み）、9 core.ui.input.v1（1.5承認済み）。 | 上記の根拠RQ |
 | has_featureは機能群の全symbolと外部契約が提供されるときだけtrue。build flagの存在だけで有効としない。 | 上記の根拠RQ |
 | global snapshot getterはowned immutable値、UI object getterはUI専用。bufferの2-call readはlive getterなら同snapshot保証なし、snapshot getterなら固定。 | 上記の根拠RQ |
 | borrowed callback引数の保存にはretain/copyが必要。新owned outを受け取るwrapperはticketを先に準備する。 | 上記の根拠RQ |
@@ -918,6 +918,59 @@ ui_status ui_abi_1_runtime_dispatch_turn(ui_handle runtime);
 Callback matrixはPost/Notification/Validator/InputValidator/CommandStart/Destroy/BridgeWakeごとに書く。終了要求の受付はValidator禁止UI変更の例外として扱い、UI cleanupをそのcallback stack内で実行しない。BridgeWakeはscheduleだけ、Destroyはroot/ticket回収だけとし、通常UI APIへ再入しない。
 
 必須out pointerが無効な場合はmemoryの妥当性を安全に検証できるとはせず、NULLの検査とcallerの有効領域契約を区別する。エラーを返す前に読み取ったout以外を部分初期化しないよう、出力shape検査後に規定値をまとめて書く。既存BD/DDのfeature query宣言を照合し、公開数値の先行割当がないことを確認した。0はinvalid、1～6を本書の正式割当とし、後続追加で再利用しない。
+
+### UI Input event subscription ABI（1.5全文承認済み）
+
+以下の宣言・feature IDはRQ-09-068を実現する詳細設計として利用者が承認した。C宣言は設計正本であり、配布headerや実装済みAPIを意味しない。既承認1.4 ABIと既存symbolの意味は変更しない。
+
+```c
+typedef void (*ui_input_callback)(ui_handle current_widget,
+                                  ui_handle original_target,
+                                  ui_handle borrowed_event,
+                                  void *userdata);
+
+enum {
+  UI_INPUT_KEY_DOWN = 1,
+  UI_INPUT_KEY_UP = 2,
+  UI_INPUT_TEXT_COMMIT = 3,
+  UI_INPUT_PRIMARY_POINTER_DOWN = 4,
+  UI_INPUT_PRIMARY_POINTER_UP = 5
+};
+
+ui_status ui_abi_1_widget_input_subscribe(
+    ui_handle widget, uint64_t event_mask,
+    ui_input_callback callback, void *userdata, ui_destroy destroy,
+    ui_handle *out_subscription, ui_handle *out_error);
+ui_status ui_abi_1_input_event_kind(ui_handle borrowed_event,
+                                    uint32_t *out_kind);
+ui_status ui_abi_1_input_event_key(ui_handle borrowed_event,
+                                   uint32_t *out_key_identity,
+                                   uint32_t *out_modifiers);
+ui_status ui_abi_1_input_event_text(ui_handle borrowed_event,
+                                    uint8_t *buffer, uint64_t capacity,
+                                    uint64_t *out_length);
+ui_status ui_abi_1_input_event_pointer(ui_handle borrowed_event,
+                                       double *out_x_dip,
+                                       double *out_y_dip,
+                                       uint32_t *out_button);
+ui_status ui_abi_1_input_event_set_handled(ui_handle borrowed_event,
+                                           ui_bool handled,
+                                           ui_handle *out_error);
+ui_status ui_abi_1_widget_has_focus(ui_handle widget,
+                                    ui_bool *out_focused);
+```
+
+- `event_mask`は`1ULL << (kind - 1)`をkind bitとして使い、0または未知bitを含むmaskは`UI_INVALID_ARGUMENT`で拒否する。`callback`と`destroy`は必須。登録はUI thread上で行い、成功時にCoreへclosureを移し、失敗時は呼出し側が所有を保つ。登録順に同一Widgetのmatching callbackを呼ぶ。
+- `current_widget`は現在callbackを受けるControl、`original_target`はevent開始時のhit-test/focus target。両handleと`borrowed_event`はcallback期間だけ借用する。event handleのretain/releaseによる延命は拒否し、callback復帰後のgetter/setterは`UI_INVALID_HANDLE`とする。Widget handleを保持する場合はcallback内でretainする。
+- `input_event_set_handled`はUI threadかつcallback中だけ許す。値は0/1のみ、false指定は状態を変えず、handledはfalseからtrueへの一方向である。trueになった時点で同Widget上の後続handler、Logical ancestorへの配送、target default actionを停止する。
+- kind/payload getterはcallback中の有効event handleだけを受け、種類不一致では`UI_WRONG_TYPE`、stale/borrowed lifetime違反では`UI_INVALID_HANDLE`とする。`widget_has_focus`はUI-thread getterで、active focus targetならtrueを返す。
+- key identityの数値表とmodifier bitは本案だけでは確定しない。platform-neutralな表を公開前に同文書で定義し、OS native codeをそのまま公開しない。Pointer座標は対象Window clientのDIP。primary buttonの数値は別途enumで定義する。
+- `widget_has_focus`は同期getterであり、Focus callback subscriptionは初期ABIに追加しない。FocusLost→FocusGainedはCore内部遷移順序、利用者はgetterで最新状態を読む。
+- cancelは既存`subscription_cancel`へ統合する。取消後は新規callbackを開始せず、自己取消は現在callback終了後にclosureを一度だけdestroyする。Widget detach/破棄とRuntime shutdownでは保留中Input callbackを破棄し、destroyをUI thread cleanupで一度だけ実行する。
+- callback panic/exceptionはABI境界内へ閉じ、現在eventをhandledとして終了する。callback中の別UI操作は通常status規則で処理し、callback復帰後にroute membershipとeffective-enabledを再検査する。
+- 追加feature ID `9` (`core.ui.input.v1`)を採用する。既存1～8の意味・IDを変更しない。`has_feature(9)`は宣言したInput symbol群とその全契約がそろう場合だけtrue。
+
+この案のcallback引数・borrowed event lifetime・handled setterは各language wrapperに反映する。C ABIを承認しても各wrapper APIや実装・試験が完了したことにはならない。
 
 ## クラス設計の補足（1.1承認済み）
 
@@ -988,3 +1041,5 @@ ApiInventoryEntryの所管は文書path/版/項目で示す案とし、既存sch
 | 2026-10-24 | 1.3全文 | 利用者の「ok」により初期UI Control C ABI契約案全体を承認。実装・試験状態は別管理 |
 | 2026-10-30 | 1.4改訂案 | RQ-09-074のWindow background getter/set/reset C ABI宣言とvalidation/atomicity/paint invalidationを提案。1.3承認範囲を維持し全文レビュー待ち |
 | 2026-10-30 | 1.4全文 | 利用者の「ok」によりWindow background RGB getter/set/reset ABIとvalidation/atomicity契約を含む全文を承認。実装・試験合格は別管理 |
+| 2026-11-01 | 1.5改訂案 | RQ-09-068向けWidget Input subscription、borrowed event view、handled setter、Focus getter、feature ID 9を提案。1.4承認baselineを維持 |
+| 2026-11-01 | 1.5全文 | 利用者の「ok」によりInput callback ABI、borrowed event lifetime、handled setter、Focus getter、feature ID 9を含む全文を承認。宣言の実装・配布状態は別管理 |

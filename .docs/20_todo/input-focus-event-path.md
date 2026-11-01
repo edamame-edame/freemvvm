@@ -1,7 +1,7 @@
 # 0.0.1 Input / Focus event pathの次工程計画
 
-- 計画版: 0.1案
-- 状態: 計画承認済み（利用者、2026-11-01）。設計改訂案は別途文書単位レビュー待ち。未実装
+- 計画版: 0.2
+- 状態: 計画0.2全文承認済み（利用者、2026-11-01）。unit inventory登録・実装branch準備・実装は別管理
 - 対象version: `0.0.1`
 - 対象: 承認済みInput/Focus要求を、Core UI処理とWindows native event sourceへつなぐ前の設計・実装unit計画
 - Core APIs branch案: `impl-rust/core-input-focus`
@@ -23,7 +23,7 @@ Windows close-request接続までのCore/Windows unitは同revision CIを通過�
 
 ## 推奨方針
 
-まず設計境界を閉じ、その承認済み範囲だけをCore / Windowsの二unitへ分けて実装する。公開C ABIやControl event subscriptionの追加は現行DDで一意に導けないため、初回提案では既存公開面へ追加しない。RQ-09-068のhandled/bubbling保証がpublic event surfaceを必要とする場合は、その要求・DD・test変更案を実装unitから切り離して先にレビューする。
+設計境界を先に閉じる。照合の結果、RQ-09-068のhandled/bubblingを利用者が指定するにはInput event subscriptionとevent payloadを公開する必要があるため、既存公開ABIの後方互換追加として別featureを提案する。Input/Focus、Controls、共通ABI、unit-test、Windows internal-layer文書へ未承認改訂案を作成した。これらの文書承認後に実装unitを再計画し、Core API/C ABIとRust・C++・C#・Python wrapperを言語別子branch、Windows AdapterをPlatform child branchとして分割する。設計案の承認と実装開始承認は分ける。
 
 特定keyの割当、Tab traversal、shortcut/action binding、mouse capture、未承認pointer event種別、IME compositionのOS固有詳細を実装都合で追加しない。実装可能範囲を確定できない場合はsource変更前にレビューへ戻す。
 
@@ -31,11 +31,15 @@ Windows close-request接続までのCore/Windows unitは同revision CIを通過�
 
 | unit | 責務 | 完了条件 |
 | --- | --- | --- |
-| 設計境界reconciliation（実装unit登録前） | Input event payload、Core/UI dispatcherへの投入点、Keyboard/Text区分、hit-test targetとLogical route、handled可否、focus/activation連携の承認状態を文書全体で確認する | public API追加の要否、初期event種別、pointer/IMEの対象外範囲をレビュー可能な提案にする。承認前の仕様・source変更をしない |
-| `UNIT-CORE-091`候補 | private Core InputRouter / neutral event dispatchを実装し、Focus target、Logical route snapshot、detach再検証、handled後停止、focusなしkeyboard/text破棄を処理する | `UT-INPUT-001`、`UT-FOCUS-001`、`UT-FOCUS-002`の承認済み範囲をfake eventで検証。Core/workspace gates、Rust minimum、文書検査が同revisionで成功 |
-| `UNIT-PLATFORM-WINDOWS-007`候補 | Win32 worker上の採用済みnative eventを中立eventへcopyし、generation付きprivate sink経由でCore UI dispatcherへ投入する。OS native focusはCore Focusと同期する | Windows messageをfake境界で検証。callbackをWndProc内で呼ばない。Windows target build、workspace gates、Rust minimum、文書検査が同revisionで成功 |
+| 設計文書レビュー | Input/Focus、Controls、C ABI、unit test、Platform internal layersの改訂案を文書全体でレビューする | API・payload・既定動作・callback寿命・対象event・除外eventが承認される。承認前はunit inventory/実装を開始しない |
+| `UNIT-CORE-091`候補（Core APIs） | private InputRouter/neutral event dispatch、Widget subscription、borrowed event ABI、Focus getter、handled/default action、pending Button pressを接続する | UT-INPUT/FOCUS追加案をfake eventで検証。Core/workspace gates・Rust minimum・文書検査が同revisionで成功 |
+| Rust wrapper候補 | safe borrowed InputEvent view、closure subscriptionとcancel/lifetimeをCore C ABIへ対応付ける | Rust APIとdestroy/cancel/panic経路をwrapper unit testで検証 |
+| C++ wrapper候補 | non-throw callback/event facadeとsubscription RAII/manual cancel境界をCore C ABIへ対応付ける | C++ callback exception containment・lifetime・public sampleをwrapper unit testで検証 |
+| CSharp wrapper候補 | delegate root、InputEvent view、subscription dispose/cancelをCore C ABIへ対応付ける | delegate/userdata root、callback exception、dispose後destroyをwrapper unit testで検証 |
+| Python wrapper候補 | callable root、borrowed event facade、subscription cancel/lifetimeをCore C ABIへ対応付ける | GIL/callback exception/GC root/destroyをwrapper unit testで検証 |
+| `UNIT-PLATFORM-WINDOWS-007`候補 | Win32 workerからkey/text/primary pointer/focus eventを値copyし、generation付きsink経由でCore UI dispatcherへ順序付き投入 | Windows message/IME bridge fake tests、Windows target build、workspace gates、Rust minimum、文書検査が同revisionで成功。WndProcからuser callbackを呼ばない |
 
-具体的なunit ID・path mappingは設計境界の確認後に`.docs/32_unit_test/ui.md`、implementation inventory、`tools/units.yaml`へ登録する。
+wrapper単位の正式unit ID・path mapping・サポートする各言語の出荷範囲は、設計承認後に`.docs/32_unit_test/`、implementation inventory、`tools/units.yaml`へ登録する。wrapper branchごとにCore APIs branchを直接親とする。
 
 ## 必須確認
 
@@ -67,24 +71,29 @@ Windows close-request接続までのCore/Windows unitは同revision CIを通過�
 
 この案はRQ-09-068を満たすため公開event subscriptionを含むため、Coreだけに閉じた実装ではない。APIの詳細と対応範囲を文書全体で承認後、Rust Core、Rust/C++/C#/Python wrapperの影響を見積もって実装unitを再分割する。
 
-### 残る判断点
+### 設計改訂レビュー案
 
-- 初期Input subscriptionを各Widgetへ設けるか、Runtime一元登録でtarget/routeを受け取るか。
-- Focus変更notificationをC ABIで公開するか、getterによる観測だけを要求適合とするか。現行UTのevent-order oracleとの整合を含める。
-- keyboard eventの安定key identity/modifier/source fieldsとtext commit payloadのABI型。特定キー割当やIME composition payloadは別扱いとする。
-- Pointer down/upを一般Input subscriptionへ公開するか、Buttonの既定activationへだけ使うか。
+| 文書 | 改訂案 | 状態 |
+|---|---|---|
+| [UI InputとFocus](../13_detail_design/ui/input-focus.md) | target-to-Logical bubbling、handled、Focus eligibility loss、TextCommit、pending Button press、Focus getter | 1.2全文承認済み |
+| [UI Controls](../13_detail_design/ui/controls.md) | WidgetごとのInput subscription、TextBox/Button default action | 1.6全文承認済み |
+| [共通C ABI](../13_detail_design/runtime-objects/abi.md) | borrowed InputEvent handle、typed callback/getters/handled setter、feature ID 9、Focus getter | 1.5全文承認済み |
+| [UI unit test](../32_unit_test/ui.md) | route/default/lifetime/focus disable/key-text/pointer cases | 1.7全文承認済み |
+| [Platform internal layers](../13_detail_design/platform/internal-layers.md) | Windows native event copy/order/DIP/focus bridge | 2.3全文承認済み |
 
-上記の判断はこの計画の推奨案を確定仕様とするものではない。文書全体のレビュー承認後に実装計画・unit inventoryを更新する。
+文書案でWidgetごとのsubscription、Focus getter（Focus callbackなし）、primary pointer down/upを採用する。key identity/modifierの固定数値表、primary button enum、各language wrapperでのborrowed event facadeの形、Windows native keyboard/IME message対応はレビュー未了。設計文書の承認後に実装unitとbranch依存を再計画し、改訂計画はcommit/push前に利用者レビューへ出す。
 
 ## ブランチ・Git
 
 - 計画のレビュー承認前にcommit/pushしない。
-- 実装開始承認後は0.0.1のCore APIs childで`UNIT-CORE-091`を実装・検証し、日本語commit/pushする。
-- Core unitの完了後、そのCore branchを親としてWindows Platform childを作り、`UNIT-PLATFORM-WINDOWS-007`を実装・検証・commit/pushする。
-- 関連TODOが完了した後、Core/Windows branch依存順にmerge PRをまとめて提出する。
+- 設計文書と実装分割計画の承認後、0.0.1のCore APIs childを作り、`UNIT-CORE-091`を実装・検証・日本語commit/pushする。
+- Core APIs branchからRust/C++/CSharp/Python wrapper childをそれぞれ新規作成する。対象言語を切り替える時に他言語wrapper branchを親にしない。
+- Windows Platform childも最新Core APIs branchから独立して作る。Core sink/APIが確定してからnative input接続を実装する。
+- 各unitのtest pass後に同unit branchへcommit/pushする。関連TODO全体の完了後、Core APIを親へ先に統合し、その後wrapper/Windows branchをまとめたmerge PRとして提出する。
 
 ## レビュー履歴
 
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
 | 2026-11-01 | 計画0.1案 | 利用者承認 | Windows close-request統合後の候補。計画承認は設計改訂案の承認・実装開始を意味しない |
+| 2026-11-01 | 計画0.2案 | 利用者承認 | RQ-09-068照合後のevent subscription / wrapper splitと5文書の改訂案を反映。実装unit登録・実装開始は別管理 |

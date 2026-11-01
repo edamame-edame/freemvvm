@@ -1,7 +1,7 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
-- 文書版: 1.6
-- 状態: 0.8～1.2全文承認済み（利用者、2026-10-30～2026-10-31）。1.0～1.1全文承認済み（利用者、2026-11-01）。Window-bound TextService/worker routing試験設計1.4承認済み（利用者、2026-11-01）。native close intent接続試験設計1.6全文承認済み（利用者、2026-11-01）。profile oracle・試験実装・実行状態は別管理
+- 文書版: 1.7
+- 状態: 0.8～1.2全文承認済み（利用者、2026-10-30～2026-10-31）。1.0～1.1全文承認済み（利用者、2026-11-01）。Window-bound TextService/worker routing試験設計1.4承認済み（利用者、2026-11-01）。native close intent接続試験設計1.6全文承認済み（利用者、2026-11-01）。Input routing試験設計1.7全文承認済み（利用者、2026-11-01）。profile oracle・試験実装・実行状態は別管理
 - 更新日: 2026-11-01
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
@@ -46,6 +46,21 @@ active Windowとfocusable/enabledなTextBox二つ、非focusable Containerを用
 | <a id="ut-input-001"></a>UT-INPUT-001 | target→Logical祖先の配送中にhandled指定とdetachをそれぞれ起こす | handled後の配送/既定動作を止め、各段の所属を再検証。再帰入力を開始しない | [RQ-09-068](../11_requirements/RQ-09_ui-scope.md#rq-09-068)、[RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)<br/>[TC-INPUT-01](../30_release_test/requirement-test-matrix.md#case-tc-input-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01) |
 | <a id="ut-focus-001"></a>UT-FOCUS-001 | A→BのFocus要求と、disabled/Detached/非active Windowへの無効要求を別々に与える | 有効時は新Focus commit後A.Lost→B.Gained。無効時は旧Focusとイベント/IME状態を維持 | [RQ-02-010](../11_requirements/RQ-02_core-features.md#rq-02-010)、[RQ-09-046](../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-049](../11_requirements/RQ-09_ui-scope.md#rq-09-049)<br/>[TC-FOCUS-01](../30_release_test/requirement-test-matrix.md#case-tc-focus-01)、[TC-ACC-07](../30_release_test/requirement-test-matrix.md#case-tc-acc-07)、[TC-INPUT-01](../30_release_test/requirement-test-matrix.md#case-tc-input-01) |
 | <a id="ut-focus-002"></a>UT-FOCUS-002 | active focusなしでkeyboard/textを投入し、その後Focusを得る | 対象なし入力を後で再送しない。Window/StackPanelのfocusable=trueを受け付けずTab割当を創作しない | [RQ-09-070](../11_requirements/RQ-09_ui-scope.md#rq-09-070)、[RQ-09-049](../11_requirements/RQ-09_ui-scope.md#rq-09-049)<br/>[TC-FOCUS-01](../30_release_test/requirement-test-matrix.md#case-tc-focus-01)、[TC-INPUT-01](../30_release_test/requirement-test-matrix.md#case-tc-input-01) |
+
+### Input routing追加case（1.7全文承認済み）
+
+以下は承認済みUT-INPUT-001/UT-FOCUS-001/002を置き換えず、RQ-09-068を実装可能な観測へ具体化する追加caseである。unit inventoryへの登録は実装開始計画で行う。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| UT-INPUT-002 | target、parent、grandparentへ同じkind handlerを登録し、同一Widgetに複数handlerも登録。handledを設定しない/targetでtrue/ancestorでtrueを別fixtureで与える | 未handledはtarget→parent→grandparentの順で各matching handlerを一度呼ぶ。handled後は同一Widgetの後続handler、祖先、Button/TextBox default actionを呼ばない。handledはfalseへ戻せない | [RQ-09-068](../11_requirements/RQ-09_ui-scope.md#rq-09-068)、[RQ-09-006](../11_requirements/RQ-09_ui-scope.md#rq-09-006)<br/>[TC-INPUT-01](../30_release_test/requirement-test-matrix.md#case-tc-input-01) |
+| UT-INPUT-003 | handler実行中にtarget/ancestorをdetach、disable、Window generation staleへ個別遷移させる。別試行でcallbackから同じevent kindをenqueueする | 変更箇所で残route/defaultを止める。無効eventを別Controlへ付け替えない。再投入eventは現在routeへ再帰せず、現在event完了後に一度処理する。各callback userdata destroyはcancel/shutdownで一度だけ | [RQ-09-046](../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-068](../11_requirements/RQ-09_ui-scope.md#rq-09-068)、[RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)<br/>[TC-INPUT-01](../30_release_test/requirement-test-matrix.md#case-tc-input-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01) |
+| UT-INPUT-004 | key down/upとTextCommitを別々にactive TextBoxへ投入し、handled/accepted/rejected入力、focusなし、disabled ancestor、TextBox以外targetを試す | key/text event種別とpayloadを保持し、TextCommitだけ既存TextBox editing/Validatorへ進む。focusなし/無効/targetなしeventは捨て、後Focusへ再送しない。TextBoxの既存FocusLost保持規則を変えない | [RQ-09-010](../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-038](../11_requirements/RQ-09_ui-scope.md#rq-09-038)、[RQ-09-049](../11_requirements/RQ-09_ui-scope.md#rq-09-049)、[RQ-09-055](../11_requirements/RQ-09_ui-scope.md#rq-09-055)<br/>[TC-INPUT-01](../30_release_test/requirement-test-matrix.md#case-tc-input-01)、[TC-IME-01](../30_release_test/requirement-test-matrix.md#case-tc-ime-01) |
+| UT-INPUT-005 | fake Layout/Visual bounds、ancestor clip、client DIP座標を用いprimary pointer down/upを投入。同じButton、異なるWidget、handled、disabled ancestor、新しいdownによるpending置換、down/up間detach/disable/closeを分ける | targetはCore hit-test/clipに一致する。未handled downで記録したweak pending pressは、同Button/同generationへの未handled upで一度だけ消費してButton semantic activationを実行。新downは先行pendingを破棄。それ以外のupまたは途中のdetach/disable/closeではactivationなし。pointer capture/move/wheelは行わない | [RQ-09-006](../11_requirements/RQ-09_ui-scope.md#rq-09-006)、[RQ-09-008](../11_requirements/RQ-09_ui-scope.md#rq-09-008)、[RQ-09-046](../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-067](../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-09-068](../11_requirements/RQ-09_ui-scope.md#rq-09-068)<br/>[TC-INPUT-01](../30_release_test/requirement-test-matrix.md#case-tc-input-01)、[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01) |
+| UT-FOCUS-003 | A→B、Window deactivate/reactivate、detachを行い、各internal transition callbackが実行中に`has_focus`を読む | 新Focus stateを先にcommitしgetterで新stateを観測。旧FocusLostが新FocusGainedより先。公開Focus subscriptionはなく、invalid requestはstate/順序を変えない | [RQ-09-009](../11_requirements/RQ-09_ui-scope.md#rq-09-009)、[RQ-09-049](../11_requirements/RQ-09_ui-scope.md#rq-09-049)<br/>[TC-FOCUS-01](../30_release_test/requirement-test-matrix.md#case-tc-focus-01) |
+| UT-FOCUS-004 | Focus中のWidget自身とLogical ancestorを別々にdisableし、TextBox preedit/selection状態を含む場合も試す。再enable後に入力を投入 | subtree内active focusを一度解除してLostを処理し、別Controlを選ばない。TextBox本文/caret/selectionは保持しIME commitなし。再enable後もFocusは自動復元せず、無効期間の入力も遅延再生しない | [RQ-09-046](../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-049](../11_requirements/RQ-09_ui-scope.md#rq-09-049)、[RQ-09-055](../11_requirements/RQ-09_ui-scope.md#rq-09-055)<br/>[TC-FOCUS-01](../30_release_test/requirement-test-matrix.md#case-tc-focus-01)、[TC-IME-01](../30_release_test/requirement-test-matrix.md#case-tc-ime-01) |
+| UT-INPUT-006 | unknown/zero event mask、registration resource failure、normal cancel、self-cancel、Widget detach、Runtime shutdown、callback panicを別fixtureで起こす。callback復帰後のborrowed event viewを再利用 | failed registrationはclosure ownershipを移さずdestroyしない。成功登録は各終了経路でdestroy一度。取消済みsubscriptionを後続route callbackで再度呼ばない。panic/exceptionはABI越境せずhandled扱いでdefault actionを止める。callback後のevent handleはinvalid | [RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-003](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-INPUT-01](../30_release_test/requirement-test-matrix.md#case-tc-input-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01) |
+
 ## 編集候補・Validation・IME
 
 初期確定値と編集snapshotを取得。Validatorの戻り値、session ID、copy/feedback確保failpointを手動制御。日本語・結合文字・絵文字の代表列はbyte位置検査用で、全Unicode網羅とは扱わない。
@@ -224,6 +239,8 @@ UNIT-PLATFORM-003のDocker Debian 12実行結果: `cargo test -p freemvvm-platfo
 | 2026-11-01 | 1.1全文 | 利用者 | Core GlyphRun黒既定とWindows DirectWrite font/color試験を承認。実装・実行は別管理 |
 | 2026-11-01 | 1.4全文 | 利用者 | Window-bound TextService routing、同一worker内resolve/shape/face登録/render、close/errorの試験設計を承認。実装・実行は別管理 |
 | 2026-11-01 | 1.6全文 | 利用者 | 「おK」によりCore UI dispatcher経由のnative close intentとWin32 `WM_CLOSE`接続のunit-test設計を承認。実装・実行は別管理 |
+| 2026-11-01 | 1.7改訂案 | — | RQ-09-068向けbubbling/handled/default action、callback lifetime/reentrancy、key/text、primary pointer/Button、Focus getterのcaseを提案 |
+| 2026-11-01 | 1.7全文 | 利用者 | 「ok」によりInput routing/focus eligibility loss、event lifecycle、key/text、Button pointer/clipのcase oracle全体を承認。test実装・実行状態は別管理 |
 
 ## 改訂履歴
 
@@ -245,3 +262,4 @@ UNIT-PLATFORM-003のDocker Debian 12実行結果: `cargo test -p freemvvm-platfo
 | 1.3 | 2026-11-01 | Linux/CoreのTextService・Scene試験設計へWindows peer/Direct2D/DirectWriteとGlyphRun default試験を統合 | Codex | 構成要素は個別に承認済み。試験実装・実行状態は別管理 |
 | 1.4 | 2026-11-01 | Window-bound TextService routing、Windows worker ownership、resolve/render/lifecycle failure testsを追加 | Codex | 利用者承認。試験実装・実行状態は別管理 |
 | 1.6 | 2026-11-01 | Core UI dispatcher経由のnative close intentとWin32 `WM_CLOSE` worker接続のunit-test案を追加 | Codex | 利用者承認。未実装・未実行 |
+| 1.7 | 2026-11-01 | RQ-09-068のhandled route、subscription lifetime、native-neutral keyboard/text/pointer、Focus observationをfake Core test oracleへ具体化 | Codex | 文書全体承認済み。unit inventory登録・試験実装・実行は未開始 |
