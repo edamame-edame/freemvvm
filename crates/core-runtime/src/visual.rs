@@ -301,7 +301,7 @@ impl ControlViewConnector {
                     .map_err(|_| VisualBuildError::InvalidGeometry)?;
                     DrawOp::GlyphRun {
                         run: moved,
-                        rgba: [0.0, 0.0, 0.0, 1.0],
+                        rgba: run.text_color_rgba(),
                     }
                 }
             });

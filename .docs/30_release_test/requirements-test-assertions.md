@@ -2671,8 +2671,8 @@
 
 - 根拠: [RQ-09-072](../11_requirements/RQ-09_ui-scope.md#rq-09-072)
 - case: [TC-VERT-02](requirement-test-matrix.md#case-tc-vert-02)
-- 前提・操作・観測: 単一paragraphとclient clipを観測し、soft-wrap/ellipsis/copyを初期必須と表示しないこと、Button labelとAccessibility nameが独立であることを確認する。
-- 期待結果: 初期Textは単一paragraphの表示、client clipを提供し、soft-wrap/ellipsis/選択copyの追加を必須に含めないこと。Buttonの表示labelとAccessibility nameは独立すること。
+- 前提・操作・観測: 単一paragraphとclient clipを観測し、未指定のText color、soft-wrap/ellipsis/copyの対象範囲、Button labelとAccessibility nameの独立性を確認する。
+- 期待結果: 初期Textは単一paragraphをclient clip内に表示し、text color未指定時は不透明な黒を使う。soft-wrap/ellipsis/選択copyを追加必須とせず、Buttonの表示labelとAccessibility nameは独立する。
 - 後始末: 作成したowner・登録・host・stagingを各契約で解放し、fault fixture/仮想時計/設定を復元する。保証外の永久停止は隔離processの終了を管理する。
 - 状態: 観測設計済・初期共通基盤・未実装/未実行。実test ID・command・SHA・profile・reportは未登録。
 

@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
-- 文書版: 1.1
-- 状態: 設計承認済み・正本適用済み（2026-10-17）。実装unit 079のlocal検証結果を追記（2026-10-30）
+- 文書版: 1.2
+- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsは設計承認済み（2026-11-01）。UNIT-PLATFORM-WINDOWS-001はlocal検証・同revision Windows/Linux CI完了
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -52,6 +52,17 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | `UNIT-CORE-086` | attached Core Control stateと同revision Layout/Text snapshotからproduction Visual operationsを供給し、既存ControlViewConnectorへ接続する。未確定appearanceやchromeは追加しない | `UT-VIEW-CONNECTOR-001` | complete / focused test 1件、Core 181件、workspace tests、Clippy、Rust 1.85 check、fmt、document links pass。commit `66fe771` CI Windows/Ubuntu pass（run `41209924293`） |
 | `UNIT-CORE-087` | dirty WindowをUI thread上でLayout→Visual/Scene→existing Platform submitへ接続し、generation/revision stale completion・failure retryを扱う | `UT-CORE-SCENE-FRAME-001` | complete / focused test 1件、Core 182件、workspace tests、Clippy、Rust 1.85 check、fmt、document links pass。commit `fed8a02` CI Windows/Ubuntu pass（run `41210812794`） |
 
+#### Windows Platform Adapter units（計画0.2 / UI test design 1.1全文承認済み）
+
+以下は`.docs/20_todo/windows-platform-adapter.md`で承認された実装unit分割を、test design 1.0案に対応づけたplanned登録案である。設計文書全文の承認と実装開始は別ゲート。Windows GUI実機smokeはunit/CIへ含めない。
+
+| unit | 責務 | test設計 | 状態 |
+| --- | --- | --- | --- |
+| `UNIT-PLATFORM-WINDOWS-001` | Windows target factory compositionとWin32 Window peer lifecycle。open/retry/resize generation/close/reopen/shutdown | `UT-PLATFORM-WINDOWS-PEER-001` | complete / focused 7 tests、workspace tests・Clippy・build、Linux/Windows target check、Rust 1.85 check、`tools/dev.py check`/`minimum` pass。同revision [Windows/Linux CI 41263860362](https://github.com/edamame-edame/freemvvm/actions/runs/41263860362) success |
+| `UNIT-PLATFORM-WINDOWS-002` | Direct2DによるCore SceneSnapshotのbackground/scale/Clip/FillRect描画とframe completion | `UT-PLATFORM-WINDOWS-RENDER-001` | complete / focused 5 tests、Windows crate 12 tests、Windows x64/Rust 1.85 target check、`tools/dev.py check`/`minimum` pass。同revision [Windows/Linux CI 41266800908](https://github.com/edamame-edame/freemvvm/actions/runs/41266800908) success。Windows実画面表示は未確認 |
+| UNIT-PLATFORM-WINDOWS-003 | DirectWriteによる承認済みGlyphRunSnapshotの描画と資源lifecycle | UT-PLATFORM-WINDOWS-TEXT-001 | complete / focused 2件・Windows Adapter 14件・Windows x64 target check・Clippy・workspace tests pass。同revision [Windows/Linux CI 41273236568](https://github.com/edamame-edame/freemvvm/actions/runs/41273236568) success。digest一致faceのみ描画し欠損face・不正glyphをframe failureへ伝える。TextServiceから実faceを登録するRuntime接続とWindows GUI profile smokeは未実施 |
+| UNIT-PLATFORM-WINDOWS-004 | Windows DirectWrite TextServiceでsystem UI fontまたは明示TTFからGlyphRunをshapeし、同じface digestをrenderer catalogへ登録 | UT-PLATFORM-WINDOWS-TEXT-001 | complete / focused 3 tests、Windows crate 15 passed・2 ignored、workspace tests、Clippy、Rust 1.85 check、format pass。system default/明示TTFのheadless smoke 2件は手動専用でlocal pass。同revision `4bf0373baa2d24baaad780491bbcfd34892a9182` [Windows/Linux CI 41275875074](https://github.com/edamame-edame/freemvvm/actions/runs/41275875074) success。Core Control/Scene producer接続とWindows GUI profile smokeは未実施 |
+
 #### Core Layout kernel unit（DD 1.3 / test design 0.7承認済み）
 
 | unit | 責務 | test設計 | 状態 |
@@ -78,6 +89,7 @@ Platform DD 1.3とUI試験設計0.5は2026-10-26に全文承認済みであり�
 | --- | --- | --- | --- |
 | `UNIT-CORE-078` | Window client areaと実Control tree/StackPanel設定からimmutable LayoutNodeSnapshotを構築し、LayoutEngine成功時のみWindowのcomplete LayoutSnapshotを交換する。failureでは旧snapshotとdirtyを保持する | `UT-LAYOUT-ABI-001`、`UT-LAYOUT-ATOMIC-001` | complete / 同revision local検証pass |
 | `UNIT-CORE-079` | Windowごとの背景RGB規定値・override・resetをCoreで保持し、入力を検証してSceneSnapshotへ反映する。ABIのget/set/resetを含む | `UT-WINDOW-BACKGROUND-001`、`UT-ABI-WINDOW-BACKGROUND-001` | complete / 同revision local gates pass、CI待ち |
+| `UNIT-CORE-080` | GlyphRunSnapshotへopaque black defaultのRGBA text colorを追加し、clone/SceneSnapshotで保持する。任意色設定・公開ABIは追加しない | `UT-CORE-GLYPH-RUN-001` | complete / focused・Core全件・workspace tests、Clippy、Rust 1.85 check pass。同SHA [Windows/Linux CI 41269767449](https://github.com/edamame-edame/freemvvm/actions/runs/41269767449) success |
 
 #### Core Scene geometry projection unit（DD 1.4 / UI test design 0.8承認済み）
 
@@ -94,6 +106,8 @@ UNIT-CORE-081はrevision付きfake tree snapshotとfake descriptorで順序・at
 UNIT-CORE-082の統合testはfake Platformを使い、Coreが所有する実Control/Logical Treeをattach・reorder・detachし、Layout再計算前のcapture拒否とclean revision後のcaptureを確認する。DrawOp descriptor供給や実描画は対象外。
 
 実行記録: `UNIT-CORE-079` は実装revisionでCore focused test（1件）、ABI focused test（1件）、`cargo test --workspace --all-targets --locked`（Rust wrapper unit/consumer 19件、C ABI 39件、Core 169件、Linux Platform 10件）、`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check`、`.venv/Scripts/python.exe tools/dev.py check` がlocal pass。`tools/check_docs.py`（76 documents / 7033 local links）、units manifest JSON parse、`git diff --check`もpass。CIおよびPlatform Adapter実機確認は未実施。本unitのlocal passを実機描画確認やwrapper背景色API実装完了として扱わない。
+
+実行記録: 実装SHA `2d52a48a1c6f5ec8509e6fe77c898f826c770525` で `UT-CORE-GLYPH-RUN-001`（focused 1件）、Core suite 170件、`cargo test --workspace --all-targets --locked`（Windows Platform 12件、Linux Platform 10件を含む全suite）、workspace Clippy、Rust 1.85 workspace check、formatがlocal pass。同SHA [Windows/Linux CI 41269767449](https://github.com/edamame-edame/freemvvm/actions/runs/41269767449)もsuccess。文書検査は76 documents / 7057 local links、`tools/units.yaml` JSON parse、`git diff --check`がpass。実画面Text描画は後続UNIT-PLATFORM-WINDOWS-003とWindows GUI profile確認の対象。
 
 TextServiceは未実装のため、本番のText/TextBox/Button intrinsic measurementを創作しない。providerを内部入力境界に保ち、試験ではfake providerを使う。TextServiceを必要とする実Leafの測定不能はpass全体を失敗させ、scene producer/public ABIは本unitに含めない。
 

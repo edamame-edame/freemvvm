@@ -4143,5 +4143,126 @@
         }
       ]
     }
+,
+    {
+          "id": "UNIT-PLATFORM-WINDOWS-001",
+          "state": "complete",
+          "scope": "windows-target-factory-composition-and-win32-window-peer-open-resize-generation-close-reopen-shutdown",
+          "sources": ["crates/platform-windows/src/lib.rs", "crates/platform-windows/src/peer.rs", "crates/platform-windows/src/win32.rs", "crates/c-abi/src/lib.rs"],
+          "config": ["Cargo.toml", "Cargo.lock", "crates/c-abi/Cargo.toml", "crates/platform-windows/Cargo.toml", ".github/workflows/bootstrap.yml", "tools/units.yaml"],
+          "depends_on": ["UNIT-CORE-073", "UNIT-CORE-074"],
+          "design": [
+            {
+              "path": ".docs/13_detail_design/platform/internal-layers.md",
+              "version": "1.6 approved",
+              "section": "Windows peer, native surface ownership, generation and lifecycle"
+            }
+          ],
+          "requirements": ["RQ-09-001", "RQ-11-004", "RQ-11-009", "RQ-11-020", "RQ-11-022", "RQ-11-024"],
+          "cases": ["TC-LIFE-01", "TC-PLAT-01", "TC-ERROR-01"],
+          "test_design": ".docs/32_unit_test/ui.md",
+          "tests": [
+            {
+              "id": "UT-PLATFORM-WINDOWS-PEER-001",
+              "command": ["cargo", "test", "-p", "freemvvm-platform-windows", "platform_windows_peer_", "--locked"]
+            }
+          ]
+        },
+    {
+          "id": "UNIT-PLATFORM-WINDOWS-002",
+          "state": "complete",
+          "scope": "windows-direct2d-render-of-core-scene-background-scale-clip-fillrect-and-frame-completion",
+          "sources": ["crates/platform-windows/src/renderer.rs", "crates/platform-windows/src/win32.rs", "crates/platform-windows/src/peer.rs", "crates/platform-windows/src/lib.rs"],
+          "config": ["Cargo.toml", "Cargo.lock", "crates/platform-windows/Cargo.toml", ".github/workflows/bootstrap.yml", "tools/units.yaml"],
+          "depends_on": ["UNIT-CORE-074", "UNIT-CORE-075", "UNIT-PLATFORM-WINDOWS-001"],
+          "design": [
+            {
+              "path": ".docs/13_detail_design/platform/internal-layers.md",
+              "version": "1.6 approved",
+              "section": "Core SceneSnapshot, renderer factory and Direct2D backend boundary"
+            }
+          ],
+          "requirements": ["RQ-09-067", "RQ-11-008", "RQ-11-019", "RQ-11-020", "RQ-11-022"],
+          "cases": ["TC-PLAT-01", "TC-LAYOUT-01", "TC-ERROR-01"],
+          "test_design": ".docs/32_unit_test/ui.md",
+          "tests": [
+            {
+              "id": "UT-PLATFORM-WINDOWS-RENDER-001",
+              "command": ["cargo", "test", "-p", "freemvvm-platform-windows", "platform_windows_render_", "--locked"]
+            }
+          ]
+        },
+    {
+          "id": "UNIT-PLATFORM-WINDOWS-003",
+          "state": "complete",
+          "scope": "windows-directwrite-render-of-approved-glyph-run-snapshot-and-text-renderer-resource-lifecycle",
+          "sources": ["crates/platform-windows/src/text.rs", "crates/platform-windows/src/renderer.rs"],
+          "config": ["Cargo.toml", "Cargo.lock", "crates/platform-windows/Cargo.toml", "tools/units.yaml"],
+          "depends_on": ["UNIT-PLATFORM-WINDOWS-002", "UNIT-CORE-088"],
+          "design": [
+            {
+              "path": ".docs/13_detail_design/platform/internal-layers.md",
+              "version": "1.7 approved",
+              "section": "GlyphRun font and color contract"
+            }
+          ],
+          "requirements": ["RQ-09-053", "RQ-09-072", "RQ-11-023"],
+          "cases": ["TC-PLAT-01", "TC-ERROR-01"],
+          "test_design": ".docs/32_unit_test/ui.md",
+          "tests": [
+            {
+              "id": "UT-PLATFORM-WINDOWS-TEXT-001",
+              "command": ["cargo", "test", "-p", "freemvvm-platform-windows", "platform_windows_text_", "--locked"]
+            }
+          ]
+        },
+    {
+          "id": "UNIT-PLATFORM-WINDOWS-004",
+          "state": "complete",
+          "scope": "windows-directwrite-text-service-system-default-and-ttf-shaping-with-exact-renderer-face-registration",
+          "sources": ["crates/platform-windows/src/text.rs", "crates/platform-windows/src/renderer.rs"],
+          "config": ["Cargo.toml", "Cargo.lock", "crates/platform-windows/Cargo.toml", "tools/units.yaml"],
+          "depends_on": ["UNIT-PLATFORM-WINDOWS-003"],
+          "design": [
+            {
+              "path": ".docs/13_detail_design/platform/internal-layers.md",
+              "version": "1.7 approved",
+              "section": "GlyphRun font and color contract"
+            }
+          ],
+          "requirements": ["RQ-09-053", "RQ-09-054", "RQ-09-072", "RQ-11-023"],
+          "cases": ["TC-PLAT-01", "TC-ERROR-01"],
+          "test_design": ".docs/32_unit_test/ui.md",
+          "tests": [
+            {
+              "id": "UT-PLATFORM-WINDOWS-TEXT-001",
+              "command": ["cargo", "test", "-p", "freemvvm-platform-windows", "platform_windows_text_", "--locked"]
+            }
+          ]
+        },
+    {
+          "id": "UNIT-CORE-088",
+          "state": "complete",
+          "scope": "core-glyph-run-snapshot-default-opaque-black-text-color",
+          "sources": ["crates/core-runtime/src/platform/scene.rs"],
+          "config": ["tools/units.yaml"],
+          "depends_on": ["UNIT-CORE-074"],
+          "design": [
+            {
+              "path": ".docs/13_detail_design/platform/internal-layers.md",
+              "version": "2.0 approved",
+              "section": "GlyphRun font and color contract"
+            }
+          ],
+          "requirements": ["RQ-09-053", "RQ-09-072"],
+          "cases": ["TC-PLAT-01"],
+          "test_design": ".docs/32_unit_test/ui.md",
+          "tests": [
+            {
+              "id": "UT-CORE-GLYPH-RUN-001",
+              "command": ["cargo", "test", "-p", "freemvvm-core", "glyph_run_defaults_to_opaque_black", "--locked"]
+            }
+          ]
+        }
   ]
 }

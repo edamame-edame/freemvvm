@@ -1,0 +1,4 @@
+- カテゴリ: freemvvm Windows Platform Adapter / DirectWrite glyph rendering
+
+- DirectWrite GlyphRun描画ではTextServiceが選んだfaceを32-byte digestでcatalogへ登録し、rendererは一致faceだけを使う。GlyphRunのglyph ID/絶対位置/colorをDirect2Dへ転送し、未登録digest・不正glyph・描画失敗はframe failureとする。Window renderer closeでface referencesを解放する。
+- 明示TTFはDirectWrite font-file referenceを使って開き、TrueType faceであることを検証してからcatalogへ登録する。system faceはTextServiceから登録する境界を用意するが、RuntimeのTextServiceからcatalogへの接続は別unitで実装する。fake adapter試験やWindows target checkは実font選択・可視文字品質の確認ではない。
