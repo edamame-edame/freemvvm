@@ -4353,7 +4353,7 @@
         },
     {
           "id": "UNIT-PLATFORM-WINDOWS-006",
-      "state": "ready",
+      "state": "complete",
           "scope": "windows-wm-close-intent-dispatch-and-generation-safe-peer-close-command",
           "sources": ["crates/platform-windows/src/lib.rs", "crates/platform-windows/src/peer.rs", "crates/platform-windows/src/win32.rs"],
           "config": ["tools/units.yaml", "crates/platform-windows/Cargo.toml"],

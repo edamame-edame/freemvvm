@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
-- 文書版: 1.8
-- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsとclose-request unitsの試験設計は承認済み（2026-11-01）。UNIT-CORE-089、UNIT-PLATFORM-WINDOWS-005、UNIT-CORE-090はlocal検証・同revision CI pass。UNIT-PLATFORM-WINDOWS-006はlocal pass・CI確認待ち
+- 文書版: 1.9
+- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsとclose-request unitsの試験設計は承認済み（2026-11-01）。UNIT-CORE-089、UNIT-PLATFORM-WINDOWS-005、UNIT-CORE-090、UNIT-PLATFORM-WINDOWS-006はlocal検証・同revision CI pass
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -72,7 +72,7 @@ Core dispatch unitを先行し、その完了後にWindows worker unitを実装�
 | UNIT-PLATFORM-WINDOWS-003 | DirectWriteによる承認済みGlyphRunSnapshotの描画と資源lifecycle | UT-PLATFORM-WINDOWS-TEXT-001 | complete / focused 2件・Windows Adapter 14件・Windows x64 target check・Clippy・workspace tests pass。同revision [Windows/Linux CI 41273236568](https://github.com/edamame-edame/freemvvm/actions/runs/41273236568) success。digest一致faceのみ描画し欠損face・不正glyphをframe failureへ伝える。TextServiceから実faceを登録するRuntime接続とWindows GUI profile smokeは未実施 |
 | UNIT-PLATFORM-WINDOWS-004 | Windows DirectWrite TextServiceでsystem UI fontまたは明示TTFからGlyphRunをshapeし、同じface digestをrenderer catalogへ登録 | UT-PLATFORM-WINDOWS-TEXT-001 | complete / focused 3 tests、Windows crate 15 passed・2 ignored、workspace tests、Clippy、Rust 1.85 check、format pass。system default/明示TTFのheadless smoke 2件は手動専用でlocal pass。同revision `4bf0373baa2d24baaad780491bbcfd34892a9182` [Windows/Linux CI 41275875074](https://github.com/edamame-edame/freemvvm/actions/runs/41275875074) success。Core Control/Scene producer接続とWindows GUI profile smokeは未実施 |
 | `UNIT-PLATFORM-WINDOWS-005` | Core per-Window TextService endpointをWindows worker queueへ接続。worker内でDirectWrite resolve/shapeとrenderer catalog face登録を行い、immutable resultを返す | `UT-PLATFORM-WINDOWS-TEXT-FLOW-001` | complete / focused 2 tests、Windows Platform 17 passed・2 ignored、workspace all-targets tests、Clippy、Rust 1.85 check、fmt、document links pass。Windows/Ubuntu CI pass、run [41282934478](https://github.com/edamame-edame/freemvvm/actions/runs/41282934478)。Windows GUI profile smokeは0.0.1 release qualification |
-| `UNIT-PLATFORM-WINDOWS-006` | Win32 `WM_CLOSE`をgeneration付きCore sinkへ非同期postし、Coreからのclose commandをworkerで実行する | `UT-PLATFORM-WINDOWS-CLOSE-001` | ready / Windows crate 20 passed・2 manual ignored、workspace all-target tests、Clippy、Rust 1.85 check、fmt、document links pass。同revision CI確認待ち |
+| `UNIT-PLATFORM-WINDOWS-006` | Win32 `WM_CLOSE`をgeneration付きCore sinkへ非同期postし、Coreからのclose commandをworkerで実行する | `UT-PLATFORM-WINDOWS-CLOSE-001` | complete / Windows crate 20 passed・2 manual ignored、workspace all-target tests、Clippy、Rust 1.85 check、fmt、document links pass。同revision [Windows/Linux CI 41308038350](https://github.com/edamame-edame/freemvvm/actions/runs/41308038350) success |
 
 #### Core Layout kernel unit（DD 1.3 / test design 0.7承認済み）
 
@@ -209,3 +209,4 @@ flowchart LR
 | 1.6 | 2026-11-01 | UNIT-CORE-090のlocal試験結果を記録し、同revision CI待ちの状態を反映 | Codex |
 | 1.7 | 2026-11-01 | UNIT-CORE-090の同revision Windows/Linux CI成功を記録し、unitをcompleteへ更新 | Codex |
 | 1.8 | 2026-11-01 | UNIT-PLATFORM-WINDOWS-006の実装・local検証結果を記録し、unitをreadyへ更新 | Codex |
+| 1.9 | 2026-11-01 | UNIT-PLATFORM-WINDOWS-006の同revision Windows/Linux CI成功を記録し、unitをcompleteへ更新 | Codex |
