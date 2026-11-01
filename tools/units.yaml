@@ -3673,7 +3673,7 @@
       "state": "complete",
       "scope": "windows-direct2d-render-of-core-scene-background-scale-clip-fillrect-and-frame-completion",
       "sources": ["crates/platform-windows/src/renderer.rs", "crates/platform-windows/src/win32.rs", "crates/platform-windows/src/peer.rs", "crates/platform-windows/src/lib.rs"],
-      "config": ["Cargo.toml", "Cargo.lock", "crates/platform-windows/Cargo.toml", "tools/units.yaml"],
+      "config": ["Cargo.toml", "Cargo.lock", "crates/platform-windows/Cargo.toml", ".github/workflows/bootstrap.yml", "tools/units.yaml"],
       "depends_on": ["UNIT-CORE-074", "UNIT-CORE-075", "UNIT-PLATFORM-WINDOWS-001"],
       "design": [
         {

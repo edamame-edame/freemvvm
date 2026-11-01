@@ -71,10 +71,10 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: cargo test -p freemvvm-platform-linux platform_device_ --locked
-      - name: Run Windows Platform peer unit tests
+      - name: Run Windows Platform adapter unit tests
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cargo test -p freemvvm-platform-windows platform_windows_peer_ --locked
+        run: cargo test -p freemvvm-platform-windows --all-targets --locked
       - name: Retain bootstrap reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
