@@ -7,5 +7,6 @@
 - DirectWrite callbackは実際に選択されたfont faceのfamily/style/indexとfile digestを記録し、face COM objectを同じrenderer catalogへ保持する。Coreへ返すのはmetricsと`ResolvedGlyphRun`の値であり、COM objectはworker外へ渡さない。
 - close後またはworker/renderer unavailable時のresolveはfailureにする。UI smokeはheadless fake testと区別し、0.0.1 release qualificationで確認する。
 - `UNIT-PLATFORM-WINDOWS-005`のfocused 2 tests、Windows Platform 17 passed/2 ignored、workspace all-targets tests、workspace Clippy、Rust 1.85 check、format、doc links、units manifest parseがlocal pass。同revision Windows/Ubuntu CIはrun `41282934478`でpass。Core `UNIT-CORE-089`もrun `41282511130`でpass。Windows GUI profile smokeはrelease qualificationに残す。
+- PR #3 was merged into `impl-rust/core-window-text-service` at `43890cf`; delete the merged Windows child branch both locally and on origin, then continue from the parent branch.
 - 根拠文書: `.docs/20_todo/windows-text-scene-producer-integration.md`、`.docs/13_detail_design/platform/internal-layers.md`、`.docs/13_detail_design/ui/controls.md`、`.docs/20_todo/windows-text-service-directwrite-integration.md`。
 - fake-service、Windows target build、headless DirectWrite smokeはWindows GUIでの可視表示・実機font profile確認を意味しない。

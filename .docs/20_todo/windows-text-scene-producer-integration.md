@@ -1,11 +1,11 @@
 # 0.0.1 Windows TextService・Scene・Window renderer 縦断接続計画
 
 - 計画版: 0.3
-- 状態: Window単位TextService方式を利用者承認済み。DD 2.1/UI DD 1.5/unit-test設計1.5を更新済み。Core/Windows Platform units実装・local gates・同revision Windows/Ubuntu CI完了。merge PR待ち
+- 状態: Window単位TextService方式を利用者承認済み。DD 2.1/UI DD 1.5/unit-test設計1.5を更新済み。Core/Windows Platform units実装・local gates・同revision Windows/Ubuntu CI完了。PR #3をCore API親branchへマージ済み
 - 対象: Core Controlのtext snapshotからWindows system default fontのGlyphRunを生成し、同じfont faceでWindowへ描画する内部接続
 - 前提branch: `impl-rust/core-scene-producer`
 - Core APIs branch: `impl-rust/core-window-text-service`（親branch）
-- Windows Platform子branch: `impl-rust/platform-adapter-windows-text-scene`（現在のbranch）
+- Windows Platform子branch: `impl-rust/platform-adapter-windows-text-scene`（PR #3でマージ済み。ローカル・リモートbranch削除済み）
 
 ## 目的
 
@@ -152,5 +152,6 @@ System default fontを使い、family名・固定Fonts path・OS別pixel出力�
 
 - `UNIT-CORE-089`は実装済み。`UT-CORE-WINDOW-TEXT-001`、Core 184 tests、workspace all-targets tests、workspace Clippy、Rust 1.85 check、format、document linksがlocal pass。同revision Windows/Ubuntu CI pass: [run 41282511130](https://github.com/edamame-edame/freemvvm/actions/runs/41282511130)。
 - `UNIT-PLATFORM-WINDOWS-005`はWindow peer TextService、Win32 worker queue command、DirectWrite metrics/face identity生成、同じrenderer catalogへのface保持を実装済み。focused 2 tests、Windows Platform 17 passed/2 ignored、workspace all-targets tests、workspace Clippy、Rust 1.85 check、format、document linksがlocal pass。同revision Windows/Ubuntu CI pass: [run 41282934478](https://github.com/edamame-edame/freemvvm/actions/runs/41282934478)。
+- PR [#3](https://github.com/edamame-edame/freemvvm/pull/3)を2026-11-01に`impl-rust/core-window-text-service`へmerge。merge commit `43890cf83e5abf4224b4c1ae904d9570f322441d`。統合済みWindows child branchはGitHubとlocalから削除。
 - Windows GUI profile smokeは本unitのCI pass条件外で、0.0.1 release qualificationに残す。
 
