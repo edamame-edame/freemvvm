@@ -2497,6 +2497,15 @@ pub mod abi_support {
         Ok(runtime.dispatch_input_event(window_identity, target_identity, event))
     }
 
+    #[cfg(test)]
+    pub(crate) fn window_dispatch_routed_input_for_test(
+        window: u64,
+        event: crate::ui_input::InputEvent,
+    ) -> Result<bool, UiControlApiError> {
+        let (_, runtime, window_identity) = validate_ui_control(window, UiControlKind::Window)?;
+        Ok(runtime.dispatch_window_input_event(window_identity, event))
+    }
+
     /// Internal Core/Renderer bridge; not part of the public C ABI.
     pub fn window_submit_frame(
         window: u64,

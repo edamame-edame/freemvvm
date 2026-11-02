@@ -18,7 +18,9 @@ use crate::property::{
 use crate::text_service::{ResolvedTextSnapshot, TextRequest, TextService, resolve_text};
 use crate::ui_controls::{UiControlKind, UiControlProperty, UiControlState};
 use crate::ui_focus::FocusManager;
-use crate::ui_input::{InputEvent, InputEventFrame, InputRouteError, InputRouteSnapshot};
+use crate::ui_input::{
+    InputEvent, InputEventFrame, InputEventPayload, InputRouteError, InputRouteSnapshot,
+};
 use crate::ui_layout::{
     Align, IntrinsicMeasureProvider, LayoutEngine, LayoutError, LayoutNodeSnapshot, LayoutSnapshot,
     Orientation, Size,
@@ -3634,6 +3636,40 @@ impl RuntimeCore {
             }
         }
         frame.is_handled()
+    }
+
+    pub(crate) fn dispatch_window_input_event(
+        &self,
+        window: ObjectIdentity,
+        event: InputEvent,
+    ) -> bool {
+        if event.validate().is_err() {
+            return false;
+        }
+        let target = match event.kind {
+            crate::ui_input::InputEventKind::KeyDown
+            | crate::ui_input::InputEventKind::KeyUp
+            | crate::ui_input::InputEventKind::TextCommit => {
+                let Ok((active_window, focused)) = self.focus_state() else {
+                    return false;
+                };
+                if active_window == Some(window) {
+                    focused
+                } else {
+                    None
+                }
+            }
+            crate::ui_input::InputEventKind::PrimaryPointerDown
+            | crate::ui_input::InputEventKind::PrimaryPointerUp => {
+                let InputEventPayload::PrimaryPointer { x_dip, y_dip } = &event.payload else {
+                    return false;
+                };
+                self.window_input_hit_test(window, *x_dip, *y_dip)
+                    .ok()
+                    .flatten()
+            }
+        };
+        target.is_some_and(|target| self.dispatch_input_event(window, target, event))
     }
 
     fn window_generation(&self, window: ObjectIdentity) -> Option<u64> {

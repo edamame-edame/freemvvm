@@ -160,8 +160,8 @@ mod tests {
         window_close_intent_subscribed, window_close_request_current, window_close_request_defer,
         window_close_request_resolve, window_close_request_subscribe, window_content,
         window_control_tree_snapshot_for_test, window_device_scale_for_test,
-        window_dispatch_input_for_test, window_frame_phase, window_input_hit_test_for_test,
-        window_input_route_for_test, window_install_test_peer,
+        window_dispatch_input_for_test, window_dispatch_routed_input_for_test, window_frame_phase,
+        window_input_hit_test_for_test, window_input_route_for_test, window_install_test_peer,
         window_layout_and_control_tree_with_text_for_test, window_layout_snapshot_for_test,
         window_open, window_platform_activation, window_reset_background_rgb,
         window_set_background_rgb, window_set_content, window_set_content_with_peer,
@@ -1859,6 +1859,109 @@ mod tests {
 
         handle_release(subscription).expect("release canceled subscription handle");
         handle_release(button).expect("release Button");
+        handle_release(panel).expect("release StackPanel");
+        window_close(window).expect("close Window");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(window).expect("release Window");
+        handle_release(runtime).expect("release Runtime");
+    }
+
+    #[test]
+    fn window_input_targets_focus_for_keys_and_hit_test_for_pointer() {
+        let runtime = runtime_create_handle().expect("create Runtime");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
+        let text_box = ui_control_create_text_box(runtime, b"edit").expect("create TextBox");
+        let button = ui_control_create_button(runtime, b"run").expect("create Button");
+        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        window_install_test_peer(window, peer).expect("install fake Window peer");
+        window_set_content(window, panel).expect("attach content");
+        stack_panel_insert(panel, 0, text_box).expect("attach TextBox");
+        stack_panel_insert(panel, 1, button).expect("attach Button");
+        window_open(window).expect("open Window");
+        window_calculate_layout_for_test(window, 24.0, 12.0, false)
+            .expect("publish current LayoutSnapshot");
+
+        window_platform_activation(window, true).expect("activate Window");
+        widget_request_focus(text_box).expect("focus TextBox");
+        assert!(widget_has_focus(text_box).expect("TextBox remains focused"));
+        let control_tree = window_control_tree_snapshot_for_test(window)
+            .expect("capture Control tree")
+            .expect("Window has content");
+        let button_identity = control_tree.root.children[1].identity;
+        let button_bounds = window_layout_snapshot_for_test(window)
+            .expect("read LayoutSnapshot")
+            .expect("Window has a LayoutSnapshot")
+            .node(button_identity)
+            .expect("Button has published bounds")
+            .final_bounds;
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        let text_calls = Arc::clone(&calls);
+        let text_subscription = widget_input_subscribe(
+            text_box,
+            InputEventKind::KeyDown.mask_bit(),
+            Arc::new(move |current, original, event| {
+                text_calls
+                    .lock()
+                    .expect("input calls lock")
+                    .push(("text", current == original));
+                event.set_handled(true);
+            }),
+        )
+        .expect("subscribe TextBox key handler");
+        let button_calls = Arc::clone(&calls);
+        let button_subscription = widget_input_subscribe(
+            button,
+            InputEventKind::PrimaryPointerDown.mask_bit(),
+            Arc::new(move |current, original, event| {
+                button_calls
+                    .lock()
+                    .expect("input calls lock")
+                    .push(("button", current == original));
+                event.set_handled(true);
+            }),
+        )
+        .expect("subscribe Button pointer handler");
+
+        assert!(
+            window_dispatch_routed_input_for_test(
+                window,
+                InputEvent {
+                    kind: InputEventKind::KeyDown,
+                    payload: InputEventPayload::Key {
+                        identity: 0x04,
+                        modifiers: 0,
+                    },
+                },
+            )
+            .expect("dispatch focused keyboard event")
+        );
+        assert!(
+            window_dispatch_routed_input_for_test(
+                window,
+                InputEvent {
+                    kind: InputEventKind::PrimaryPointerDown,
+                    payload: InputEventPayload::PrimaryPointer {
+                        x_dip: button_bounds.x + button_bounds.width / 2.0,
+                        y_dip: button_bounds.y + button_bounds.height / 2.0,
+                    },
+                },
+            )
+            .expect("dispatch pointer hit-test event")
+        );
+        assert_eq!(
+            *calls.lock().expect("input calls lock"),
+            vec![("text", true), ("button", true)]
+        );
+
+        for subscription in [text_subscription, button_subscription] {
+            subscription_cancel(subscription).expect("cancel input subscription");
+            handle_release(subscription).expect("release input subscription");
+        }
+        handle_release(button).expect("release Button");
+        handle_release(text_box).expect("release TextBox");
         handle_release(panel).expect("release StackPanel");
         window_close(window).expect("close Window");
         runtime_shutdown(runtime).expect("shutdown Runtime");
