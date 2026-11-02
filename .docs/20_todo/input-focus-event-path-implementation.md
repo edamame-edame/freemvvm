@@ -1,7 +1,7 @@
 # 0.0.1 Input / Focus event path実装開始計画
 
 - 計画版: 0.1
-- 状態: 計画承認済み（利用者、2026-11-02）。フェーズ1の設計文書は承認済み・push済み。フェーズ2のwrapper/platform試験案とplanned unit登録はレビュー待ち。branch同期と実装は未開始
+- 状態: 計画承認済み（利用者、2026-11-02）。フェーズ1設計・フェーズ2試験登録は承認済み・push済み。version branch同期とCI確認を完了し、`impl-rust/core-input-focus`を作成・push済み。Core/ABI実装unitは未開始
 - 対象version: `0.0.1`
 - 親計画: [Input / Focus event path次工程計画](input-focus-event-path.md) 0.2（承認済み）
 - 目的: 承認済み共通設計に残る実装境界を閉じ、Core/C ABI・4 wrapper・Windows Adapterを依存順に実装・検証できる状態にする
@@ -29,8 +29,8 @@ Pointer move/wheel/capture、Tab traversal、shortcut、public Focus notificatio
 | 順 | 成果物 | 完了条件 | 状態 |
 | --- | --- | --- | --- |
 | 1. API境界の具体化 | Rust/C++/C#/Python wrapper DD、共通C ABI DD、Windows platform DD | 各言語のevent型・callback署名・subscription cancel/dispose・event view寿命・例外隔離、C ABI feature/payload、key/modifier/button表、Windows key/text/IME取得経路と順序を文書化し、全対象文書の承認を得る | 完了。対象DD全件承認・push済み |
-| 2. 試験・unit登録 | `.docs/32_unit_test/wrappers.md`、`ui.md`追補、`.docs/32_unit_test/implementation-test-inventory.md`、`tools/units.yaml` | 各unitにtest path・command・RQ/TC・承認済み設計文書/版/節を登録。`planned`で登録し、実装着手時にpath確認後`ready`へ更新する | 試験設計・登録案を作成。文書全体のレビュー待ち |
-| 3. Branch同期 | `version/0.0.1` → Core APIs child | `origin/version/0.0.1`を現Core APIs branchへ取り込み、close-intent差分が保持されたこととCI/差分を確認してpush。次に`impl-rust/core-input-focus`を同期済みCore APIs branchから作成 | 未開始 |
+| 2. 試験・unit登録 | `.docs/32_unit_test/wrappers.md`、`ui.md`追補、`.docs/32_unit_test/implementation-test-inventory.md`、`tools/units.yaml` | 各unitにtest path・command・RQ/TC・承認済み設計文書/版/節を登録。`planned`で登録し、実装着手時にpath確認後`ready`へ更新する | 利用者承認済み、commit `8992b04` push済み。文書リンク・manifest整合pass |
+| 3. Branch同期 | `version/0.0.1` → Core APIs child | `origin/version/0.0.1`を現Core APIs branchへ取り込み、close-intent差分が保持されたこととCI/差分を確認してpush。次に`impl-rust/core-input-focus`を同期済みCore APIs branchから作成 | 完了。version commit `39b65b8`をmerge commit `f2047b5`で同期。差分はrelease TODO 1ファイルのみ。Windows/Ubuntu CI runs `41377564736` success。child `impl-rust/core-input-focus`を作成・push済み |
 | 4. Core / C ABI | `UNIT-CORE-091`、`UNIT-ABI-022`候補 | route/reentrancy/lifetime/focus/default actionのCore試験後、borrowed event callback/getter/handled setterをABI probesとreal ABI smokeで検証。各unitは同一revisionで必要gates pass後に日本語commit/push |
 | 5. Language wrappers | Rust、C++、C#、Python各wrapper unit | 4本をCore Input branchの同じ確定commitから独立に切る。各unitでfake ABI試験と利用者向けconsumer試験を実施し、callback root/cancel/borrow lifetime/例外隔離を確認。同一unitの試験pass後に各branchを日本語commit/push |
 | 6. Windows Adapter | `UNIT-PLATFORM-WINDOWS-007`候補 | Windows branchはCore Input branchから独立に切る。fake message mapping、stale generation、event order、shutdownを試験し、Windows build/CIを通す。実機IME/keyboard/mouse smokeはrelease qualificationに残す |
@@ -88,4 +88,5 @@ Core branch同期と新規実装branch作成はこの計画のレビュー承認
 | 2026-11-01 | 計画0.1 | レビュー案 | 承認済み共通設計からwrapper/API詳細化・unit登録・branch同期・実装順を具体化 |
 | 2026-11-02 | 計画0.1 | 利用者承認 | Input/Focus event path計画を承認。フェーズ1から開始し、個別DDと試験設計は文書単位で別途レビュー |
 | 2026-11-02 | フェーズ1 | 完了 | ABI・4 wrapper・Windows native mappingのDDを承認済み・push済み |
-| 2026-11-02 | フェーズ2 | レビュー待ち | wrapper/platform試験設計・planned unit 7件・unit inventoryの追加案を作成 |
+| 2026-11-02 | フェーズ2 | 利用者承認・完了 | wrapper/platform試験設計・planned unit 7件をcommit `8992b04`へ記録、push済み |
+| 2026-11-02 | フェーズ3 | 完了 | version commit `39b65b8`を同期。merge commit `f2047b5`のWindows/Ubuntu CI成功後、Core child `impl-rust/core-input-focus`を作成・push |
