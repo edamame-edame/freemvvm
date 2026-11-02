@@ -1,8 +1,8 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
-- 文書版: 1.7
-- 状態: 0.8～1.2全文承認済み（利用者、2026-10-30～2026-10-31）。1.0～1.1全文承認済み（利用者、2026-11-01）。Window-bound TextService/worker routing試験設計1.4承認済み（利用者、2026-11-01）。native close intent接続試験設計1.6全文承認済み（利用者、2026-11-01）。Input routing試験設計1.7全文承認済み（利用者、2026-11-01）。profile oracle・試験実装・実行状態は別管理
-- 更新日: 2026-11-01
+- 文書版: 1.8（レビュー案）
+- 状態: 0.8～1.2全文承認済み（利用者、2026-10-30～2026-10-31）。1.0～1.1全文承認済み（利用者、2026-11-01）。Window-bound TextService/worker routing試験設計1.4承認済み（利用者、2026-11-01）。native close intent接続試験設計1.6全文承認済み（利用者、2026-11-01）。Input routing試験設計1.7全文承認済み（利用者、2026-11-01）。Windows Input Adapter mapping試験1.8案は全文レビュー待ち。profile oracle・試験実装・実行状態は別管理
+- 更新日: 2026-11-02
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
 
@@ -60,6 +60,14 @@ active Windowとfocusable/enabledなTextBox二つ、非focusable Containerを用
 | UT-FOCUS-003 | A→B、Window deactivate/reactivate、detachを行い、各internal transition callbackが実行中に`has_focus`を読む | 新Focus stateを先にcommitしgetterで新stateを観測。旧FocusLostが新FocusGainedより先。公開Focus subscriptionはなく、invalid requestはstate/順序を変えない | [RQ-09-009](../11_requirements/RQ-09_ui-scope.md#rq-09-009)、[RQ-09-049](../11_requirements/RQ-09_ui-scope.md#rq-09-049)<br/>[TC-FOCUS-01](../30_release_test/requirement-test-matrix.md#case-tc-focus-01) |
 | UT-FOCUS-004 | Focus中のWidget自身とLogical ancestorを別々にdisableし、TextBox preedit/selection状態を含む場合も試す。再enable後に入力を投入 | subtree内active focusを一度解除してLostを処理し、別Controlを選ばない。TextBox本文/caret/selectionは保持しIME commitなし。再enable後もFocusは自動復元せず、無効期間の入力も遅延再生しない | [RQ-09-046](../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-049](../11_requirements/RQ-09_ui-scope.md#rq-09-049)、[RQ-09-055](../11_requirements/RQ-09_ui-scope.md#rq-09-055)<br/>[TC-FOCUS-01](../30_release_test/requirement-test-matrix.md#case-tc-focus-01)、[TC-IME-01](../30_release_test/requirement-test-matrix.md#case-tc-ime-01) |
 | UT-INPUT-006 | unknown/zero event mask、registration resource failure、normal cancel、self-cancel、Widget detach、Runtime shutdown、callback panicを別fixtureで起こす。callback復帰後のborrowed event viewを再利用 | failed registrationはclosure ownershipを移さずdestroyしない。成功登録は各終了経路でdestroy一度。取消済みsubscriptionを後続route callbackで再度呼ばない。panic/exceptionはABI越境せずhandled扱いでdefault actionを止める。callback後のevent handleはinvalid | [RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-003](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-INPUT-01](../30_release_test/requirement-test-matrix.md#case-tc-input-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01) |
+
+### Windows native input mapping追加case（1.8案・全文レビュー待ち）
+
+Windows fake mapperへnative message、scan/HID identity、Window generation、client pixel/DIP scaleを注入する。WndProc/workerからuser callbackを呼ばず、Core sinkへcopyしたevent値だけを順序付きで渡す。以下はOS message mappingを再現可能なunit試験であり、IME実機動作や物理入力の合格を意味しない。
+
+| 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
+| --- | --- | --- | --- |
+| <a id="ut-platform-windows-input-001"></a>UT-PLATFORM-WINDOWS-INPUT-001 | Fake message sourceへWM_KEYDOWN/UP、system key、Unicode WM_CHARとsurrogate pair、WM_LBUTTONDOWN/UP、primary PT_TOUCH/PT_PEN down/up、activation/focus loss、stale Window generation、shutdownを順番を制御して投入する | key eventはscan/HID表からplatform-neutral identityへ変換し、文字はTextCommitとして一度だけUTF-8化する。system key eventもpostしつつnative default procedureへ委譲する。mouse/touch/pen primary actionは同一client DIP座標系で順序を保ち、二重postしない。stale generation/停止後eventを破棄し、native handler内からCore user callbackを呼ばない | [RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-010](../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-046](../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-049](../11_requirements/RQ-09_ui-scope.md#rq-09-049)、[RQ-09-068](../11_requirements/RQ-09_ui-scope.md#rq-09-068)<br/>[TC-INPUT-01](../30_release_test/requirement-test-matrix.md#case-tc-input-01)、[TC-FOCUS-01](../30_release_test/requirement-test-matrix.md#case-tc-focus-01)、[TC-IME-01](../30_release_test/requirement-test-matrix.md#case-tc-ime-01)、[TC-PLAT-01](../30_release_test/requirement-test-matrix.md#case-tc-plat-01) |
 
 ## 編集候補・Validation・IME
 
@@ -263,3 +271,4 @@ UNIT-PLATFORM-003のDocker Debian 12実行結果: `cargo test -p freemvvm-platfo
 | 1.4 | 2026-11-01 | Window-bound TextService routing、Windows worker ownership、resolve/render/lifecycle failure testsを追加 | Codex | 利用者承認。試験実装・実行状態は別管理 |
 | 1.6 | 2026-11-01 | Core UI dispatcher経由のnative close intentとWin32 `WM_CLOSE` worker接続のunit-test案を追加 | Codex | 利用者承認。未実装・未実行 |
 | 1.7 | 2026-11-01 | RQ-09-068のhandled route、subscription lifetime、native-neutral keyboard/text/pointer、Focus observationをfake Core test oracleへ具体化 | Codex | 文書全体承認済み。unit inventory登録・試験実装・実行は未開始 |
+| 1.8案 | 2026-11-02 | 承認済みWindows native input mapping 2.4に対するfake message/generation/order試験を追加 | Codex | 文書全体のレビュー待ち。IME・実機入力の合格を意味しない |
