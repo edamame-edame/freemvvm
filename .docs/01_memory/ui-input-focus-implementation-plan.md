@@ -9,6 +9,9 @@
 - 現在のCore APIs branchは`origin/version/0.0.1`より先行し、release branchだけにあるcommitがあった。層のbranch順を維持するには、実装child作成前にrelease差分を既存Core branchへ明示同期する計画が必要。
 - Rust/C ABI Core、4言語wrapper、Windows Adapterは別unitとして同一revisionの試験を行い、各言語wrapperはCore APIs branchから兄弟branchとして作る。
 - `.docs/32_unit_test/implementation-test-inventory.md`の`planned`はCIで実行されない。実在するpath・command・承認済み設計根拠を確認後に`ready`へ進める。
+- `IsEnabled`の変更は直接Property setterだけでなくBinding伝播からも届く。Focusの無効化は個別setterに埋めず、両経路が通るProperty変更後の共通処理でLogical subtreeを再評価する。
+- Focus eligibilityは対象Control自身とWindowまでの全Logical ancestorの`IsEnabled`を確認する。祖先disable時はFocusと復帰candidateを消し、reenable後も自動復元しない。
+- Coreの最小確認は`cargo test -p freemvvm-core focus_requires_active_window_and_restores_only_valid_attached_targets --locked`。この回は追加した祖先disable/reenable assertionsを含めてpassした。Core Input全体unitの完了とは区別する。
 
 参照: [Input/Focus実装開始計画](../20_todo/input-focus-event-path-implementation.md)、[Input/Focus次工程計画](../20_todo/input-focus-event-path.md)、[Git規則](../02_git/rule.md)、[実装unit台帳](../32_unit_test/implementation-test-inventory.md)。
 

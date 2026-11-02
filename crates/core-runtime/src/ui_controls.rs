@@ -1599,6 +1599,17 @@ mod tests {
         assert!(widget_has_focus(text_box).expect("invalid request preserves old Focus"));
         property_set_bool(enabled, true).expect("enable Button");
         widget_request_focus(button).expect("move Focus to Button");
+        let panel_enabled =
+            ui_control_is_enabled_property(panel).expect("get StackPanel enabled Property");
+        property_set_bool(panel_enabled, false).expect("disable Logical ancestor");
+        assert!(!widget_has_focus(button).expect("ancestor disable clears Focus"));
+        assert_eq!(
+            widget_request_focus(button),
+            Err(UiControlApiError::InvalidArgument)
+        );
+        property_set_bool(panel_enabled, true).expect("reenable Logical ancestor");
+        assert!(!widget_has_focus(button).expect("reenable does not restore Focus"));
+        widget_request_focus(button).expect("request Focus after reenable");
         window_platform_activation(window, false).expect("deactivate Window");
         assert!(!widget_has_focus(button).expect("deactivation clears active Focus"));
         window_platform_activation(window, true).expect("reactivate Window");
@@ -1607,6 +1618,7 @@ mod tests {
         window_clear_content(window).expect("detach entire focused subtree");
         assert!(!widget_has_focus(button).expect("detached target is not focused"));
         handle_release(enabled).expect("release enabled Property");
+        handle_release(panel_enabled).expect("release StackPanel enabled Property");
         handle_release(panel).expect("release panel");
         handle_release(text_box).expect("release TextBox");
         handle_release(button).expect("release Button");

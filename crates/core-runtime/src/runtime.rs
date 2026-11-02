@@ -3026,37 +3026,46 @@ impl RuntimeCore {
     }
 
     fn focus_target_is_eligible(&self, window: ObjectIdentity, target: ObjectIdentity) -> bool {
-        let Ok(root) = self
-            .ui_tree
-            .lock()
-            .map_err(|_| ())
-            .and_then(|tree| tree.root_identity(target).map_err(|_| ()))
-        else {
-            return false;
+        let ancestry = {
+            let Ok(tree) = self.ui_tree.lock() else {
+                return false;
+            };
+            let mut ancestry = Vec::new();
+            let mut current = target;
+            loop {
+                ancestry.push(current);
+                if current == window {
+                    break;
+                }
+                let Ok(Some(parent)) = tree.parent_identity(current) else {
+                    return false;
+                };
+                current = parent;
+            }
+            ancestry
         };
-        if root != window {
-            return false;
-        }
         let Ok(store) = self.ui_objects.lock() else {
             return false;
         };
-        let Ok(object) = store.resolve(target) else {
-            return false;
-        };
-        let Some(state) = object.downcast_ref::<UiControlState>() else {
-            return false;
-        };
-        if !state.is_focusable_by_default() {
-            return false;
-        }
-        let Some(owner) = state.property_owner(UiControlProperty::IsEnabled) else {
-            return false;
-        };
-        store
-            .resolve(owner.identity())
-            .ok()
-            .and_then(|value| value.downcast_ref::<PropertyState>())
-            .is_some_and(|property| matches!(property.read(), TypedValue::Bool(true)))
+        ancestry.iter().all(|identity| {
+            let Ok(object) = store.resolve(*identity) else {
+                return false;
+            };
+            let Some(state) = object.downcast_ref::<UiControlState>() else {
+                return false;
+            };
+            if *identity == target && !state.is_focusable_by_default() {
+                return false;
+            }
+            let Some(owner) = state.property_owner(UiControlProperty::IsEnabled) else {
+                return false;
+            };
+            store
+                .resolve(owner.identity())
+                .ok()
+                .and_then(|value| value.downcast_ref::<PropertyState>())
+                .is_some_and(|property| matches!(property.read(), TypedValue::Bool(true)))
+        })
     }
 
     pub(crate) fn widget_request_focus(
@@ -4906,10 +4915,17 @@ impl RuntimeCore {
         };
         let mut affected_controls = Vec::new();
         let mut allocation_failed = false;
+        let mut enabled_owner = None;
         controls.visit_mut(|identity, object| {
             let Some(state) = object.downcast_mut::<UiControlState>() else {
                 return;
             };
+            if state
+                .property_owner(UiControlProperty::IsEnabled)
+                .is_some_and(|owner| owner.identity() == property)
+            {
+                enabled_owner = Some(identity);
+            }
             if state.properties.iter().any(|entry| {
                 entry.owner.identity() == property
                     && matches!(
@@ -4936,12 +4952,40 @@ impl RuntimeCore {
                 }
             });
             drop(controls);
+            self.clear_focus_if_disabled_property(property, enabled_owner);
             self.schedule_window_frame_wake();
             return;
         }
         drop(controls);
         for identity in affected_controls {
             self.mark_layout_dirty(identity);
+        }
+        self.clear_focus_if_disabled_property(property, enabled_owner);
+    }
+
+    fn clear_focus_if_disabled_property(
+        &self,
+        property: ObjectIdentity,
+        control: Option<ObjectIdentity>,
+    ) {
+        let Some(control) = control else {
+            return;
+        };
+        let disabled = self
+            .ui_objects
+            .lock()
+            .ok()
+            .and_then(|store| {
+                store
+                    .resolve(property)
+                    .ok()
+                    .and_then(|value| value.downcast_ref::<PropertyState>())
+                    .is_some_and(|state| matches!(state.read(), TypedValue::Bool(false)))
+                    .then_some(())
+            })
+            .is_some();
+        if disabled {
+            self.clear_focus_for_detached_subtree(control);
         }
     }
 
