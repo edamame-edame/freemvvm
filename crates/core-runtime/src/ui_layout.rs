@@ -480,9 +480,12 @@ fn rect_axes(orientation: Orientation, rect: Rect) -> (f64, f64) {
 mod tests {
     use super::{
         Align, AxisConstraints, IntrinsicMeasureProvider, LayoutConstraints, LayoutEngine,
-        LayoutError, LayoutNodeSnapshot, Orientation, Size,
+        LayoutError, LayoutNodeSnapshot, LayoutSnapshot, NodeLayout, Orientation, Rect, Size,
     };
     use crate::handle_registry::registry::ObjectIdentity;
+    use crate::visual::{
+        ControlTreeNodeSnapshot, ControlTreeSnapshot, ControlViewConnector, VisualNodeDescriptor,
+    };
     use std::collections::HashMap;
     use std::num::NonZeroU64;
 
@@ -520,6 +523,155 @@ mod tests {
             sizes: sizes.iter().copied().collect(),
             fail_on: None,
         }
+    }
+
+    fn input_node(
+        identity: ObjectIdentity,
+        clips_children: bool,
+        children: Vec<ControlTreeNodeSnapshot>,
+    ) -> ControlTreeNodeSnapshot {
+        ControlTreeNodeSnapshot {
+            identity,
+            visual: VisualNodeDescriptor {
+                clips_children,
+                operations: Vec::new(),
+            },
+            text: None,
+            children,
+        }
+    }
+
+    #[test]
+    fn hit_test_uses_topmost_sibling_and_respects_container_clip() {
+        let root = identity(31);
+        let panel = identity(32);
+        let leaf = identity(33);
+        let first = identity(34);
+        let second = identity(35);
+        let create_layout = |nodes: Vec<(ObjectIdentity, Rect)>| LayoutSnapshot {
+            window_generation: 1,
+            tree_revision: 1,
+            layout_revision: 1,
+            client_area: size(100.0, 100.0),
+            nodes: nodes
+                .into_iter()
+                .map(|(identity, final_bounds)| {
+                    (
+                        identity,
+                        NodeLayout {
+                            desired_size: size(final_bounds.width, final_bounds.height),
+                            final_bounds,
+                        },
+                    )
+                })
+                .collect(),
+        };
+        let overlap_layout = create_layout(vec![
+            (
+                root,
+                Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 100.0,
+                },
+            ),
+            (
+                first,
+                Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 80.0,
+                    height: 80.0,
+                },
+            ),
+            (
+                second,
+                Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 80.0,
+                    height: 80.0,
+                },
+            ),
+        ]);
+        let overlapped = ControlTreeSnapshot {
+            tree_revision: 1,
+            root: input_node(
+                root,
+                true,
+                vec![
+                    input_node(first, false, vec![]),
+                    input_node(second, false, vec![]),
+                ],
+            ),
+        };
+        assert_eq!(
+            ControlViewConnector::hit_test(&overlapped, &overlap_layout, 40.0, 20.0),
+            Ok(Some(second))
+        );
+
+        let clip_layout = create_layout(vec![
+            (
+                root,
+                Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 100.0,
+                },
+            ),
+            (
+                panel,
+                Rect {
+                    x: 10.0,
+                    y: 10.0,
+                    width: 20.0,
+                    height: 20.0,
+                },
+            ),
+            (
+                leaf,
+                Rect {
+                    x: 15.0,
+                    y: 0.0,
+                    width: 50.0,
+                    height: 50.0,
+                },
+            ),
+        ]);
+        let clipped = ControlTreeSnapshot {
+            tree_revision: 1,
+            root: input_node(
+                root,
+                true,
+                vec![input_node(
+                    panel,
+                    true,
+                    vec![input_node(leaf, false, vec![])],
+                )],
+            ),
+        };
+        assert_eq!(
+            ControlViewConnector::hit_test(&clipped, &clip_layout, 40.0, 15.0),
+            Ok(Some(root))
+        );
+        let unclipped = ControlTreeSnapshot {
+            tree_revision: 1,
+            root: input_node(
+                root,
+                true,
+                vec![input_node(
+                    panel,
+                    false,
+                    vec![input_node(leaf, false, vec![])],
+                )],
+            ),
+        };
+        assert_eq!(
+            ControlViewConnector::hit_test(&unclipped, &clip_layout, 40.0, 15.0),
+            Ok(Some(leaf))
+        );
     }
 
     #[test]

@@ -3527,6 +3527,30 @@ impl RuntimeCore {
         Ok(Some(snapshot))
     }
 
+    pub(crate) fn window_input_hit_test(
+        &self,
+        identity: ObjectIdentity,
+        x_dip: f64,
+        y_dip: f64,
+    ) -> Result<Option<ObjectIdentity>, LayoutError> {
+        if !self.is_ui_thread() || self.cleanup.state() != RuntimeState::Running {
+            return Err(LayoutError::InvalidTree);
+        }
+        if !self.window_is_open(identity) {
+            return Err(LayoutError::InvalidTree);
+        }
+        let layout = self
+            .window_layout_snapshot(identity)?
+            .ok_or(LayoutError::InvalidTree)?;
+        let Some(tree) = self.capture_window_control_tree_snapshot(identity, &layout)? else {
+            return Ok(None);
+        };
+        ControlViewConnector::hit_test(&tree, &layout, x_dip, y_dip).map_err(|error| match error {
+            crate::visual::VisualBuildError::InvalidGeometry => LayoutError::InvalidGeometry,
+            _ => LayoutError::InvalidTree,
+        })
+    }
+
     fn mark_layout_dirty(&self, identity: ObjectIdentity) {
         let mut current = Some(identity);
         let mut window_dirtied = false;

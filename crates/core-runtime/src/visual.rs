@@ -61,6 +61,91 @@ pub(crate) enum VisualBuildError {
 pub(crate) struct ControlViewConnector;
 
 impl ControlViewConnector {
+    /// Resolves the topmost Control at a client-area DIP position using scene tree order and
+    /// ancestor clipping.
+    pub(crate) fn hit_test(
+        tree: &ControlTreeSnapshot,
+        layout: &LayoutSnapshot,
+        x_dip: f64,
+        y_dip: f64,
+    ) -> Result<Option<ObjectIdentity>, VisualBuildError> {
+        if tree.tree_revision != layout.tree_revision {
+            return Err(VisualBuildError::RevisionMismatch);
+        }
+        if !x_dip.is_finite() || !y_dip.is_finite() {
+            return Err(VisualBuildError::InvalidGeometry);
+        }
+        let mut node_count = 0;
+        Self::validate_hit_test_tree(&tree.root, layout, &mut node_count)?;
+        if node_count != layout.node_count() {
+            return Err(VisualBuildError::MissingLayout);
+        }
+        let client = layout.client_area();
+        let client_clip = LayoutRect {
+            x: 0.0,
+            y: 0.0,
+            width: client.width,
+            height: client.height,
+        };
+        Self::hit_test_node(&tree.root, layout, (0.0, 0.0), client_clip, x_dip, y_dip)
+    }
+
+    fn validate_hit_test_tree(
+        node: &ControlTreeNodeSnapshot,
+        layout: &LayoutSnapshot,
+        node_count: &mut usize,
+    ) -> Result<(), VisualBuildError> {
+        if layout.node(node.identity).is_none() {
+            return Err(VisualBuildError::MissingLayout);
+        }
+        *node_count = node_count
+            .checked_add(1)
+            .ok_or(VisualBuildError::InvalidGeometry)?;
+        for child in &node.children {
+            Self::validate_hit_test_tree(child, layout, node_count)?;
+        }
+        Ok(())
+    }
+
+    fn hit_test_node(
+        node: &ControlTreeNodeSnapshot,
+        layout: &LayoutSnapshot,
+        parent_origin: (f64, f64),
+        clip: LayoutRect,
+        x_dip: f64,
+        y_dip: f64,
+    ) -> Result<Option<ObjectIdentity>, VisualBuildError> {
+        if !layout_rect_contains(clip, x_dip, y_dip) {
+            return Ok(None);
+        }
+        let bounds = layout
+            .node(node.identity)
+            .ok_or(VisualBuildError::MissingLayout)?
+            .final_bounds;
+        let origin = (parent_origin.0 + bounds.x, parent_origin.1 + bounds.y);
+        if !origin.0.is_finite() || !origin.1.is_finite() {
+            return Err(VisualBuildError::InvalidGeometry);
+        }
+        let absolute_bounds = LayoutRect {
+            x: origin.0,
+            y: origin.1,
+            width: bounds.width,
+            height: bounds.height,
+        };
+        let child_clip = if node.visual.clips_children {
+            intersect_layout_rect(clip, absolute_bounds)
+        } else {
+            clip
+        };
+        for child in node.children.iter().rev() {
+            if let Some(hit) = Self::hit_test_node(child, layout, origin, child_clip, x_dip, y_dip)?
+            {
+                return Ok(Some(hit));
+            }
+        }
+        Ok(layout_rect_contains(absolute_bounds, x_dip, y_dip).then_some(node.identity))
+    }
+
     /// Builds a scene from descriptors captured from the live Core Control state.
     pub(crate) fn build_from_production_control_tree(
         tree: &ControlTreeSnapshot,
@@ -316,6 +401,23 @@ impl ControlViewConnector {
             Self::append_node(child, layout, origin, child_clip, visited, output)?;
         }
         Ok(())
+    }
+}
+
+fn layout_rect_contains(rect: LayoutRect, x: f64, y: f64) -> bool {
+    x >= rect.x && y >= rect.y && x < rect.x + rect.width && y < rect.y + rect.height
+}
+
+fn intersect_layout_rect(left: LayoutRect, right: LayoutRect) -> LayoutRect {
+    let x = left.x.max(right.x);
+    let y = left.y.max(right.y);
+    let edge_x = (left.x + left.width).min(right.x + right.width);
+    let edge_y = (left.y + left.height).min(right.y + right.height);
+    LayoutRect {
+        x,
+        y,
+        width: (edge_x - x).max(0.0),
+        height: (edge_y - y).max(0.0),
     }
 }
 
@@ -667,6 +769,58 @@ mod tests {
         assert_eq!(bounds.x(), panel_bounds.x + leaf_bounds.x - 4.0);
         assert_eq!(bounds.y(), panel_bounds.y + leaf_bounds.y - 3.0);
         assert_eq!(scene.layout_revision(), 8);
+    }
+
+    #[test]
+    fn control_tree_hit_test_uses_layout_bounds_and_client_clip() {
+        let root_id = identity(21);
+        let first_id = identity(22);
+        let second_id = identity(23);
+        let layout = calculate_layout(LayoutNodeSnapshot::stack_panel(
+            root_id,
+            Orientation::Vertical,
+            vec![
+                LayoutNodeSnapshot::leaf(first_id),
+                LayoutNodeSnapshot::leaf(second_id),
+            ],
+        ));
+        let tree = ControlTreeSnapshot {
+            tree_revision: layout.tree_revision,
+            root: tree_node(
+                root_id,
+                vec![tree_node(first_id, vec![]), tree_node(second_id, vec![])],
+            ),
+        };
+
+        assert_eq!(
+            ControlViewConnector::hit_test(&tree, &layout, 10.0, 10.0),
+            Ok(Some(first_id))
+        );
+        assert_eq!(
+            ControlViewConnector::hit_test(&tree, &layout, 10.0, 40.0),
+            Ok(Some(second_id))
+        );
+        assert_eq!(
+            ControlViewConnector::hit_test(&tree, &layout, 100.0, 70.0),
+            Ok(Some(root_id))
+        );
+        assert_eq!(
+            ControlViewConnector::hit_test(&tree, &layout, 130.0, 10.0),
+            Ok(None)
+        );
+        assert_eq!(
+            ControlViewConnector::hit_test(&tree, &layout, f64::NAN, 10.0),
+            Err(VisualBuildError::InvalidGeometry)
+        );
+
+        let stale = ControlTreeSnapshot {
+            tree_revision: layout.tree_revision + 1,
+            root: tree.root.clone(),
+        };
+        assert_eq!(
+            ControlViewConnector::hit_test(&stale, &layout, 10.0, 10.0),
+            Err(VisualBuildError::RevisionMismatch)
+        );
     }
 
     #[test]

@@ -118,10 +118,11 @@ mod tests {
         window_close_intent_subscribed, window_close_request_current, window_close_request_defer,
         window_close_request_resolve, window_close_request_subscribe, window_content,
         window_control_tree_snapshot_for_test, window_device_scale_for_test, window_frame_phase,
-        window_install_test_peer, window_layout_and_control_tree_with_text_for_test,
-        window_layout_snapshot_for_test, window_open, window_platform_activation,
-        window_reset_background_rgb, window_set_background_rgb, window_set_content,
-        window_set_content_with_peer, window_submit_frame,
+        window_input_hit_test_for_test, window_install_test_peer,
+        window_layout_and_control_tree_with_text_for_test, window_layout_snapshot_for_test,
+        window_open, window_platform_activation, window_reset_background_rgb,
+        window_set_background_rgb, window_set_content, window_set_content_with_peer,
+        window_submit_frame,
     };
     use crate::ui_layout::Size;
     use crate::ui_window::CloseDecision;
@@ -791,6 +792,10 @@ mod tests {
         assert_eq!(first_tree.tree_revision, first_layout.tree_revision);
         assert_eq!(first_tree.root.children.len(), 1);
         let first_identity = first_tree.root.children[0].identity;
+        assert_eq!(
+            window_input_hit_test_for_test(window, 10.0, 5.0),
+            Ok(Some(first_identity))
+        );
 
         stack_panel_insert(root, 1, second).expect("attach second Button");
         assert_eq!(
@@ -820,6 +825,10 @@ mod tests {
         assert_eq!(reordered_tree.tree_revision, reordered_layout.tree_revision);
         assert_eq!(reordered_tree.root.children[0].identity, second_identity);
         assert_eq!(reordered_tree.root.children[1].identity, first_identity);
+        assert_eq!(
+            window_input_hit_test_for_test(window, 10.0, 5.0),
+            Ok(Some(second_identity))
+        );
 
         stack_panel_remove(root, 0).expect("detach first child");
         assert_eq!(
