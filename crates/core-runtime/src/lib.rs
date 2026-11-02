@@ -21,6 +21,8 @@ mod text_service;
 mod ui_controls;
 mod ui_focus;
 #[allow(dead_code)]
+mod ui_input;
+#[allow(dead_code)]
 mod ui_layout;
 // Typed value semantics back the internal Property state; ABI validation remains a later unit.
 mod ui_tree;
@@ -46,8 +48,8 @@ pub mod abi_support {
         SceneSnapshot,
     };
     use crate::property::{
-        PropertyHandleKind, PropertyValidator, Subscription, SubscriptionCallback, ValidationError,
-        ValidatorResult,
+        InputHandler, PropertyHandleKind, PropertyValidator, Subscription, SubscriptionCallback,
+        ValidationError, ValidatorResult,
     };
     use crate::runtime::{
         RuntimeBindingError, RuntimeCore, RuntimeCoreError, RuntimeIdentity,
@@ -636,6 +638,8 @@ pub mod abi_support {
         Property(crate::handle_registry::registry::ObjectIdentity),
         Binding(crate::binding::BindingConnectionId),
         Window(ObjectIdentity),
+        #[allow(dead_code)] // Public C ABI registration is implemented in the next unit.
+        Input(ObjectIdentity),
     }
 
     struct BindingHandleEntry {
@@ -2463,6 +2467,36 @@ pub mod abi_support {
             .map_err(|_| UiControlApiError::Internal)
     }
 
+    #[cfg(test)]
+    pub(crate) fn window_input_route_for_test(
+        window: u64,
+        target: u64,
+    ) -> Result<Vec<ObjectIdentity>, UiControlApiError> {
+        let (_, runtime, window_identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let (_, target_runtime, _, target_identity) = ui_control_entry(target)?;
+        if !Arc::ptr_eq(&runtime, &target_runtime) {
+            return Err(UiControlApiError::WrongRuntime);
+        }
+        runtime
+            .input_route_snapshot(window_identity, target_identity)
+            .map(|route| route.nodes().to_vec())
+            .map_err(|_| UiControlApiError::Internal)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_dispatch_input_for_test(
+        window: u64,
+        target: u64,
+        event: crate::ui_input::InputEvent,
+    ) -> Result<bool, UiControlApiError> {
+        let (_, runtime, window_identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let (_, target_runtime, _, target_identity) = ui_control_entry(target)?;
+        if !Arc::ptr_eq(&runtime, &target_runtime) {
+            return Err(UiControlApiError::WrongRuntime);
+        }
+        Ok(runtime.dispatch_input_event(window_identity, target_identity, event))
+    }
+
     /// Internal Core/Renderer bridge; not part of the public C ABI.
     pub fn window_submit_frame(
         window: u64,
@@ -2628,6 +2662,44 @@ pub mod abi_support {
             Arc::new(SubscriptionHandleEntry {
                 runtime,
                 owner: SubscriptionOwner::Window(identity),
+                subscription,
+            }),
+        );
+        Ok(token.into_abi())
+    }
+
+    /// Registers a typed Input callback on a Widget for the matching event-kind bits.
+    #[allow(dead_code)] // Public C ABI registration is implemented in the next unit.
+    pub(crate) fn widget_input_subscribe(
+        widget: u64,
+        event_mask: u64,
+        handler: Arc<InputHandler>,
+    ) -> Result<u64, UiControlApiError> {
+        const VALID_MASK: u64 = (1 << 5) - 1;
+        if event_mask == 0 || event_mask & !VALID_MASK != 0 {
+            return Err(UiControlApiError::InvalidArgument);
+        }
+        let (_, runtime, _, identity) = ui_control_entry(widget)?;
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        let mut subscriptions = subscription_handles()
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        subscriptions
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        let token =
+            crate::handle_registry::issue_handle_token().ok_or(UiControlApiError::Internal)?;
+        let subscription = Arc::new(Subscription::new_input(event_mask, handler));
+        runtime
+            .register_input_subscription_owner(identity, &subscription)
+            .map_err(map_ui_control_property_error)?;
+        subscriptions.insert(
+            token,
+            Arc::new(SubscriptionHandleEntry {
+                runtime,
+                owner: SubscriptionOwner::Input(identity),
                 subscription,
             }),
         );
@@ -3235,6 +3307,12 @@ pub mod abi_support {
                         })?;
                 }
                 SubscriptionOwner::Window(identity) => {
+                    entry
+                        .runtime
+                        .cancel_subscription_owner(identity, &entry.subscription)
+                        .map_err(map_property_read_error)?;
+                }
+                SubscriptionOwner::Input(identity) => {
                     entry
                         .runtime
                         .cancel_subscription_owner(identity, &entry.subscription)

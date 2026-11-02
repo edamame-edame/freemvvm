@@ -18,6 +18,7 @@ use crate::property::{
 use crate::text_service::{ResolvedTextSnapshot, TextRequest, TextService, resolve_text};
 use crate::ui_controls::{UiControlKind, UiControlProperty, UiControlState};
 use crate::ui_focus::FocusManager;
+use crate::ui_input::{InputEvent, InputEventFrame, InputRouteError, InputRouteSnapshot};
 use crate::ui_layout::{
     Align, IntrinsicMeasureProvider, LayoutEngine, LayoutError, LayoutNodeSnapshot, LayoutSnapshot,
     Orientation, Size,
@@ -3026,6 +3027,24 @@ impl RuntimeCore {
     }
 
     fn focus_target_is_eligible(&self, window: ObjectIdentity, target: ObjectIdentity) -> bool {
+        if !self.control_is_effectively_enabled(window, target) {
+            return false;
+        }
+        let Ok(store) = self.ui_objects.lock() else {
+            return false;
+        };
+        store
+            .resolve(target)
+            .ok()
+            .and_then(|object| object.downcast_ref::<UiControlState>())
+            .is_some_and(UiControlState::is_focusable_by_default)
+    }
+
+    fn control_is_effectively_enabled(
+        &self,
+        window: ObjectIdentity,
+        target: ObjectIdentity,
+    ) -> bool {
         let ancestry = {
             let Ok(tree) = self.ui_tree.lock() else {
                 return false;
@@ -3054,9 +3073,6 @@ impl RuntimeCore {
             let Some(state) = object.downcast_ref::<UiControlState>() else {
                 return false;
             };
-            if *identity == target && !state.is_focusable_by_default() {
-                return false;
-            }
             let Some(owner) = state.property_owner(UiControlProperty::IsEnabled) else {
                 return false;
             };
@@ -3549,6 +3565,103 @@ impl RuntimeCore {
             crate::visual::VisualBuildError::InvalidGeometry => LayoutError::InvalidGeometry,
             _ => LayoutError::InvalidTree,
         })
+    }
+
+    pub(crate) fn input_route_snapshot(
+        &self,
+        window: ObjectIdentity,
+        target: ObjectIdentity,
+    ) -> Result<InputRouteSnapshot, InputRouteError> {
+        if !self.is_ui_thread() {
+            return Err(InputRouteError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(InputRouteError::Closed);
+        }
+        let tree = self
+            .ui_tree
+            .lock()
+            .map_err(|_| InputRouteError::SynchronizationPoisoned)?;
+        InputRouteSnapshot::from_tree(&tree, window, target)
+    }
+
+    pub(crate) fn dispatch_input_event(
+        &self,
+        window: ObjectIdentity,
+        target: ObjectIdentity,
+        event: InputEvent,
+    ) -> bool {
+        if !self.is_ui_thread()
+            || self.cleanup.state() != RuntimeState::Running
+            || event.validate().is_err()
+        {
+            return false;
+        }
+        let Ok(route) = self.input_route_snapshot(window, target) else {
+            return false;
+        };
+        let Some(generation) = self.window_generation(window) else {
+            return false;
+        };
+        if !self.input_route_node_is_valid(&route, target, generation) {
+            return false;
+        }
+        let mask = event.kind.mask_bit();
+        let mut frame = InputEventFrame::new(event, target);
+        'route: for current in route.nodes() {
+            if !self.input_route_node_is_valid(&route, *current, generation) {
+                break;
+            }
+            let Ok(subscriptions) = self.snapshot_input_subscriptions(*current, mask) else {
+                break;
+            };
+            for subscription in subscriptions {
+                if frame.is_handled() {
+                    break 'route;
+                }
+                if !self.input_route_node_is_valid(&route, *current, generation) {
+                    break 'route;
+                }
+                let delivery = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    subscription.invoke_input(*current, target, &mut frame)
+                }));
+                if !matches!(delivery, Ok(true)) {
+                    frame.set_handled(true);
+                }
+                if !self.input_route_node_is_valid(&route, *current, generation) {
+                    break 'route;
+                }
+            }
+        }
+        frame.is_handled()
+    }
+
+    fn window_generation(&self, window: ObjectIdentity) -> Option<u64> {
+        self.ui_objects
+            .lock()
+            .ok()?
+            .resolve(window)
+            .ok()?
+            .downcast_ref::<UiControlState>()?
+            .window
+            .as_ref()
+            .filter(|window| window.is_open())
+            .map(|window| window.generation())
+    }
+
+    fn input_route_node_is_valid(
+        &self,
+        route: &InputRouteSnapshot,
+        current: ObjectIdentity,
+        generation: u64,
+    ) -> bool {
+        if self.window_generation(route.window()) != Some(generation)
+            || !self.control_is_effectively_enabled(route.window(), route.original_target())
+            || !self.control_is_effectively_enabled(route.window(), current)
+        {
+            return false;
+        }
+        true
     }
 
     fn mark_layout_dirty(&self, identity: ObjectIdentity) {
@@ -5474,6 +5587,73 @@ impl RuntimeCore {
         Ok(())
     }
 
+    pub(crate) fn register_input_subscription_owner(
+        &self,
+        identity: ObjectIdentity,
+        subscription: &Arc<Subscription>,
+    ) -> Result<(), RuntimePropertyError> {
+        if self.validator_active.load(Ordering::Acquire) {
+            return Err(RuntimePropertyError::ValidatorReentrancy);
+        }
+        self.ensure_property_access_thread()?;
+        if !subscription.is_active() || subscription.input_mask().is_none() {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        let mut store = self
+            .ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        if store
+            .resolve(identity)
+            .ok()
+            .and_then(|object| object.downcast_ref::<UiControlState>())
+            .is_none()
+        {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        let mut owners = self
+            .subscription_owners
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+        if owners
+            .values()
+            .flatten()
+            .any(|owner| Arc::ptr_eq(owner, subscription))
+        {
+            return Err(RuntimePropertyError::WrongObjectState);
+        }
+        let mut new_bucket = None;
+        if let Some(bucket) = owners.get_mut(&identity) {
+            bucket
+                .try_reserve(1)
+                .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
+        } else {
+            owners
+                .try_reserve(1)
+                .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
+            let mut bucket = Vec::new();
+            bucket
+                .try_reserve(1)
+                .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
+            new_bucket = Some(bucket);
+        }
+        store
+            .resolve_mut(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_mut::<UiControlState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?
+            .add_input_subscriber(subscription)
+            .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)?;
+        let owner = Arc::clone(subscription);
+        if let Some(bucket) = owners.get_mut(&identity) {
+            bucket.push(owner);
+        } else if let Some(mut bucket) = new_bucket {
+            bucket.push(owner);
+            owners.insert(identity, bucket);
+        }
+        Ok(())
+    }
+
     pub(crate) fn snapshot_window_close_subscription(
         &self,
         identity: ObjectIdentity,
@@ -5520,6 +5700,23 @@ impl RuntimeCore {
             .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)
     }
 
+    pub(crate) fn snapshot_input_subscriptions(
+        &self,
+        identity: ObjectIdentity,
+        mask: u64,
+    ) -> Result<Vec<Arc<Subscription>>, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        self.ui_objects
+            .lock()
+            .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?
+            .resolve_mut(identity)
+            .map_err(RuntimePropertyError::Store)?
+            .downcast_mut::<UiControlState>()
+            .ok_or(RuntimePropertyError::WrongObjectState)?
+            .snapshot_input_subscribers(mask)
+            .map_err(|_| RuntimePropertyError::SubscriptionRegistryOutOfMemory)
+    }
+
     /// Removes one Runtime owner and cancels it outside the registry lock.
     pub(crate) fn cancel_subscription_owner(
         &self,
@@ -5554,6 +5751,8 @@ impl RuntimeCore {
         if let Ok(state) = store.resolve_mut(identity) {
             if let Some(property) = state.downcast_mut::<PropertyState>() {
                 property.remove_subscription(&removed);
+            } else if let Some(control) = state.downcast_mut::<UiControlState>() {
+                control.remove_input_subscriber(&removed);
             }
         }
         if bucket.is_empty() {

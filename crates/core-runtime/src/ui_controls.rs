@@ -1,10 +1,11 @@
 //! Core-owned state for the initial UI Control set.
 
 use crate::handle_registry::registry::{InternalOwner, ObjectIdentity};
+use crate::property::Subscription;
 use crate::runtime::RuntimeIdentity;
 use crate::ui_window::WindowLifecycle;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum UiControlKind {
@@ -57,6 +58,7 @@ pub(crate) struct UiControlState {
     pub(crate) frame_retry_deferred: bool,
     pub(crate) window: Option<WindowLifecycle>,
     pub(crate) button_command: Option<Arc<crate::abi_support::CommandHandleEntry>>,
+    input_subscribers: Vec<Weak<Subscription>>,
 }
 
 impl UiControlState {
@@ -71,6 +73,7 @@ impl UiControlState {
             frame_retry_deferred: false,
             window: (kind == UiControlKind::Window).then(WindowLifecycle::default),
             button_command: None,
+            input_subscribers: Vec::new(),
         }
     }
 
@@ -91,6 +94,45 @@ impl UiControlState {
     pub(crate) fn child_align(&self, child: ObjectIdentity) -> u32 {
         self.child_align.get(&child).copied().unwrap_or(4)
     }
+
+    pub(crate) fn add_input_subscriber(
+        &mut self,
+        subscription: &Arc<Subscription>,
+    ) -> Result<(), std::collections::TryReserveError> {
+        self.input_subscribers.try_reserve(1)?;
+        self.input_subscribers.push(Arc::downgrade(subscription));
+        Ok(())
+    }
+
+    pub(crate) fn remove_input_subscriber(&mut self, subscription: &Arc<Subscription>) {
+        self.input_subscribers.retain(|current| {
+            current
+                .upgrade()
+                .is_some_and(|current| !Arc::ptr_eq(&current, subscription))
+        });
+    }
+
+    pub(crate) fn snapshot_input_subscribers(
+        &mut self,
+        mask: u64,
+    ) -> Result<Vec<Arc<Subscription>>, std::collections::TryReserveError> {
+        let mut snapshot = Vec::new();
+        snapshot.try_reserve(self.input_subscribers.len())?;
+        self.input_subscribers.retain(|current| {
+            let Some(subscription) = current.upgrade() else {
+                return false;
+            };
+            let matching = subscription.is_active()
+                && subscription
+                    .input_mask()
+                    .is_some_and(|subscription_mask| subscription_mask & mask != 0);
+            if matching {
+                snapshot.push(subscription);
+            }
+            true
+        });
+        Ok(snapshot)
+    }
 }
 
 #[cfg(test)]
@@ -105,32 +147,34 @@ mod tests {
         runtime_dispatch_turn, runtime_set_ui_loop_bridge, runtime_shutdown,
         stack_panel_child_align, stack_panel_child_at, stack_panel_child_count, stack_panel_insert,
         stack_panel_move, stack_panel_orientation, stack_panel_remove, stack_panel_set_child_align,
-        stack_panel_set_orientation, ui_control_accessible_name_property,
+        stack_panel_set_orientation, subscription_cancel, ui_control_accessible_name_property,
         ui_control_button_label_property, ui_control_create_button, ui_control_create_stack_panel,
         ui_control_create_text, ui_control_create_text_box, ui_control_create_window,
         ui_control_is_enabled_property, ui_control_layout_clean, ui_control_layout_dirty,
         ui_control_text_box_value_property, ui_control_text_content_property,
-        ui_control_window_title_property, widget_has_focus, widget_request_focus,
-        window_background_rgb, window_calculate_layout_for_test,
+        ui_control_window_title_property, widget_has_focus, widget_input_subscribe,
+        widget_request_focus, window_background_rgb, window_calculate_layout_for_test,
         window_calculate_layout_with_orientation_change_for_test,
         window_calculate_layout_with_platform_text_for_test, window_clear_content,
         window_client_area_for_test, window_close, window_close_intent,
         window_close_intent_subscribed, window_close_request_current, window_close_request_defer,
         window_close_request_resolve, window_close_request_subscribe, window_content,
-        window_control_tree_snapshot_for_test, window_device_scale_for_test, window_frame_phase,
-        window_input_hit_test_for_test, window_install_test_peer,
+        window_control_tree_snapshot_for_test, window_device_scale_for_test,
+        window_dispatch_input_for_test, window_frame_phase, window_input_hit_test_for_test,
+        window_input_route_for_test, window_install_test_peer,
         window_layout_and_control_tree_with_text_for_test, window_layout_snapshot_for_test,
         window_open, window_platform_activation, window_reset_background_rgb,
         window_set_background_rgb, window_set_content, window_set_content_with_peer,
         window_submit_frame,
     };
+    use crate::ui_input::{InputEvent, InputEventKind, InputEventPayload};
     use crate::ui_layout::Size;
     use crate::ui_window::CloseDecision;
     use crate::visual::{ControlViewConnector, VisualNodeDescriptor};
     use std::collections::{HashMap, VecDeque};
     use std::ffi::c_void;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     struct TestWindowPeer(AtomicUsize, AtomicUsize);
 
@@ -796,6 +840,12 @@ mod tests {
             window_input_hit_test_for_test(window, 10.0, 5.0),
             Ok(Some(first_identity))
         );
+        let input_route = window_input_route_for_test(window, first).expect("capture input route");
+        assert_eq!(
+            &input_route[..2],
+            &[first_identity, first_tree.root.identity]
+        );
+        assert_eq!(input_route.len(), 3, "route also reaches the Window");
 
         stack_panel_insert(root, 1, second).expect("attach second Button");
         assert_eq!(
@@ -1639,6 +1689,181 @@ mod tests {
         handle_release(runtime).expect("release Runtime");
         assert_eq!(peer.0.load(Ordering::Relaxed), 1);
         assert!(peer.1.load(Ordering::Relaxed) >= 1);
+    }
+
+    #[test]
+    fn input_handlers_bubble_in_order_stop_when_handled_and_revalidate_detach() {
+        let runtime = runtime_create_handle().expect("create Runtime");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
+        let button = ui_control_create_button(runtime, b"run").expect("create Button");
+        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        window_install_test_peer(window, peer).expect("install fake Window peer");
+        window_set_content(window, panel).expect("attach content");
+        stack_panel_insert(panel, 0, button).expect("attach Button");
+        window_open(window).expect("open Window");
+
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let detach_on_call = Arc::new(AtomicBool::new(false));
+        let first_calls = Arc::clone(&calls);
+        let first_detach = Arc::clone(&detach_on_call);
+        let first = widget_input_subscribe(
+            button,
+            InputEventKind::KeyDown.mask_bit(),
+            Arc::new(move |_, _, _| {
+                first_calls.lock().expect("calls lock").push("button-first");
+                if first_detach.load(Ordering::SeqCst) {
+                    stack_panel_remove(panel, 0).expect("detach target during callback");
+                }
+            }),
+        )
+        .expect("subscribe first Button handler");
+        let handled_calls = Arc::clone(&calls);
+        let handled = widget_input_subscribe(
+            button,
+            InputEventKind::KeyDown.mask_bit(),
+            Arc::new(move |_, _, event| {
+                handled_calls
+                    .lock()
+                    .expect("calls lock")
+                    .push("button-handled");
+                event.set_handled(true);
+            }),
+        )
+        .expect("subscribe second Button handler");
+        let panel_calls = Arc::clone(&calls);
+        let parent = widget_input_subscribe(
+            panel,
+            InputEventKind::KeyDown.mask_bit(),
+            Arc::new(move |_, _, _| {
+                panel_calls.lock().expect("calls lock").push("panel");
+            }),
+        )
+        .expect("subscribe parent handler");
+        let window_calls = Arc::clone(&calls);
+        let window_handler = widget_input_subscribe(
+            window,
+            InputEventKind::KeyDown.mask_bit(),
+            Arc::new(move |_, _, _| {
+                window_calls.lock().expect("calls lock").push("window");
+            }),
+        )
+        .expect("subscribe Window handler");
+
+        let key_down = || InputEvent {
+            kind: InputEventKind::KeyDown,
+            payload: InputEventPayload::Key {
+                identity: 0x04,
+                modifiers: 0,
+            },
+        };
+        assert!(
+            window_dispatch_input_for_test(window, button, key_down())
+                .expect("dispatch handled Input")
+        );
+        assert_eq!(
+            *calls.lock().expect("calls lock"),
+            vec!["button-first", "button-handled"]
+        );
+
+        subscription_cancel(handled).expect("cancel the handled Button handler");
+        calls.lock().expect("calls lock").clear();
+        assert!(
+            !window_dispatch_input_for_test(window, button, key_down())
+                .expect("dispatch unhandled Input")
+        );
+        assert_eq!(
+            *calls.lock().expect("calls lock"),
+            vec!["button-first", "panel", "window"]
+        );
+
+        calls.lock().expect("calls lock").clear();
+        detach_on_call.store(true, Ordering::SeqCst);
+        assert!(
+            !window_dispatch_input_for_test(window, button, key_down())
+                .expect("dispatch Input that detaches its target")
+        );
+        assert_eq!(*calls.lock().expect("calls lock"), vec!["button-first"]);
+
+        for subscription in [first, handled, parent, window_handler] {
+            subscription_cancel(subscription).expect("cancel Input subscription");
+            handle_release(subscription).expect("release Input subscription handle");
+        }
+        handle_release(button).expect("release Button");
+        handle_release(panel).expect("release StackPanel");
+        window_close(window).expect("close Window");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(window).expect("release Window");
+        handle_release(runtime).expect("release Runtime");
+    }
+
+    #[test]
+    fn input_subscription_self_cancel_destroys_handler_after_callback_once() {
+        struct DropProbe(Arc<AtomicUsize>);
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        let runtime = runtime_create_handle().expect("create Runtime");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
+        let button = ui_control_create_button(runtime, b"run").expect("create Button");
+        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        window_install_test_peer(window, peer).expect("install fake Window peer");
+        window_set_content(window, panel).expect("attach content");
+        stack_panel_insert(panel, 0, button).expect("attach Button");
+        window_open(window).expect("open Window");
+
+        let destroy_count = Arc::new(AtomicUsize::new(0));
+        let drop_probe = DropProbe(Arc::clone(&destroy_count));
+        let subscription_handle = Arc::new(std::sync::Mutex::new(None));
+        let callback_subscription = Arc::clone(&subscription_handle);
+        let callback_drop_probe = drop_probe;
+        let subscription = widget_input_subscribe(
+            button,
+            InputEventKind::KeyDown.mask_bit(),
+            Arc::new(move |_, _, _| {
+                let _keep_userdata_alive = &callback_drop_probe;
+                let handle = subscription_handle
+                    .lock()
+                    .expect("subscription handle lock")
+                    .expect("subscription handle is published before dispatch");
+                subscription_cancel(handle).expect("self-cancel Input callback");
+                panic!("exercise panic cleanup after self-cancel");
+            }),
+        )
+        .expect("subscribe self-cancel handler");
+        *callback_subscription
+            .lock()
+            .expect("subscription handle lock") = Some(subscription);
+
+        let key_down = InputEvent {
+            kind: InputEventKind::KeyDown,
+            payload: InputEventPayload::Key {
+                identity: 0x04,
+                modifiers: 0,
+            },
+        };
+        assert!(
+            window_dispatch_input_for_test(window, button, key_down.clone())
+                .expect("dispatch self-cancelling event")
+        );
+        assert_eq!(destroy_count.load(Ordering::SeqCst), 1);
+        window_dispatch_input_for_test(window, button, key_down)
+            .expect("dispatch after cancellation");
+        assert_eq!(destroy_count.load(Ordering::SeqCst), 1);
+
+        handle_release(subscription).expect("release canceled subscription handle");
+        handle_release(button).expect("release Button");
+        handle_release(panel).expect("release StackPanel");
+        window_close(window).expect("close Window");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(window).expect("release Window");
+        handle_release(runtime).expect("release Runtime");
     }
 
     #[test]
