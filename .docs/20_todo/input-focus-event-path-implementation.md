@@ -1,7 +1,7 @@
 # 0.0.1 Input / Focus event path実装開始計画
 
 - 計画版: 0.1
-- 状態: 計画承認済み（利用者、2026-11-02）。フェーズ1設計・フェーズ2試験登録は承認済み・push済み。version branch同期とCI確認を完了し、`impl-rust/core-input-focus`を作成・push済み。フェーズ4のCore実装を開始し、Focus祖先無効化をcommit `78c417f`でpush済み。`UNIT-CORE-091`全体とC ABIは継続中
+- 状態: 計画承認済み（利用者、2026-11-02）。フェーズ1設計・フェーズ2試験登録は承認済み・push済み。version branch同期とCI確認を完了し、`impl-rust/core-input-focus`を作成・push済み。フェーズ4ではFocus祖先無効化とCore pointer hit-testをpush済み。`UNIT-CORE-091`全体とC ABIは継続中
 - 対象version: `0.0.1`
 - 親計画: [Input / Focus event path次工程計画](input-focus-event-path.md) 0.2（承認済み）
 - 目的: 承認済み共通設計に残る実装境界を閉じ、Core/C ABI・4 wrapper・Windows Adapterを依存順に実装・検証できる状態にする
@@ -90,4 +90,4 @@ Core branch同期と新規実装branch作成はこの計画のレビュー承認
 | 2026-11-02 | フェーズ1 | 完了 | ABI・4 wrapper・Windows native mappingのDDを承認済み・push済み |
 | 2026-11-02 | フェーズ2 | 利用者承認・完了 | wrapper/platform試験設計・planned unit 7件をcommit `8992b04`へ記録、push済み |
 | 2026-11-02 | フェーズ3 | 完了 | version commit `39b65b8`を同期。merge commit `f2047b5`のWindows/Ubuntu CI成功後、Core child `impl-rust/core-input-focus`を作成・push |
-| 2026-11-02 | フェーズ4 | 進行中 | Core Focus eligibilityへLogical祖先の`IsEnabled`確認を追加。直接Property変更・Binding伝播共通の後処理で無効subtreeのFocus/candidateを解除。focused testとCore全185件、format/diff checkがpass。commit `78c417f`をpush。Input route、subscription、Button default action、C ABIは未完了 |
+| 2026-11-02 | フェーズ4 | 進行中 | Core Focus eligibilityへLogical祖先の`IsEnabled`確認を追加し、直接Property変更・Binding伝播共通の後処理で無効subtreeのFocus/candidateを解除。Layout/ControlTree snapshotからclient clip・ancestor clip・topmost順を使うpointer hit-testを追加。Core全187件、format/diff checkがpass。commit `78c417f`、`6ed9131`をpush。Input route、subscription、Button default action、C ABIは未完了 |
