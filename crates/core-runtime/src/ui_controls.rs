@@ -1970,6 +1970,68 @@ mod tests {
     }
 
     #[test]
+    fn reentrant_input_is_delivered_on_a_later_dispatch_turn() {
+        let runtime = runtime_create_handle().expect("create Runtime");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
+        let button = ui_control_create_button(runtime, b"run").expect("create Button");
+        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        window_install_test_peer(window, peer).expect("install fake Window peer");
+        window_set_content(window, panel).expect("attach content");
+        stack_panel_insert(panel, 0, button).expect("attach Button");
+        window_open(window).expect("open Window");
+
+        let deliveries = Arc::new(AtomicUsize::new(0));
+        let nested_once = Arc::new(AtomicBool::new(false));
+        let callback_deliveries = Arc::clone(&deliveries);
+        let callback_nested_once = Arc::clone(&nested_once);
+        let event = InputEvent {
+            kind: InputEventKind::KeyDown,
+            payload: InputEventPayload::Key {
+                identity: 0x04,
+                modifiers: 0,
+            },
+        };
+        let callback_event = event.clone();
+        let subscription = widget_input_subscribe(
+            button,
+            InputEventKind::KeyDown.mask_bit(),
+            Arc::new(move |_, _, frame| {
+                callback_deliveries.fetch_add(1, Ordering::SeqCst);
+                if !callback_nested_once.swap(true, Ordering::SeqCst) {
+                    assert!(
+                        !window_dispatch_input_for_test(window, button, callback_event.clone())
+                            .expect("queue reentrant Input")
+                    );
+                }
+                frame.set_handled(true);
+            }),
+        )
+        .expect("subscribe reentrant handler");
+
+        assert!(
+            window_dispatch_input_for_test(window, button, event).expect("dispatch initial Input")
+        );
+        assert_eq!(
+            deliveries.load(Ordering::SeqCst),
+            1,
+            "nested delivery is deferred"
+        );
+        runtime_dispatch_turn(runtime).expect("dispatch queued Input on next turn");
+        assert_eq!(deliveries.load(Ordering::SeqCst), 2);
+
+        subscription_cancel(subscription).expect("cancel Input subscription");
+        handle_release(subscription).expect("release Input subscription");
+        handle_release(button).expect("release Button");
+        handle_release(panel).expect("release StackPanel");
+        window_close(window).expect("close Window");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(window).expect("release Window");
+        handle_release(runtime).expect("release Runtime");
+    }
+
+    #[test]
     fn close_subscription_defers_resolves_and_declines_when_last_owner_is_released() {
         let runtime = runtime_create_handle().expect("create Runtime");
         runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");

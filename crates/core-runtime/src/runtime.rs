@@ -1135,12 +1135,34 @@ pub(crate) struct RuntimeCore {
     property_changes: Arc<Mutex<PropertyChangeQueue>>,
     property_delivery: Arc<Mutex<Option<VecDeque<PropertyDeliveryItem>>>>,
     property_delivery_active: AtomicBool,
+    input_dispatch_active: AtomicBool,
+    pending_input_events: Arc<Mutex<VecDeque<QueuedInputDelivery>>>,
     validator_active: AtomicBool,
     subscription_owners: Arc<Mutex<HashMap<ObjectIdentity, Vec<Arc<Subscription>>>>>,
     object_cleanup: Arc<RuntimeObjectCleanupQueue>,
     host: HostRegistration,
     dispatcher: Mutex<Option<Dispatcher>>,
     shutdown_completion: Mutex<Option<ShutdownCompletion>>,
+}
+
+enum QueuedInputDelivery {
+    Window {
+        window: ObjectIdentity,
+        event: InputEvent,
+    },
+    Targeted {
+        window: ObjectIdentity,
+        target: ObjectIdentity,
+        event: InputEvent,
+    },
+}
+
+struct InputDispatchGuard<'a>(&'a AtomicBool);
+
+impl Drop for InputDispatchGuard<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1469,6 +1491,7 @@ impl RuntimeCore {
         let ui_state_cleared = Arc::new(AtomicBool::new(false));
         let property_changes = Arc::new(Mutex::new(PropertyChangeQueue::default()));
         let property_delivery = Arc::new(Mutex::new(None));
+        let pending_input_events = Arc::new(Mutex::new(VecDeque::new()));
         let binding_graph = Arc::new(Mutex::new(BindingGraph::default()));
         let active_bindings: Arc<Mutex<HashMap<BindingConnectionId, RuntimeBindingOwner>>> =
             Arc::new(Mutex::new(HashMap::new()));
@@ -1477,6 +1500,7 @@ impl RuntimeCore {
             Arc::new(Mutex::new(HashMap::new()));
         let shutdown_property_changes = Arc::clone(&property_changes);
         let shutdown_property_delivery = Arc::clone(&property_delivery);
+        let shutdown_pending_input_events = Arc::clone(&pending_input_events);
         let shutdown_subscription_owners = Arc::clone(&subscription_owners);
         let shutdown_active_bindings = Arc::clone(&active_bindings);
         let shutdown_binding_error_delivery = Arc::clone(&binding_error_delivery);
@@ -1491,6 +1515,10 @@ impl RuntimeCore {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner) =
                     PropertyChangeQueue::default();
+                shutdown_pending_input_events
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clear();
                 let owners = std::mem::take(
                     &mut *shutdown_subscription_owners
                         .lock()
@@ -1598,6 +1626,8 @@ impl RuntimeCore {
             property_changes,
             property_delivery,
             property_delivery_active: AtomicBool::new(false),
+            input_dispatch_active: AtomicBool::new(false),
+            pending_input_events,
             validator_active: AtomicBool::new(false),
             subscription_owners,
             object_cleanup,
@@ -3599,6 +3629,22 @@ impl RuntimeCore {
         {
             return false;
         }
+        let Ok(_guard) = self.begin_input_dispatch() else {
+            return self.enqueue_input_event(QueuedInputDelivery::Targeted {
+                window,
+                target,
+                event,
+            });
+        };
+        self.dispatch_input_event_now(window, target, event)
+    }
+
+    fn dispatch_input_event_now(
+        &self,
+        window: ObjectIdentity,
+        target: ObjectIdentity,
+        event: InputEvent,
+    ) -> bool {
         let Ok(route) = self.input_route_snapshot(window, target) else {
             return false;
         };
@@ -3646,6 +3692,9 @@ impl RuntimeCore {
         if event.validate().is_err() {
             return false;
         }
+        if self.input_dispatch_active.load(Ordering::Acquire) {
+            return self.enqueue_input_event(QueuedInputDelivery::Window { window, event });
+        }
         let target = match event.kind {
             crate::ui_input::InputEventKind::KeyDown
             | crate::ui_input::InputEventKind::KeyUp
@@ -3670,6 +3719,62 @@ impl RuntimeCore {
             }
         };
         target.is_some_and(|target| self.dispatch_input_event(window, target, event))
+    }
+
+    fn begin_input_dispatch(&self) -> Result<InputDispatchGuard<'_>, ()> {
+        self.input_dispatch_active
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| InputDispatchGuard(&self.input_dispatch_active))
+            .map_err(|_| ())
+    }
+
+    fn enqueue_input_event(&self, event: QueuedInputDelivery) -> bool {
+        if !self.is_ui_thread() || self.cleanup.state() != RuntimeState::Running {
+            return false;
+        }
+        let Ok(mut pending) = self.pending_input_events.lock() else {
+            return false;
+        };
+        if pending.try_reserve(1).is_err() {
+            return false;
+        }
+        pending.push_back(event);
+        drop(pending);
+        if let Ok(Some(dispatcher)) = self.dispatcher() {
+            let _ = dispatcher.schedule_pending_work_wake();
+        }
+        false
+    }
+
+    fn dispatch_one_queued_input_event(&self) -> Result<bool, RuntimeCoreError> {
+        let event = self
+            .pending_input_events
+            .lock()
+            .map_err(|_| RuntimeCoreError::SynchronizationPoisoned)?
+            .pop_front();
+        let Some(event) = event else {
+            return Ok(false);
+        };
+        match event {
+            QueuedInputDelivery::Window { window, event } => {
+                self.dispatch_window_input_event(window, event);
+            }
+            QueuedInputDelivery::Targeted {
+                window,
+                target,
+                event,
+            } => {
+                self.dispatch_input_event(window, target, event);
+            }
+        }
+        Ok(true)
+    }
+
+    fn has_queued_input_events(&self) -> Result<bool, RuntimeCoreError> {
+        self.pending_input_events
+            .lock()
+            .map(|pending| !pending.is_empty())
+            .map_err(|_| RuntimeCoreError::SynchronizationPoisoned)
     }
 
     fn window_generation(&self, window: ObjectIdentity) -> Option<u64> {
@@ -5844,9 +5949,15 @@ impl RuntimeCore {
         let pending_work_dispatcher = registered.clone();
         *dispatcher = Some(registered);
         drop(dispatcher);
+        let cleanup_waker = pending_work_dispatcher.clone();
         self.cleanup.set_pending_work_waker(Arc::new(move || {
-            pending_work_dispatcher.schedule_external_work_wake();
+            cleanup_waker.schedule_external_work_wake();
         }));
+        if self.has_queued_input_events()? {
+            pending_work_dispatcher
+                .schedule_pending_work_wake()
+                .map_err(RuntimeCoreError::Dispatch)?;
+        }
         Ok(())
     }
 
@@ -5868,13 +5979,20 @@ impl RuntimeCore {
             .dispatcher()?
             .ok_or(RuntimeCoreError::BridgeNotRegistered)?;
         let scope_id = self.begin_host_event()?;
-        let dispatch = dispatcher
-            .dispatch_normal_turn()
-            .map_err(RuntimeCoreError::Dispatch);
+        let dispatch = match dispatcher.dispatch_normal_turn() {
+            Ok(true) => Ok(true),
+            Ok(false) => self.dispatch_one_queued_input_event(),
+            Err(error) => Err(RuntimeCoreError::Dispatch(error)),
+        };
         if dispatch.is_ok()
             && self.cleanup.state() == RuntimeState::Running
             && !dispatcher.shutdown_is_pending().unwrap_or(true)
         {
+            if self.has_queued_input_events()? {
+                dispatcher
+                    .schedule_pending_work_wake()
+                    .map_err(RuntimeCoreError::Dispatch)?;
+            }
             self.submit_one_dirty_window_frame();
         }
         let close = self.end_host_event(scope_id);

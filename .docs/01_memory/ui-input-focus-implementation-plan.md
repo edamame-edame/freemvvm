@@ -17,6 +17,7 @@
 - Input subscriptionは既存Subscription lifecycleへ接続する。自己cancel中はin-flight callbackの終了までhandlerを保持し、callback panicでもdelivery countを必ず戻してからpanicをdispatcherへ伝播させる。
 - Input handler試験では、target→ancestor→Window順、handled停止、callback中detach、自己cancel、panic後のuserdata一回解放を確認する。該当回のCore suiteは191件pass、workspace Clippy・format・diff checkもpassしたが、C ABIを含む`UNIT-CORE-091`は未完了。
 - Window向けtarget解決はKeyDown/KeyUp/TextCommitをactive WindowのFocusへ、PrimaryPointerDown/Upを同generationの公開LayoutSnapshot/ControlTreeSnapshotによるDIP hit-testへ振り分ける。target選択の回帰試験ではTextBoxとButtonを別配置し、キーとpointerで別targetに届くことを検査する。
+- Input callbackから同期的に再配送されたeventは、target決定前のWindow eventまたは明示target eventとしてRuntime queueへ積み、現在のcallback復帰後の`dispatch_turn`で一件ずつ処理する。shutdown cleanupは未配送queueを破棄し、残件がある間は次のnormal wakeを予約する。
 
 参照: [Input/Focus実装開始計画](../20_todo/input-focus-event-path-implementation.md)、[Input/Focus次工程計画](../20_todo/input-focus-event-path.md)、[Git規則](../02_git/rule.md)、[実装unit台帳](../32_unit_test/implementation-test-inventory.md)。
 
