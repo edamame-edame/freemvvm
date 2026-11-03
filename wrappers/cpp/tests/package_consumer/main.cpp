@@ -226,6 +226,31 @@ int main() {
   auto label = std::move(*label_result.value());
   auto input = std::move(*input_result.value());
   auto button = std::move(*button_result.value());
+  int input_events = 0;
+  auto input_handler = [&input_events](freemvvm::InputEventView&) {
+    ++input_events;
+  };
+  auto window_input_result =
+      window.subscribe_input(freemvvm::InputEventMask::kAll, input_handler);
+  auto panel_input_result =
+      panel.subscribe_input(freemvvm::InputEventMask::kAll, input_handler);
+  auto label_input_result =
+      label.subscribe_input(freemvvm::InputEventMask::kAll, input_handler);
+  auto textbox_input_result =
+      input.subscribe_input(freemvvm::InputEventMask::kAll, input_handler);
+  auto button_input_result =
+      button.subscribe_input(freemvvm::InputEventMask::kAll, input_handler);
+  if (!window_input_result.has_value() || !panel_input_result.has_value() ||
+      !label_input_result.has_value() || !textbox_input_result.has_value() ||
+      !button_input_result.has_value()) return 62;
+  auto window_input = std::move(*window_input_result.value());
+  auto panel_input = std::move(*panel_input_result.value());
+  auto label_input = std::move(*label_input_result.value());
+  auto textbox_input = std::move(*textbox_input_result.value());
+  auto button_input = std::move(*button_input_result.value());
+  if (!window_input.cancel().has_value() || !panel_input.cancel().has_value() ||
+      !label_input.cancel().has_value() || !textbox_input.cancel().has_value() ||
+      !button_input.cancel().has_value() || input_events != 0) return 63;
   if (!window.set_content(panel).has_value() ||
       !panel.insert(label, 0).has_value() ||
       !panel.insert(input, 1).has_value() ||

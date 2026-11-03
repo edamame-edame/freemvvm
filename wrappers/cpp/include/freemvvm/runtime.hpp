@@ -126,6 +126,7 @@ enum class CallbackKind {
   kBindingErrorNotification,
   kCommandStart,
   kWindowCloseRequest,
+  kInputEvent,
 };
 
 struct CallbackFailure final {

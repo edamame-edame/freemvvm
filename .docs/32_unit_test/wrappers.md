@@ -1,7 +1,7 @@
 # 単体試験：4言語wrapper・cleanup・callback解析
 
-- 文書版: 0.4
-- 状態: 0.1全文承認済み（利用者、2026-10-17）。C++ Property/Command/UI Control試験設計とC++ UI Control CIは承認・検証済み。0.4 Input event ABI・4 wrapper caseはレビュー待ち。実装・試験状態は別管理
+- 文書版: 0.5
+- 状態: 0.1全文承認済み（利用者、2026-10-17）。0.4全文承認済み（利用者、2026-10-25）。0.5全文承認済み（利用者、2026-11-03）。C++ UI Control caseはCI検証済み。Input event wrapper casesは承認済み、各unitの実装・試験状態は別管理
 - 更新日: 2026-11-03
 
 候補単位は各言語owner/borrow/lease/ticket、callback root、Python終了集約、解析器IR/診断。native ABI shimはtoken消費・未消費を明示して応答し、実Coreとのparityは上位試験へ分ける。
@@ -118,6 +118,8 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 2026-10-25 | 0.4実行記録 | 利用者 / Codex | C++ Command/worker focused fake ABIとrelocated package consumerを利用者承認後に実装。`cpp-command-test`、`cpp-package-test`、`check`がWindows local passし、unit `UNIT-WRAP-CPP-008`のWindows/Ubuntu CI run [40182098140](https://github.com/edamame-edame/freemvvm/actions/runs/40182098140)も成功。UI Control casesは未着手 |
 | 2026-10-25 | 0.4実行記録 | 利用者 / Codex | `UNIT-WRAP-CPP-009`のUI Control/Window close-request fake ABI試験、relocated CMake package consumer、`tools/dev.py check`、`minimum`がWindows local pass。UI Control focused caseは`cpp-controls-test`も再実行してpass。実装commit `14b5d45`のWindows/Ubuntu CI run [40183464855](https://github.com/edamame-edame/freemvvm/actions/runs/40183464855) success |
 | 2026-11-03 | 0.4再実行記録 | Codex | Core Input branchとの統合後、MSVC `freemvvm_cpp_ui_control_tests_exe`と`wrapper.cpp.ui-controls`がpass。installed packageを移設後にconsumerをconfigure/build/runし`package.consumer.runtime`もpass |
+| 2026-11-03 | 0.5全文 | 利用者 | 「ok」によりInput event ABI・4 wrapperのcallback/view・Subscription・例外境界を含む文書全体を承認。実装・実行状態は別管理 |
+| 2026-11-03 | 0.5実行記録 | Codex | `UNIT-WRAP-CPP-INPUT-001`: MSVC focused fake ABI、C++全15 CTest、relocated installed-package consumer（全5 Widgetのsubscribe/cancel）、GCC `-fno-exceptions`でInput implementation/test translation-unit compile、document link check、Rust fmt、`git diff --check`がlocal pass。CIは同revision push後に確認 |
 
 ## 改訂履歴
 
@@ -131,4 +133,5 @@ native呼出し回数、token消費、lock取得、destroy、root保持を記録
 | 0.3 | 2026-10-24 | C#非同期Commandのfake ABI focused testとreal C ABI consumerの試験設計・実行記録を追加 | Codex | 利用者承認済みDD v1.4と実装開始指示の範囲。Windows/Linux CI成功 |
 | 0.4改訂案 | 2026-10-25 | 承認済みC++ wrapper DD v1.4のCommand/worker、UI Control、Window close-requestをfocused testとpackage consumerへ具体化 | Codex | 初稿後に全文レビュー・承認済み |
 | 0.4全文 | 2026-10-25 | C++ Command/worker、UI Control、Window close-request focused test案を確定 | 利用者 / Codex | 利用者承認済み。Command/workerとpackage consumerのlocal実行記録は別管理し、UI Control unitは後続 |
-| 0.4案 | 2026-11-02 | 承認済みInput event ABI・4 wrapper設計に対応するborrowed event、Subscription、例外境界、public consumer試験を追加 | Codex | 文書全体のレビュー待ち。unitはplannedで未実装・未実行 |
+| 0.4 | 2026-11-02 | 承認済みInput event ABI・4 wrapper設計に対応するborrowed event、Subscription、例外境界、public consumer試験を追加 | Codex | 0.5全文承認で継承。unitの実装・実行状態は別管理 |
+| 0.5 | 2026-11-03 | Rust Input wrapperの具体caseを追加し、callback borrow・root・cancel/drop・panic期待値を明確化 | Codex | 全文承認済み。実装・実行状態は別管理 |

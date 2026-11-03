@@ -221,6 +221,8 @@ def main():
             "cpp-property-binding-test",
             "cpp-command-test",
             "cpp-controls-test",
+            "cpp-input-test",
+            "cpp-input-consumer-test",
             "cpp-package-test",
             "rust-wrapper-runtime-test",
             "rust-wrapper-runtime-consumer-test",
@@ -1151,7 +1153,40 @@ def main():
                 results,
                 "cpp-controls-test",
             )
-        elif args.command == "cpp-package-test":
+        elif args.command == "cpp-input-test":
+            run(
+                ["cmake", "--preset", "dev"],
+                environment,
+                results,
+                "cmake-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "--preset",
+                    "dev",
+                    "--target",
+                    "freemvvm_cpp_input_tests_exe",
+                ],
+                environment,
+                results,
+                "cpp-input-test-build",
+            )
+            run(
+                [
+                    "ctest",
+                    "--test-dir",
+                    "out/cmake/dev",
+                    "-R",
+                    "^wrapper\\.cpp\\.input$",
+                    "--output-on-failure",
+                ],
+                environment,
+                results,
+                "cpp-input-test",
+            )
+        elif args.command in ("cpp-package-test", "cpp-input-consumer-test"):
             run(
                 [
                     "cmake",

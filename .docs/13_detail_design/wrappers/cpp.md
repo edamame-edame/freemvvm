@@ -717,7 +717,7 @@ Result<void> Window::set_background_rgb(RgbColor color);
 Result<void> Window::reset_background_rgb();
 ```
 
-## Input event wrapper API（1.5改訂案・全文レビュー待ち）
+## Input event wrapper API（1.5承認済み）
 
 要求根拠: [RQ-03-001](../../11_requirements/RQ-03_language-support.md#rq-03-001)、[RQ-03-005](../../11_requirements/RQ-03_language-support.md#rq-03-005)、[RQ-04-008](../../11_requirements/RQ-04_abi-boundary.md#rq-04-008)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-068](../../11_requirements/RQ-09_ui-scope.md#rq-09-068)。
 

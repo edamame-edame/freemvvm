@@ -4847,23 +4847,23 @@
     },
     {
       "id": "UNIT-WRAP-CPP-INPUT-001",
-      "state": "planned",
+      "state": "ready",
       "scope": "cpp-input-event-borrow-facade-subscription-and-exception-boundary",
       "sources": [
         "wrappers/cpp/include/freemvvm/**/*.hpp",
         "wrappers/cpp/src/**/*.cpp",
         "wrappers/cpp/tests/input_event_tests.cpp",
-        "wrappers/cpp/tests/input_event_consumer/**"
+        "wrappers/cpp/tests/package_consumer/**"
       ],
       "config": [
         "CMakeLists.txt",
         "wrappers/cpp/CMakeLists.txt",
-        "wrappers/cpp/tests/CMakeLists.txt",
         "tools/units.yaml"
       ],
       "depends_on": [
         "UNIT-ABI-022",
-        "UNIT-WRAP-CPP-007"
+        "UNIT-WRAP-CPP-008",
+        "UNIT-WRAP-CPP-009"
       ],
       "design": [
         {

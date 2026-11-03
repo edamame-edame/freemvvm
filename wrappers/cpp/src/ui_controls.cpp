@@ -153,11 +153,17 @@ struct CloseRequestScope final {
   std::shared_ptr<RuntimeCleanupState> state;
 };
 
+struct InputEventScope final {
+  ui_handle borrowed_token = 0;
+  std::shared_ptr<RuntimeCleanupState> state;
+};
+
 struct WindowCloseCallbackRecord final {
   Window::CloseRequestCallback callback;
   std::shared_ptr<RuntimeCleanupState> state;
 
   void invoke(ui_handle borrowed_request) noexcept {
+#if defined(__cpp_exceptions) || defined(_CPPUNWIND)
     try {
       auto scope = std::make_shared<CloseRequestScope>();
       scope->borrowed_token = borrowed_request;
@@ -168,10 +174,214 @@ struct WindowCloseCallbackRecord final {
       state->dispatch_callback_failure(CallbackFailure{
           CallbackKind::kWindowCloseRequest, std::current_exception()});
     }
+#else
+    auto scope = std::make_shared<CloseRequestScope>();
+    scope->borrowed_token = borrowed_request;
+    scope->state = state;
+    WindowCloseRequest request(scope);
+    callback(request);
+#endif
+  }
+};
+
+struct InputCallbackRecord final {
+  InputHandler callback;
+  std::shared_ptr<RuntimeCleanupState> state;
+
+  void invoke(ui_handle borrowed_event) noexcept {
+#if defined(__cpp_exceptions) || defined(_CPPUNWIND)
+    std::shared_ptr<InputEventScope> scope;
+    try {
+      scope = std::make_shared<InputEventScope>(
+          InputEventScope{borrowed_event, state});
+    } catch (...) {
+      state->dispatch_callback_failure(CallbackFailure{
+          CallbackKind::kInputEvent, std::current_exception()});
+      (void)state->api->input_event_set_handled(borrowed_event, 1, nullptr);
+      return;
+    }
+#else
+    auto scope = std::make_shared<InputEventScope>(
+        InputEventScope{borrowed_event, state});
+#endif
+    if (!scope) {
+      state->dispatch_callback_failure(CallbackFailure{
+          CallbackKind::kInputEvent, std::exception_ptr{}});
+      (void)state->api->input_event_set_handled(borrowed_event, 1, nullptr);
+      return;
+    }
+    InputEventView view(scope);
+#if defined(__cpp_exceptions) || defined(_CPPUNWIND)
+    try {
+      callback(view);
+    } catch (...) {
+      (void)view.set_handled();
+      state->dispatch_callback_failure(CallbackFailure{
+          CallbackKind::kInputEvent, std::current_exception()});
+    }
+#else
+    callback(view);
+#endif
   }
 };
 
 }  // namespace detail
+
+InputEventView::InputEventView(
+    const std::shared_ptr<detail::InputEventScope>& scope) noexcept
+    : scope_(scope) {}
+
+Result<InputEventKind> InputEventView::kind() const noexcept {
+  const auto scope = scope_.lock();
+  if (!scope) {
+    return Result<InputEventKind>::failure(UiError(UI_CLOSED));
+  }
+  std::uint32_t raw_kind = 0;
+  const ui_status status =
+      scope->state->api->input_event_kind(scope->borrowed_token, &raw_kind);
+  if (status != UI_OK) {
+    return Result<InputEventKind>::failure(UiError(status));
+  }
+  return Result<InputEventKind>::success(
+      static_cast<InputEventKind>(raw_kind));
+}
+
+Result<KeyIdentity> InputEventView::key() const noexcept {
+  const auto scope = scope_.lock();
+  if (!scope) return Result<KeyIdentity>::failure(UiError(UI_CLOSED));
+  std::uint32_t key = 0;
+  std::uint32_t modifiers = 0;
+  const ui_status status = scope->state->api->input_event_key(
+      scope->borrowed_token, &key, &modifiers);
+  if (status != UI_OK) return Result<KeyIdentity>::failure(UiError(status));
+  return Result<KeyIdentity>::success(key);
+}
+
+Result<Modifiers> InputEventView::modifiers() const noexcept {
+  const auto scope = scope_.lock();
+  if (!scope) return Result<Modifiers>::failure(UiError(UI_CLOSED));
+  std::uint32_t key = 0;
+  std::uint32_t modifiers = 0;
+  const ui_status status = scope->state->api->input_event_key(
+      scope->borrowed_token, &key, &modifiers);
+  if (status != UI_OK) return Result<Modifiers>::failure(UiError(status));
+  return Result<Modifiers>::success(modifiers);
+}
+
+Result<std::string> InputEventView::text() const noexcept {
+  const auto scope = scope_.lock();
+  if (!scope) return Result<std::string>::failure(UiError(UI_CLOSED));
+  std::uint64_t length = 0;
+  ui_status status = scope->state->api->input_event_text(
+      scope->borrowed_token, nullptr, 0, &length);
+  if (status != UI_OK && status != UI_BUFFER_TOO_SMALL) {
+    return Result<std::string>::failure(UiError(status));
+  }
+  if (length > static_cast<std::uint64_t>(std::string().max_size())) {
+    return Result<std::string>::failure(UiError(UI_OUT_OF_MEMORY));
+  }
+#if defined(__cpp_exceptions) || defined(_CPPUNWIND)
+  try {
+#endif
+    std::string value(static_cast<std::size_t>(length), '\0');
+    std::uint64_t copied = 0;
+    status = scope->state->api->input_event_text(
+        scope->borrowed_token,
+        value.empty() ? nullptr
+                      : reinterpret_cast<std::uint8_t*>(value.data()),
+        length, &copied);
+    if (status != UI_OK) return Result<std::string>::failure(UiError(status));
+    if (copied > length) {
+      return Result<std::string>::failure(UiError(UI_INTERNAL_ERROR));
+    }
+    value.resize(static_cast<std::size_t>(copied));
+    return Result<std::string>::success(std::move(value));
+#if defined(__cpp_exceptions) || defined(_CPPUNWIND)
+  } catch (const std::bad_alloc&) {
+    return Result<std::string>::failure(UiError(UI_OUT_OF_MEMORY));
+  } catch (...) {
+    return Result<std::string>::failure(UiError(UI_INTERNAL_ERROR));
+  }
+#endif
+}
+
+Result<PointDip> InputEventView::pointer_position() const noexcept {
+  const auto scope = scope_.lock();
+  if (!scope) return Result<PointDip>::failure(UiError(UI_CLOSED));
+  PointDip point;
+  std::uint32_t button = 0;
+  const ui_status status = scope->state->api->input_event_pointer(
+      scope->borrowed_token, &point.x, &point.y, &button);
+  if (status != UI_OK) return Result<PointDip>::failure(UiError(status));
+  return Result<PointDip>::success(point);
+}
+
+Result<void> InputEventView::set_handled() noexcept {
+  const auto scope = scope_.lock();
+  if (!scope) return Result<void>::failure(UiError(UI_CLOSED));
+  auto error_node = std::unique_ptr<detail::PendingNode>(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node) return Result<void>::failure(UiError(UI_OUT_OF_MEMORY));
+  ui_handle error = 0;
+  const ui_status status = scope->state->api->input_event_set_handled(
+      scope->borrowed_token, 1, &error);
+  if (status != UI_OK || error != 0) {
+    return Result<void>::failure(detail::make_error(
+        normalize_status(status), error, scope->state, error_node.release()));
+  }
+  return Result<void>::success();
+}
+
+namespace {
+
+void input_callback_destroy(void* userdata) noexcept {
+  delete static_cast<detail::InputCallbackRecord*>(userdata);
+}
+
+void input_callback_trampoline(void* userdata, ui_handle, ui_handle,
+                               ui_handle borrowed_event) noexcept {
+  static_cast<detail::InputCallbackRecord*>(userdata)->invoke(borrowed_event);
+}
+
+}  // namespace
+
+Result<Subscription> Widget::subscribe_input(InputEventMask kinds,
+                                             InputHandler handler) noexcept {
+  if (token_ == 0 || state_ == nullptr) {
+    return Result<Subscription>::failure(UiError(UI_INVALID_HANDLE));
+  }
+  if (!handler || kinds == InputEventMask::kNone) {
+    return Result<Subscription>::failure(UiError(UI_INVALID_ARGUMENT));
+  }
+  auto callback_record = std::unique_ptr<detail::InputCallbackRecord>(
+      new (std::nothrow) detail::InputCallbackRecord{std::move(handler),
+                                                    state_});
+  auto subscription_node = std::unique_ptr<detail::PendingNode>(
+      new (std::nothrow) detail::PendingNode());
+  auto error_node = std::unique_ptr<detail::PendingNode>(
+      new (std::nothrow) detail::PendingNode());
+  if (!callback_record || !subscription_node || !error_node) {
+    return Result<Subscription>::failure(UiError(UI_OUT_OF_MEMORY));
+  }
+  ui_handle subscription = 0;
+  ui_handle error = 0;
+  const ui_status status = state_->api->widget_input_subscribe(
+      token_, static_cast<std::uint64_t>(kinds), &input_callback_trampoline,
+      callback_record.get(), &input_callback_destroy, &subscription, &error);
+  if (status != UI_OK || subscription == 0 || error != 0) {
+    if (subscription != 0) {
+      subscription_node->token = subscription;
+      (void)state_->enqueue(subscription_node.release());
+    }
+    if (status == UI_OK) (void)callback_record.release();
+    return Result<Subscription>::failure(detail::make_error(
+        normalize_status(status), error, state_, error_node.release()));
+  }
+  (void)callback_record.release();
+  subscription_node->token = subscription;
+  return Result<Subscription>::success(Subscription(
+      subscription, state_, subscription_node.release()));
+}
 
 Widget::Widget(std::uint64_t token,
                std::shared_ptr<detail::RuntimeCleanupState> state,

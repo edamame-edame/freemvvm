@@ -116,6 +116,16 @@ struct AbiApi final {
   ui_status (*button_label_property)(ui_handle, ui_handle*);
   ui_status (*button_set_command)(ui_handle, ui_handle, ui_handle*);
   ui_status (*button_command)(ui_handle, ui_handle*, ui_handle*);
+  ui_status (*widget_input_subscribe)(ui_handle, std::uint64_t,
+                                      ui_input_callback, void*,
+                                      ui_destroy_callback, ui_handle*,
+                                      ui_handle*);
+  ui_status (*input_event_kind)(ui_handle, std::uint32_t*);
+  ui_status (*input_event_key)(ui_handle, std::uint32_t*, std::uint32_t*);
+  ui_status (*input_event_text)(ui_handle, std::uint8_t*, std::uint64_t,
+                                std::uint64_t*);
+  ui_status (*input_event_pointer)(ui_handle, double*, double*, std::uint32_t*);
+  ui_status (*input_event_set_handled)(ui_handle, ui_bool, ui_handle*);
 };
 
 struct CallbackHandlerRecord final {

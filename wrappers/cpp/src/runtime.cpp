@@ -269,6 +269,41 @@ ui_status api_runtime_post(ui_handle runtime, ui_callback callback,
                                out_error);
 }
 
+ui_status api_widget_input_subscribe(ui_handle widget, std::uint64_t mask,
+                                     ui_input_callback callback,
+                                     void* userdata,
+                                     ui_destroy_callback destroy,
+                                     ui_handle* out_subscription,
+                                     ui_handle* out_error) {
+  return ui_abi_1_widget_input_subscribe(widget, mask, callback, userdata,
+                                         destroy, out_subscription, out_error);
+}
+
+ui_status api_input_event_kind(ui_handle event, std::uint32_t* out_kind) {
+  return ui_abi_1_input_event_kind(event, out_kind);
+}
+
+ui_status api_input_event_key(ui_handle event, std::uint32_t* out_key,
+                              std::uint32_t* out_modifiers) {
+  return ui_abi_1_input_event_key(event, out_key, out_modifiers);
+}
+
+ui_status api_input_event_text(ui_handle event, std::uint8_t* buffer,
+                               std::uint64_t capacity,
+                               std::uint64_t* out_length) {
+  return ui_abi_1_input_event_text(event, buffer, capacity, out_length);
+}
+
+ui_status api_input_event_pointer(ui_handle event, double* out_x,
+                                  double* out_y, std::uint32_t* out_button) {
+  return ui_abi_1_input_event_pointer(event, out_x, out_y, out_button);
+}
+
+ui_status api_input_event_set_handled(ui_handle event, ui_bool handled,
+                                      ui_handle* out_error) {
+  return ui_abi_1_input_event_set_handled(event, handled, out_error);
+}
+
 void report_callback_exception(const std::exception_ptr& exception) noexcept {
   if (!exception) {
     std::fputs("FreeMvvm: C++ callback failed without an exception payload\n",
@@ -578,6 +613,12 @@ std::shared_ptr<const AbiApi> linked_api() {
       &ui_abi_1_button_label_property,
       &ui_abi_1_button_set_command,
       &ui_abi_1_button_command,
+      &api_widget_input_subscribe,
+      &api_input_event_kind,
+      &api_input_event_key,
+      &api_input_event_text,
+      &api_input_event_pointer,
+      &api_input_event_set_handled,
   });
   return api;
 }

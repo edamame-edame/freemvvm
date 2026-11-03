@@ -30,12 +30,70 @@ enum class CloseDecision : std::uint32_t {
   kDecline = 2,
 };
 
+enum class InputEventKind : std::uint32_t {
+  kKeyDown = 1,
+  kKeyUp = 2,
+  kTextCommit = 3,
+  kPrimaryPointerDown = 4,
+  kPrimaryPointerUp = 5,
+};
+
+enum class InputEventMask : std::uint64_t {
+  kNone = 0,
+  kKeyDown = 1ull << 0,
+  kKeyUp = 1ull << 1,
+  kTextCommit = 1ull << 2,
+  kPrimaryPointerDown = 1ull << 3,
+  kPrimaryPointerUp = 1ull << 4,
+  kAll = (1ull << 5) - 1,
+};
+
+constexpr InputEventMask operator|(InputEventMask left,
+                                   InputEventMask right) noexcept {
+  return static_cast<InputEventMask>(static_cast<std::uint64_t>(left) |
+                                     static_cast<std::uint64_t>(right));
+}
+
+using KeyIdentity = std::uint32_t;
+using Modifiers = std::uint32_t;
+
+struct PointDip final {
+  double x = 0.0;
+  double y = 0.0;
+};
+
 namespace detail {
 struct CloseRequestScope;
 struct WindowCloseCallbackRecord;
+struct InputEventScope;
+struct InputCallbackRecord;
 }
 
 class WindowCloseRequest;
+class InputEventView;
+using InputHandler = std::function<void(InputEventView&)>;
+
+class InputEventView final {
+ public:
+  InputEventView(const InputEventView&) = delete;
+  InputEventView& operator=(const InputEventView&) = delete;
+  InputEventView(InputEventView&&) = delete;
+  InputEventView& operator=(InputEventView&&) = delete;
+
+  Result<InputEventKind> kind() const noexcept;
+  Result<KeyIdentity> key() const noexcept;
+  Result<Modifiers> modifiers() const noexcept;
+  Result<std::string> text() const noexcept;
+  Result<PointDip> pointer_position() const noexcept;
+  Result<void> set_handled() noexcept;
+
+ private:
+  friend struct detail::InputCallbackRecord;
+  explicit InputEventView(
+      const std::shared_ptr<detail::InputEventScope>& scope) noexcept;
+
+  std::weak_ptr<detail::InputEventScope> scope_;
+};
 
 class DeferredWindowCloseRequest final {
  public:
@@ -90,6 +148,8 @@ class Widget {
   Result<Property<bool>> is_enabled_property() const;
   Result<Property<std::string>> accessible_name_property() const;
   Result<void> request_focus();
+  Result<Subscription> subscribe_input(InputEventMask kinds,
+                                       InputHandler handler) noexcept;
   Result<void> close() noexcept;
 
  protected:
