@@ -4437,7 +4437,7 @@
     },
     {
       "id": "UNIT-CORE-091",
-      "state": "planned",
+      "state": "ready",
       "scope": "core-input-routing-focus-transitions-and-button-primary-activation",
       "sources": [
         "crates/core-runtime/src/lib.rs",

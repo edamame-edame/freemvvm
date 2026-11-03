@@ -1,7 +1,7 @@
 # 0.0.1 Input / Focus event path実装開始計画
 
 - 計画版: 0.1
-- 状態: 計画承認済み（利用者、2026-11-02）。フェーズ1設計・フェーズ2試験登録は承認済み・push済み。version branch同期とCI確認を完了し、`impl-rust/core-input-focus`を作成・push済み。フェーズ4ではFocus祖先無効化・Core pointer hit-test・Button primary pointer activationをpush済み。`UNIT-CORE-091`全体とC ABIは継続中
+- 状態: 計画承認済み（利用者、2026-11-02）。フェーズ1設計・フェーズ2試験登録は承認済み・push済み。version branch同期とCI確認を完了し、`impl-rust/core-input-focus`を作成・push済み。フェーズ4のCore Input/FocusとC ABIは実装・ローカル検証済みで、同revision CI確認待ち
 - 対象version: `0.0.1`
 - 親計画: [Input / Focus event path次工程計画](input-focus-event-path.md) 0.2（承認済み）
 - 目的: 承認済み共通設計に残る実装境界を閉じ、Core/C ABI・4 wrapper・Windows Adapterを依存順に実装・検証できる状態にする
@@ -94,3 +94,4 @@ Core branch同期と新規実装branch作成はこの計画のレビュー承認
 | 2026-11-03 | フェーズ4 | 進行中 | 再入InputをRuntime queueへ積み、dispatch_turnあたり1件ずつ、callback復帰後に配送する処理を追加。shutdown時は未配送queueを破棄し、残件は次のnormal wakeを予約する。自己再入試験を含むCore全193件、workspace Clippy、format、文書リンク、diff checkがpass。Button default actionとC ABIは継続中 |
 | 2026-11-03 | フェーズ4 | 進行中 | Buttonの未handled primary downでweak pending pressを記録し、新downで置換。未handled upで同Button・同Window generationを照合して一度だけCommandを実行する既定動作を追加。handled、target不一致、祖先disable、detach、Window close/reopenでは実行しない。UT-INPUT-005を含むCore全202件、workspace Clippy/format、Rust 1.85 check、文書リンク、diff checkがpass。C ABIは継続中 |
 | 2026-11-03 | フェーズ4 / UNIT-ABI-022 | 実装・local検証完了、同revision CI待ち | ABI feature 9、5種Input callback、callback-scoped event getter/setter、borrowed Widget retain、外部cancel/self-cancelとdestroy、C/C++ header、C ABI smokeを追加。C ABI全40件、workspace Clippy/format、Rust 1.85 check、文書リンク、diff check、Windows CMake C/C++ header probe・ABI runtime smokeがpass。local default Ninja presetはNinja未導入のためVS 2026 generatorで同じCMake targetsを検証。最新実装revisionを作業branchへpush後、同revision CIを確認 |
+| 2026-11-03 | フェーズ4 / UNIT-CORE-091 | ready / 同revision CI待ち | 依存UNIT-CORE-090 complete、UNIT-CORE-092 readyを確認。Input/Focus実装を含むCore全202件がpass。UNIT-CORE-091のsource/test pathは登録済みのものと一致し、`tools/units.yaml`とinventoryをreadyへ更新。現環境からGitHub status APIに接続できず、CI状態は確認保留 |
