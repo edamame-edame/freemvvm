@@ -65,11 +65,20 @@ pub trait WidgetRef: sealed::Sealed {
 pub struct WidgetBorrow<'a> {
     token: Borrowed<'a, WidgetTag>,
     identity: &'a Arc<()>,
+    anchor: Arc<RuntimeAnchor>,
 }
 
 impl WidgetBorrow<'_> {
-    fn token(&self) -> u64 {
+    pub(crate) fn token(&self) -> u64 {
         self.token.token()
+    }
+
+    pub(crate) fn identity(&self) -> &Arc<()> {
+        self.identity
+    }
+
+    pub(crate) fn anchor(&self) -> Arc<RuntimeAnchor> {
+        Arc::clone(&self.anchor)
     }
 }
 
@@ -400,6 +409,10 @@ macro_rules! impl_widget_ref {
                 Ok(WidgetBorrow {
                     token: Borrowed::from_token(self.owner.borrow()?.token(), &self.owner),
                     identity: &self.identity,
+                    anchor: self
+                        .owner
+                        .anchor()
+                        .ok_or_else(|| UiError::from_status(native_api::CLOSED))?,
                 })
             }
         }

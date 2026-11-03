@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
 - 文書版: 2.0（レビュー案）
-- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsとclose-request unitsの試験設計は承認済み（2026-11-01）。UNIT-CORE-089、UNIT-PLATFORM-WINDOWS-005、UNIT-CORE-090、UNIT-PLATFORM-WINDOWS-006はlocal検証・同revision CI pass。Input/Focus実装unit 7件の登録案は全文レビュー待ち
+- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsとclose-request unitsの試験設計は承認済み（2026-11-01）。UNIT-CORE-089、UNIT-PLATFORM-WINDOWS-005、UNIT-CORE-090、UNIT-PLATFORM-WINDOWS-006はlocal検証・同revision CI pass。Input/Focus実装unitの登録・試験設計は承認済み。Rust Input wrapperは実装・local検証済み・同revision CI待ち、他言語wrapperとWindows Adapterはplanned
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -31,16 +31,16 @@
 | `UNIT-CORE-084` | Core-neutral `PlatformDefault` requestとresolved font identity/metrics snapshot。revision mismatchおよびTextService failureの部分結果拒否をfake serviceで確認 | `UT-TEXT-SERVICE-SEAM-001` | complete / commit `b6c64ea` pushed。focused 4 tests、Core 179・C ABI 39・Linux Platform 10を含むworkspace tests、Clippy、Rust 1.85 check、fmt pass。Layout/Scene wiringはUNIT-CORE-085 |
 | `UNIT-CORE-085` | Text/TextBox/Button labelをPlatform TextServiceで解決し、同じrevision-stamped snapshotをLayoutとVisual sceneで共有。property更新後の再解決とfailure atomicityをfake serviceで確認 | `UT-TEXT-PLATFORM-DEFAULT-001` | complete / commit `d489ca5` pushed。focused test 1件、Core 181・ABI 39・Linux Platform 10を含むworkspace tests、Clippy、Rust 1.85 check、fmt、Windows/Ubuntu CI pass。Actions run `41204164249` |
 
-#### Input / Focus event path implementation units（設計承認済み、試験登録案レビュー待ち）
+#### Input / Focus event path implementation units（設計・試験登録承認済み）
 
-Core Input/Focusの`UT-INPUT-001..006`・`UT-FOCUS-001..004`は[UI試験設計](ui.md#inputfocus)に定義済み。ここではC ABI・4 wrapper・Windows Adapterの試験を追加し、計7 unitを`planned`で登録する案を示す。未実装source/test pathとcommandは実装着手時に実在確認し、`ready`へ更新する。wrapper consumerはfake hostで公開API面を確認し、OS実機入力の発生を仮定しない。
+Core Input/Focusの`UT-INPUT-001..006`・`UT-FOCUS-001..004`は[UI試験設計](ui.md#inputfocus)に定義済み。ここではC ABI・4 wrapper・Windows Adapterの試験を登録した。unitごとにsource/test pathとcommandを実在確認し、実装着手時に`ready`へ更新する。Rust Input wrapperはその確認を完了した。wrapper consumerはfake hostで公開API面を確認し、OS実機入力の発生を仮定しない。
 
 | unit | 責務 | test設計 | 状態 |
 | --- | --- | --- | --- |
 | `UNIT-CORE-092` | TextBox編集state、UTF-8 candidate transaction、Property Validator接続、外部Value同期 | `UT-TEXTBOX-CORE-001..004` | ready / local Core tests・Clippy・Rust 1.85 check pass。同revisionのpush後CI確認待ち |
 | `UNIT-CORE-091` | Input route/handled、callback中のdetach/disable、Focus無効化、Button pending press、TextCommitからTextBox editingへの接続 | `UT-INPUT-001..006`、`UT-FOCUS-001..004` | ready / Core 202件pass、依存unit pass。最新revisionのCI確認待ち |
 | `UNIT-ABI-022` | feature 9、typed input callback、borrowed event getters/handled、C consumer | `UT-ABI-INPUT-001`、`UT-CONSUMER-ABI-INPUT-001` | ready / local tests pass、最新revisionのpush後に同revision CI確認待ち |
-| `UNIT-WRAP-RS-INPUT-001` | Rust borrowed event facade、closure root、cancel/drop、panic境界 | `UT-WRAP-RS-INPUT-001`、`UT-CONSUMER-RS-INPUT-001` | planned / fake ABI・consumer |
+| `UNIT-WRAP-RS-INPUT-001` | Rust borrowed event facade、closure root、cancel/drop、panic境界 | `UT-WRAP-RS-INPUT-001`、`UT-CONSUMER-RS-INPUT-001` | ready / local tests・Clippy・Rust 1.85 check・format・document links pass（2026-11-03）、同revision CI待ち |
 | `UNIT-WRAP-CPP-INPUT-001` | C++ borrowed view、move-only Subscription、callback例外隔離 | `UT-WRAP-CPP-INPUT-001`、`UT-CONSUMER-CPP-INPUT-001` | planned / fake ABI・consumer |
 | `UNIT-WRAP-CS-INPUT-001` | C# callback view、delegate root、Dispose競合、例外隔離 | `UT-WRAP-CS-INPUT-001`、`UT-CONSUMER-CS-INPUT-001` | planned / fake ABI・consumer |
 | `UNIT-WRAP-PY-INPUT-001` | Python callback view、callable root、GIL/GC、例外隔離 | `UT-WRAP-PY-INPUT-001`、`UT-CONSUMER-PY-INPUT-001` | planned / fake ABI・consumer |
@@ -226,3 +226,4 @@ flowchart LR
 | 1.8 | 2026-11-01 | UNIT-PLATFORM-WINDOWS-006の実装・local検証結果を記録し、unitをreadyへ更新 | Codex |
 | 1.9 | 2026-11-01 | UNIT-PLATFORM-WINDOWS-006の同revision Windows/Linux CI成功を記録し、unitをcompleteへ更新 | Codex |
 | 2.0案 | 2026-11-02 | Input/FocusのCore・C ABI・4 wrapper・Windows Adapterを7件のplanned unitとして登録提案。試験文書全体のレビュー待ち | Codex |
+| 2.1 | 2026-11-03 | Rust Input wrapper unitの実装とlocal検証を記録し、UNIT-WRAP-RS-INPUT-001をreadyへ更新 | Codex |

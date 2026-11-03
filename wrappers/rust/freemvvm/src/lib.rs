@@ -5,6 +5,7 @@ mod command;
 mod decimal;
 mod error;
 mod handle;
+mod input;
 mod native_api;
 mod property;
 mod runtime;
@@ -16,6 +17,7 @@ pub use command::{AsyncCommand, CancellationToken, CommandOperation, CommandStat
 pub use decimal::Decimal64;
 pub use error::UiError;
 pub use handle::{Borrowed, Owned};
+pub use input::{InputEvent, InputEventMask, KeyIdentity, Modifiers, PointDip};
 pub use property::{Property, PropertyValue};
 pub use runtime::{
     ShutdownMode, ShutdownRequest, ShutdownRequestState, ShutdownSnapshot, UiContext, UiRuntime,

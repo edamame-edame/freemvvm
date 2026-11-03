@@ -7,6 +7,7 @@ pub type Handle = u64;
 pub type Status = u32;
 pub type Bool = u8;
 pub type WindowCloseCallback = unsafe extern "C" fn(*mut core::ffi::c_void, Handle);
+pub type InputCallback = unsafe extern "C" fn(*mut core::ffi::c_void, Handle, Handle, Handle);
 pub type DestroyCallback = unsafe extern "C" fn(*mut core::ffi::c_void);
 
 pub const OK: Status = 0;
@@ -42,6 +43,21 @@ pub const UI_ALIGN_START: u32 = 1;
 pub const UI_ALIGN_CENTER: u32 = 2;
 pub const UI_ALIGN_END: u32 = 3;
 pub const UI_ALIGN_STRETCH: u32 = 4;
+pub const UI_INPUT_KEY_DOWN: u32 = 1;
+pub const UI_INPUT_KEY_UP: u32 = 2;
+pub const UI_INPUT_TEXT_COMMIT: u32 = 3;
+pub const UI_INPUT_PRIMARY_POINTER_DOWN: u32 = 4;
+pub const UI_INPUT_PRIMARY_POINTER_UP: u32 = 5;
+pub const UI_INPUT_MASK_KEY_DOWN: u64 = 1 << 0;
+pub const UI_INPUT_MASK_KEY_UP: u64 = 1 << 1;
+pub const UI_INPUT_MASK_TEXT_COMMIT: u64 = 1 << 2;
+pub const UI_INPUT_MASK_PRIMARY_POINTER_DOWN: u64 = 1 << 3;
+pub const UI_INPUT_MASK_PRIMARY_POINTER_UP: u64 = 1 << 4;
+pub const UI_MODIFIER_SHIFT: u32 = 0x01;
+pub const UI_MODIFIER_CONTROL: u32 = 0x02;
+pub const UI_MODIFIER_ALT: u32 = 0x04;
+pub const UI_MODIFIER_META: u32 = 0x08;
+pub const UI_POINTER_BUTTON_PRIMARY: u32 = 1;
 
 #[cfg_attr(target_os = "windows", link(name = "freemvvm_abi_1.dll"))]
 #[cfg_attr(not(target_os = "windows"), link(name = "freemvvm_abi_1"))]
@@ -276,6 +292,38 @@ unsafe extern "C" {
         out_property: *mut Handle,
     ) -> Status;
     pub fn ui_abi_1_widget_request_focus(widget: Handle, out_error: *mut Handle) -> Status;
+    pub fn ui_abi_1_widget_input_subscribe(
+        widget: Handle,
+        event_mask: u64,
+        callback: Option<InputCallback>,
+        userdata: *mut core::ffi::c_void,
+        destroy: Option<DestroyCallback>,
+        out_subscription: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_input_event_kind(borrowed_event: Handle, out_kind: *mut u32) -> Status;
+    pub fn ui_abi_1_input_event_key(
+        borrowed_event: Handle,
+        out_key_identity: *mut u32,
+        out_modifiers: *mut u32,
+    ) -> Status;
+    pub fn ui_abi_1_input_event_text(
+        borrowed_event: Handle,
+        buffer: *mut u8,
+        capacity: u64,
+        out_length: *mut u64,
+    ) -> Status;
+    pub fn ui_abi_1_input_event_pointer(
+        borrowed_event: Handle,
+        out_x_dip: *mut f64,
+        out_y_dip: *mut f64,
+        out_button: *mut u32,
+    ) -> Status;
+    pub fn ui_abi_1_input_event_set_handled(
+        borrowed_event: Handle,
+        handled: Bool,
+        out_error: *mut Handle,
+    ) -> Status;
     pub fn ui_abi_1_window_content(
         window: Handle,
         out_child: *mut Handle,

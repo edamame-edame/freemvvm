@@ -5,12 +5,26 @@ pub(crate) const INVALID_ARGUMENT: u32 = freemvvm_sys::INVALID_ARGUMENT;
 pub(crate) const WRONG_RUNTIME: u32 = freemvvm_sys::WRONG_RUNTIME;
 pub(crate) const WRONG_THREAD: u32 = freemvvm_sys::WRONG_THREAD;
 pub(crate) const CLOSED: u32 = freemvvm_sys::CLOSED;
-#[cfg(test)]
-pub(crate) const BUFFER_TOO_SMALL: u32 = freemvvm_sys::BUFFER_TOO_SMALL;
 pub(crate) const OUT_OF_MEMORY: u32 = freemvvm_sys::OUT_OF_MEMORY;
 pub(crate) const INTERNAL_ERROR: u32 = freemvvm_sys::INTERNAL_ERROR;
 pub(crate) const UNSUPPORTED: u32 = freemvvm_sys::UNSUPPORTED;
 pub(crate) const PENDING: u32 = freemvvm_sys::PENDING;
+pub(crate) const BUFFER_TOO_SMALL: u32 = freemvvm_sys::BUFFER_TOO_SMALL;
+pub(crate) const INPUT_KEY_DOWN: u32 = freemvvm_sys::UI_INPUT_KEY_DOWN;
+pub(crate) const INPUT_KEY_UP: u32 = freemvvm_sys::UI_INPUT_KEY_UP;
+pub(crate) const INPUT_TEXT_COMMIT: u32 = freemvvm_sys::UI_INPUT_TEXT_COMMIT;
+pub(crate) const INPUT_POINTER_DOWN: u32 = freemvvm_sys::UI_INPUT_PRIMARY_POINTER_DOWN;
+pub(crate) const INPUT_POINTER_UP: u32 = freemvvm_sys::UI_INPUT_PRIMARY_POINTER_UP;
+pub(crate) const INPUT_MASK_ALL: u64 = freemvvm_sys::UI_INPUT_MASK_KEY_DOWN
+    | freemvvm_sys::UI_INPUT_MASK_KEY_UP
+    | freemvvm_sys::UI_INPUT_MASK_TEXT_COMMIT
+    | freemvvm_sys::UI_INPUT_MASK_PRIMARY_POINTER_DOWN
+    | freemvvm_sys::UI_INPUT_MASK_PRIMARY_POINTER_UP;
+pub(crate) const INPUT_MODIFIER_SHIFT: u32 = freemvvm_sys::UI_MODIFIER_SHIFT;
+pub(crate) const INPUT_MODIFIER_CONTROL: u32 = freemvvm_sys::UI_MODIFIER_CONTROL;
+pub(crate) const INPUT_MODIFIER_ALT: u32 = freemvvm_sys::UI_MODIFIER_ALT;
+pub(crate) const INPUT_MODIFIER_META: u32 = freemvvm_sys::UI_MODIFIER_META;
+pub(crate) const INPUT_POINTER_PRIMARY: u32 = freemvvm_sys::UI_POINTER_BUTTON_PRIMARY;
 
 #[derive(Clone, Copy)]
 pub(crate) enum UiControlKind {
@@ -128,6 +142,37 @@ pub(crate) trait NativeApi: Send + Sync {
     }
 
     fn close_request_resolve(&self, _request: u64, _decision: u32) -> (u32, u64) {
+        (UNSUPPORTED, 0)
+    }
+
+    fn input_subscribe(
+        &self,
+        _widget: u64,
+        _event_mask: u64,
+        _callback: Option<freemvvm_sys::InputCallback>,
+        _userdata: *mut std::ffi::c_void,
+        _destroy: Option<freemvvm_sys::DestroyCallback>,
+    ) -> (u32, u64, u64) {
+        (UNSUPPORTED, 0, 0)
+    }
+
+    fn input_event_kind(&self, _event: u64) -> (u32, u32) {
+        (UNSUPPORTED, 0)
+    }
+
+    fn input_event_key(&self, _event: u64) -> (u32, u32, u32) {
+        (UNSUPPORTED, 0, 0)
+    }
+
+    fn input_event_text(&self, _event: u64, _buffer: Option<&mut [u8]>) -> (u32, u64) {
+        (UNSUPPORTED, 0)
+    }
+
+    fn input_event_pointer(&self, _event: u64) -> (u32, f64, f64, u32) {
+        (UNSUPPORTED, 0.0, 0.0, 0)
+    }
+
+    fn input_event_set_handled(&self, _event: u64, _handled: bool) -> (u32, u64) {
         (UNSUPPORTED, 0)
     }
 
@@ -486,6 +531,80 @@ impl NativeApi for LinkedApi {
         // SAFETY: error is valid output storage and request is borrowed for the call.
         let status = unsafe {
             freemvvm_sys::ui_abi_1_window_close_request_resolve(request, decision, &mut error)
+        };
+        (status, error)
+    }
+
+    fn input_subscribe(
+        &self,
+        widget: u64,
+        event_mask: u64,
+        callback: Option<freemvvm_sys::InputCallback>,
+        userdata: *mut std::ffi::c_void,
+        destroy: Option<freemvvm_sys::DestroyCallback>,
+    ) -> (u32, u64, u64) {
+        let mut subscription = 0;
+        let mut error = 0;
+        // SAFETY: userdata stays wrapper-owned unless the C ABI accepts registration.
+        let status = unsafe {
+            freemvvm_sys::ui_abi_1_widget_input_subscribe(
+                widget,
+                event_mask,
+                callback,
+                userdata,
+                destroy,
+                &mut subscription,
+                &mut error,
+            )
+        };
+        (status, subscription, error)
+    }
+
+    fn input_event_kind(&self, event: u64) -> (u32, u32) {
+        let mut kind = 0;
+        // SAFETY: `kind` is valid output storage and `event` is callback-scoped.
+        let status = unsafe { freemvvm_sys::ui_abi_1_input_event_kind(event, &mut kind) };
+        (status, kind)
+    }
+
+    fn input_event_key(&self, event: u64) -> (u32, u32, u32) {
+        let mut key = 0;
+        let mut modifiers = 0;
+        // SAFETY: output pointers are valid and `event` is callback-scoped.
+        let status =
+            unsafe { freemvvm_sys::ui_abi_1_input_event_key(event, &mut key, &mut modifiers) };
+        (status, key, modifiers)
+    }
+
+    fn input_event_text(&self, event: u64, buffer: Option<&mut [u8]>) -> (u32, u64) {
+        let mut length = 0;
+        let (pointer, capacity) = match buffer {
+            Some(bytes) => (bytes.as_mut_ptr(), bytes.len() as u64),
+            None => (std::ptr::null_mut(), 0),
+        };
+        // SAFETY: optional buffer storage is writable for exactly its declared capacity.
+        let status = unsafe {
+            freemvvm_sys::ui_abi_1_input_event_text(event, pointer, capacity, &mut length)
+        };
+        (status, length)
+    }
+
+    fn input_event_pointer(&self, event: u64) -> (u32, f64, f64, u32) {
+        let mut x = 0.0;
+        let mut y = 0.0;
+        let mut button = 0;
+        // SAFETY: output pointers are valid and `event` is callback-scoped.
+        let status = unsafe {
+            freemvvm_sys::ui_abi_1_input_event_pointer(event, &mut x, &mut y, &mut button)
+        };
+        (status, x, y, button)
+    }
+
+    fn input_event_set_handled(&self, event: u64, handled: bool) -> (u32, u64) {
+        let mut error = 0;
+        // SAFETY: `event` is callback-scoped and `error` is valid output storage.
+        let status = unsafe {
+            freemvvm_sys::ui_abi_1_input_event_set_handled(event, u8::from(handled), &mut error)
         };
         (status, error)
     }

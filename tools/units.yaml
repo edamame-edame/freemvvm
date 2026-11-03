@@ -4806,7 +4806,7 @@
     },
     {
       "id": "UNIT-WRAP-RS-INPUT-001",
-      "state": "planned",
+      "state": "ready",
       "scope": "rust-input-event-borrow-facade-subscription-root-and-panic-boundary",
       "sources": [
         "wrappers/rust/freemvvm-sys/src/lib.rs",
@@ -4865,11 +4865,10 @@
           "command": [
             "cargo",
             "test",
+            "--locked",
             "-p",
             "freemvvm",
-            "--test",
-            "input_events",
-            "--locked"
+            "input_"
           ]
         },
         {
