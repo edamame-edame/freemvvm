@@ -1,7 +1,7 @@
 # Rust UI Control wrapper
 
 - 計画版: 0.1
-- 状態: 利用者レビュー待ち（未commit・未実装）
+- 状態: 計画・実装・検証完了（2026-10-25）。Rust wrapper DD v1.8全文、unit-test設計v0.4、実装開始承認済み。`UNIT-WRAP-RS-UI-CTRL-001`と`UNIT-WRAP-RS-WINDOW-001`を実装し、各commitのWindows/Linux CI成功を記録。package配布・native peer/backend・releaseは対象外
 - 作成日: 2026-10-25
 - 対象: 0.0.1初期UI Control Core/C ABIをRust safe wrapperから構成・操作する
 - 作業branch案: `impl-rust/ui-controls-wrapper`
@@ -49,16 +49,17 @@ Rust safe wrapperにはRuntime、Property、Subscription、Binding、Async Comma
 ## 実施順・承認境界
 
 1. [x] 現行状態を確認した。Core UI Control C ABI、C# UI Controls、C++ UI Controlsはそれぞれ独立branchで実装・CI完了。Rust crateにはUI Control surfaceがない。
-2. [ ] 本計画案の範囲、unit分割、Core APIsを親とするbranch関係を利用者レビュー。
-3. [ ] 計画承認後、計画を適切なversion/Core planning branchへcommit/pushする。利用者確認より先に計画をcommit/pushしない。
-4. [ ] Rust wrapper DD v1.7の改訂案を作成する。型・method/API surface、borrowed child/content表現、UiContext/Runtime identity、cleanup ticket ownership、Button/Command参照、callback scope/defer/resolve、panic/status境界を必要な箇所に補う。
-5. [ ] Rust wrapper DD v1.7全文の利用者レビュー・承認を得る。DD承認前にwrapper sourceを変更しない。
-6. [ ] approved DDに基づくfake ABI focused / linked C ABI consumer試験案をtest正本へ追加し、試験設計の全文承認を得る。実装承認は別に取得する。
-7. [ ] 実装開始承認後、`tools/units.yaml`へ依存・要求・設計・test IDs/commands/source pathsを登録し、testとimplementationを同一unit revisionにする。
-8. [ ] `impl-rust/core-ui-controls-c-abi`のCI成功revision `dfb86cf`から`impl-rust/ui-controls-wrapper`を作成する。C++/C# wrapper branchは親にしない。
-9. [ ] Rust UI Control/Tree/Property/Layout/Focus/Command facadeと、Window close-request lifetimeを、レビュー済みDDと単独実行可能なunit分割に従って実装・commit/pushする。
-10. [ ] focused fake ABI、linked C ABI consumer、`tools/dev.py check`、`tools/dev.py minimum`、manifest/link/diff checksを実行する。実装SHAのWindows/Linux CIを確認し、失敗時は修正後SHAで再確認する。
-11. [ ] 計画・DD・test design・unit state・`.docs/01_memory/`へ実装SHA、実行結果、CIを記録する。peer/backend、Cargo package配布、0.0.1 release判断とは分離する。
+2. [x] 本計画案の範囲、unit分割、Core APIsを親とするbranch関係を利用者がレビューし、「ok」で承認した。
+3. [x] 計画を`version/0.0.1`へcommit/push (`956a447`) し、Rust wrapper branchへ同commitをcherry-pick (`60139e7`) した。実装branch `impl-rust/ui-controls-wrapper` はCore APIs CI成功revision `dfb86cf`から作成した。
+4. [x] Rust wrapper DD v1.7の改訂案を作成した。型・method/API surface、child/content ownership、UiContext/Runtime identity、cleanup ticket ownership、Button/Command参照、callback scope/defer/resolve、panic/status境界を提案し、未承認案として区別した。
+5. [x] Rust wrapper DD v1.7全文は利用者の「ok」で承認済み（2026-10-25）。wrapper sourceは未変更。
+6. [x] approved DDに基づくfake ABI focused / linked C ABI consumer試験案をtest正本へ追加した（`.docs/32_unit_test/wrappers.md` 0.4案）。
+7. [x] Rust向けtest設計0.4案の全文は利用者の「ok」で承認済み（2026-10-25）。試験設計承認と実装開始承認は別にする。
+8. [x] 実装開始承認後、`tools/units.yaml`へ`UNIT-WRAP-RS-UI-CTRL-001`、依存Core/UI Command、要求・設計・test IDs/commands/source pathsを登録した。testとimplementationは同一unit revisionで検証する。
+9. [x] `impl-rust/core-ui-controls-c-abi`のCI成功revision `dfb86cf`から`impl-rust/ui-controls-wrapper`を計画承認直後に作成し、計画コミットを載せた（レビュー文書用。wrapper source実装はDD・test・実装開始承認後）。C++/C# wrapper branchは親にしていない。
+10. [x] `UNIT-WRAP-RS-UI-CTRL-001`としてControl/Tree/Layout/Property/Focus/Command facade、focused fake test、real C ABI consumerを実装しcommit/pushした（`159cf70`）。
+11. [x] `rust-wrapper-ui-controls-test`、`tools/dev.py check`、`tools/dev.py minimum`、document links、format、diff checksがlocal pass。Windows/Linux CI run `40185381670`もsuccess。
+12. [x] `UNIT-WRAP-RS-WINDOW-001`としてWindow close-request callback/lifetime APIとfocused/consumer testsを実装した。`CloseRequestView::defer()`はview内private Runtime anchor/contextでRuntime/UI thread/open状態を確認し、deferred ownerのresolveと失敗処理を行う。`rust-wrapper-window-close-test`、`tools/dev.py check`、`minimum`はlocal pass。commit `37d8a29`、Windows/Linux CI run `40187756235` success。peer/backend、Cargo package配布、0.0.1 release判断とは分離する。
 
 ## 完了条件案
 
@@ -72,4 +73,14 @@ Rust safe wrapperにはRuntime、Property、Subscription、Binding、Async Comma
 
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
-| 2026-10-25 | 0.1 / Rust UI Control wrapper | 利用者レビュー待ち | 0.0.1計画および現行Core/C ABI、C++/C# wrapperの実装状態から次候補を整理。未commit・未実装 |
+| 2026-10-25 | 0.1 / Rust UI Control wrapper | 利用者承認 | 「ok」により範囲・unit分割・branch親子関係を承認。計画commit `956a447`をpush。DD/test全文承認と実装承認は別ゲート |
+| 2026-10-25 | Rust wrapper DD v1.7 | 利用者承認 | 「ok」によりUI Control safe API設計全文を承認。source実装・test設計承認・実装開始承認とは別ゲート |
+| 2026-10-25 | Rust wrapper DD v1.8 | 利用者承認 | 「ok」により`CloseRequestView::defer()`とview内private Runtime anchor/contextによる検査を含む文書全文を承認。 |
+| 2026-10-25 | Rust wrapper test design v0.4 | 利用者承認 | 「ok」によりfocused fake ABI/consumer試験とunit分割案を含む全文を承認。承認時点の試験実装・実行は未完了で、後続unitとして実施 |
+| 2026-10-25 | Rust UI Control実装開始 | 利用者承認 | 「承認します、実装を進めてください」により承認済みDD/test designに従う実装開始を承認。Window close-request unitは後続の独立unitとして扱う |
+| 2026-10-25 | UNIT-WRAP-RS-UI-CTRL-001 | 実装・検証完了 | commit `159cf70`。focused fake ABI/consumer、check、minimum、Windows/Linux CI run `40185381670` success。Window close-requestは次unit |
+| 2026-10-25 | UNIT-WRAP-RS-WINDOW-001 | 実装・検証完了 | commit `37d8a29`。focused fake ABI/consumer、`check`、`minimum`、format・clippy、Windows/Linux CI run `40187756235` success |
+
+## 後続ブランチへの統合
+
+Rust Input wrapper実装branchでは、同じCore APIs基準を使うため本branchの完了済みUI Control wrapperを統合する。Input wrapperの作業計画と統合・再検証の状態は[Input wrapper Control branch統合計画](input-wrapper-control-branch-integration.md)で管理する。

@@ -1,7 +1,7 @@
 # Input wrapperへ既存UI Control wrapperを統合する計画案
 
 - 計画版: 0.1
-- 状態: 利用者承認済み（2026-11-03）、branch統合作業未着手
+- 状態: 利用者承認済み（2026-11-03）、Rust Control branch統合・既存試験再実行済み。残りの各言語統合とRust Input facadeは後続
 - 対象version: `0.0.1`
 - 関連計画: [Input / Focus event path実装計画](input-focus-event-path-implementation.md)
 - 旧案: [UI Control wrapper基盤の追加計画案](ui-control-wrappers-prerequisite.md)（branch監査で撤回）
@@ -26,9 +26,9 @@
 | 順 | 作業 | 完了条件 |
 | --- | --- | --- |
 | 1 | 各Control wrapper branchの設計承認、unit complete状態、最終commit、実際の公開型・source/test pathを確認 | branch単位の証跡と最新Core Input branchとの差分を記録。別機能のbranchを暗黙に混ぜない |
-| 2 | Rust Input wrapper branchへ`impl-rust/ui-controls-wrapper`を統合 | 現在の承認済みRust Input DD 1.8とControl wrapper DDの両方を保持し、`ui.rs`などのsource・test・unit登録が同一treeで参照可能 |
-| 3 | 統合後のRust Control wrapper試験を再実行 | 既存Rust UI Control/Tree/Window close unitの対応コマンドが新しいmerge revisionでpass。失敗時は原因を直して再実行 |
-| 4 | `UNIT-WRAP-RS-INPUT-001`の依存を更新し、実在pathで`ready`化 | `UNIT-ABI-022`、Rust UI Control wrapper、Rust Command wrapperの依存とtest/consumer pathを一致させる |
+| 2 | [x] Rust Input wrapper branchへ`impl-rust/ui-controls-wrapper`を統合 | Input DDとControl DD、source・consumer・unit登録を同一treeへ統合。commitは検証完了後に行う |
+| 3 | [x] 統合後のRust Control wrapper試験を再実行 | `cargo test --locked -p freemvvm`と両consumer exampleがpass（2026-11-03）。この環境にPython 3.13 / `.venv`がないため`tools/dev.py`経由ではなく同じCargo操作を直接実行 |
+| 4 | [x] `UNIT-WRAP-RS-INPUT-001`の依存を更新 | `UNIT-ABI-022`、`UNIT-WRAP-RS-UI-CTRL-001`、`UNIT-WRAP-RS-CMD-001`を依存に登録。Input source/testは未作成のためunitは`planned`を維持 |
 | 5 | Rust Input facadeとconsumerを実装 | 承認済み`wrappers/rust.md`・試験設計の5 event種、borrow、cancel/self-cancel、drop、panic境界を満たし、unit tests pass後に日本語commit/push |
 | 6 | C++・C#・Pythonも同じ順で各言語wrapper branchを統合 | 各言語Input branchへ対応する完了済みControl wrapper branchを統合し、既存Control試験を再検証してからInput APIを実装 |
 
