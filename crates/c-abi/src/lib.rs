@@ -4,10 +4,11 @@
 
 use freemvvm_core::abi_support::{
     BindingApiError, CommandApiError, CommandStartCallback, DestroyCallback, ErrorApiError,
-    PostCallback, PropertyApiError, RuntimeCreateError, RuntimeQueryError, RuntimeRetainError,
-    ShutdownApiError, ShutdownApiState, UiControlApiError, ValidateBoolCallback,
-    ValidateI64Callback, ValidateUtf8Callback, WakeCallback, binding_cancel as core_binding_cancel,
-    binding_create as core_binding_create, binding_error_snapshot as core_binding_error_snapshot,
+    InputEventApiError, InputEventCallback, PostCallback, PropertyApiError, RuntimeCreateError,
+    RuntimeQueryError, RuntimeRetainError, ShutdownApiError, ShutdownApiState, UiControlApiError,
+    ValidateBoolCallback, ValidateI64Callback, ValidateUtf8Callback, WakeCallback,
+    binding_cancel as core_binding_cancel, binding_create as core_binding_create,
+    binding_error_snapshot as core_binding_error_snapshot,
     binding_subscribe_error as core_binding_subscribe_error, button_command as core_button_command,
     button_set_command as core_button_set_command,
     command_can_execute_property as core_command_can_execute_property,
@@ -22,7 +23,10 @@ use freemvvm_core::abi_support::{
     command_state_property as core_command_state_property,
     container_remove as core_container_remove, error_code as core_error_code,
     error_message_utf8 as core_error_message_utf8, error_status as core_error_status,
-    handle_release as core_handle_release,
+    handle_release as core_handle_release, input_event_key as core_input_event_key,
+    input_event_kind as core_input_event_kind, input_event_pointer as core_input_event_pointer,
+    input_event_set_handled as core_input_event_set_handled,
+    input_event_text as core_input_event_text,
     issue_validation_error_snapshot as core_issue_validation_error_snapshot,
     property_create_bool as core_property_create_bool,
     property_create_decimal as core_property_create_decimal,
@@ -61,6 +65,7 @@ use freemvvm_core::abi_support::{
     ui_control_text_content_property as core_ui_control_text_content_property,
     ui_control_window_title_property as core_ui_control_window_title_property,
     validation_error_create as core_validation_error_create,
+    widget_input_subscribe_abi as core_widget_input_subscribe,
     widget_request_focus as core_widget_request_focus,
     window_background_rgb as core_window_background_rgb,
     window_clear_content as core_window_clear_content, window_close as core_window_close,
@@ -153,6 +158,27 @@ fn catch_ui_control<T>(operation: impl FnOnce() -> Result<T, UiControlApiError>)
     match catch_unwind(AssertUnwindSafe(operation)) {
         Ok(Ok(value)) => Ok(value),
         Ok(Err(error)) => Err(map_ui_control_error(error)),
+        Err(_) => Err(UI_INTERNAL_ERROR),
+    }
+}
+
+fn map_input_event_error(error: InputEventApiError) -> u32 {
+    match error {
+        InputEventApiError::InvalidHandle => UI_INVALID_HANDLE,
+        InputEventApiError::InvalidArgument => UI_INVALID_ARGUMENT,
+        InputEventApiError::WrongType => UI_WRONG_TYPE,
+        InputEventApiError::WrongThread => UI_WRONG_THREAD,
+        InputEventApiError::OutOfMemory => UI_OUT_OF_MEMORY,
+        InputEventApiError::Internal => UI_INTERNAL_ERROR,
+    }
+}
+
+fn catch_input_event<T>(
+    operation: impl FnOnce() -> Result<T, InputEventApiError>,
+) -> Result<T, u32> {
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(map_input_event_error(error)),
         Err(_) => Err(UI_INTERNAL_ERROR),
     }
 }
@@ -2295,6 +2321,189 @@ pub unsafe extern "C" fn ui_abi_1_widget_request_focus(widget: u64, out_error: *
     catch_ui_control(|| core_widget_request_focus(widget)).map_or_else(|status| status, |_| UI_OK)
 }
 
+/// Subscribe to typed Input events on one Widget.
+///
+/// # Safety
+/// `callback` and `destroy` must be valid function pointers. `out_subscription` must be writable;
+/// a non-null `out_error` must be writable. Ownership transfers only when this call succeeds.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_widget_input_subscribe(
+    widget: u64,
+    event_mask: u64,
+    callback: Option<InputEventCallback>,
+    userdata: *mut c_void,
+    destroy: Option<DestroyCallback>,
+    out_subscription: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_subscription.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_subscription.write(0) };
+    let (Some(callback), Some(destroy)) = (callback, destroy) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    match catch_ui_control(|| {
+        core_widget_input_subscribe(widget, event_mask, callback, userdata as usize, destroy)
+    }) {
+        Ok(subscription) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_subscription.write(subscription) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Return the kind of a callback-scoped borrowed Input event.
+///
+/// # Safety
+/// `out_kind` must be non-null writable storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_input_event_kind(borrowed_event: u64, out_kind: *mut u32) -> u32 {
+    if out_kind.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_kind.write(0) };
+    match catch_input_event(|| core_input_event_kind(borrowed_event)) {
+        Ok(kind) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_kind.write(kind) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Return the HID keyboard identity and modifier bitmask for a key event.
+///
+/// # Safety
+/// Both outputs must be non-null writable storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_input_event_key(
+    borrowed_event: u64,
+    out_key_identity: *mut u32,
+    out_modifiers: *mut u32,
+) -> u32 {
+    if out_key_identity.is_null() || out_modifiers.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: both required outputs were checked non-null.
+    unsafe {
+        out_key_identity.write(0);
+        out_modifiers.write(0);
+    }
+    match catch_input_event(|| core_input_event_key(borrowed_event)) {
+        Ok((identity, modifiers)) => {
+            // SAFETY: both required outputs were checked non-null.
+            unsafe {
+                out_key_identity.write(identity);
+                out_modifiers.write(modifiers);
+            }
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Copy callback-scoped TextCommit UTF-8 bytes into the caller buffer.
+///
+/// # Safety
+/// `out_length` must be writable. Positive `capacity` requires writable `buffer` storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_input_event_text(
+    borrowed_event: u64,
+    buffer: *mut u8,
+    capacity: u64,
+    out_length: *mut u64,
+) -> u32 {
+    if out_length.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_length.write(0) };
+    let Ok(capacity) = usize::try_from(capacity) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    if capacity > 0 && buffer.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let text = match catch_input_event(|| core_input_event_text(borrowed_event)) {
+        Ok(text) => text,
+        Err(status) => return status,
+    };
+    let Ok(required) = u64::try_from(text.len()) else {
+        return UI_INTERNAL_ERROR;
+    };
+    // SAFETY: required output pointer was checked non-null.
+    unsafe { out_length.write(required) };
+    if capacity < text.len() {
+        return UI_BUFFER_TOO_SMALL;
+    }
+    if !text.is_empty() {
+        // SAFETY: positive capacity requires writable storage for the supplied capacity.
+        unsafe { std::ptr::copy_nonoverlapping(text.as_ptr(), buffer, text.len()) };
+    }
+    UI_OK
+}
+
+/// Return primary pointer coordinates in client DIPs and the primary button identity.
+///
+/// # Safety
+/// All three outputs must be non-null writable storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_input_event_pointer(
+    borrowed_event: u64,
+    out_x_dip: *mut f64,
+    out_y_dip: *mut f64,
+    out_button: *mut u32,
+) -> u32 {
+    if out_x_dip.is_null() || out_y_dip.is_null() || out_button.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: all required outputs were checked non-null.
+    unsafe {
+        out_x_dip.write(0.0);
+        out_y_dip.write(0.0);
+        out_button.write(0);
+    }
+    match catch_input_event(|| core_input_event_pointer(borrowed_event)) {
+        Ok((x_dip, y_dip, button)) => {
+            // SAFETY: all required outputs were checked non-null.
+            unsafe {
+                out_x_dip.write(x_dip);
+                out_y_dip.write(y_dip);
+                out_button.write(button);
+            }
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Mark the current Input event handled; false never clears an earlier handled result.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_input_event_set_handled(
+    borrowed_event: u64,
+    handled: u8,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if handled > 1 {
+        return UI_INVALID_ARGUMENT;
+    }
+    catch_input_event(|| core_input_event_set_handled(borrowed_event, handled != 0))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
 /// Open a Window through its installed Platform peer.
 ///
 /// # Safety
@@ -2796,9 +3005,9 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
         return UI_INVALID_ARGUMENT;
     }
 
-    if feature_id == 3 || feature_id == 7 || feature_id == 8 {
-        // Feature 3 is numeric conversion, 7 is Runtime post/dispatch, and 8 is the complete
-        // initial UI Control contract.
+    if feature_id == 3 || feature_id == 7 || feature_id == 8 || feature_id == 9 {
+        // Feature 3 is numeric conversion, 7 is Runtime post/dispatch, 8 is the complete initial
+        // UI Control contract, and 9 is the complete typed UI Input event contract.
         // SAFETY: the caller guarantees that the non-null output points to writable `u8` storage.
         unsafe { out_supported.write(1) };
     }
@@ -2808,8 +3017,6 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
 
 #[cfg(test)]
 mod tests {
-    #[cfg(not(target_os = "linux"))]
-    use super::ui_abi_1_window_open;
     use super::{
         RuntimeRetainError, UI_ALIGN_CENTER, UI_BUFFER_TOO_SMALL, UI_INTERNAL_ERROR,
         UI_INVALID_ARGUMENT, UI_INVALID_HANDLE, UI_OK, UI_ORIENTATION_HORIZONTAL,
@@ -2826,14 +3033,15 @@ mod tests {
         ui_abi_1_container_child_count, ui_abi_1_container_insert, ui_abi_1_container_move,
         ui_abi_1_container_remove, ui_abi_1_error_code, ui_abi_1_error_message_utf8,
         ui_abi_1_error_status, ui_abi_1_get_version, ui_abi_1_handle_release,
-        ui_abi_1_handle_retain, ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32,
-        ui_abi_1_numeric_narrow_f64, ui_abi_1_property_create_bool,
-        ui_abi_1_property_create_decimal, ui_abi_1_property_create_f64,
-        ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8, ui_abi_1_property_get_bool,
-        ui_abi_1_property_get_decimal, ui_abi_1_property_get_f64, ui_abi_1_property_get_i64,
-        ui_abi_1_property_get_utf8, ui_abi_1_property_kind, ui_abi_1_property_set_bool,
-        ui_abi_1_property_set_decimal, ui_abi_1_property_set_f64, ui_abi_1_property_set_i64,
-        ui_abi_1_property_set_utf8, ui_abi_1_property_subscribe,
+        ui_abi_1_handle_retain, ui_abi_1_has_feature, ui_abi_1_input_event_key,
+        ui_abi_1_input_event_kind, ui_abi_1_input_event_pointer, ui_abi_1_input_event_set_handled,
+        ui_abi_1_input_event_text, ui_abi_1_numeric_expand_f32, ui_abi_1_numeric_narrow_f64,
+        ui_abi_1_property_create_bool, ui_abi_1_property_create_decimal,
+        ui_abi_1_property_create_f64, ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8,
+        ui_abi_1_property_get_bool, ui_abi_1_property_get_decimal, ui_abi_1_property_get_f64,
+        ui_abi_1_property_get_i64, ui_abi_1_property_get_utf8, ui_abi_1_property_kind,
+        ui_abi_1_property_set_bool, ui_abi_1_property_set_decimal, ui_abi_1_property_set_f64,
+        ui_abi_1_property_set_i64, ui_abi_1_property_set_utf8, ui_abi_1_property_subscribe,
         ui_abi_1_property_validator_cancel, ui_abi_1_property_validator_register_bool,
         ui_abi_1_property_validator_register_i64, ui_abi_1_property_validator_register_utf8,
         ui_abi_1_runtime_create, ui_abi_1_runtime_dispatch_turn, ui_abi_1_runtime_host_begin_event,
@@ -2845,11 +3053,12 @@ mod tests {
         ui_abi_1_stack_panel_set_orientation, ui_abi_1_subscription_cancel,
         ui_abi_1_text_box_create, ui_abi_1_text_box_value_property, ui_abi_1_text_content_property,
         ui_abi_1_text_create, ui_abi_1_validation_error_create,
-        ui_abi_1_widget_accessible_name_property, ui_abi_1_widget_is_enabled_property,
-        ui_abi_1_widget_request_focus, ui_abi_1_window_background_rgb,
-        ui_abi_1_window_clear_content, ui_abi_1_window_close, ui_abi_1_window_close_request_defer,
-        ui_abi_1_window_close_request_resolve, ui_abi_1_window_close_request_subscribe,
-        ui_abi_1_window_content, ui_abi_1_window_create, ui_abi_1_window_reset_background_rgb,
+        ui_abi_1_widget_accessible_name_property, ui_abi_1_widget_input_subscribe,
+        ui_abi_1_widget_is_enabled_property, ui_abi_1_widget_request_focus,
+        ui_abi_1_window_background_rgb, ui_abi_1_window_clear_content, ui_abi_1_window_close,
+        ui_abi_1_window_close_request_defer, ui_abi_1_window_close_request_resolve,
+        ui_abi_1_window_close_request_subscribe, ui_abi_1_window_content, ui_abi_1_window_create,
+        ui_abi_1_window_open, ui_abi_1_window_reset_background_rgb,
         ui_abi_1_window_set_background_rgb, ui_abi_1_window_set_content,
         ui_abi_1_window_title_property,
     };
@@ -2875,6 +3084,169 @@ mod tests {
         operation_id: AtomicU64,
         retained_command: AtomicU64,
         retained_cancel: AtomicU64,
+    }
+
+    #[derive(Default)]
+    struct InputEventProbe {
+        callbacks: AtomicUsize,
+        destroys: AtomicUsize,
+        last_event: AtomicU64,
+        retained_widget: AtomicU64,
+        observations: Mutex<Vec<InputEventObservation>>,
+    }
+
+    #[derive(Debug)]
+    struct InputEventObservation {
+        current_widget: u64,
+        original_target: u64,
+        kind_status: u32,
+        kind: u32,
+        key_status: u32,
+        key_identity: u32,
+        modifiers: u32,
+        text_status: u32,
+        text: Vec<u8>,
+        pointer_status: u32,
+        x_dip: f64,
+        y_dip: f64,
+        button: u32,
+        handled_true_status: u32,
+        handled_false_status: u32,
+        borrowed_widget_release_status: u32,
+    }
+
+    struct AbiInputTestFactory;
+
+    impl freemvvm_core::abi_support::PlatformRuntimeFactory for AbiInputTestFactory {
+        fn create_window_peer(
+            &self,
+            _: std::sync::Arc<dyn freemvvm_core::abi_support::PlatformFrameCompletionSink>,
+        ) -> Result<
+            std::sync::Arc<dyn freemvvm_core::abi_support::PlatformWindowPeer>,
+            freemvvm_core::abi_support::PlatformOperationError,
+        > {
+            Ok(std::sync::Arc::new(AbiInputTestPeer))
+        }
+    }
+
+    struct AbiInputTestPeer;
+
+    impl freemvvm_core::abi_support::PlatformWindowPeer for AbiInputTestPeer {
+        fn open(
+            &self,
+            _: u64,
+        ) -> Result<
+            freemvvm_core::abi_support::WindowOpenInfo,
+            freemvvm_core::abi_support::PlatformOperationError,
+        > {
+            Ok(freemvvm_core::abi_support::WindowOpenInfo {
+                client_area: freemvvm_core::abi_support::WindowClientArea {
+                    width_dip: 320.0,
+                    height_dip: 240.0,
+                },
+                device_scale: freemvvm_core::abi_support::DeviceScale::new(1.0, 1.0)
+                    .expect("valid test scale"),
+            })
+        }
+
+        fn close(&self) -> Result<(), freemvvm_core::abi_support::PlatformOperationError> {
+            Ok(())
+        }
+
+        fn submit_frame(
+            &self,
+            _: freemvvm_core::abi_support::FrameTicket,
+            _: std::sync::Arc<freemvvm_core::abi_support::SceneSnapshot>,
+        ) -> Result<(), freemvvm_core::abi_support::PlatformOperationError> {
+            Ok(())
+        }
+    }
+
+    unsafe extern "C" fn input_event_probe_callback(
+        userdata: *mut c_void,
+        current_widget: u64,
+        original_target: u64,
+        borrowed_event: u64,
+    ) {
+        // SAFETY: the test keeps InputEventProbe alive through cancellation and destroy.
+        let probe = unsafe { &*(userdata as *const InputEventProbe) };
+        let mut kind = u32::MAX;
+        // SAFETY: callback receives a valid borrowed event and writable output.
+        let kind_status = unsafe { ui_abi_1_input_event_kind(borrowed_event, &mut kind) };
+        let mut key_identity = u32::MAX;
+        let mut modifiers = u32::MAX;
+        // SAFETY: callback receives a valid borrowed event and writable outputs.
+        let key_status =
+            unsafe { ui_abi_1_input_event_key(borrowed_event, &mut key_identity, &mut modifiers) };
+        let mut text_length = u64::MAX;
+        // SAFETY: null buffer with zero capacity is a length query; length output is writable.
+        let mut text_status = unsafe {
+            ui_abi_1_input_event_text(borrowed_event, std::ptr::null_mut(), 0, &mut text_length)
+        };
+        let mut text = Vec::new();
+        if text_status == UI_BUFFER_TOO_SMALL {
+            text.resize(text_length as usize, 0);
+            // SAFETY: vector storage is writable for exactly its capacity and length.
+            text_status = unsafe {
+                ui_abi_1_input_event_text(
+                    borrowed_event,
+                    text.as_mut_ptr(),
+                    text.len() as u64,
+                    &mut text_length,
+                )
+            };
+        }
+        let mut x_dip = f64::NAN;
+        let mut y_dip = f64::NAN;
+        let mut button = u32::MAX;
+        // SAFETY: callback receives a valid borrowed event and writable outputs.
+        let pointer_status = unsafe {
+            ui_abi_1_input_event_pointer(borrowed_event, &mut x_dip, &mut y_dip, &mut button)
+        };
+        // SAFETY: both calls pass a valid borrowed event and a supported ui_bool value.
+        let handled_true_status =
+            unsafe { ui_abi_1_input_event_set_handled(borrowed_event, 1, std::ptr::null_mut()) };
+        // SAFETY: false is accepted and cannot clear an earlier handled result.
+        let handled_false_status =
+            unsafe { ui_abi_1_input_event_set_handled(borrowed_event, 0, std::ptr::null_mut()) };
+        // SAFETY: current_widget is borrowed and release during callback must be rejected.
+        let borrowed_widget_release_status = ui_abi_1_handle_release(current_widget);
+        if probe.retained_widget.load(Ordering::SeqCst) == 0 {
+            let mut retained = 0;
+            // SAFETY: current_widget is borrowed and may be retained during the callback.
+            let status = unsafe { ui_abi_1_handle_retain(current_widget, &mut retained) };
+            if status == UI_OK {
+                probe.retained_widget.store(retained, Ordering::SeqCst);
+            }
+        }
+        probe.last_event.store(borrowed_event, Ordering::SeqCst);
+        probe.callbacks.fetch_add(1, Ordering::SeqCst);
+        if let Ok(mut observations) = probe.observations.lock() {
+            observations.push(InputEventObservation {
+                current_widget,
+                original_target,
+                kind_status,
+                kind,
+                key_status,
+                key_identity,
+                modifiers,
+                text_status,
+                text,
+                pointer_status,
+                x_dip,
+                y_dip,
+                button,
+                handled_true_status,
+                handled_false_status,
+                borrowed_widget_release_status,
+            });
+        }
+    }
+
+    unsafe extern "C" fn input_event_probe_destroy(userdata: *mut c_void) {
+        // SAFETY: the probe outlives the subscribed callback and the cancellation in its test.
+        let probe = unsafe { &*(userdata as *const InputEventProbe) };
+        probe.destroys.fetch_add(1, Ordering::SeqCst);
     }
 
     unsafe extern "C" fn command_start(
@@ -6115,6 +6487,260 @@ mod tests {
     }
 
     #[test]
+    fn input_event_callbacks_borrow_payload_for_five_kinds_and_cancel_cleanly() {
+        let runtime = freemvvm_core::abi_support::runtime_create_handle_with_platform_factory(
+            std::sync::Arc::new(AbiInputTestFactory),
+        )
+        .expect("create fake-platform Runtime");
+        let mut window = 0;
+        let mut panel = 0;
+        let mut button = 0;
+        let mut error = 0;
+        // SAFETY: the runtime token is valid and both output slots are writable.
+        assert_eq!(
+            // SAFETY: the runtime token is valid and both output slots are writable.
+            unsafe { super::ui_abi_1_window_create(runtime, &mut window, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: the runtime token is valid and both output slots are writable.
+            unsafe { super::ui_abi_1_stack_panel_create(runtime, &mut panel, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: the runtime token and output slots are valid for this creation call.
+            unsafe {
+                super::ui_abi_1_button_create(runtime, b"run".as_ptr(), 3, &mut button, &mut error)
+            },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: both controls belong to this live Runtime and error output is writable.
+            unsafe { super::ui_abi_1_window_set_content(window, panel, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: both controls belong to this live Runtime and error output is writable.
+            unsafe { super::ui_abi_1_container_insert(panel, button, 0, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: the Window token is live and the error output is writable.
+            unsafe { ui_abi_1_window_open(window, &mut error) },
+            UI_OK
+        );
+
+        let probe = InputEventProbe::default();
+        let mut subscription = u64::MAX;
+        assert_eq!(
+            // SAFETY: outputs are writable and the invalid mask transfers no userdata ownership.
+            unsafe {
+                ui_abi_1_widget_input_subscribe(
+                    button,
+                    0,
+                    Some(input_event_probe_callback),
+                    (&probe as *const InputEventProbe).cast_mut().cast(),
+                    Some(input_event_probe_destroy),
+                    &mut subscription,
+                    &mut error,
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(subscription, 0);
+        subscription = u64::MAX;
+        assert_eq!(
+            // SAFETY: outputs are writable and the unknown mask transfers no userdata ownership.
+            unsafe {
+                ui_abi_1_widget_input_subscribe(
+                    button,
+                    0x20,
+                    Some(input_event_probe_callback),
+                    (&probe as *const InputEventProbe).cast_mut().cast(),
+                    Some(input_event_probe_destroy),
+                    &mut subscription,
+                    &mut error,
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(subscription, 0);
+        subscription = u64::MAX;
+        assert_eq!(
+            // SAFETY: outputs are writable and null callback is rejected before userdata use.
+            unsafe {
+                ui_abi_1_widget_input_subscribe(
+                    button,
+                    1,
+                    None,
+                    (&probe as *const InputEventProbe).cast_mut().cast(),
+                    Some(input_event_probe_destroy),
+                    &mut subscription,
+                    &mut error,
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(subscription, 0);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 0);
+        subscription = u64::MAX;
+        assert_eq!(
+            // SAFETY: the probe and output slots remain valid through cancellation and destroy.
+            unsafe {
+                ui_abi_1_widget_input_subscribe(
+                    button,
+                    0x1f,
+                    Some(input_event_probe_callback),
+                    (&probe as *const InputEventProbe).cast_mut().cast(),
+                    Some(input_event_probe_destroy),
+                    &mut subscription,
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+        assert_ne!(subscription, 0);
+
+        for event in [
+            (1, 0x04, 5, "", 0.0, 0.0),
+            (2, 0x28, 0, "", 0.0, 0.0),
+            (3, 0, 0, "日本語🙂", 0.0, 0.0),
+            (4, 0, 0, "", 1.25, 2.5),
+            (5, 0, 0, "", 3.5, 4.75),
+        ] {
+            assert!(
+                freemvvm_core::abi_support::test_dispatch_widget_input(
+                    window,
+                    button,
+                    freemvvm_core::abi_support::TestInputEvent {
+                        kind: event.0,
+                        key_identity: event.1,
+                        modifiers: event.2,
+                        text: event.3.to_string(),
+                        x_dip: event.4,
+                        y_dip: event.5,
+                    },
+                )
+                .expect("inject typed event")
+            );
+        }
+
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 5);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 0);
+        let observations = probe.observations.lock().expect("input observations lock");
+        assert_eq!(observations.len(), 5);
+        for (index, observation) in observations.iter().enumerate() {
+            assert_ne!(observation.current_widget, 0);
+            assert_eq!(observation.current_widget, observation.original_target);
+            assert_ne!(observation.current_widget, button);
+            assert_eq!(observation.kind_status, UI_OK);
+            assert_eq!(observation.kind, index as u32 + 1);
+            assert_eq!(observation.handled_true_status, UI_OK);
+            assert_eq!(observation.handled_false_status, UI_OK);
+            assert_eq!(
+                observation.borrowed_widget_release_status,
+                UI_INVALID_HANDLE
+            );
+            match observation.kind {
+                1 | 2 => {
+                    assert_eq!(observation.key_status, UI_OK);
+                    assert_eq!(observation.text_status, UI_WRONG_TYPE);
+                    assert_eq!(observation.pointer_status, UI_WRONG_TYPE);
+                }
+                3 => {
+                    assert_eq!(observation.key_status, UI_WRONG_TYPE);
+                    assert_eq!(observation.text_status, UI_OK);
+                    assert_eq!(observation.text, "日本語🙂".as_bytes());
+                    assert_eq!(observation.pointer_status, UI_WRONG_TYPE);
+                }
+                4 | 5 => {
+                    assert_eq!(observation.key_status, UI_WRONG_TYPE);
+                    assert_eq!(observation.text_status, UI_WRONG_TYPE);
+                    assert_eq!(observation.pointer_status, UI_OK);
+                    assert_eq!(observation.button, 1);
+                }
+                _ => unreachable!("only the five specified event kinds are dispatched"),
+            }
+        }
+        assert_eq!(observations[0].key_identity, 0x04);
+        assert_eq!(observations[0].modifiers, 5);
+        assert_eq!(observations[3].x_dip, 1.25);
+        assert_eq!(observations[3].y_dip, 2.5);
+        let last_event = probe.last_event.load(Ordering::SeqCst);
+        drop(observations);
+
+        let mut stale_kind = u32::MAX;
+        assert_eq!(
+            // SAFETY: `stale_kind` is writable and the inactive event token is rejected.
+            unsafe { ui_abi_1_input_event_kind(last_event, &mut stale_kind) },
+            UI_INVALID_HANDLE
+        );
+        assert_eq!(stale_kind, 0);
+        let retained_widget = probe.retained_widget.load(Ordering::SeqCst);
+        assert_ne!(retained_widget, 0);
+        let mut retained_subscription = 0;
+        assert_eq!(
+            // SAFETY: the retained Widget and probe are live; output slots are writable.
+            unsafe {
+                ui_abi_1_widget_input_subscribe(
+                    retained_widget,
+                    1,
+                    Some(input_event_probe_callback),
+                    (&probe as *const InputEventProbe).cast_mut().cast(),
+                    Some(input_event_probe_destroy),
+                    &mut retained_subscription,
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: the subscription is live and cancellation runs on the UI thread.
+            unsafe { ui_abi_1_subscription_cancel(retained_subscription, &mut error) },
+            UI_OK
+        );
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+        // SAFETY: the canceled Subscription token remains independently releasable.
+        assert_eq!(ui_abi_1_handle_release(retained_subscription), UI_OK);
+
+        assert_eq!(
+            // SAFETY: the subscription is live and cancellation runs on its Runtime UI thread.
+            unsafe { ui_abi_1_subscription_cancel(subscription, &mut error) },
+            UI_OK
+        );
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 2);
+        // SAFETY: a canceled Subscription token remains independently releasable.
+        assert_eq!(ui_abi_1_handle_release(subscription), UI_OK);
+        assert!(
+            !freemvvm_core::abi_support::test_dispatch_widget_input(
+                window,
+                button,
+                freemvvm_core::abi_support::TestInputEvent {
+                    kind: 1,
+                    key_identity: 0x04,
+                    modifiers: 0,
+                    text: String::new(),
+                    x_dip: 0.0,
+                    y_dip: 0.0,
+                },
+            )
+            .expect("dispatch after cancel")
+        );
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 5);
+        // SAFETY: retained Widget and the remaining handles are owned by this test.
+        assert_eq!(ui_abi_1_handle_release(retained_widget), UI_OK);
+        assert_eq!(
+            // SAFETY: the Window token and output slot remain valid until this call.
+            unsafe { super::ui_abi_1_window_close(window, &mut error) },
+            UI_OK
+        );
+        assert_eq!(ui_abi_1_handle_release(button), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(panel), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(window), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
+    #[test]
     fn has_feature_reports_only_complete_public_contracts() {
         for feature_id in [1, 2, 4, 5, 6] {
             let mut supported = 1;
@@ -6141,6 +6767,12 @@ mod tests {
         let status = unsafe { ui_abi_1_has_feature(8, &mut controls_supported) };
         assert_eq!(status, UI_OK);
         assert_eq!(controls_supported, 1);
+
+        let mut input_supported = 0;
+        // SAFETY: the output points to writable storage.
+        let status = unsafe { ui_abi_1_has_feature(9, &mut input_supported) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(input_supported, 1);
 
         let mut unknown_supported = 1;
         // SAFETY: `unknown_supported` is valid writable storage for the output value.

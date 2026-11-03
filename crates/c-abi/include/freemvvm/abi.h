@@ -28,6 +28,10 @@ typedef ui_status (*ui_command_start_callback)(void *userdata,
                                                ui_handle borrowed_cancel_token);
 typedef void (*ui_window_close_callback)(void *userdata,
                                          ui_handle borrowed_close_request);
+typedef void (*ui_input_callback)(void *userdata,
+                                  ui_handle current_widget,
+                                  ui_handle original_target,
+                                  ui_handle borrowed_event);
 
 enum {
   UI_OK = 0,
@@ -77,6 +81,24 @@ enum {
   UI_ALIGN_STRETCH = 4,
   UI_CLOSE_ACCEPT = 1,
   UI_CLOSE_DECLINE = 2
+};
+
+enum {
+  UI_INPUT_KEY_DOWN = 1,
+  UI_INPUT_KEY_UP = 2,
+  UI_INPUT_TEXT_COMMIT = 3,
+  UI_INPUT_PRIMARY_POINTER_DOWN = 4,
+  UI_INPUT_PRIMARY_POINTER_UP = 5,
+  UI_INPUT_MASK_KEY_DOWN = 1u << 0,
+  UI_INPUT_MASK_KEY_UP = 1u << 1,
+  UI_INPUT_MASK_TEXT_COMMIT = 1u << 2,
+  UI_INPUT_MASK_PRIMARY_POINTER_DOWN = 1u << 3,
+  UI_INPUT_MASK_PRIMARY_POINTER_UP = 1u << 4,
+  UI_MODIFIER_SHIFT = 0x01,
+  UI_MODIFIER_CONTROL = 0x02,
+  UI_MODIFIER_ALT = 0x04,
+  UI_MODIFIER_META = 0x08,
+  UI_POINTER_BUTTON_PRIMARY = 1
 };
 
 ui_status ui_abi_1_runtime_create(ui_handle *out_runtime, ui_handle *out_error);
@@ -237,6 +259,25 @@ ui_status ui_abi_1_widget_is_enabled_property(
 ui_status ui_abi_1_widget_accessible_name_property(
     ui_handle widget, ui_handle *out_owned_property);
 ui_status ui_abi_1_widget_request_focus(ui_handle widget, ui_handle *out_error);
+ui_status ui_abi_1_widget_input_subscribe(
+    ui_handle widget, uint64_t event_mask, ui_input_callback callback,
+    void *userdata, ui_destroy_callback destroy,
+    ui_handle *out_subscription, ui_handle *out_error);
+ui_status ui_abi_1_input_event_kind(ui_handle borrowed_event,
+                                    uint32_t *out_kind);
+ui_status ui_abi_1_input_event_key(ui_handle borrowed_event,
+                                   uint32_t *out_key_identity,
+                                   uint32_t *out_modifiers);
+ui_status ui_abi_1_input_event_text(ui_handle borrowed_event,
+                                    uint8_t *buffer, uint64_t capacity,
+                                    uint64_t *out_length);
+ui_status ui_abi_1_input_event_pointer(ui_handle borrowed_event,
+                                       double *out_x_dip,
+                                       double *out_y_dip,
+                                       uint32_t *out_button);
+ui_status ui_abi_1_input_event_set_handled(ui_handle borrowed_event,
+                                           ui_bool handled,
+                                           ui_handle *out_error);
 ui_status ui_abi_1_window_content(ui_handle window,
                                   ui_handle *out_owned_child,
                                   ui_handle *out_error);

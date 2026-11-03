@@ -14,6 +14,14 @@ static void smoke_close_request(void *userdata, ui_handle borrowed_request) {
   (void)borrowed_request;
 }
 
+static void smoke_input(void *userdata, ui_handle current_widget,
+                        ui_handle original_target, ui_handle borrowed_event) {
+  (void)userdata;
+  (void)current_widget;
+  (void)original_target;
+  (void)borrowed_event;
+}
+
 int main(void) {
   uint32_t major = 0;
   uint32_t minor = 0;
@@ -57,19 +65,34 @@ int main(void) {
     return 9;
   }
   ui_bool controls_supported = 0;
+  ui_bool input_supported = 0;
 #if defined(__linux__)
   ui_status window_open_status = ui_abi_1_window_open(window, 0);
   if (ui_abi_1_has_feature(8, &controls_supported) != UI_OK ||
       controls_supported != 1 ||
+      ui_abi_1_has_feature(9, &input_supported) != UI_OK ||
+      input_supported != 1 ||
       (window_open_status != UI_OK && window_open_status != UI_INTERNAL_ERROR) ||
       ui_abi_1_window_close(window, 0) != UI_OK) {
 #else
   if (ui_abi_1_has_feature(8, &controls_supported) != UI_OK ||
       controls_supported != 1 ||
+      ui_abi_1_has_feature(9, &input_supported) != UI_OK ||
+      input_supported != 1 ||
       ui_abi_1_window_close(window, 0) != UI_OK) {
 #endif
     fputs("Window lifecycle/feature query failed\n", stderr);
     return 13;
+  }
+  ui_handle input_subscription = 0;
+  if (ui_abi_1_widget_input_subscribe(
+          button, UI_INPUT_MASK_KEY_DOWN | UI_INPUT_MASK_TEXT_COMMIT,
+          smoke_input, 0, smoke_destroy, &input_subscription, 0) != UI_OK ||
+      input_subscription == 0 ||
+      ui_abi_1_subscription_cancel(input_subscription, 0) != UI_OK ||
+      ui_abi_1_handle_release(input_subscription) != UI_OK) {
+    fputs("Input event subscription lifecycle failed\n", stderr);
+    return 15;
   }
   ui_handle close_subscription = 0;
   if (ui_abi_1_window_close_request_subscribe(

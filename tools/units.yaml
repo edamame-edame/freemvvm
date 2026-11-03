@@ -4607,7 +4607,7 @@
     },
     {
       "id": "UNIT-ABI-022",
-      "state": "planned",
+      "state": "ready",
       "scope": "c-abi-input-feature-callback-borrowed-event-payload-and-handled-contract",
       "sources": [
         "crates/c-abi/include/freemvvm/abi.h",

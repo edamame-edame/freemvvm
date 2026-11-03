@@ -369,6 +369,26 @@ impl<R> RuntimeTreeStore<R> {
         TreeCoordinator::child_handle(registry, parent_node, child, kind)
     }
 
+    pub(crate) fn identity_handle<K>(
+        &self,
+        registry: &HandleRegistry<K, R>,
+        identity: ObjectIdentity,
+        kind: K,
+    ) -> Result<HandleToken, TreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+        R: Clone + Eq + Send + Sync + 'static,
+    {
+        self.ensure_ui_thread()?;
+        let node = self
+            .nodes
+            .get(&identity)
+            .ok_or(TreeError::InvalidIdentity)?;
+        let parent = node.parent.ok_or(TreeError::InvalidIdentity)?;
+        let parent_node = self.nodes.get(&parent).ok_or(TreeError::InvalidIdentity)?;
+        TreeCoordinator::child_handle(registry, parent_node, identity, kind)
+    }
+
     pub(crate) fn child_count(&self, parent: ObjectIdentity) -> Result<usize, TreeError> {
         self.ensure_ui_thread()?;
         self.nodes

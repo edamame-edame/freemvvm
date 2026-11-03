@@ -2013,6 +2013,28 @@ impl RuntimeCore {
             .map_err(RuntimeTreeError::Tree)
     }
 
+    pub(crate) fn tree_identity_handle<K>(
+        &self,
+        registry: &HandleRegistry<K, RuntimeIdentity>,
+        identity: ObjectIdentity,
+        kind: K,
+    ) -> Result<HandleToken, RuntimeTreeError>
+    where
+        K: Clone + Eq + Send + Sync,
+    {
+        if !self.is_ui_thread() {
+            return Err(RuntimeTreeError::WrongThread);
+        }
+        if self.cleanup.state() != RuntimeState::Running {
+            return Err(RuntimeTreeError::Closed);
+        }
+        self.ui_tree
+            .lock()
+            .map_err(|_| RuntimeTreeError::SynchronizationPoisoned)?
+            .identity_handle(registry, identity, kind)
+            .map_err(RuntimeTreeError::Tree)
+    }
+
     pub(crate) fn tree_child_handle_of_kinds<K>(
         &self,
         registry: &HandleRegistry<K, RuntimeIdentity>,

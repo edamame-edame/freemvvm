@@ -65,6 +65,7 @@ pub mod abi_support {
     use crate::ui_controls::{
         UiControlKind, UiControlProperty, UiControlPropertyOwner, UiControlState,
     };
+    use crate::ui_input::{InputEvent, InputEventFrame, InputEventPayload};
     #[cfg(test)]
     use crate::ui_layout::{
         IntrinsicMeasureProvider, LayoutConstraints, LayoutError, LayoutSnapshot, Size,
@@ -190,6 +191,18 @@ pub mod abi_support {
         Internal,
     }
 
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum InputEventApiError {
+        InvalidHandle,
+        InvalidArgument,
+        WrongType,
+        WrongThread,
+        OutOfMemory,
+        Internal,
+    }
+
+    pub type InputEventCallback = unsafe extern "C" fn(*mut c_void, u64, u64, u64);
+
     pub type ValidateBoolCallback = unsafe extern "C" fn(*mut c_void, u8, *mut u64) -> u32;
     pub type ValidateI64Callback = unsafe extern "C" fn(*mut c_void, i64, *mut u64) -> u32;
     pub type ValidateUtf8Callback =
@@ -207,6 +220,62 @@ pub mod abi_support {
     thread_local! {
         static VALIDATOR_CALLBACK_ACTIVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
         static CURRENT_WINDOW_CLOSE_REQUEST: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+        static CURRENT_INPUT_EVENT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+        static CURRENT_INPUT_WIDGET_HANDLES: std::cell::Cell<[u64; 2]> = const { std::cell::Cell::new([0; 2]) };
+    }
+
+    struct BorrowedInputEventEntry {
+        runtime: Weak<RuntimeCore>,
+        event: InputEvent,
+        handled: AtomicBool,
+        active: AtomicBool,
+    }
+
+    static INPUT_EVENT_HANDLES: OnceLock<
+        Mutex<HashMap<HandleToken, Arc<BorrowedInputEventEntry>>>,
+    > = OnceLock::new();
+
+    fn input_event_handles() -> &'static Mutex<HashMap<HandleToken, Arc<BorrowedInputEventEntry>>> {
+        INPUT_EVENT_HANDLES.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    struct InputCallbackClosure {
+        callback: InputEventCallback,
+        userdata: usize,
+        destroy: DestroyCallback,
+        runtime: Weak<RuntimeCore>,
+        armed: AtomicBool,
+    }
+
+    impl Drop for InputCallbackClosure {
+        fn drop(&mut self) {
+            if self.armed.swap(false, Ordering::AcqRel) {
+                // SAFETY: successful registration owns this callback/userdata tuple until destroy.
+                unsafe { (self.destroy)(self.userdata as *mut c_void) };
+            }
+        }
+    }
+
+    struct InputCallbackScope {
+        token: HandleToken,
+        state: Arc<BorrowedInputEventEntry>,
+        widget_handles: [u64; 2],
+    }
+
+    impl Drop for InputCallbackScope {
+        fn drop(&mut self) {
+            CURRENT_INPUT_EVENT.with(|current| current.set(0));
+            CURRENT_INPUT_WIDGET_HANDLES.with(|current| current.set([0; 2]));
+            self.state.active.store(false, Ordering::Release);
+            if let Ok(mut handles) = input_event_handles().lock() {
+                handles.remove(&self.token);
+            }
+            for handle in self.widget_handles {
+                if handle != 0 {
+                    let _ = handle_release(handle);
+                }
+            }
+        }
     }
 
     struct CloseRequestState {
@@ -2750,6 +2819,279 @@ pub mod abi_support {
         Ok(token.into_abi())
     }
 
+    fn issue_borrowed_input_widget_handle(
+        runtime: &Arc<RuntimeCore>,
+        identity: ObjectIdentity,
+    ) -> Result<u64, UiControlApiError> {
+        let kind = runtime
+            .ui_control_kind(identity)
+            .map_err(map_ui_control_property_error)?;
+        let controls = ui_control_handles();
+        let mut owners = controls
+            .owners
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        owners
+            .try_reserve(1)
+            .map_err(|_| UiControlApiError::OutOfMemory)?;
+        let token = if let Some(existing) = owners
+            .iter()
+            .find_map(|(token, entry)| (entry.identity == identity).then_some(*token))
+        {
+            controls
+                .registry
+                .retain(existing)
+                .map_err(map_ui_control_registry_error)?
+        } else {
+            runtime
+                .tree_identity_handle(&controls.registry, identity, kind)
+                .map_err(map_ui_control_tree_error)?
+        };
+        owners.insert(
+            token,
+            UiControlHandleEntry {
+                runtime: Arc::clone(runtime),
+                kind,
+                identity,
+            },
+        );
+        Ok(token.into_abi())
+    }
+
+    fn invoke_input_callback(
+        context: &Arc<InputCallbackClosure>,
+        current_widget: ObjectIdentity,
+        original_target: ObjectIdentity,
+        frame: &mut InputEventFrame,
+    ) {
+        let Some(runtime) = context.runtime.upgrade() else {
+            frame.set_handled(true);
+            return;
+        };
+        if !runtime.is_ui_thread() {
+            frame.set_handled(true);
+            return;
+        }
+        let current_handle = match issue_borrowed_input_widget_handle(&runtime, current_widget) {
+            Ok(handle) => handle,
+            Err(_) => {
+                frame.set_handled(true);
+                return;
+            }
+        };
+        let target_handle = if original_target == current_widget {
+            current_handle
+        } else {
+            match issue_borrowed_input_widget_handle(&runtime, original_target) {
+                Ok(handle) => handle,
+                Err(_) => {
+                    let _ = handle_release(current_handle);
+                    frame.set_handled(true);
+                    return;
+                }
+            }
+        };
+        let state = Arc::new(BorrowedInputEventEntry {
+            runtime: Arc::downgrade(&runtime),
+            event: frame.event.clone(),
+            handled: AtomicBool::new(false),
+            active: AtomicBool::new(true),
+        });
+        let inserted = input_event_handles()
+            .lock()
+            .map(|mut handles| {
+                if handles.try_reserve(1).is_err() {
+                    return None;
+                }
+                let token = crate::handle_registry::issue_handle_token()?;
+                handles.insert(token, Arc::clone(&state));
+                Some(token)
+            })
+            .unwrap_or(None);
+        let Some(token) = inserted else {
+            let _ = handle_release(current_handle);
+            if target_handle != current_handle {
+                let _ = handle_release(target_handle);
+            }
+            frame.set_handled(true);
+            return;
+        };
+        let widget_handles = [
+            current_handle,
+            if target_handle == current_handle {
+                0
+            } else {
+                target_handle
+            },
+        ];
+        let _scope = InputCallbackScope {
+            token,
+            state: Arc::clone(&state),
+            widget_handles,
+        };
+        CURRENT_INPUT_EVENT.with(|current| current.set(token.into_abi()));
+        CURRENT_INPUT_WIDGET_HANDLES.with(|current| current.set(widget_handles));
+        // SAFETY: the Core Subscription retains this closure and its userdata until destroy.
+        unsafe {
+            (context.callback)(
+                context.userdata as *mut c_void,
+                current_handle,
+                target_handle,
+                token.into_abi(),
+            )
+        };
+        frame.set_handled(state.handled.load(Ordering::Acquire));
+    }
+
+    /// Registers a typed Input callback using the C ABI callback and destroy contract.
+    pub fn widget_input_subscribe_abi(
+        widget: u64,
+        event_mask: u64,
+        callback: InputEventCallback,
+        userdata: usize,
+        destroy: DestroyCallback,
+    ) -> Result<u64, UiControlApiError> {
+        let (_, runtime, _, _) = ui_control_entry(widget)?;
+        if !runtime.is_ui_thread() {
+            return Err(UiControlApiError::WrongThread);
+        }
+        let context = Arc::new(InputCallbackClosure {
+            callback,
+            userdata,
+            destroy,
+            runtime: Arc::downgrade(&runtime),
+            armed: AtomicBool::new(false),
+        });
+        let callback_context = Arc::clone(&context);
+        let handler: Arc<InputHandler> = Arc::new(move |current, target, frame| {
+            invoke_input_callback(&callback_context, current, target, frame);
+        });
+        let subscription = widget_input_subscribe(widget, event_mask, handler)?;
+        context.armed.store(true, Ordering::Release);
+        Ok(subscription)
+    }
+
+    fn borrowed_input_event(
+        handle: u64,
+    ) -> Result<Arc<BorrowedInputEventEntry>, InputEventApiError> {
+        let token = HandleToken::from_abi(handle).ok_or(InputEventApiError::InvalidHandle)?;
+        if CURRENT_INPUT_EVENT.with(std::cell::Cell::get) != handle {
+            return Err(InputEventApiError::InvalidHandle);
+        }
+        let entry = input_event_handles()
+            .lock()
+            .map_err(|_| InputEventApiError::Internal)?
+            .get(&token)
+            .cloned()
+            .filter(|entry| entry.active.load(Ordering::Acquire))
+            .ok_or(InputEventApiError::InvalidHandle)?;
+        let runtime = entry
+            .runtime
+            .upgrade()
+            .ok_or(InputEventApiError::InvalidHandle)?;
+        if !runtime.is_ui_thread() {
+            return Err(InputEventApiError::WrongThread);
+        }
+        Ok(entry)
+    }
+
+    pub fn input_event_kind(handle: u64) -> Result<u32, InputEventApiError> {
+        borrowed_input_event(handle).map(|entry| entry.event.kind as u32)
+    }
+
+    pub fn input_event_key(handle: u64) -> Result<(u32, u32), InputEventApiError> {
+        let entry = borrowed_input_event(handle)?;
+        match entry.event.payload {
+            InputEventPayload::Key {
+                identity,
+                modifiers,
+            } => Ok((identity, modifiers)),
+            _ => Err(InputEventApiError::WrongType),
+        }
+    }
+
+    pub fn input_event_text(handle: u64) -> Result<Arc<str>, InputEventApiError> {
+        let entry = borrowed_input_event(handle)?;
+        match &entry.event.payload {
+            InputEventPayload::TextCommit(text) => Ok(Arc::clone(text)),
+            _ => Err(InputEventApiError::WrongType),
+        }
+    }
+
+    pub fn input_event_pointer(handle: u64) -> Result<(f64, f64, u32), InputEventApiError> {
+        let entry = borrowed_input_event(handle)?;
+        match entry.event.payload {
+            InputEventPayload::PrimaryPointer { x_dip, y_dip } => Ok((x_dip, y_dip, 1)),
+            _ => Err(InputEventApiError::WrongType),
+        }
+    }
+
+    pub fn input_event_set_handled(handle: u64, handled: bool) -> Result<(), InputEventApiError> {
+        let entry = borrowed_input_event(handle)?;
+        if handled {
+            entry.handled.store(true, Ordering::Release);
+        }
+        Ok(())
+    }
+
+    /// Test-only targeted event injection for exercising the real C ABI callback path.
+    #[cfg(feature = "test-support")]
+    #[doc(hidden)]
+    pub struct TestInputEvent {
+        pub kind: u32,
+        pub key_identity: u32,
+        pub modifiers: u32,
+        pub text: String,
+        pub x_dip: f64,
+        pub y_dip: f64,
+    }
+
+    /// Test-only targeted event injection for exercising the real C ABI callback path.
+    #[cfg(feature = "test-support")]
+    #[doc(hidden)]
+    pub fn test_dispatch_widget_input(
+        window: u64,
+        target: u64,
+        event: TestInputEvent,
+    ) -> Result<bool, UiControlApiError> {
+        let (_, runtime, window_identity) = validate_ui_control(window, UiControlKind::Window)?;
+        let (_, target_runtime, _, target_identity) = ui_control_entry(target)?;
+        if !Arc::ptr_eq(&runtime, &target_runtime) {
+            return Err(UiControlApiError::WrongRuntime);
+        }
+        let kind = match event.kind {
+            1 => crate::ui_input::InputEventKind::KeyDown,
+            2 => crate::ui_input::InputEventKind::KeyUp,
+            3 => crate::ui_input::InputEventKind::TextCommit,
+            4 => crate::ui_input::InputEventKind::PrimaryPointerDown,
+            5 => crate::ui_input::InputEventKind::PrimaryPointerUp,
+            _ => return Err(UiControlApiError::InvalidArgument),
+        };
+        let payload = match kind {
+            crate::ui_input::InputEventKind::KeyDown | crate::ui_input::InputEventKind::KeyUp => {
+                InputEventPayload::Key {
+                    identity: event.key_identity,
+                    modifiers: event.modifiers,
+                }
+            }
+            crate::ui_input::InputEventKind::TextCommit => {
+                InputEventPayload::TextCommit(Arc::from(event.text))
+            }
+            crate::ui_input::InputEventKind::PrimaryPointerDown
+            | crate::ui_input::InputEventKind::PrimaryPointerUp => {
+                InputEventPayload::PrimaryPointer {
+                    x_dip: event.x_dip,
+                    y_dip: event.y_dip,
+                }
+            }
+        };
+        Ok(runtime.dispatch_input_event(
+            window_identity,
+            target_identity,
+            InputEvent { kind, payload },
+        ))
+    }
+
     /// Returns the borrowed request handle currently passed to a close callback, or zero.
     pub fn window_close_request_current() -> u64 {
         CURRENT_WINDOW_CLOSE_REQUEST.with(std::cell::Cell::get)
@@ -4141,6 +4483,9 @@ pub mod abi_support {
 
     pub fn handle_release(handle: u64) -> Result<(), ShutdownApiError> {
         let token = HandleToken::from_abi(handle).ok_or(ShutdownApiError::InvalidHandle)?;
+        if CURRENT_INPUT_WIDGET_HANDLES.with(|current| current.get().contains(&handle)) {
+            return Err(ShutdownApiError::InvalidHandle);
+        }
         if window_close_request_release_token(token)? {
             return Ok(());
         }

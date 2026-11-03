@@ -14,6 +14,9 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 freemvvm-core = { path = "../core-runtime" }
 
+[dev-dependencies]
+freemvvm-core = { path = "../core-runtime", features = ["test-support"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 freemvvm-platform-linux = { path = "../platform-linux" }
 
