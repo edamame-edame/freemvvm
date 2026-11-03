@@ -152,11 +152,12 @@ mod tests {
         PlatformWindowCloseRequestSink, Rect, SceneSnapshot, WindowClientArea, WindowOpenInfo,
     };
     use crate::abi_support::{
-        UiControlApiError, handle_release, property_get_bool, property_get_utf8, property_set_bool,
-        property_set_utf8, runtime_create_handle, runtime_create_handle_with_platform_factory,
-        runtime_dispatch_turn, runtime_set_ui_loop_bridge, runtime_shutdown,
-        stack_panel_child_align, stack_panel_child_at, stack_panel_child_count, stack_panel_insert,
-        stack_panel_move, stack_panel_orientation, stack_panel_remove, stack_panel_set_child_align,
+        UiControlApiError, button_set_command, command_close, command_create_async, handle_release,
+        property_get_bool, property_get_utf8, property_set_bool, property_set_utf8,
+        runtime_create_handle, runtime_create_handle_with_platform_factory, runtime_dispatch_turn,
+        runtime_set_ui_loop_bridge, runtime_shutdown, stack_panel_child_align,
+        stack_panel_child_at, stack_panel_child_count, stack_panel_insert, stack_panel_move,
+        stack_panel_orientation, stack_panel_remove, stack_panel_set_child_align,
         stack_panel_set_orientation, subscription_cancel, ui_control_accessible_name_property,
         ui_control_button_label_property, ui_control_create_button, ui_control_create_stack_panel,
         ui_control_create_text, ui_control_create_text_box, ui_control_create_window,
@@ -185,6 +186,19 @@ mod tests {
     use std::ffi::c_void;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    unsafe extern "C" fn count_command_start(userdata: *mut c_void, _: u64, _: u64, _: u64) -> u32 {
+        // SAFETY: the test allocates an Arc pointer for the command and releases it in
+        // `destroy_command_counter` after the command is closed.
+        let counter = unsafe { &*(userdata as *const Arc<AtomicUsize>) };
+        counter.fetch_add(1, Ordering::SeqCst);
+        1
+    }
+
+    unsafe extern "C" fn destroy_command_counter(userdata: *mut c_void) {
+        // SAFETY: this pointer is created by Box::into_raw exactly once in the test.
+        drop(unsafe { Box::from_raw(userdata as *mut Arc<AtomicUsize>) });
+    }
 
     struct TestWindowPeer(AtomicUsize, AtomicUsize);
 
@@ -1972,6 +1986,118 @@ mod tests {
         }
         handle_release(button).expect("release Button");
         handle_release(text_box).expect("release TextBox");
+        handle_release(panel).expect("release StackPanel");
+        window_close(window).expect("close Window");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(window).expect("release Window");
+        handle_release(runtime).expect("release Runtime");
+    }
+
+    #[test]
+    fn input_primary_pointer_activates_button_only_for_matching_unhandled_press() {
+        let runtime = runtime_create_handle().expect("create Runtime");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
+        let first = ui_control_create_button(runtime, b"first").expect("create first Button");
+        let second = ui_control_create_button(runtime, b"second").expect("create second Button");
+        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        window_install_test_peer(window, peer).expect("install fake Window peer");
+        window_set_content(window, panel).expect("attach content");
+        stack_panel_insert(panel, 0, first).expect("attach first Button");
+        stack_panel_insert(panel, 1, second).expect("attach second Button");
+        window_open(window).expect("open Window");
+
+        let starts = Arc::new(AtomicUsize::new(0));
+        let starts_ptr = Box::into_raw(Box::new(Arc::clone(&starts)));
+        let command = command_create_async(
+            runtime,
+            0,
+            count_command_start,
+            starts_ptr as usize,
+            destroy_command_counter,
+        )
+        .expect("create Button Command");
+        button_set_command(first, command).expect("assign Command");
+
+        let pointer = |kind| InputEvent {
+            kind,
+            payload: InputEventPayload::PrimaryPointer {
+                x_dip: 1.0,
+                y_dip: 1.0,
+            },
+        };
+        let dispatch = |target, kind| {
+            window_dispatch_input_for_test(window, target, pointer(kind))
+                .expect("dispatch pointer event")
+        };
+
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerDown));
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerUp));
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerDown));
+        assert!(!dispatch(second, InputEventKind::PrimaryPointerUp));
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerDown));
+        assert!(!dispatch(second, InputEventKind::PrimaryPointerDown));
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerUp));
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+
+        let handled_up = widget_input_subscribe(
+            first,
+            InputEventKind::PrimaryPointerUp.mask_bit(),
+            Arc::new(|_, _, event| event.set_handled(true)),
+        )
+        .expect("subscribe handled up");
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerDown));
+        assert!(dispatch(first, InputEventKind::PrimaryPointerUp));
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+        subscription_cancel(handled_up).expect("cancel handled-up subscription");
+        handle_release(handled_up).expect("release handled-up subscription");
+
+        let handled_down = widget_input_subscribe(
+            first,
+            InputEventKind::PrimaryPointerDown.mask_bit(),
+            Arc::new(|_, _, event| event.set_handled(true)),
+        )
+        .expect("subscribe handled down");
+        assert!(dispatch(first, InputEventKind::PrimaryPointerDown));
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerUp));
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+        subscription_cancel(handled_down).expect("cancel handled-down subscription");
+        handle_release(handled_down).expect("release handled-down subscription");
+
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerDown));
+        let enabled = ui_control_is_enabled_property(panel).expect("get Panel enabled Property");
+        property_set_bool(enabled, false).expect("disable ancestor");
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerUp));
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+        property_set_bool(enabled, true).expect("enable ancestor");
+        handle_release(enabled).expect("release Panel enabled Property");
+
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerDown));
+        stack_panel_remove(panel, 0).expect("detach pressed Button");
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerUp));
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+        stack_panel_insert(panel, 0, first).expect("reattach first Button");
+
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerDown));
+        window_close(window).expect("close Window during press");
+        window_open(window).expect("reopen Window");
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerUp));
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerDown));
+        assert!(!dispatch(first, InputEventKind::PrimaryPointerUp));
+        assert_eq!(starts.load(Ordering::SeqCst), 2);
+
+        button_set_command(first, 0).expect("clear Button Command");
+        command_close(command).expect("close Command");
+        handle_release(command).expect("release Command");
+        handle_release(second).expect("release second Button");
+        handle_release(first).expect("release first Button");
         handle_release(panel).expect("release StackPanel");
         window_close(window).expect("close Window");
         runtime_shutdown(runtime).expect("shutdown Runtime");

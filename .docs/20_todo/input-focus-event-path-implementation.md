@@ -1,7 +1,7 @@
 # 0.0.1 Input / Focus event path実装開始計画
 
 - 計画版: 0.1
-- 状態: 計画承認済み（利用者、2026-11-02）。フェーズ1設計・フェーズ2試験登録は承認済み・push済み。version branch同期とCI確認を完了し、`impl-rust/core-input-focus`を作成・push済み。フェーズ4ではFocus祖先無効化とCore pointer hit-testをpush済み。`UNIT-CORE-091`全体とC ABIは継続中
+- 状態: 計画承認済み（利用者、2026-11-02）。フェーズ1設計・フェーズ2試験登録は承認済み・push済み。version branch同期とCI確認を完了し、`impl-rust/core-input-focus`を作成・push済み。フェーズ4ではFocus祖先無効化・Core pointer hit-test・Button primary pointer activationをpush済み。`UNIT-CORE-091`全体とC ABIは継続中
 - 対象version: `0.0.1`
 - 親計画: [Input / Focus event path次工程計画](input-focus-event-path.md) 0.2（承認済み）
 - 目的: 承認済み共通設計に残る実装境界を閉じ、Core/C ABI・4 wrapper・Windows Adapterを依存順に実装・検証できる状態にする
@@ -92,3 +92,4 @@ Core branch同期と新規実装branch作成はこの計画のレビュー承認
 | 2026-11-02 | フェーズ3 | 完了 | version commit `39b65b8`を同期。merge commit `f2047b5`のWindows/Ubuntu CI成功後、Core child `impl-rust/core-input-focus`を作成・push |
 | 2026-11-02 | フェーズ4 | 進行中 | Core Focus eligibilityへLogical祖先の`IsEnabled`確認を追加し、直接Property変更・Binding伝播共通の後処理で無効subtreeのFocus/candidateを解除。Layout/ControlTree snapshotからclient clip・ancestor clip・topmost順を使うpointer hit-testを追加。Input route snapshot、typed event payload validation、handled、Widget subscription、callback中detach再検証、self-cancel/panic時のlifecycle解放、keyboard/TextCommitのFocus target選択、pointer hit-test target選択を追加。route/subscription一式をcommit `7b37ac4`へpush。target選択testを含むCore全192件、workspace Clippy/format、文書リンク、diff checkがpass。Button default actionとC ABI、routeの非再入/queued deliveryは未完了 |
 | 2026-11-03 | フェーズ4 | 進行中 | 再入InputをRuntime queueへ積み、dispatch_turnあたり1件ずつ、callback復帰後に配送する処理を追加。shutdown時は未配送queueを破棄し、残件は次のnormal wakeを予約する。自己再入試験を含むCore全193件、workspace Clippy、format、文書リンク、diff checkがpass。Button default actionとC ABIは継続中 |
+| 2026-11-03 | フェーズ4 | 進行中 | Buttonの未handled primary downでweak pending pressを記録し、新downで置換。未handled upで同Button・同Window generationを照合して一度だけCommandを実行する既定動作を追加。handled、target不一致、祖先disable、detach、Window close/reopenでは実行しない。UT-INPUT-005を含むCore全202件、workspace Clippy/format、Rust 1.85 check、文書リンク、diff checkがpass。C ABIは継続中 |

@@ -1138,6 +1138,7 @@ pub(crate) struct RuntimeCore {
     property_delivery_active: AtomicBool,
     input_dispatch_active: AtomicBool,
     pending_input_events: Arc<Mutex<VecDeque<QueuedInputDelivery>>>,
+    pending_button_press: Mutex<Option<PendingButtonPress>>,
     validator_active: AtomicBool,
     subscription_owners: Arc<Mutex<HashMap<ObjectIdentity, Vec<Arc<Subscription>>>>>,
     object_cleanup: Arc<RuntimeObjectCleanupQueue>,
@@ -1156,6 +1157,13 @@ enum QueuedInputDelivery {
         target: ObjectIdentity,
         event: InputEvent,
     },
+}
+
+#[derive(Clone, Copy)]
+struct PendingButtonPress {
+    window: ObjectIdentity,
+    button: ObjectIdentity,
+    generation: u64,
 }
 
 struct InputDispatchGuard<'a>(&'a AtomicBool);
@@ -1629,6 +1637,7 @@ impl RuntimeCore {
             property_delivery_active: AtomicBool::new(false),
             input_dispatch_active: AtomicBool::new(false),
             pending_input_events,
+            pending_button_press: Mutex::new(None),
             validator_active: AtomicBool::new(false),
             subscription_owners,
             object_cleanup,
@@ -2786,6 +2795,7 @@ impl RuntimeCore {
         &self,
         identity: ObjectIdentity,
     ) -> Result<(), WindowLifecycleError> {
+        self.clear_pending_button_press_for_window(identity);
         let (generation, peer) = {
             let mut store = self
                 .ui_objects
@@ -3043,6 +3053,9 @@ impl RuntimeCore {
         }
         if active && !self.window_is_open(identity) {
             return Err(RuntimePropertyError::WrongObjectState);
+        }
+        if !active {
+            self.clear_pending_button_press_for_window(identity);
         }
         let mut focus = self
             .focus
@@ -3654,6 +3667,14 @@ impl RuntimeCore {
         target: ObjectIdentity,
         event: InputEvent,
     ) -> bool {
+        let pending_press = match event.kind {
+            crate::ui_input::InputEventKind::PrimaryPointerDown => {
+                self.clear_pending_button_press();
+                None
+            }
+            crate::ui_input::InputEventKind::PrimaryPointerUp => self.take_pending_button_press(),
+            _ => None,
+        };
         let Ok(route) = self.input_route_snapshot(window, target) else {
             return false;
         };
@@ -3691,8 +3712,38 @@ impl RuntimeCore {
             }
         }
         let handled = frame.is_handled();
+        let route_is_valid = self.input_route_node_is_valid(&route, target, generation);
+        if !handled && route_is_valid {
+            match frame.event.kind {
+                crate::ui_input::InputEventKind::PrimaryPointerDown
+                    if self.ui_control_kind(target) == Ok(UiControlKind::Button) =>
+                {
+                    self.set_pending_button_press(PendingButtonPress {
+                        window,
+                        button: target,
+                        generation,
+                    });
+                }
+                crate::ui_input::InputEventKind::PrimaryPointerUp => {
+                    let matching_press = pending_press.filter(|press| {
+                        press.window == window
+                            && press.button == target
+                            && press.generation == generation
+                    });
+                    if matching_press.is_some()
+                        && self.ui_control_kind(target) == Ok(UiControlKind::Button)
+                        && self.control_is_effectively_enabled(window, target)
+                    {
+                        if let Ok(Some(command)) = self.button_command_entry(target) {
+                            let _ = crate::abi_support::button_command_execute(command);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
         if !handled
-            && self.input_route_node_is_valid(&route, target, generation)
+            && route_is_valid
             && frame.event.kind == crate::ui_input::InputEventKind::TextCommit
         {
             let active_focus = self.focus_state().is_ok_and(|(active_window, focused)| {
@@ -3706,6 +3757,33 @@ impl RuntimeCore {
             }
         }
         handled
+    }
+
+    fn set_pending_button_press(&self, press: PendingButtonPress) {
+        if let Ok(mut pending) = self.pending_button_press.lock() {
+            *pending = Some(press);
+        }
+    }
+
+    fn take_pending_button_press(&self) -> Option<PendingButtonPress> {
+        self.pending_button_press
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.take())
+    }
+
+    fn clear_pending_button_press(&self) {
+        if let Ok(mut pending) = self.pending_button_press.lock() {
+            *pending = None;
+        }
+    }
+
+    fn clear_pending_button_press_for_window(&self, window: ObjectIdentity) {
+        if let Ok(mut pending) = self.pending_button_press.lock() {
+            if pending.is_some_and(|press| press.window == window) {
+                *pending = None;
+            }
+        }
     }
 
     pub(crate) fn dispatch_window_input_event(
@@ -3742,7 +3820,19 @@ impl RuntimeCore {
                     .flatten()
             }
         };
-        target.is_some_and(|target| self.dispatch_input_event(window, target, event))
+        match target {
+            Some(target) => self.dispatch_input_event(window, target, event),
+            None => {
+                if matches!(
+                    event.kind,
+                    crate::ui_input::InputEventKind::PrimaryPointerDown
+                        | crate::ui_input::InputEventKind::PrimaryPointerUp
+                ) {
+                    self.clear_pending_button_press_for_window(window);
+                }
+                false
+            }
+        }
     }
 
     fn begin_input_dispatch(&self) -> Result<InputDispatchGuard<'_>, ()> {

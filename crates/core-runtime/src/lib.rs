@@ -1035,6 +1035,34 @@ pub mod abi_support {
         }
     }
 
+    /// Executes an associated Button Command through the public Command path using a temporary
+    /// handle for the synchronous start callback.
+    pub(crate) fn button_command_execute(
+        entry: Arc<CommandHandleEntry>,
+    ) -> Result<u64, CommandApiError> {
+        if !entry.runtime.is_ui_thread() {
+            return Err(CommandApiError::WrongThread);
+        }
+        let token =
+            crate::handle_registry::issue_handle_token().ok_or(CommandApiError::Internal)?;
+        {
+            let mut commands = command_handles()
+                .lock()
+                .map_err(|_| CommandApiError::Internal)?;
+            commands
+                .try_reserve(1)
+                .map_err(|_| CommandApiError::OutOfMemory)?;
+            commands.insert(token, entry);
+        }
+        let result = command_execute(token.into_abi());
+        let temporary = command_handles()
+            .lock()
+            .map_err(|_| CommandApiError::Internal)?
+            .remove(&token);
+        drop(temporary);
+        result
+    }
+
     pub fn command_cancel(handle: u64, operation_id: u64) -> Result<(), CommandApiError> {
         let entry = command_entry(handle)?;
         if !entry.runtime.is_ui_thread() {
