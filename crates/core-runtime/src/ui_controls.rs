@@ -2042,6 +2042,83 @@ mod tests {
     }
 
     #[test]
+    fn input_text_commit_default_action() {
+        let runtime = runtime_create_handle().expect("create Runtime");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
+        let text_box = ui_control_create_text_box(runtime, b"start").expect("create TextBox");
+        let button = ui_control_create_button(runtime, b"run").expect("create Button");
+        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        window_install_test_peer(window, peer).expect("install fake Window peer");
+        window_set_content(window, panel).expect("attach content");
+        stack_panel_insert(panel, 0, text_box).expect("attach TextBox");
+        stack_panel_insert(panel, 1, button).expect("attach Button");
+        window_open(window).expect("open Window");
+        window_platform_activation(window, true).expect("activate Window");
+        widget_request_focus(text_box).expect("focus TextBox");
+
+        let value = ui_control_text_box_value_property(text_box).expect("get TextBox Value");
+        let mut bytes = [0; 64];
+        let read_value = || {
+            let mut copy = [0; 64];
+            let length = property_get_utf8(value, Some(&mut copy)).expect("read TextBox Value");
+            copy[..length].to_vec()
+        };
+        let text_commit = |text: &'static str| InputEvent {
+            kind: InputEventKind::TextCommit,
+            payload: InputEventPayload::TextCommit(Arc::from(text)),
+        };
+
+        assert!(
+            !window_dispatch_routed_input_for_test(window, text_commit("日本語🙂"))
+                .expect("dispatch unhandled TextCommit")
+        );
+        let initial_length =
+            property_get_utf8(value, Some(&mut bytes)).expect("read updated value");
+        assert_eq!(&bytes[..initial_length], "start日本語🙂".as_bytes());
+
+        let handled = widget_input_subscribe(
+            text_box,
+            InputEventKind::TextCommit.mask_bit(),
+            Arc::new(|_, _, event| event.set_handled(true)),
+        )
+        .expect("subscribe handled TextCommit");
+        assert!(
+            window_dispatch_routed_input_for_test(window, text_commit(" blocked"))
+                .expect("dispatch handled TextCommit")
+        );
+        assert_eq!(read_value(), "start日本語🙂".as_bytes());
+        subscription_cancel(handled).expect("cancel handled subscription");
+        handle_release(handled).expect("release handled subscription");
+
+        assert!(
+            !window_dispatch_input_for_test(window, button, text_commit(" wrong target"))
+                .expect("dispatch TextCommit to non-focused Button")
+        );
+        assert_eq!(read_value(), "start日本語🙂".as_bytes());
+
+        let enabled = ui_control_is_enabled_property(panel).expect("get panel enabled Value");
+        property_set_bool(enabled, false).expect("disable TextBox ancestor");
+        assert!(!widget_has_focus(text_box).expect("disabled ancestor clears Focus"));
+        assert!(
+            !window_dispatch_routed_input_for_test(window, text_commit(" no focus"))
+                .expect("drop TextCommit without Focus")
+        );
+        assert_eq!(read_value(), "start日本語🙂".as_bytes());
+
+        handle_release(enabled).expect("release enabled Property");
+        handle_release(value).expect("release TextBox Value");
+        handle_release(button).expect("release Button");
+        handle_release(text_box).expect("release TextBox");
+        handle_release(panel).expect("release StackPanel");
+        window_close(window).expect("close Window");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(window).expect("release Window");
+        handle_release(runtime).expect("release Runtime");
+    }
+
+    #[test]
     fn close_subscription_defers_resolves_and_declines_when_last_owner_is_released() {
         let runtime = runtime_create_handle().expect("create Runtime");
         runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");

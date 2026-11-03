@@ -10,7 +10,8 @@ Core UI TextBox editing state, UTF-8 byte offsets, candidate transaction, Proper
 - Compare equal external writes with the last committed Value, not with editing text. A Property Validator rejection can leave a draft visible while the committed Value remains unchanged; an equal external write must preserve that draft.
 - Prepare the full replacement and next snapshot before changing state. For an accepted candidate, commit the Value Property and editing snapshot in the same UI-thread operation. For a Property Validator rejection, retain the editing candidate and reason without changing the committed Property. Validator failure leaves both unchanged.
 - TextBox layout reads the editing snapshot. Direct and Binding Value updates converge through `mark_layout_dirty_for_display_property`, which synchronizes an unequal committed Value into the TextBox state.
-- `UNIT-CORE-092` owns editing state and its candidate transaction. Input target selection/handled behavior stays in `UNIT-CORE-091`, which depends on `UNIT-CORE-092`.
+- Route TextCommit only after bubbling remains unhandled, the original target is still valid, and it is still the active Focus in that Window. Apply the default action only when that target is a TextBox; no-focus, non-TextBox, disabled, detached, or handled events do not edit.
+- `UNIT-CORE-092` owns editing state and its candidate transaction. Input target selection, handled behavior, and the TextCommit default-action connection stay in `UNIT-CORE-091`, which depends on `UNIT-CORE-092`.
 
 ## References
 

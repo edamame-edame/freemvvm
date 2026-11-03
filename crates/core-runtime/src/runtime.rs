@@ -3690,7 +3690,22 @@ impl RuntimeCore {
                 }
             }
         }
-        frame.is_handled()
+        let handled = frame.is_handled();
+        if !handled
+            && self.input_route_node_is_valid(&route, target, generation)
+            && frame.event.kind == crate::ui_input::InputEventKind::TextCommit
+        {
+            let active_focus = self.focus_state().is_ok_and(|(active_window, focused)| {
+                active_window == Some(window) && focused == Some(target)
+            });
+            let is_text_box = self.ui_control_kind(target) == Ok(UiControlKind::TextBox);
+            if active_focus && is_text_box {
+                if let InputEventPayload::TextCommit(text) = &frame.event.payload {
+                    let _ = self.apply_text_box_commit(target, text);
+                }
+            }
+        }
+        handled
     }
 
     pub(crate) fn dispatch_window_input_event(
@@ -5198,7 +5213,6 @@ impl RuntimeCore {
 
     /// Prepares, validates, and atomically applies one TextCommit candidate to a TextBox.
     /// Input routing selects the TextBox and checks `handled` before calling this method.
-    #[allow(dead_code)] // Connected to TextCommit default action by UNIT-CORE-091.
     pub(crate) fn apply_text_box_commit(
         &self,
         control: ObjectIdentity,

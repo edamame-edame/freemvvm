@@ -1,7 +1,7 @@
 # 0.0.1 TextBox Core編集状態・TextCommit既定動作 実装計画
 
 - 計画版: 0.1
-- 状態: 承認済み計画。UNIT-CORE-092実装・local検証完了、push後にUNIT-CORE-091を継続
+- 状態: 実装・local検証完了。UNIT-CORE-092とTextCommit default actionをpush済み。Input/Focusの残unitは親計画で継続
 - 対象version: `0.0.1`
 - 作業branch: `impl-rust/core-input-focus`（Core/Rust/C ABI層）
 - 親計画: [Input / Focus event path実装計画](input-focus-event-path-implementation.md)
@@ -46,8 +46,8 @@ Coreに未実装のTextBox編集stateとcandidate transactionを追加する。T
 | --- | --- | --- |
 | 1 | 本計画、UI試験追補、unit inventory | 完了。承認済み判断を反映し、unit path/command/test/design根拠を登録 |
 | 2 | Core TextBox editing stateとcandidate transaction | 完了。Core 200 tests、Clippy、format、Rust 1.85 checkを通過 |
-| 3 | CORE-091 route接続 | 依存unitとして後続実装し、unhandled TextCommitだけactive TextBoxへ適用。route invalid/handled/targetなしでは状態を変えない |
-| 4 | CORE-092 commit/push | 実行中。計画と`.docs/01_memory/`を含む同revisionを日本語commit・pushし、CI結果を確認 |
+| 3 | CORE-091 route接続 | 完了。route後のunhandled TextCommitをactive TextBoxに限り適用。route invalid/handled/targetなしでは状態を変えない |
+| 4 | 検証・commit/push | 完了。Core 201 tests、workspace Clippy、format、Rust 1.85 check、文書リンク、diff check pass。commit/push済み |
 
 ## 承認済み判断
 
