@@ -31,7 +31,8 @@ use crate::ui_window::{
     PlatformRuntimeFactory, WindowLifecycleError, WindowPeerAdapter,
 };
 use crate::value::{
-    BindingCopyError, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind, ValueKindMismatch,
+    BindingCopyError, OwnedUtf8, OwnedUtf8Error, TypedValue, ValueCommit, ValueKind,
+    ValueKindMismatch,
 };
 use crate::visual::{
     ControlTreeNodeSnapshot, ControlTreeSnapshot, ControlViewConnector, VisualNodeDescriptor,
@@ -3269,16 +3270,24 @@ impl RuntimeCore {
                 let owner = control
                     .property_owner(property)
                     .ok_or(LayoutError::InvalidTree)?;
-                let value = controls
-                    .resolve(owner.identity())
-                    .map_err(|_| LayoutError::InvalidTree)?
-                    .downcast_ref::<PropertyState>()
-                    .ok_or(LayoutError::InvalidTree)?
-                    .read();
-                let TypedValue::Utf8(text) = value else {
-                    return Err(LayoutError::InvalidTree);
-                };
-                text_inputs.push((identity, Arc::<str>::from(text.as_str())));
+                if control.kind == UiControlKind::TextBox {
+                    let text_box = control
+                        .text_box_editing
+                        .as_ref()
+                        .ok_or(LayoutError::InvalidTree)?;
+                    text_inputs.push((identity, Arc::clone(&text_box.snapshot().text)));
+                } else {
+                    let value = controls
+                        .resolve(owner.identity())
+                        .map_err(|_| LayoutError::InvalidTree)?
+                        .downcast_ref::<PropertyState>()
+                        .ok_or(LayoutError::InvalidTree)?
+                        .read();
+                    let TypedValue::Utf8(text) = value else {
+                        return Err(LayoutError::InvalidTree);
+                    };
+                    text_inputs.push((identity, Arc::<str>::from(text.as_str())));
+                }
             }
             text_inputs
         };
@@ -5187,10 +5196,166 @@ impl RuntimeCore {
         Ok(outcome)
     }
 
+    /// Prepares, validates, and atomically applies one TextCommit candidate to a TextBox.
+    /// Input routing selects the TextBox and checks `handled` before calling this method.
+    #[allow(dead_code)] // Connected to TextCommit default action by UNIT-CORE-091.
+    pub(crate) fn apply_text_box_commit(
+        &self,
+        control: ObjectIdentity,
+        inserted: &str,
+    ) -> Result<ValueCommit, RuntimePropertyError> {
+        self.ensure_property_access_thread()?;
+        if self.validator_active.load(Ordering::Acquire) {
+            return Err(RuntimePropertyError::ValidatorReentrancy);
+        }
+
+        let (property, prepared, candidate, validator) = {
+            let store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+            let state = store
+                .resolve(control)
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_ref::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::TextBox)
+                .ok_or(RuntimePropertyError::WrongObjectState)?;
+            let owner = state
+                .property_owner(UiControlProperty::TextBoxValue)
+                .ok_or(RuntimePropertyError::WrongObjectState)?;
+            let editing = state
+                .text_box_editing
+                .as_ref()
+                .ok_or(RuntimePropertyError::WrongObjectState)?;
+            let snapshot = editing.snapshot();
+            let start = snapshot.anchor.min(snapshot.caret);
+            let end = snapshot.anchor.max(snapshot.caret);
+            let prepared = editing
+                .prepare_replace(start, end, inserted)
+                .map_err(|error| match error {
+                    crate::ui_text_box::TextEditError::InvalidBoundary
+                    | crate::ui_text_box::TextEditError::RevisionExhausted => {
+                        RuntimePropertyError::Unsupported
+                    }
+                    crate::ui_text_box::TextEditError::AllocationFailed => {
+                        RuntimePropertyError::BindingPropagationOutOfMemory
+                    }
+                })?;
+            let candidate = TypedValue::Utf8(
+                OwnedUtf8::copy_from_bytes(prepared.snapshot().text.as_bytes()).map_err(
+                    |error| RuntimePropertyError::BindingValueCopy(BindingCopyError::Copy(error)),
+                )?,
+            );
+            let property_state = store
+                .resolve(owner.identity())
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_ref::<PropertyState>()
+                .ok_or(RuntimePropertyError::WrongObjectState)?;
+            if property_state.is_read_only() {
+                return Err(RuntimePropertyError::Unsupported);
+            }
+            property_state
+                .would_change(&candidate)
+                .map_err(RuntimePropertyError::ValueKindMismatch)?;
+            (
+                owner.identity(),
+                prepared,
+                candidate,
+                property_state.validator(),
+            )
+        };
+
+        if let Some(validator) = validator {
+            self.validator_active
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .map_err(|_| RuntimePropertyError::ValidatorReentrancy)?;
+            let _guard = RuntimeFlagGuard(&self.validator_active);
+            match validator(&candidate) {
+                ValidatorResult::Accepted => {}
+                ValidatorResult::Rejected(reason) => {
+                    let mut store = self
+                        .ui_objects
+                        .lock()
+                        .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+                    let state = store
+                        .resolve_mut(control)
+                        .map_err(RuntimePropertyError::Store)?
+                        .downcast_mut::<UiControlState>()
+                        .filter(|state| state.kind == UiControlKind::TextBox)
+                        .ok_or(RuntimePropertyError::WrongObjectState)?;
+                    state
+                        .text_box_editing
+                        .as_mut()
+                        .ok_or(RuntimePropertyError::WrongObjectState)?
+                        .retain_property_rejected_candidate(prepared, reason.clone());
+                    return Err(RuntimePropertyError::ValidationFailed(reason));
+                }
+                ValidatorResult::Failed => return Err(RuntimePropertyError::ValidatorFailed),
+            }
+        }
+
+        let outcome = {
+            let mut store = self
+                .ui_objects
+                .lock()
+                .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+            let changed = store
+                .resolve(property)
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_ref::<PropertyState>()
+                .ok_or(RuntimePropertyError::WrongObjectState)?
+                .would_change(&candidate)
+                .map_err(RuntimePropertyError::ValueKindMismatch)?;
+            let mut changes = self
+                .property_changes
+                .lock()
+                .map_err(|_| RuntimePropertyError::SynchronizationPoisoned)?;
+            if changed {
+                changes
+                    .reserve_direct_change(property)
+                    .map_err(|_| RuntimePropertyError::NotificationQueueOutOfMemory)?;
+            }
+            let outcome = store
+                .resolve_mut(property)
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_mut::<PropertyState>()
+                .ok_or(RuntimePropertyError::WrongObjectState)?
+                .apply_validated(candidate)
+                .map_err(RuntimePropertyError::ValueKindMismatch)?;
+            let state = store
+                .resolve_mut(control)
+                .map_err(RuntimePropertyError::Store)?
+                .downcast_mut::<UiControlState>()
+                .filter(|state| state.kind == UiControlKind::TextBox)
+                .ok_or(RuntimePropertyError::WrongObjectState)?;
+            state
+                .text_box_editing
+                .as_mut()
+                .ok_or(RuntimePropertyError::WrongObjectState)?
+                .commit_accepted(prepared);
+            if outcome == ValueCommit::Changed {
+                changes.commit_direct_change(property);
+            }
+            outcome
+        };
+        if outcome == ValueCommit::Changed {
+            self.mark_layout_dirty_for_display_property(property);
+        }
+        Ok(outcome)
+    }
+
     fn mark_layout_dirty_for_display_property(&self, property: ObjectIdentity) {
         let Ok(mut controls) = self.ui_objects.lock() else {
             return;
         };
+        let external_text = controls
+            .resolve(property)
+            .ok()
+            .and_then(|object| object.downcast_ref::<PropertyState>())
+            .and_then(|state| match state.read() {
+                TypedValue::Utf8(value) => Some(value.as_str().to_owned()),
+                _ => None,
+            });
         let mut affected_controls = Vec::new();
         let mut allocation_failed = false;
         let mut enabled_owner = None;
@@ -5213,6 +5378,13 @@ impl RuntimeCore {
                             | UiControlProperty::ButtonLabel
                     )
             }) {
+                if state.kind == UiControlKind::TextBox {
+                    if let (Some(editing), Some(text)) =
+                        (state.text_box_editing.as_mut(), external_text.as_deref())
+                    {
+                        let _ = editing.sync_external(text);
+                    }
+                }
                 if affected_controls.try_reserve(1).is_ok() {
                     affected_controls.push(identity);
                 } else {
@@ -6396,12 +6568,17 @@ mod tests {
         ValidatorResult,
     };
     use crate::dispatcher::{Dispatcher, PostedWork, UiLoopBridge, WakePriority};
+    use crate::handle_registry::HandleToken;
     use crate::handle_registry::registry::{
-        CleanupQueue, CoreObjectControl, HandleRegistry, ObjectIdentity, RegistryError,
+        CleanupQueue, CoreObjectControl, HandleRegistry, InternalOwner, ObjectIdentity,
+        RegistryError,
     };
     use crate::object_store::UiObjectStoreError;
     use crate::property::ValidationError;
-    use crate::property::{PropertyHandleKind, Subscription};
+    use crate::property::{PropertyHandleKind, PropertyState, PropertyValidator, Subscription};
+    use crate::ui_controls::{
+        UiControlKind, UiControlProperty, UiControlPropertyOwner, UiControlState,
+    };
     use crate::value::{
         BindingCopyError, DecimalValue, OwnedUtf8, TypedValue, ValueCommit, ValueKind,
         ValueKindMismatch,
@@ -6428,6 +6605,70 @@ mod tests {
     struct DeliveryProbe {
         callbacks: AtomicUsize,
         destroys: AtomicUsize,
+    }
+
+    fn text_box_runtime_fixture(
+        initial: &str,
+    ) -> (
+        RuntimeCore,
+        HandleRegistry<PropertyHandleKind, RuntimeIdentity>,
+        HandleRegistry<UiControlKind, RuntimeIdentity>,
+        HandleToken,
+        ObjectIdentity,
+    ) {
+        let runtime = RuntimeCore::new().expect("Runtime identity is available");
+        let properties = HandleRegistry::new();
+        let initial_value = TypedValue::Utf8(
+            OwnedUtf8::copy_from_bytes(initial.as_bytes()).expect("valid initial TextBox value"),
+        );
+        let property = runtime
+            .register_property(&properties, initial_value)
+            .expect("register TextBox Value");
+        let pin = properties
+            .validate(property, &PropertyHandleKind::Property, &runtime.identity())
+            .expect("pin TextBox Value");
+        let owner: InternalOwner<RuntimeIdentity> =
+            pin.acquire_internal_owner().expect("own TextBox Value");
+        let controls = HandleRegistry::new();
+        let control = runtime
+            .register_tree_ui_object::<_, UiControlState, _>(
+                &controls,
+                UiControlKind::TextBox,
+                false,
+                move || {
+                    UiControlState::new(
+                        UiControlKind::TextBox,
+                        vec![UiControlPropertyOwner {
+                            property: UiControlProperty::TextBoxValue,
+                            owner,
+                        }],
+                        Some(initial),
+                    )
+                },
+            )
+            .expect("register TextBox control");
+        let identity = controls
+            .validate(control, &UiControlKind::TextBox, &runtime.identity())
+            .expect("pin TextBox control")
+            .identity();
+        (runtime, properties, controls, property, identity)
+    }
+
+    fn text_box_snapshot_text(runtime: &RuntimeCore, control: ObjectIdentity) -> String {
+        runtime
+            .ui_objects
+            .lock()
+            .expect("UI object store lock")
+            .resolve(control)
+            .expect("resolve TextBox")
+            .downcast_ref::<UiControlState>()
+            .expect("TextBox state")
+            .text_box_editing
+            .as_ref()
+            .expect("TextBox editing state")
+            .snapshot()
+            .text
+            .to_string()
     }
 
     struct DeliveryCallbackContext {
@@ -10571,5 +10812,150 @@ mod tests {
                 .expect("wrong-thread retry check completes"),
             Err(ShutdownCompletionError::WrongThread)
         );
+    }
+
+    #[test]
+    fn text_box_editing_candidate_transaction() {
+        let (runtime, properties, _controls, property, control) =
+            text_box_runtime_fixture("ab日本語cd");
+        assert_eq!(
+            runtime.apply_text_box_commit(control, "🙂"),
+            Ok(ValueCommit::Changed)
+        );
+        assert_eq!(text_box_snapshot_text(&runtime, control), "ab日本語cd🙂");
+        let TypedValue::Utf8(value) = runtime
+            .read_property(&properties, property)
+            .expect("read committed TextBox Value")
+        else {
+            panic!("TextBox Value remains UTF-8");
+        };
+        assert_eq!(value.as_str(), "ab日本語cd🙂");
+    }
+
+    #[test]
+    fn text_box_editing_property_validation() {
+        let (runtime, properties, _controls, property, control) = text_box_runtime_fixture("old");
+        let rejection = Arc::new(ValidationError {
+            status: 11,
+            domain: 2,
+            code: 1,
+            message: b"rejected".to_vec(),
+        });
+        let rejection_for_validator = Arc::clone(&rejection);
+        let validator: Arc<PropertyValidator> = Arc::new(move |_| {
+            ValidatorResult::Rejected(Some(Arc::clone(&rejection_for_validator)))
+        });
+        runtime
+            .register_property_validator(&properties, property, validator)
+            .expect("register rejecting Value Validator");
+        assert_eq!(
+            runtime.apply_text_box_commit(control, "candidate"),
+            Err(RuntimePropertyError::ValidationFailed(Some(rejection)))
+        );
+        assert_eq!(text_box_snapshot_text(&runtime, control), "oldcandidate");
+        {
+            let store = runtime.ui_objects.lock().expect("UI object store lock");
+            let state = store
+                .resolve(control)
+                .expect("resolve TextBox")
+                .downcast_ref::<UiControlState>()
+                .expect("TextBox state");
+            let snapshot = state
+                .text_box_editing
+                .as_ref()
+                .expect("TextBox editing state")
+                .snapshot();
+            assert_eq!(snapshot.status, crate::ui_text_box::TextInputStatus::Reject);
+            assert_eq!(
+                snapshot
+                    .reason
+                    .as_ref()
+                    .map(|error| error.message.as_slice()),
+                Some(b"rejected".as_slice())
+            );
+        }
+        let TypedValue::Utf8(value) = runtime
+            .read_property(&properties, property)
+            .expect("read unchanged committed TextBox Value")
+        else {
+            panic!("TextBox Value remains UTF-8");
+        };
+        assert_eq!(value.as_str(), "old");
+
+        let property_identity = properties
+            .validate(property, &PropertyHandleKind::Property, &runtime.identity())
+            .expect("pin TextBox Value")
+            .identity();
+        let current_validator = {
+            let store = runtime.ui_objects.lock().expect("UI object store lock");
+            store
+                .resolve(property_identity)
+                .expect("resolve TextBox Value")
+                .downcast_ref::<PropertyState>()
+                .expect("TextBox Property state")
+                .validator()
+                .expect("registered Validator")
+        };
+        assert!(
+            runtime
+                .cancel_property_validator(property_identity, &current_validator)
+                .expect("cancel rejecting Validator")
+        );
+        runtime
+            .register_property_validator(
+                &properties,
+                property,
+                Arc::new(|_| ValidatorResult::Failed),
+            )
+            .expect("register failing Value Validator");
+        assert_eq!(
+            runtime.apply_text_box_commit(control, "more"),
+            Err(RuntimePropertyError::ValidatorFailed)
+        );
+        assert_eq!(text_box_snapshot_text(&runtime, control), "oldcandidate");
+    }
+
+    #[test]
+    fn text_box_editing_external_value_sync() {
+        let (runtime, properties, _controls, property, control) = text_box_runtime_fixture("old");
+        let validator: Arc<PropertyValidator> = Arc::new(|_| ValidatorResult::Rejected(None));
+        runtime
+            .register_property_validator(&properties, property, Arc::clone(&validator))
+            .expect("register rejecting Value Validator");
+        let _ = runtime.apply_text_box_commit(control, " draft");
+        assert_eq!(text_box_snapshot_text(&runtime, control), "old draft");
+
+        let property_identity = properties
+            .validate(property, &PropertyHandleKind::Property, &runtime.identity())
+            .expect("pin TextBox Value")
+            .identity();
+        assert!(
+            runtime
+                .cancel_property_validator(property_identity, &validator)
+                .expect("remove Value Validator")
+        );
+
+        // An equal external write must not erase a rejected editing candidate.
+        runtime
+            .apply_property_candidate(
+                &properties,
+                property,
+                TypedValue::Utf8(
+                    OwnedUtf8::copy_from_bytes(b"old").expect("copy external TextBox value"),
+                ),
+            )
+            .expect("apply equal external value");
+        assert_eq!(text_box_snapshot_text(&runtime, control), "old draft");
+        runtime
+            .apply_property_candidate(
+                &properties,
+                property,
+                TypedValue::Utf8(
+                    OwnedUtf8::copy_from_bytes(b"external")
+                        .expect("copy changed external TextBox value"),
+                ),
+            )
+            .expect("apply changed external value");
+        assert_eq!(text_box_snapshot_text(&runtime, control), "external");
     }
 }

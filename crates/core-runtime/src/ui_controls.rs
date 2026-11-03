@@ -3,6 +3,7 @@
 use crate::handle_registry::registry::{InternalOwner, ObjectIdentity};
 use crate::property::Subscription;
 use crate::runtime::RuntimeIdentity;
+use crate::ui_text_box::TextBoxEditingState;
 use crate::ui_window::WindowLifecycle;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
@@ -58,11 +59,16 @@ pub(crate) struct UiControlState {
     pub(crate) frame_retry_deferred: bool,
     pub(crate) window: Option<WindowLifecycle>,
     pub(crate) button_command: Option<Arc<crate::abi_support::CommandHandleEntry>>,
+    pub(crate) text_box_editing: Option<TextBoxEditingState>,
     input_subscribers: Vec<Weak<Subscription>>,
 }
 
 impl UiControlState {
-    pub(crate) fn new(kind: UiControlKind, properties: Vec<UiControlPropertyOwner>) -> Self {
+    pub(crate) fn new(
+        kind: UiControlKind,
+        properties: Vec<UiControlPropertyOwner>,
+        text_box_initial: Option<&str>,
+    ) -> Self {
         Self {
             kind,
             properties,
@@ -73,6 +79,10 @@ impl UiControlState {
             frame_retry_deferred: false,
             window: (kind == UiControlKind::Window).then(WindowLifecycle::default),
             button_command: None,
+            text_box_editing: (kind == UiControlKind::TextBox).then(|| {
+                TextBoxEditingState::new(text_box_initial.unwrap_or_default())
+                    .expect("valid initial TextBox UTF-8")
+            }),
             input_subscribers: Vec::new(),
         }
     }

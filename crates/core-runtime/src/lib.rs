@@ -25,6 +25,7 @@ mod ui_input;
 #[allow(dead_code)]
 mod ui_layout;
 // Typed value semantics back the internal Property state; ABI validation remains a later unit.
+mod ui_text_box;
 mod ui_tree;
 mod ui_window;
 #[allow(dead_code)]
@@ -1757,6 +1758,12 @@ pub mod abi_support {
                 return Err(UiControlApiError::InvalidArgument);
             }
         };
+        let text_box_initial = match &initial_text {
+            Some(TypedValue::Utf8(value)) if kind == UiControlKind::TextBox => {
+                Some(value.as_str().to_owned())
+            }
+            _ => None,
+        };
 
         let controls = ui_control_handles();
         let mut entries = controls
@@ -1812,7 +1819,7 @@ pub mod abi_support {
                 &controls.registry,
                 kind,
                 kind.is_container(),
-                move || UiControlState::new(kind, properties),
+                move || UiControlState::new(kind, properties, text_box_initial.as_deref()),
             )
             .map_err(map_ui_control_tree_error)?;
         let identity = controls
