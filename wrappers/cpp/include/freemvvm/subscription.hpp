@@ -26,6 +26,7 @@ class Subscription final {
   friend class Property;
   template <typename T>
   friend class Binding;
+  friend class Window;
   friend struct detail::RuntimeTestAccess;
   Subscription(std::uint64_t token,
                std::shared_ptr<detail::RuntimeCleanupState> state,
