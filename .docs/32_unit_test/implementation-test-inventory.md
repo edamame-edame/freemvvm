@@ -39,7 +39,7 @@ Core Input/Focusの`UT-INPUT-001..006`・`UT-FOCUS-001..004`は[UI試験設計](
 | --- | --- | --- | --- |
 | `UNIT-CORE-092` | TextBox編集state、UTF-8 candidate transaction、Property Validator接続、外部Value同期 | `UT-TEXTBOX-CORE-001..004` | ready / local Core tests・Clippy・Rust 1.85 check pass。同revisionのpush後CI確認待ち |
 | `UNIT-CORE-091` | Input route/handled、callback中のdetach/disable、Focus無効化、Button pending press、TextCommitからTextBox editingへの接続 | `UT-INPUT-001..006`、`UT-FOCUS-001..004` | planned / 承認済みUI試験設計、依存: UNIT-CORE-092 |
-| `UNIT-ABI-022` | feature 9、typed input callback、borrowed event getters/handled、C consumer | `UT-ABI-INPUT-001`、`UT-CONSUMER-ABI-INPUT-001` | ready / header probe・ABI smoke・Rust test path確認済み |
+| `UNIT-ABI-022` | feature 9、typed input callback、borrowed event getters/handled、C consumer | `UT-ABI-INPUT-001`、`UT-CONSUMER-ABI-INPUT-001` | ready / local tests pass・commit `fc8288a` pushed、同revision CI確認待ち |
 | `UNIT-WRAP-RS-INPUT-001` | Rust borrowed event facade、closure root、cancel/drop、panic境界 | `UT-WRAP-RS-INPUT-001`、`UT-CONSUMER-RS-INPUT-001` | planned / fake ABI・consumer |
 | `UNIT-WRAP-CPP-INPUT-001` | C++ borrowed view、move-only Subscription、callback例外隔離 | `UT-WRAP-CPP-INPUT-001`、`UT-CONSUMER-CPP-INPUT-001` | planned / fake ABI・consumer |
 | `UNIT-WRAP-CS-INPUT-001` | C# callback view、delegate root、Dispose競合、例外隔離 | `UT-WRAP-CS-INPUT-001`、`UT-CONSUMER-CS-INPUT-001` | planned / fake ABI・consumer |
