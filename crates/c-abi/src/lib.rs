@@ -3092,6 +3092,8 @@ mod tests {
         destroys: AtomicUsize,
         last_event: AtomicU64,
         retained_widget: AtomicU64,
+        self_cancel_subscription: AtomicU64,
+        self_cancel_status: AtomicUsize,
         observations: Mutex<Vec<InputEventObservation>>,
     }
 
@@ -3221,6 +3223,16 @@ mod tests {
         }
         probe.last_event.store(borrowed_event, Ordering::SeqCst);
         probe.callbacks.fetch_add(1, Ordering::SeqCst);
+        let self_cancel_subscription = probe.self_cancel_subscription.swap(0, Ordering::SeqCst);
+        if self_cancel_subscription != 0 {
+            // SAFETY: the probe owns this live subscription token and the error output is optional.
+            let status = unsafe {
+                ui_abi_1_subscription_cancel(self_cancel_subscription, std::ptr::null_mut())
+            };
+            probe
+                .self_cancel_status
+                .store(status as usize, Ordering::SeqCst);
+        }
         if let Ok(mut observations) = probe.observations.lock() {
             observations.push(InputEventObservation {
                 current_widget,
@@ -6729,6 +6741,73 @@ mod tests {
         assert_eq!(probe.callbacks.load(Ordering::SeqCst), 5);
         // SAFETY: retained Widget and the remaining handles are owned by this test.
         assert_eq!(ui_abi_1_handle_release(retained_widget), UI_OK);
+
+        let self_cancel_probe = InputEventProbe::default();
+        let mut self_cancel_subscription = 0;
+        assert_eq!(
+            // SAFETY: the probe and output slots remain valid through self-cancel and destroy.
+            unsafe {
+                ui_abi_1_widget_input_subscribe(
+                    button,
+                    1,
+                    Some(input_event_probe_callback),
+                    (&self_cancel_probe as *const InputEventProbe)
+                        .cast_mut()
+                        .cast(),
+                    Some(input_event_probe_destroy),
+                    &mut self_cancel_subscription,
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+        self_cancel_probe
+            .self_cancel_subscription
+            .store(self_cancel_subscription, Ordering::SeqCst);
+        // SAFETY: this injects a valid event into the open Window and attached Button.
+        assert!(
+            freemvvm_core::abi_support::test_dispatch_widget_input(
+                window,
+                button,
+                freemvvm_core::abi_support::TestInputEvent {
+                    kind: 1,
+                    key_identity: 0x04,
+                    modifiers: 0,
+                    text: String::new(),
+                    x_dip: 0.0,
+                    y_dip: 0.0,
+                },
+            )
+            .expect("dispatch self-cancel event")
+        );
+        assert_eq!(self_cancel_probe.callbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            self_cancel_probe.self_cancel_status.load(Ordering::SeqCst),
+            UI_OK as usize
+        );
+        assert_eq!(self_cancel_probe.destroys.load(Ordering::SeqCst), 1);
+        // SAFETY: self-cancel stops delivery but leaves the owned token releasable.
+        assert_eq!(ui_abi_1_handle_release(self_cancel_subscription), UI_OK);
+        assert!(
+            !freemvvm_core::abi_support::test_dispatch_widget_input(
+                window,
+                button,
+                freemvvm_core::abi_support::TestInputEvent {
+                    kind: 1,
+                    key_identity: 0x04,
+                    modifiers: 0,
+                    text: String::new(),
+                    x_dip: 0.0,
+                    y_dip: 0.0,
+                },
+            )
+            .expect("dispatch after self-cancel")
+        );
+        assert_eq!(self_cancel_probe.callbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            ui_abi_1_handle_release(self_cancel_probe.retained_widget.load(Ordering::SeqCst)),
+            UI_OK
+        );
         assert_eq!(
             // SAFETY: the Window token and output slot remain valid until this call.
             unsafe { super::ui_abi_1_window_close(window, &mut error) },
