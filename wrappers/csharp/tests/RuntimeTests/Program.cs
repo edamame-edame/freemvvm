@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -36,6 +37,9 @@ internal static class Program
         Run(TestCommandWorkerPostsTerminalResultsAndRetainsSnapshot);
         Run(TestCommandStartExceptionStaysInsideAbiBoundary);
         Run(TestCommandCreateFailureKeepsStartRootLocallyOwned);
+        Run(TestUiControlsCreateTreePropertiesAndCommandAssociation);
+        Run(TestWindowCloseRequestBorrowDeferResolveAndCallbackLifetime);
+        Run(TestInputEventCallbackViewsRootsAndFailures);
         return _failures == 0 ? 0 : 1;
     }
 
@@ -1037,6 +1041,248 @@ internal static class Program
         runtime.Dispose();
     }
 
+    private static void TestUiControlsCreateTreePropertiesAndCommandAssociation()
+    {
+        var native = new FakeNativeApi();
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiWindow window = UiWindow.TryCreate(runtime).Value;
+        UiStackPanel panel = UiStackPanel.TryCreate(runtime).Value;
+        UiTextBox editor = UiTextBox.TryCreate(runtime, "initial").Value;
+        UiButton button = UiButton.TryCreate(runtime, "Apply").Value;
+
+        Check(window.TrySetContent(panel).IsSuccess, "Window should accept same-runtime content");
+        Check(panel.TryInsert(editor, 0).IsSuccess, "Container should insert a child");
+        Check(native.LastControlParent != 0 && native.LastControlChild != 0 && native.LastControlIndex == 0,
+            "Container insert should forward parent, child, and index handles");
+        var foreignNative = new FakeNativeApi();
+        UiRuntime foreignRuntime = UiRuntime.TryCreate(foreignNative).Value;
+        UiText foreignChild = UiText.TryCreate(foreignRuntime, "foreign").Value;
+        int insertCalls = native.ContainerInsertCount;
+        Check(panel.TryInsert(foreignChild, 1).Error?.RawStatus == UiStatus.WrongRuntime &&
+            native.ContainerInsertCount == insertCalls,
+            "A different API owner's child must be rejected before the ABI call");
+        foreignChild.Dispose();
+        foreignRuntime.Dispose();
+        Check(panel.TrySetOrientation(UiControlOrientation.Horizontal).IsSuccess &&
+            native.LastOrientation == (uint)UiControlOrientation.Horizontal,
+            "Stack orientation should round trip through the ABI facade");
+        int orientationCalls = native.StackPanelSetOrientationCount;
+        Check(panel.TrySetOrientation((UiControlOrientation)99).IsFailure &&
+            native.StackPanelSetOrientationCount == orientationCalls,
+            "Unknown orientation values should be rejected before native code");
+        Check(panel.TrySetChildAlignment(editor, UiChildAlignment.Stretch).IsSuccess &&
+            native.LastAlignment == (uint)UiChildAlignment.Stretch,
+            "Stack child alignment should be forwarded");
+        Check(button.TryRequestFocus().IsSuccess && native.FocusRequestCount == 1,
+            "Widget focus request should reach the native facade");
+
+        UiProperty<string> value = editor.TryGetValueProperty().Value;
+        Check(value.TrySet("edited").IsSuccess, "TextBox property should remain a normal bindable Property");
+        Check(Encoding.UTF8.GetString(native.LastSetUtf8) == "edited", "TextBox Property should preserve UTF-8 input");
+
+        UiCommand command = UiCommand.TryCreateAsync(runtime, null, _ => { }).Value;
+        Check(button.TrySetCommand(command).IsSuccess && native.LastButtonCommand == native.CommandHandle,
+            "Button should associate a same-runtime Command handle");
+        Check(button.TrySetCommand(null).IsSuccess && native.LastButtonCommand == 0,
+            "Button command association should be clearable");
+
+        command.Dispose();
+        value.Dispose();
+        button.Dispose();
+        editor.Dispose();
+        panel.Dispose();
+        window.Dispose();
+        runtime.Dispose();
+    }
+
+    private static void TestWindowCloseRequestBorrowDeferResolveAndCallbackLifetime()
+    {
+        var native = new FakeNativeApi
+        {
+            WindowOpenStatus = UiStatus.Unsupported,
+            WindowCloseStatus = UiStatus.Unsupported,
+        };
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiWindow window = UiWindow.TryCreate(runtime).Value;
+        var failures = new System.Collections.Generic.List<UiCallbackFailure>();
+        UiCallbackHandlerRegistration handler = runtime.TrySetCallbackFailureHandler(failures.Add).Value;
+        UiWindowCloseRequest? borrowed = null;
+        UiDeferredWindowCloseRequest? deferred = null;
+        bool throwFromCallback = false;
+        UiResult<bool> declined = UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        UiSubscription subscription = window.TrySubscribeCloseRequest(request =>
+        {
+            borrowed = request;
+            if (throwFromCallback) throw new InvalidOperationException("close handler failed");
+            declined = request.TryResolve(UiWindowCloseDecision.Decline);
+            deferred = request.TryDefer().Value;
+        }).Value;
+
+        Check(window.TryOpen().Error?.RawStatus == UiStatus.Unsupported &&
+            window.TryCloseWindow().Error?.RawStatus == UiStatus.Unsupported,
+            "Window peer unsupported status should be preserved by both operations");
+        native.InvokeWindowCloseRequest(0xCAFE);
+        Check(declined.IsSuccess && native.LastCloseDecision == (uint)UiWindowCloseDecision.Decline && deferred is not null,
+            "Callback should resolve borrowed request and create an owned deferred request");
+        Check(borrowed!.TryResolve(UiWindowCloseDecision.Accept).Error?.RawStatus == UiStatus.Closed,
+            "Borrowed close request should expire when its callback returns");
+        Check(deferred!.TryResolve(UiWindowCloseDecision.Accept).IsSuccess &&
+            native.LastCloseDecision == (uint)UiWindowCloseDecision.Accept,
+            "Deferred request should remain resolvable after callback return");
+
+        throwFromCallback = true;
+        native.InvokeWindowCloseRequest(0xCAFF);
+        Check(failures.Count == 1 && failures[0].Kind == UiCallbackFailureKind.WindowCloseRequest,
+            "Managed close callback exceptions should be routed to the typed callback handler");
+        Check(subscription.TryCancel().IsSuccess && subscription.TryClose().IsSuccess &&
+            native.WindowCloseCallbackDestroyCount == 1,
+            "Cancel and handle release should preserve one callback-root destroy");
+
+        deferred.Dispose();
+        handler.Dispose();
+        window.Dispose();
+        runtime.Dispose();
+    }
+
+    private static void TestInputEventCallbackViewsRootsAndFailures()
+    {
+        var native = new FakeNativeApi();
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiWindow window = UiWindow.TryCreate(runtime).Value;
+        InputEventView? saved = null;
+        string? copiedText = null;
+        int keyEvents = 0;
+        int pointerEvents = 0;
+        UiSubscription subscription = window.TrySubscribeInput(
+            InputEventMask.All,
+            view =>
+            {
+                switch (view.Kind)
+                {
+                    case InputEventKind.KeyDown:
+                    case InputEventKind.KeyUp:
+                        keyEvents++;
+                        Check(view.TryGetKey().Value.Value == 4, "key payload should preserve the HID usage");
+                        Check(view.TryGetModifiers().Value == InputModifiers.Shift, "modifier payload should preserve its mask");
+                        Check(view.TryGetPointerPosition().Error?.RawStatus == UiStatus.WrongType,
+                            "pointer accessor should reject a key event");
+                        break;
+                    case InputEventKind.TextCommit:
+                        saved = view;
+                        copiedText = view.TryGetText().Value;
+                        break;
+                    case InputEventKind.PrimaryPointerDown:
+                    case InputEventKind.PrimaryPointerUp:
+                        pointerEvents++;
+                        Check(view.TryGetPointerPosition().Value == new PointDip(12.5, 7.25),
+                            "pointer payload should preserve client DIP coordinates");
+                        break;
+                }
+            }).Value;
+
+        native.DispatchInputEvent(InputEventKind.KeyDown, string.Empty);
+        native.DispatchInputEvent(InputEventKind.KeyUp, string.Empty);
+        native.DispatchInputEvent(InputEventKind.TextCommit, "入力");
+        native.DispatchInputEvent(InputEventKind.PrimaryPointerDown, string.Empty);
+        native.DispatchInputEvent(InputEventKind.PrimaryPointerUp, string.Empty);
+        Check(keyEvents == 2 && pointerEvents == 2, "all five event kinds should reach the C# callback");
+        Check(copiedText == "入力", "Input text should be copied to a managed string during callback");
+        Check(saved is not null && saved.TryGetText().Error?.RawStatus == UiStatus.InvalidHandle,
+            "borrowed event view access should fail after callback returns");
+        bool expiredKindThrows = false;
+        try
+        {
+            _ = saved!.Kind;
+        }
+        catch (InvalidOperationException)
+        {
+            expiredKindThrows = true;
+        }
+
+        Check(expiredKindThrows, "Kind should reject use after callback return");
+        Check(subscription.TryCancel().IsSuccess, "input subscription should cancel");
+        subscription.Dispose();
+        Check(native.InputDestroyCount == 1, "input callback root should be destroyed once");
+
+        var failureNative = new FakeNativeApi();
+        UiRuntime failureRuntime = UiRuntime.TryCreate(failureNative).Value;
+        UiWindow failureWindow = UiWindow.TryCreate(failureRuntime).Value;
+        int failureCount = 0;
+        using UiCallbackHandlerRegistration handler = failureRuntime.TrySetCallbackFailureHandler(
+            failure =>
+            {
+                if (failure.Kind == UiCallbackFailureKind.InputEvent) failureCount++;
+            }).Value;
+        UiSubscription throwingSubscription = failureWindow.TrySubscribeInput(
+            InputEventMask.KeyDown,
+            _ => throw new InvalidOperationException("expected callback failure")).Value;
+        failureNative.DispatchInputEvent(InputEventKind.KeyDown, string.Empty);
+        Check(failureCount == 1, "delegate exception should reach the configured failure handler");
+        Check(failureNative.InputHandledCount == 1, "delegate exception should mark the event handled");
+        throwingSubscription.Dispose();
+        Check(failureNative.InputDestroyCount == 1, "destroy callback should release the rooted delegate");
+
+        var selfCancelNative = new FakeNativeApi();
+        UiRuntime selfCancelRuntime = UiRuntime.TryCreate(selfCancelNative).Value;
+        UiWindow selfCancelWindow = UiWindow.TryCreate(selfCancelRuntime).Value;
+        UiSubscription? selfCancelSubscription = null;
+        int selfCancelCalls = 0;
+        selfCancelSubscription = selfCancelWindow.TrySubscribeInput(
+            InputEventMask.KeyDown,
+            view =>
+            {
+                _ = view;
+                selfCancelCalls++;
+                _ = selfCancelSubscription!.TryCancel();
+            }).Value;
+        selfCancelNative.DispatchInputEvent(InputEventKind.KeyDown, string.Empty);
+        selfCancelNative.DispatchInputEvent(InputEventKind.KeyDown, string.Empty);
+        Check(selfCancelCalls == 1, "self-cancel should prevent later callback entry");
+        selfCancelSubscription.Dispose();
+        Check(selfCancelNative.InputDestroyCount == 1, "self-cancel teardown should destroy the callback root once");
+        selfCancelWindow.Dispose();
+        selfCancelRuntime.Dispose();
+
+        var failedNative = new FakeNativeApi { InputSubscribeStatus = UiStatus.OutOfMemory };
+        UiRuntime failedRuntime = UiRuntime.TryCreate(failedNative).Value;
+        UiWindow failedWindow = UiWindow.TryCreate(failedRuntime).Value;
+        UiResult<UiSubscription> failedRegistration = failedWindow.TrySubscribeInput(
+            InputEventMask.KeyDown,
+            static _ => { });
+        Check(failedRegistration.IsFailure && failedRegistration.Error?.RawStatus == UiStatus.OutOfMemory,
+            "registration failure should be returned without adopting a subscription token");
+        Check(failedNative.InputDestroyCount == 0,
+            "failed registration keeps callback destruction on the C# caller side");
+        failedWindow.Dispose();
+        failedRuntime.Dispose();
+
+        var raceNative = new FakeNativeApi();
+        UiRuntime raceRuntime = UiRuntime.TryCreate(raceNative).Value;
+        UiWindow raceWindow = UiWindow.TryCreate(raceRuntime).Value;
+        using var callbackEntered = new ManualResetEventSlim();
+        using var callbackMayReturn = new ManualResetEventSlim();
+        UiSubscription raceSubscription = raceWindow.TrySubscribeInput(
+            InputEventMask.KeyDown,
+            _ =>
+            {
+                callbackEntered.Set();
+                callbackMayReturn.Wait();
+            }).Value;
+        Task dispatch = Task.Run(() => raceNative.DispatchInputEvent(InputEventKind.KeyDown, string.Empty));
+        Check(callbackEntered.Wait(TimeSpan.FromSeconds(5)), "input callback should enter before concurrent Dispose");
+        raceSubscription.Dispose();
+        Check(raceNative.InputDestroyCount == 0, "native destroy should wait while callback is active");
+        callbackMayReturn.Set();
+        Check(dispatch.Wait(TimeSpan.FromSeconds(5)), "input callback should complete after its gate is released");
+        Check(raceNative.InputDestroyCount == 1, "callback teardown should destroy the root after return");
+        raceWindow.Dispose();
+        raceRuntime.Dispose();
+        failureWindow.Dispose();
+        failureRuntime.Dispose();
+        window.Dispose();
+        runtime.Dispose();
+    }
+
     private sealed class FakeNativeApi : INativeApi
     {
         private readonly ConcurrentDictionary<ulong, int> _releaseFailures = new();
@@ -1084,6 +1330,36 @@ internal static class Program
         internal uint CommandCreateStatus { get; set; } = UiStatus.Ok;
         internal uint CommandExecuteStatus { get; set; } = UiStatus.Ok;
         internal uint CommandCloseStatus { get; set; } = UiStatus.Ok;
+        internal uint WindowOpenStatus { get; set; } = UiStatus.Ok;
+        internal uint WindowCloseStatus { get; set; } = UiStatus.Ok;
+        internal ulong LastControlParent { get; private set; }
+        internal ulong LastControlChild { get; private set; }
+        internal ulong LastControlIndex { get; private set; }
+        internal uint LastOrientation { get; private set; }
+        internal uint LastAlignment { get; private set; }
+        internal ulong LastButtonCommand { get; private set; }
+        internal int FocusRequestCount { get; private set; }
+        internal int StackPanelSetOrientationCount { get; private set; }
+        internal int ContainerInsertCount { get; private set; }
+        internal uint LastCloseDecision { get; private set; }
+        internal int WindowCloseCallbackDestroyCount { get; private set; }
+        internal ulong LastControlHandle { get; private set; }
+        private ulong _nextControl = 2000;
+        private const ulong CloseSubscriptionToken = 2200;
+        private IntPtr _windowCloseCallback;
+        private IntPtr _windowCloseUserdata;
+        private IntPtr _windowCloseDestroy;
+        private IntPtr _inputCallback;
+        private IntPtr _inputUserdata;
+        private IntPtr _inputDestroy;
+        private int _inputCallbackActive;
+        private int _inputDestroyPending;
+        private InputEventKind _inputKind;
+        private byte[] _inputText = [];
+        private const ulong InputSubscriptionToken = 2300;
+        internal int InputDestroyCount { get; private set; }
+        internal int InputHandledCount { get; private set; }
+        internal uint InputSubscribeStatus { get; set; } = UiStatus.Ok;
         internal uint RuntimePostStatus { get; set; } = UiStatus.Ok;
         internal ulong CommandHandle { get; set; } = 1301;
         internal ulong CommandCancelToken { get; set; } = 1302;
@@ -1143,6 +1419,158 @@ internal static class Program
         internal uint LastFailureCode { get; private set; }
         internal byte[] LastFailureMessage { get; private set; } = [];
         internal ulong LastPostId => unchecked((ulong)Volatile.Read(ref _nextPost));
+
+        public uint WindowCreate(ulong runtime, out ulong window, out ulong error) => CreateControl(runtime, out window, out error);
+        public uint StackPanelCreate(ulong runtime, out ulong panel, out ulong error) => CreateControl(runtime, out panel, out error);
+
+        public uint TextCreate(ulong runtime, byte[] initial, out ulong text, out ulong error)
+        {
+            LastCreatedUtf8 = initial.ToArray();
+            return CreateControl(runtime, out text, out error);
+        }
+
+        public uint TextBoxCreate(ulong runtime, byte[] initial, out ulong textBox, out ulong error)
+        {
+            LastCreatedUtf8 = initial.ToArray();
+            return CreateControl(runtime, out textBox, out error);
+        }
+
+        public uint ButtonCreate(ulong runtime, byte[] initial, out ulong button, out ulong error)
+        {
+            LastCreatedUtf8 = initial.ToArray();
+            return CreateControl(runtime, out button, out error);
+        }
+
+        private uint CreateControl(ulong runtime, out ulong control, out ulong error)
+        {
+            LastRuntime = runtime;
+            control = ++_nextControl;
+            LastControlHandle = control;
+            error = 0;
+            return UiStatus.Ok;
+        }
+
+        public uint WidgetIsEnabledProperty(ulong widget, out ulong property) => CreateControlProperty(out property);
+        public uint WidgetAccessibleNameProperty(ulong widget, out ulong property) => CreateControlProperty(out property);
+        public uint WindowTitleProperty(ulong window, out ulong property) => CreateControlProperty(out property, utf8: true);
+        public uint WindowOpen(ulong window, out ulong error) { error = 0; return WindowOpenStatus; }
+        public uint WindowClose(ulong window, out ulong error) { error = 0; return WindowCloseStatus; }
+        public uint WindowCloseRequestSubscribe(ulong window, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error)
+        {
+            _windowCloseCallback = callback;
+            _windowCloseUserdata = userdata;
+            _windowCloseDestroy = destroy;
+            subscription = CloseSubscriptionToken;
+            error = 0;
+            return UiStatus.Ok;
+        }
+        public uint WindowCloseRequestDefer(ulong borrowedRequest, out ulong ownedRequest, out ulong error)
+        {
+            ownedRequest = 2201;
+            error = 0;
+            return UiStatus.Ok;
+        }
+        public uint WindowCloseRequestResolve(ulong request, uint decision, out ulong error)
+        {
+            LastCloseDecision = decision;
+            error = 0;
+            return UiStatus.Ok;
+        }
+
+        internal unsafe void InvokeWindowCloseRequest(ulong borrowedRequest)
+        {
+            ((delegate* unmanaged[Cdecl]<IntPtr, ulong, void>)_windowCloseCallback)(
+                _windowCloseUserdata,
+                borrowedRequest);
+        }
+        public uint TextContentProperty(ulong text, out ulong property) => CreateControlProperty(out property, utf8: true);
+        public uint TextBoxValueProperty(ulong textBox, out ulong property) => CreateControlProperty(out property, utf8: true);
+        public uint ButtonLabelProperty(ulong button, out ulong property) => CreateControlProperty(out property, utf8: true);
+
+        private uint CreateControlProperty(out ulong property, bool utf8 = false)
+        {
+            property = ++_nextProperty;
+            if (utf8) _utf8Properties[property] = [];
+            else _boolProperties[property] = 1;
+            return UiStatus.Ok;
+        }
+
+        public uint WidgetRequestFocus(ulong widget, out ulong error) { FocusRequestCount++; error = 0; return UiStatus.Ok; }
+        public uint WidgetInputSubscribe(ulong widget, ulong eventMask, IntPtr callback, IntPtr userdata, IntPtr destroy, out ulong subscription, out ulong error)
+        {
+            subscription = InputSubscribeStatus == UiStatus.Ok ? InputSubscriptionToken : 0;
+            if (subscription != 0)
+            {
+                _inputCallback = callback;
+                _inputUserdata = userdata;
+                _inputDestroy = destroy;
+            }
+            error = 0;
+            return InputSubscribeStatus;
+        }
+        public uint InputEventKind(ulong borrowedEvent, out uint kind) { kind = (uint)_inputKind; return UiStatus.Ok; }
+        public uint InputEventKey(ulong borrowedEvent, out uint keyIdentity, out uint modifiers)
+        {
+            keyIdentity = 4;
+            modifiers = (uint)InputModifiers.Shift;
+            return _inputKind is FreeMvvm.InputEventKind.KeyDown or FreeMvvm.InputEventKind.KeyUp ? UiStatus.Ok : UiStatus.WrongType;
+        }
+        public uint InputEventText(ulong borrowedEvent, byte[] buffer, ulong capacity, out ulong length)
+        {
+            length = (ulong)_inputText.Length;
+            if (_inputKind != FreeMvvm.InputEventKind.TextCommit) return UiStatus.WrongType;
+            if (capacity < length) return UiStatus.BufferTooSmall;
+            _inputText.CopyTo(buffer, 0);
+            return UiStatus.Ok;
+        }
+        public uint InputEventPointer(ulong borrowedEvent, out double xDip, out double yDip, out uint button)
+        {
+            xDip = 12.5;
+            yDip = 7.25;
+            button = 1;
+            return _inputKind is FreeMvvm.InputEventKind.PrimaryPointerDown or FreeMvvm.InputEventKind.PrimaryPointerUp ? UiStatus.Ok : UiStatus.WrongType;
+        }
+        public uint InputEventSetHandled(ulong borrowedEvent, byte handled, out ulong error)
+        {
+            if (handled == 1) InputHandledCount++;
+            error = 0;
+            return UiStatus.Ok;
+        }
+        internal unsafe void DispatchInputEvent(InputEventKind kind, string text)
+        {
+            _inputKind = kind;
+            _inputText = Encoding.UTF8.GetBytes(text);
+            Interlocked.Exchange(ref _inputCallbackActive, 1);
+            try
+            {
+                if (!_cancelledSubscriptions.ContainsKey(InputSubscriptionToken))
+                {
+                    ((delegate* unmanaged[Cdecl]<IntPtr, ulong, ulong, ulong, void>)_inputCallback)(
+                        _inputUserdata, LastControlHandle, LastControlHandle, 2400);
+                }
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _inputCallbackActive, 0);
+                if (Interlocked.Exchange(ref _inputDestroyPending, 0) != 0)
+                {
+                    DestroyInputRoot();
+                }
+            }
+        }
+        public uint WindowContent(ulong window, out ulong child, out ulong error) { child = 0; error = 0; return UiStatus.Ok; }
+        public uint WindowSetContent(ulong window, ulong child, out ulong error) { LastControlParent = window; LastControlChild = child; error = 0; return UiStatus.Ok; }
+        public uint WindowClearContent(ulong window, out ulong error) { LastControlParent = window; error = 0; return UiStatus.Ok; }
+        public uint ContainerInsert(ulong container, ulong child, ulong index, out ulong error) { ContainerInsertCount++; LastControlParent = container; LastControlChild = child; LastControlIndex = index; error = 0; return UiStatus.Ok; }
+        public uint ContainerRemove(ulong container, ulong child, out ulong error) { LastControlParent = container; LastControlChild = child; error = 0; return UiStatus.Ok; }
+        public uint ContainerMove(ulong container, ulong fromIndex, ulong toIndex, out ulong error) { LastControlParent = container; LastControlIndex = toIndex; error = 0; return UiStatus.Ok; }
+        public uint ContainerChildCount(ulong container, out ulong count) { count = 0; return UiStatus.Ok; }
+        public uint ContainerChildAt(ulong container, ulong index, out ulong child, out ulong error) { child = 0; error = 0; return UiStatus.InvalidArgument; }
+        public uint StackPanelOrientation(ulong panel, out uint orientation) { orientation = LastOrientation == 0 ? 1u : LastOrientation; return UiStatus.Ok; }
+        public uint StackPanelSetOrientation(ulong panel, uint orientation, out ulong error) { StackPanelSetOrientationCount++; LastOrientation = orientation; error = 0; return UiStatus.Ok; }
+        public uint StackPanelSetChildAlign(ulong panel, ulong child, uint alignment, out ulong error) { LastControlParent = panel; LastControlChild = child; LastAlignment = alignment; error = 0; return UiStatus.Ok; }
+        public uint ButtonSetCommand(ulong button, ulong command, out ulong error) { LastControlParent = button; LastButtonCommand = command; error = 0; return UiStatus.Ok; }
+        public uint ButtonCommand(ulong button, out ulong command, out ulong error) { command = LastButtonCommand == 0 ? 0 : CommandHandle; error = 0; return UiStatus.Ok; }
 
         public uint RuntimeCreate(out ulong runtime, out ulong error)
         {
@@ -1654,7 +2082,7 @@ internal static class Program
             return UiStatus.Ok;
         }
 
-        public uint HandleRelease(ulong owned)
+        public unsafe uint HandleRelease(ulong owned)
         {
             _releaseCounts.AddOrUpdate(owned, 1, static (_, count) => count + 1);
             while (true)
@@ -1663,6 +2091,26 @@ internal static class Program
                 if (failures <= 0)
                 {
                     _successfulReleases.AddOrUpdate(owned, 1, static (_, count) => count + 1);
+                    if (owned == CloseSubscriptionToken && _windowCloseDestroy != IntPtr.Zero)
+                    {
+                        IntPtr destroy = _windowCloseDestroy;
+                        _windowCloseDestroy = IntPtr.Zero;
+                        WindowCloseCallbackDestroyCount++;
+                        ((delegate* unmanaged[Cdecl]<IntPtr, void>)destroy)(_windowCloseUserdata);
+                    }
+
+                    if (owned == InputSubscriptionToken && _inputDestroy != IntPtr.Zero)
+                    {
+                        if (Volatile.Read(ref _inputCallbackActive) != 0)
+                        {
+                            Interlocked.Exchange(ref _inputDestroyPending, 1);
+                        }
+                        else
+                        {
+                            DestroyInputRoot();
+                        }
+                    }
+
                     return UiStatus.Ok;
                 }
 
@@ -1723,6 +2171,17 @@ internal static class Program
 
         private static int Read(ConcurrentDictionary<ulong, int> values, ulong token) =>
             values.TryGetValue(token, out int value) ? value : 0;
+
+        private unsafe void DestroyInputRoot()
+        {
+            IntPtr destroy = _inputDestroy;
+            if (destroy != IntPtr.Zero)
+            {
+                _inputDestroy = IntPtr.Zero;
+                InputDestroyCount++;
+                ((delegate* unmanaged[Cdecl]<IntPtr, void>)destroy)(_inputUserdata);
+            }
+        }
 
         private sealed record FakeSubscription(IntPtr Callback, IntPtr Userdata, IntPtr Destroy);
 

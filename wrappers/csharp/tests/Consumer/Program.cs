@@ -13,6 +13,11 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
+        if (args.Length == 2 && args[0] == "--input-only")
+        {
+            return RunInputConsumer(args[1]);
+        }
+
         if (args.Length != 1)
         {
             Console.Error.WriteLine("Pass the absolute path to the host C ABI library.");
@@ -96,6 +101,12 @@ internal static class Program
         if (commandResult != 0)
         {
             return commandResult;
+        }
+
+        int controlsResult = RunControlsConsumer(args[0]);
+        if (controlsResult != 0)
+        {
+            return controlsResult;
         }
 
         long initialNaNBits = 0x7FF8_0000_0000_0042;
@@ -628,6 +639,198 @@ internal static class Program
         }
 
         Console.WriteLine("C# async Command terminal results and snapshots across the host C ABI: OK");
+        return 0;
+    }
+
+    private static int RunControlsConsumer(string nativeArtifactPath)
+    {
+        UiResult<UiRuntime> runtimeCreate = UiRuntime.TryCreate(new RuntimeOptions
+        {
+            NativeArtifactPath = nativeArtifactPath,
+        });
+        if (runtimeCreate.IsFailure)
+        {
+            Console.Error.WriteLine($"Control Runtime creation failed: {runtimeCreate.Error?.RawStatus}");
+            return 70;
+        }
+
+        using UiRuntime runtime = runtimeCreate.Value;
+        if (!InstallTestBridge(runtime))
+        {
+            Console.Error.WriteLine("Could not register the Control test host bridge.");
+            return 71;
+        }
+
+        UiWindow window = UiWindow.TryCreate(runtime).Value;
+        UiStackPanel panel = UiStackPanel.TryCreate(runtime).Value;
+        UiTextBox input = UiTextBox.TryCreate(runtime, "初期値").Value;
+        UiText label = UiText.TryCreate(runtime, "表示").Value;
+        UiButton button = UiButton.TryCreate(runtime, "適用").Value;
+        using (window)
+        using (panel)
+        using (input)
+        using (label)
+        using (button)
+        {
+            UiResult<bool> openWindow = window.TryOpen();
+            UiResult<bool> closeWindow = window.TryCloseWindow();
+            if (openWindow.Error?.RawStatus != UiStatus.Unsupported || closeWindow.IsFailure)
+            {
+                Console.Error.WriteLine(
+                    $"Window without a peer should reject open and allow idempotent close while already closed; open={openWindow.Error?.RawStatus}, close={closeWindow.Error?.RawStatus}.");
+                return 78;
+            }
+
+            UiSubscription closeRequests = window.TrySubscribeCloseRequest(static _ => { }).Value;
+            if (closeRequests.TryCancel().IsFailure || closeRequests.TryClose().IsFailure)
+            {
+                Console.Error.WriteLine("Window close-request subscription could not be canceled and released.");
+                return 79;
+            }
+
+            UiSubscription inputEvents = window.TrySubscribeInput(
+                InputEventMask.KeyDown | InputEventMask.TextCommit,
+                static view =>
+                {
+                    if (view.Kind == InputEventKind.TextCommit)
+                    {
+                        _ = view.TryGetText();
+                    }
+                }).Value;
+            if (inputEvents.TryCancel().IsFailure || inputEvents.TryClose().IsFailure)
+            {
+                Console.Error.WriteLine("C# Input subscription could not be canceled and released.");
+                return 80;
+            }
+
+            if (window.TrySetContent(panel).IsFailure || panel.TryInsert(input, 0).IsFailure ||
+                panel.TryInsert(label, 1).IsFailure || panel.TryInsert(button, 2).IsFailure ||
+                panel.TrySetOrientation(UiControlOrientation.Vertical).IsFailure ||
+                panel.TrySetChildAlignment(button, UiChildAlignment.Stretch).IsFailure)
+            {
+                Console.Error.WriteLine("C# Control tree or layout operations failed across the C ABI.");
+                return 72;
+            }
+
+            UiProperty<string> inputValue = input.TryGetValueProperty().Value;
+            UiProperty<string> labelContent = label.TryGetContentProperty().Value;
+            using (inputValue)
+            using (labelContent)
+            {
+                UiBinding<string>? binding = inputValue.TryBindTo(labelContent, UiBindingMode.OneWay).Value;
+                if (binding is null || labelContent.TryGet().Value != "初期値")
+                {
+                    Console.Error.WriteLine("TextBox-to-Text Property binding did not establish the initial value.");
+                    return 73;
+                }
+
+                UiResult<bool> changed = UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+                if (!RunDispatchTurn(runtime, () => changed = inputValue.TrySet("更新🙂")) || changed.IsFailure ||
+                    labelContent.TryGet().Value != "更新🙂")
+                {
+                    Console.Error.WriteLine("Bound Control Properties did not propagate the UTF-8 value.");
+                    return 74;
+                }
+
+                binding.Dispose();
+            }
+
+            UiCommand command = UiCommand.TryCreateAsync(runtime, null, _ => { }).Value;
+            using (command)
+            {
+                UiResult<bool> setCommand = button.TrySetCommand(command);
+                UiResult<UiCommand?> getCommand = button.TryGetCommand();
+                bool validCommand = setCommand.IsSuccess && getCommand.IsSuccess && getCommand.Value is not null;
+                getCommand.Value?.Dispose();
+                if (!validCommand || button.TrySetCommand(null).IsFailure)
+                {
+                    Console.Error.WriteLine("Button Command association could not be retained, retrieved, and cleared.");
+                    return 75;
+                }
+            }
+
+            UiResult<UiWidget?> content = window.TryGetContent();
+            if (content.IsFailure || content.Value is null)
+            {
+                Console.Error.WriteLine("Window content could not be queried as an owned generic Widget.");
+                return 76;
+            }
+
+            content.Value.Dispose();
+        }
+
+        if (runtime.Shutdown().IsFailure || runtime.TryClose().IsFailure)
+        {
+            Console.Error.WriteLine("Control Runtime did not shut down and close cleanly.");
+            return 77;
+        }
+
+        Console.WriteLine("C# Control tree, layout, Property binding, and Button Command across the host C ABI: OK");
+        return 0;
+    }
+
+    private static int RunInputConsumer(string nativeArtifactPath)
+    {
+        UiResult<UiRuntime> runtimeCreate = UiRuntime.TryCreate(new RuntimeOptions
+        {
+            NativeArtifactPath = nativeArtifactPath,
+        });
+        if (runtimeCreate.IsFailure)
+        {
+            Console.Error.WriteLine($"Input Runtime creation failed: {runtimeCreate.Error?.RawStatus}");
+            return 81;
+        }
+
+        using UiRuntime runtime = runtimeCreate.Value;
+        UiResult<bool> uiThread = runtime.IsUiThread();
+        if (uiThread.IsFailure || !uiThread.Value)
+        {
+            Console.Error.WriteLine("Input consumer is not running on the Runtime UI thread.");
+            return 82;
+        }
+
+        UiResult<UiWindow> windowCreate = UiWindow.TryCreate(runtime);
+        if (windowCreate.IsFailure)
+        {
+            Console.Error.WriteLine($"Input Window creation failed: {windowCreate.Error?.RawStatus}");
+            return 83;
+        }
+
+        using UiWindow window = windowCreate.Value;
+        UiResult<UiSubscription> subscriptionCreate = window.TrySubscribeInput(
+            InputEventMask.All,
+            static view =>
+            {
+                switch (view.Kind)
+                {
+                    case InputEventKind.KeyDown:
+                    case InputEventKind.KeyUp:
+                        _ = view.TryGetKey();
+                        _ = view.TryGetModifiers();
+                        break;
+                    case InputEventKind.TextCommit:
+                        _ = view.TryGetText();
+                        break;
+                    case InputEventKind.PrimaryPointerDown:
+                    case InputEventKind.PrimaryPointerUp:
+                        _ = view.TryGetPointerPosition();
+                        break;
+                }
+            });
+        if (subscriptionCreate.IsFailure)
+        {
+            Console.Error.WriteLine($"Input subscription failed: {subscriptionCreate.Error?.RawStatus}");
+            return 84;
+        }
+
+        using UiSubscription subscription = subscriptionCreate.Value;
+        if (subscription.TryCancel().IsFailure || subscription.TryClose().IsFailure)
+        {
+            Console.Error.WriteLine("Input subscription could not be canceled and released.");
+            return 85;
+        }
+
+        Console.WriteLine("C# Input event public API registration and cancellation across the host C ABI: OK");
         return 0;
     }
 
