@@ -778,7 +778,9 @@ def main():
             )
         elif args.command in {"csharp-controls-test", "csharp-input-test"}:
             project = "wrappers/csharp/tests/RuntimeTests/RuntimeTests.csproj"
-            unit_label = "input" if args.command == "csharp-input-test" else "controls"
+            unit_label = (
+                "input" if args.command == "csharp-input-test" else "controls"
+            )
             run(
                 ["dotnet", "restore", project, "--locked-mode"],
                 environment,
@@ -799,7 +801,10 @@ def main():
                 results,
                 f"csharp-{unit_label}-unit-tests",
             )
-        elif args.command in {"csharp-controls-consumer-test", "csharp-input-consumer-test"}:
+        elif args.command in {
+            "csharp-controls-consumer-test",
+            "csharp-input-consumer-test",
+        }:
             is_input_consumer = args.command == "csharp-input-consumer-test"
             unit_label = "input" if is_input_consumer else "controls"
             run(
@@ -828,15 +833,15 @@ def main():
                     f"Host C ABI library was not built: {native_path}"
                 )
             consumer_args = [
-                    "dotnet",
-                    "run",
-                    "--project",
-                    project,
-                    "--configuration",
-                    "Debug",
-                    "--no-restore",
-                    "--",
-                ]
+                "dotnet",
+                "run",
+                "--project",
+                project,
+                "--configuration",
+                "Debug",
+                "--no-restore",
+                "--",
+            ]
             if is_input_consumer:
                 consumer_args.append("--input-only")
             consumer_args.append(str(native_path.resolve()))
