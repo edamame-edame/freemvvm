@@ -1,10 +1,10 @@
 # C# Input event wrapper
 
 - 対象unit: `UNIT-WRAP-CS-INPUT-001`
-- 状態: 実装・local検証完了。Git publicationをこのresponseで実施
+- 状態: 実装・focused test・Windows/Linux CI完了。commit `7da59da`をpush済み、同revision CI run `42028447142` success。Input/focus TODO batch全体の集約PRは後続
 - 依存: `UNIT-ABI-022`、`UNIT-WRAP-CS-COMMAND-001`、`UNIT-WRAP-CS-CONTROLS-001`、`UNIT-WRAP-CS-WINDOW-001`
 - 承認済み設計: `.docs/13_detail_design/wrappers/csharp.md` 1.6「Input event wrapper API」および `.docs/13_detail_design/runtime-objects/abi.md` 1.6「Input event subscription ABI」
-- 試験設計: `.docs/32_unit_test/wrappers.md` 0.5 `UT-WRAP-CS-INPUT-001` / `UT-CONSUMER-CS-INPUT-001`
+- 試験設計: `.docs/32_unit_test/wrappers.md` 0.6 `UT-WRAP-CS-INPUT-001` / `UT-CONSUMER-CS-INPUT-001`
 
 ## 目的
 
@@ -20,7 +20,7 @@
 6. [x] fake ABI focused testsで5種類のevent/payload、wrong-kind、登録失敗、borrow失効、self-cancel、callback実行中Dispose、例外handler経路を確認する。
 7. [x] 別process C# consumerでpublic APIをcompileし、実ABI登録・cancel・closeを確認する。
 8. [x] C# focused/consumer unit、unit manifest JSON parse、document link validationを実行し結果を記録する。
-9. [x] 実装・試験が同じrevisionで通った後、日本語commitを作成して`impl-csharp/input-focus`をpushする。
+9. [x] 実装・試験を同じrevisionへpushし、日本語commit `7da59da`で`impl-csharp/input-focus`を更新。Windows/Linux CI run `42028447142`がsuccess。
 10. [ ] 完了後、Input/focus関連TODO batch全体が揃った段階でPRを作成する。
 
 ## 検証記録
@@ -31,6 +31,7 @@
 - `dotnet run --project wrappers/csharp/tests/Consumer/Consumer.csproj --configuration Debug --no-restore -- --input-only <absolute-native-path>`: 成功。実ABIで登録・cancel・close。
 - `python -m py_compile tools/dev.py`, `python tools/check_docs.py`, `tools/units.yaml` JSON parse: 成功。
 - Python `ruff`はこのworktree環境に存在せず未実行。CIでbootstrap後に実行する。
+- C# Input fake ABI unitはRuntimeTests suite内で実行。CI run `42028447142`はWindows/Linux両方でsuccess。peer起動は環境依存のため、実C ABI consumerのCI経路からは除き、fake ABIでopen status転送を確認する。
 
 ## 対象外
 
