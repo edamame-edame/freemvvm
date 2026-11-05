@@ -18,4 +18,4 @@
 - Unit recordsはunit単位まで細分化せず、Coreの責務カテゴリ、ABI、Platform、build/package、wrapper言語のowner単位でshard化する。
 - Root manifestは小さく保ち、shardを決定的に発見して重複ID・未解決依存を検査する。提案中のrecord構造は`unit_name`（現行unit ID）・`path`・`cases`を中心にする。これは構成例であり、現行のJSON互換YAML形式を維持してparser依存を追加しない。
 - `path`は現行のsource/config/test-design等を役割別に保持する。`cases`にはUT ID・commandと要求/設計/release test caseの対応を保持し、状態や依存関係はunit-level metadataに置く。schema2からの移行はunit ID・record・依存・traceabilityの全件比較で検証し、unit-test文書とCIの参照先も更新する。
-- この新しいshapeは計画0.3の提案であり、文書単位の承認前に確定仕様や実装済みschemaとして扱わない。
+- 計画0.3は2026-11-06に承認された。実装中のloaderはschema 2を互換読込し、schema 3 shardではunit_name重複・依存欠落・path/command形を検査する。schema 2の現catalogには`UNIT-WRAP-CS-BIND-001`から不存在の`UNIT-WRAP-CPP-BIND-001`への参照があり、移行時に勝手に削除せず対応を確認する。

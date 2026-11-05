@@ -2244,6 +2244,23 @@ def main():
                 "document-links",
             )
             run(
+                [sys.executable, "tools/dev_support/unit_catalog.py"],
+                environment,
+                results,
+                "unit-catalog-validation",
+            )
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "tools/tests/test_unit_catalog.py",
+                ],
+                environment,
+                results,
+                "unit-catalog-tests",
+            )
+            run(
                 [
                     "ruff",
                     "format",

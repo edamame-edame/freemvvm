@@ -1,6 +1,6 @@
 # 開発基盤の検証
 
-- 文書版: 0.1
+- 文書版: 0.2
 - 状態: 環境整備指示に基づく実施記録。製品unit-testと区別
 - 作成日: 2026-10-17
 - 実装単位: UNIT-BUILD-001（開発コマンドとbootstrap probe）
@@ -16,12 +16,15 @@
 | --- | --- | --- |
 | UT-BUILD-ENV-001 | 固定toolとvenvを照合し、全言語の骨格をcompile/build。C/C++ probeで固定幅値・C++17・float特性とatomic利用を確認し、C++ Runtime unitとrelocated package consumerを実行 | venv Pythonで `tools/dev.py check` |
 | UT-BUILD-MIN-001 | Rust1.85/edition2024で全workspaceをcompile check。minimum未確認を開発版成功で代替しない | venv Pythonで `tools/dev.py minimum` |
+| UT-BUILD-TOOLS-001 | schema 2 catalogの読込互換を維持し、schema 3の複数shardを安定順で結合する。shard patternの逸脱、空glob、重複unit名、schema 3の未解決依存、不正なcase commandを拒否する | `python -m pytest tools/tests/test_unit_catalog.py` と `tools/dev.py check` |
 
 後始末はcompiler/installerの子process終了を確認し、生成物をvenv/target/out/obj/bin/egg-infoへ分離する。checkで開発wheelをrepositoryのvenvへ再導入するが、OS既定環境へinstallしない。自動再帰削除は行わず、再実行時はbuild toolの増分更新を使う。
 
 ## 証跡と限界
 
 Windows x64で両入口を実行する。結果の正本は `.local/verification/check.json` と `minimum.json`。SHAとdirty状態、全入力hash、tool版と各gate終了codeを保持し、未commit変更をHEADに含まれる実装として報告しない。GitHub上は同じcheckout source/testを実行するworkflowを作成したが、リモートrunは未実施。
+
+2026-11-06のlocal focused確認ではUT-BUILD-TOOLS-001の9件がpassし、schema 2 catalogは170 unitとして読み込めた。document linksは76文書/7792 local linksでpass。worktreeに固定venvとRuffがないため、bootstrap全体とRuff gateはこの確認では実行していない。
 
 この単位はビルド環境の確認であり、要求test92TCや製品単体試験70項目の合格を意味しない。Linux/ARM/実GPU/IME/provider/native loader・署名済みartifactは未検証。正式supportのprofile lockは別に作成する。
 
@@ -30,9 +33,11 @@ Windows x64で両入口を実行する。結果の正本は `.local/verification
 | 日付 | 対象 | 承認者 | 結論・根拠 |
 | --- | --- | --- | --- |
 | 2026-10-17 | 開発環境整備の実施 | 利用者 | 「環境整備から始めてください」に基づき実施。製品APIやrelease合格の承認を含めない |
+| 2026-11-06 | unit catalog loader test | 利用者 | 承認済みの開発CLI・unit台帳分割計画0.3に基づく実装単位 |
 
 ## 改訂履歴
 
 | 版 | 日付 | 内容 | 作成者 |
 | --- | --- | --- | --- |
 | 0.1 | 2026-10-17 | bootstrap source/config、検証入口と証拠範囲を記録 | Codex |
+| 0.2 | 2026-11-06 | schema 2/3 unit catalog loaderのfocused test契約を追加 | Codex |

@@ -1,7 +1,7 @@
 # 開発CLI・unit台帳のモジュール分割計画
 
 - 計画版: 0.3
-- 状態: 計画承認済み（利用者、2026-11-06）。実装着手前
+- 状態: 計画承認済み（利用者、2026-11-06）。実装中
 - 対象version: `0.0.1`
 - 対象branch: `change/dev-unit-module-layout`（`origin/version/0.0.1`起点）
 - 関連: [開発環境bootstrap・toolchain](development-environment-bootstrap.md)、[実装unit台帳](../32_unit_test/implementation-test-inventory.md)、[単体試験方針](../32_unit_test/unit-test-strategy.md)、[Git規則](../02_git/rule.md)
@@ -11,6 +11,8 @@
 現状の`tools/dev.py`は約2,740行で、CLI parser、共通環境準備、report生成、全bootstrap gate、ABI/platform処理、4言語wrapperのテストcommand dispatchが集中している。新しい言語・機能を別branchで追加するたび同じdispatcherが競合しやすい。
 
 `tools/units.yaml`はschema 2のJSON互換形式で約10,773行・170 unitを1ファイルに持つ。unit追加や状態更新が同じ巨大ファイルへの変更になり、merge conflictとGit上でのdiff閲覧を難しくしている。
+
+実装着手時のbaseline確認で、schema 2の`UNIT-WRAP-CS-BIND-001`が存在しない`UNIT-WRAP-CPP-BIND-001`を`depends_on`に持つ既存参照を確認した。既存データはこの作業で黙って変更せず、schema 2の互換読込では受け入れ、schema 3移行時に参照先の対応を確認して記録する。
 
 ## 目的
 
@@ -123,6 +125,8 @@ loaderはroot manifestのglobを読み、全shardのschema、`unit_name`一意�
 既存unit recordの意味・fieldを変えずに移行し、unit ID集合と各unitの内容が移行前後で一致することを機械的に比較する。文書とツールが`tools/units.yaml`を読む箇所を全件検索し、同じloader契約へ更新する。
 
 ## 作業フェーズ
+
+進捗: manifest baselineで170 unitと既存のdangling dependency 1件を確認した。phase 1のCLI command/report baseline一覧は未完了。phase 2のschema 2/3 loader実装とfocused testを完了し、現catalog検査をbootstrap `check`へ接続した。schema 2にあるdangling dependencyは互換読込で保持し、schema 3ではstrictに検査する。shard移行はこの既存参照の対応確認後に行う。
 
 | 順 | 作業 | 完了条件 |
 | --- | --- | --- |

@@ -71,6 +71,8 @@
       "scope": "development-bootstrap-only",
       "sources": [
         "tools/*.py",
+        "tools/dev_support/**/*.py",
+        "tools/tests/**/*.py",
         "tools/probes/*"
       ],
       "config": [
@@ -130,6 +132,15 @@
             "python",
             "tools/dev.py",
             "minimum"
+          ]
+        },
+        {
+          "id": "UT-BUILD-TOOLS-001",
+          "command": [
+            "python",
+            "-m",
+            "pytest",
+            "tools/tests/test_unit_catalog.py"
           ]
         }
       ]
