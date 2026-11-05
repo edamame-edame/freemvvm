@@ -837,9 +837,7 @@ class InputEventView:
 
     @property
     def modifiers(self) -> int:
-        status, _identity, modifiers = self._api.input_event_key(
-            self._token()
-        )
+        status, _identity, modifiers = self._api.input_event_key(self._token())
         if status != _native.OK:
             raise UiError(ErrorSnapshot(status))
         return modifiers
@@ -885,7 +883,7 @@ class InputEventView:
 
 
 class UiSubscription:
-    """Own an Input subscription; cancellation and handle release are separate."""
+    """Own an Input subscription; cancel and release it separately."""
 
     __slots__ = (
         "_cell",
@@ -2344,7 +2342,9 @@ class Widget:
             raise TypeError("kinds must be a freemvvm.InputEventMask")
         event_mask = int(kinds)
         if event_mask == 0 or event_mask & ~_native.INPUT_MASK_ALL:
-            raise ValueError("kinds must select one or more known Input events")
+            raise ValueError(
+                "kinds must select one or more known Input events"
+            )
         if not callable(callback):
             raise TypeError("callback must be callable")
 

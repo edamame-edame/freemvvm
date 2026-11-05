@@ -13,9 +13,7 @@ Handle = ctypes.c_uint64
 Status = ctypes.c_uint32
 Bool = ctypes.c_uint8
 VoidCallback = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
-InputCallback = ctypes.CFUNCTYPE(
-    None, Handle, Handle, Handle, ctypes.c_void_p
-)
+InputCallback = ctypes.CFUNCTYPE(None, Handle, Handle, Handle, ctypes.c_void_p)
 CommandStartCallback = ctypes.CFUNCTYPE(
     Status, ctypes.c_void_p, Handle, ctypes.c_uint64, Handle
 )
@@ -580,7 +578,8 @@ class CtypesNativeApi:
             ],
         )
         self._bind(
-            "ui_abi_1_input_event_kind", [Handle, ctypes.POINTER(ctypes.c_uint32)]
+            "ui_abi_1_input_event_kind",
+            [Handle, ctypes.POINTER(ctypes.c_uint32)],
         )
         self._bind(
             "ui_abi_1_input_event_key",
@@ -1196,7 +1195,10 @@ class CtypesNativeApi:
         y = ctypes.c_double()
         button = ctypes.c_uint32()
         status = self._library.ui_abi_1_input_event_pointer(
-            borrowed_event, ctypes.byref(x), ctypes.byref(y), ctypes.byref(button)
+            borrowed_event,
+            ctypes.byref(x),
+            ctypes.byref(y),
+            ctypes.byref(button),
         )
         return status, x.value, y.value, button.value
 
