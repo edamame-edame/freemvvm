@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "freemvvm"
 version = "0.0.0"
-description = "Thin ctypes facade for FreeMVVM; development skeleton"
+description = "Thin ctypes Runtime facade for FreeMVVM"
 requires-python = ">=3.13"
 license = {text = "Apache-2.0"}
 

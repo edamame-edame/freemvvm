@@ -1,7 +1,7 @@
 # Python Input event wrapper
 
 - 計画版: 0.1
-- 状態: 計画0.1は利用者承認済み（2026-11-05、「ok」）。Python branch統合・Input実装・検証中
+- 状態: 計画0.1・統合文書版は利用者承認済み。Python baseline統合とInput wrapper実装・focused検証完了。全体check/CI確認待ち
 - 対象version: `0.0.1`
 - 作業branch: `impl-python-wrapper/input-focus`
 - Core/C ABI branch: `impl-rust/core-input-focus`（revision `4fdbea1`）
@@ -23,21 +23,21 @@
 
 - 要求: [RQ-03 Language support](../11_requirements/RQ-03_language-support.md)、特にPython 3、明示終了、owner回収、通常終了協調、base初期化範囲。
 - Input/UI要求: [RQ-04 ABI boundary](../11_requirements/RQ-04_abi-boundary.md)、[RQ-05 Ownership/callbacks](../11_requirements/RQ-05_ownership-callbacks.md)、[RQ-06 Threading/dispatch](../11_requirements/RQ-06_threading-dispatch.md)、[RQ-09 UI scope](../11_requirements/RQ-09_ui-scope.md)。
-- Python wrapper: [Python wrapper DD](../13_detail_design/wrappers/python.md) 1.3全文承認済み。Input event API、ctypes/GIL、callable root、error境界、owner/runtime class designを照合する。
+- Python wrapper: [Python wrapper DD](../13_detail_design/wrappers/python.md) 2.2全文承認済み（2026-11-06）。Input event API、ctypes/GIL、callable root、error境界、owner/runtime class designを照合する。
 - 共通ABI/UI: [共通C ABI](../13_detail_design/runtime-objects/abi.md)、[UI Controls](../13_detail_design/ui/controls.md)、[UI Tree/Layout](../13_detail_design/ui/tree-layout.md)。
-- 試験: [wrapper test design](../32_unit_test/wrappers.md) 0.6のPython Input cases、[unit inventory](../32_unit_test/implementation-test-inventory.md)、[実装unit台帳契約](../32_unit_test/unit-test-strategy.md)。
+- 試験: [wrapper test design](../32_unit_test/wrappers.md) 1.5全文承認済み（2026-11-06）のPython Input cases、[unit inventory](../32_unit_test/implementation-test-inventory.md)、[実装unit台帳契約](../32_unit_test/unit-test-strategy.md)。
 - Python規則: [Python coding rule](../00_rule/coding_rule_Python.md)。
 - Implementation memory: [Python Input wrapper readiness](../01_memory/python-input-wrapper-readiness.md)。
 
 ## 作業順と承認ゲート
 
 1. [x] originを更新しPython wrapper最新branchを確認。Runtime/UI baselineは`impl-python-wrapper/window-background-config`の`3e018a0`、Input API/test pathは未実装。
-2. [ ] Core Input branchを先頭にmerge previewを作り、同一Python wrapper branchの実装・test・examples・必要manifestを取り込む。競合は承認済みCore Input設計とPython wrapper契約の両方を保持し、別言語の変更を含めない。
-3. [ ] `tools/units.yaml`の`UNIT-WRAP-PY-INPUT-001` source/config/depends_on/test commandsを実在pathに照合し、着手時に`ready`へ更新する。
-4. [ ] ctypes native declarations、`InputEventKind`/mask/payload view、Widgetの登録API、callback trampoline、callable/CFUNCTYPE root移管、cancel/close寿命、例外処理を実装する。設計から定まらない点が出たら実装を止めてDD差分をレビューする。
-5. [ ] fake ABI testsで5種類のevent/payload、wrong-kind、登録失敗、borrow失効、root/GC、self-cancel、callback中close、foreign-thread GIL、callbackとfailure-handler例外を確認する。
-6. [ ] separate consumerから公開APIを使い、fake hostでdispatch、text copy、handled、cancel/closeを検証する。peer起動は要求しない。
-7. [ ] Python 3.13、pytest、ruff、C ABI build、unit manifest、文書links、`git diff --check`を実行し、証跡を記録する。
+2. [x] Core Input branchを先頭にし、同一Python wrapper branchの実装・test・examples・必要manifestを統合。競合解決では両側の承認済み内容を保持し、他言語wrapperは含めない。
+3. [x] `tools/units.yaml`の`UNIT-WRAP-PY-INPUT-001` source/config/depends_on/test commandsを実在pathに照合し、`ready`へ更新。
+4. [x] ctypes native declarations、`InputEventKind`/mask/payload view、Widgetの登録API、callback trampoline、callable/CFUNCTYPE root移管、cancel/close寿命、例外処理を実装した。
+5. [x] fake ABI testsで5種類のevent/payload、wrong-kind、登録失敗、borrow失効、root/GC、self-cancel、callback中close、foreign-thread callback、callbackとfailure reporter例外を確認した（9 tests pass）。
+6. [x] separate public consumerからfake hostでdispatch、text copy、handled、cancelを検証した。peer起動は実行していない。
+7. [ ] Python wrapper suite 155件、Python 3.13 AST、C ABI Input focused test、document links、manifest JSON、`git diff --check`はlocal pass。固定版ruffと全体`tools/dev.py check`は依存取得DNS failureのため未実行。commit/push後CIで確認する。
 8. [ ] unit testがsourceと同じrevisionで成功した後、日本語commitを作成し本branchへpushする。Input/Focus関連TODO batch完了後に集約PRを作成する。
 
 ## 対象外
@@ -65,4 +65,5 @@
 
 | 日付 | 対象 | 状態 | 備考 |
 | --- | --- | --- | --- |
-| 2026-11-05 | 計画0.1 | 利用者承認 | 既存Python wrapperをCore Input branchへ取り込んだ上で、承認済みInput DDに沿ってPython Input wrapperを実装する計画を承認 |
+| 2026-11-05 | 計画0.1 | 利用者承認 | 既存Python wrapperをCore Input branchへ取り込んだ上で、Python Input wrapperを実装する計画を承認 |
+| 2026-11-06 | 統合文書 | 利用者承認 | Python DD 2.2、wrapper試験設計1.5、implementation inventory 2.1の統合版を承認 |
