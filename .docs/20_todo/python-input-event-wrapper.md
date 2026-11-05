@@ -1,7 +1,7 @@
 # Python Input event wrapper
 
 - 計画版: 0.1
-- 状態: 計画0.1・統合文書版は利用者承認済み。Python baseline統合とInput wrapper実装・focused検証完了。全体check/CI確認待ち
+- 状態: 計画0.1・統合文書版は利用者承認済み。Python baseline統合、Input wrapper実装、local検証、Windows/Linux CI完了
 - 対象version: `0.0.1`
 - 作業branch: `impl-python-wrapper/input-focus`
 - Core/C ABI branch: `impl-rust/core-input-focus`（revision `4fdbea1`）
@@ -37,8 +37,10 @@
 4. [x] ctypes native declarations、`InputEventKind`/mask/payload view、Widgetの登録API、callback trampoline、callable/CFUNCTYPE root移管、cancel/close寿命、例外処理を実装した。
 5. [x] fake ABI testsで5種類のevent/payload、wrong-kind、登録失敗、borrow失効、root/GC、self-cancel、callback中close、foreign-thread callback、callbackとfailure reporter例外を確認した（9 tests pass）。
 6. [x] separate public consumerからfake hostでdispatch、text copy、handled、cancelを検証した。peer起動は実行していない。
-7. [ ] Python wrapper suite 155件、Python 3.13 AST、C ABI Input focused test、document links、manifest JSON、`git diff --check`はlocal pass。固定版ruffと全体`tools/dev.py check`は依存取得DNS failureのため未実行。commit/push後CIで確認する。
-8. [ ] unit testがsourceと同じrevisionで成功した後、日本語commitを作成し本branchへpushする。Input/Focus関連TODO batch完了後に集約PRを作成する。
+7. [x] Python wrapper suite 155件、Python 3.13 AST、C ABI Input focused test、document links、manifest JSON、`git diff --check`はlocal pass。Ruff 0.11.13 format/lintもpass。CI run `42054917806`のWindows/Linux全体bootstrap gates、Windows adapter tests、Linux Platform device testsがpassした。
+8. [x] 対応テスト成功後、日本語commit `a8a54dd`（実装）と`22a879f`（CI書式修正）を作成し、本branchへpushした。Input/Focus関連TODO batch完了後に集約PRを作成する。
+
+CI初回runではRuff formatで停止したため`22a879f`で修正した。修正後runはLinux `fonts-noto-cjk` 61.2 MB取得中に20分timeoutとなったが、再実行では依存準備を含めて全jobが成功した。
 
 ## 対象外
 
