@@ -1,5 +1,7 @@
-#include <freemvvm/runtime.hpp>
+#include <freemvvm/command.hpp>
 #include <freemvvm/property.hpp>
+#include <freemvvm/runtime.hpp>
+#include <freemvvm/ui_controls.hpp>
 
 #include <cmath>
 #include <cstdint>
@@ -51,6 +53,33 @@ int main() {
   if (!subscription.cancel().has_value()) return 12;
   if (!count.set(0).has_value() || notification_count != 1) return 13;
   if (!subscription.close().has_value()) return 14;
+
+  auto command_result = freemvvm::Command::create_async(
+      runtime, nullptr,
+      [](freemvvm::CommandWorker) -> freemvvm::Result<void> {
+        return freemvvm::Result<void>::failure(
+            freemvvm::UiError(9));  // UI_INTERNAL_ERROR
+      });
+  if (!command_result.has_value()) return 48;
+  auto command = std::move(*command_result.value());
+  auto operation = command.execute();
+  if (!operation.has_value() || *operation.value() == 0) return 49;
+  auto command_state_result = command.state_property();
+  if (!command_state_result.has_value()) return 50;
+  auto command_state = std::move(*command_state_result.value());
+  auto command_state_value = command_state.get();
+  if (!command_state_value.has_value() ||
+      *command_state_value.value() !=
+          static_cast<std::int64_t>(freemvvm::CommandState::kFailed)) {
+    return 51;
+  }
+  auto command_failure = command.failure_snapshot();
+  if (!command_failure.has_value() || !command_failure.value()->has_value()) {
+    return 52;
+  }
+  if (!command.close().has_value() || !command_state.close().has_value()) {
+    return 53;
+  }
 
   auto bool_target_result = freemvvm::Property<bool>::create(runtime, false);
   if (!bool_target_result.has_value()) return 24;
@@ -183,6 +212,80 @@ int main() {
       !text.close().has_value() || !ratio.close().has_value() ||
       !ratio_target.close().has_value() || !decimal.close().has_value() ||
       !decimal_target.close().has_value()) return 22;
+
+  auto window_result = freemvvm::Window::create(runtime);
+  auto panel_result = freemvvm::StackPanel::create(runtime);
+  auto label_result = freemvvm::Text::create(runtime, "label");
+  auto input_result = freemvvm::TextBox::create(runtime, "value");
+  auto button_result = freemvvm::Button::create(runtime, "submit");
+  if (!window_result.has_value() || !panel_result.has_value() ||
+      !label_result.has_value() || !input_result.has_value() ||
+      !button_result.has_value()) return 54;
+  auto window = std::move(*window_result.value());
+  auto panel = std::move(*panel_result.value());
+  auto label = std::move(*label_result.value());
+  auto input = std::move(*input_result.value());
+  auto button = std::move(*button_result.value());
+  int input_events = 0;
+  auto input_handler = [&input_events](freemvvm::InputEventView&) {
+    ++input_events;
+  };
+  auto window_input_result =
+      window.subscribe_input(freemvvm::InputEventMask::kAll, input_handler);
+  auto panel_input_result =
+      panel.subscribe_input(freemvvm::InputEventMask::kAll, input_handler);
+  auto label_input_result =
+      label.subscribe_input(freemvvm::InputEventMask::kAll, input_handler);
+  auto textbox_input_result =
+      input.subscribe_input(freemvvm::InputEventMask::kAll, input_handler);
+  auto button_input_result =
+      button.subscribe_input(freemvvm::InputEventMask::kAll, input_handler);
+  if (!window_input_result.has_value() || !panel_input_result.has_value() ||
+      !label_input_result.has_value() || !textbox_input_result.has_value() ||
+      !button_input_result.has_value()) return 62;
+  auto window_input = std::move(*window_input_result.value());
+  auto panel_input = std::move(*panel_input_result.value());
+  auto label_input = std::move(*label_input_result.value());
+  auto textbox_input = std::move(*textbox_input_result.value());
+  auto button_input = std::move(*button_input_result.value());
+  if (!window_input.cancel().has_value() || !panel_input.cancel().has_value() ||
+      !label_input.cancel().has_value() || !textbox_input.cancel().has_value() ||
+      !button_input.cancel().has_value() || input_events != 0) return 63;
+  if (!window.set_content(panel).has_value() ||
+      !panel.insert(label, 0).has_value() ||
+      !panel.insert(input, 1).has_value() ||
+      !panel.insert(button, 2).has_value()) return 55;
+  auto label_property_result = label.content_property();
+  auto value_property_result = input.value_property();
+  auto button_label_result = button.label_property();
+  auto action_result = freemvvm::Command::create_async(
+      runtime, nullptr,
+      [](freemvvm::CommandWorker) -> freemvvm::Result<void> {
+        return freemvvm::Result<void>::success();
+      });
+  if (!label_property_result.has_value() || !value_property_result.has_value() ||
+      !button_label_result.has_value() || !action_result.has_value()) return 56;
+  auto label_property = std::move(*label_property_result.value());
+  auto value_property = std::move(*value_property_result.value());
+  auto button_label = std::move(*button_label_result.value());
+  auto action = std::move(*action_result.value());
+  if (!button.set_command(action).has_value()) return 58;
+  auto assigned_action_result = button.command();
+  if (!assigned_action_result.has_value() ||
+      !assigned_action_result.value()->has_value()) return 59;
+  auto assigned_action =
+      std::move(**assigned_action_result.value());
+  if (!assigned_action.release().has_value() ||
+      !button.clear_command().has_value()) return 60;
+  auto cleared_action_result = button.command();
+  if (!cleared_action_result.has_value() ||
+      cleared_action_result.value()->has_value()) return 61;
+  if (!label_property.close().has_value() ||
+      !value_property.close().has_value() || !button_label.close().has_value() ||
+      !action.close().has_value() ||
+      !window.close().has_value() || !panel.close().has_value() ||
+      !label.close().has_value() || !input.close().has_value() ||
+      !button.close().has_value()) return 57;
 
   return runtime.close().has_value() ? 0 : 23;
 }

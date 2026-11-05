@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
 - 文書版: 2.0（レビュー案）
-- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsとclose-request unitsの試験設計は承認済み（2026-11-01）。UNIT-CORE-089、UNIT-PLATFORM-WINDOWS-005、UNIT-CORE-090、UNIT-PLATFORM-WINDOWS-006はlocal検証・同revision CI pass。Input/Focus実装unitの登録・試験設計は承認済み。Rust Input wrapperは実装・local検証済み・同revision CI待ち、他言語wrapperとWindows Adapterはplanned
+- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsとclose-request unitsの試験設計は承認済み（2026-11-01）。Input/Focus実装unit 7件の登録・試験設計は承認済み（2026-11-03）。Rust/C++/C#/Python Input wrapperは各branch revisionのCI pass。Core/ABIの統合revision CIと本統合revisionのCIは確認待ち。Windows native input bridgeは未実装・planned
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -33,17 +33,17 @@
 
 #### Input / Focus event path implementation units（設計・試験登録承認済み）
 
-Core Input/Focusの`UT-INPUT-001..006`・`UT-FOCUS-001..004`は[UI試験設計](ui.md#inputfocus)に定義済み。ここではC ABI・4 wrapper・Windows Adapterの試験を登録した。unitごとにsource/test pathとcommandを実在確認し、実装着手時に`ready`へ更新する。Rust Input wrapperはその確認を完了した。wrapper consumerはfake hostで公開API面を確認し、OS実機入力の発生を仮定しない。
+Core Input/Focusの`UT-INPUT-001..006`・`UT-FOCUS-001..004`は[UI試験設計](ui.md#inputfocus)に定義済み。ここではC ABI・4 wrapper・Windows Adapterの試験を登録した。各wrapperのsource/test pathとcommandは確認済み。wrapper consumerは公開API面を確認し、OS実機入力の発生を仮定しない。Windows native input bridgeは未実装であり、plannedのままとする。
 
 | unit | 責務 | test設計 | 状態 |
 | --- | --- | --- | --- |
 | `UNIT-CORE-092` | TextBox編集state、UTF-8 candidate transaction、Property Validator接続、外部Value同期 | `UT-TEXTBOX-CORE-001..004` | ready / local Core tests・Clippy・Rust 1.85 check pass。同revisionのpush後CI確認待ち |
 | `UNIT-CORE-091` | Input route/handled、callback中のdetach/disable、Focus無効化、Button pending press、TextCommitからTextBox editingへの接続 | `UT-INPUT-001..006`、`UT-FOCUS-001..004` | ready / Core 202件pass、依存unit pass。最新revisionのCI確認待ち |
 | `UNIT-ABI-022` | feature 9、typed input callback、borrowed event getters/handled、C consumer | `UT-ABI-INPUT-001`、`UT-CONSUMER-ABI-INPUT-001` | ready / local tests pass、最新revisionのpush後に同revision CI確認待ち |
-| `UNIT-WRAP-RS-INPUT-001` | Rust borrowed event facade、closure root、cancel/drop、panic境界 | `UT-WRAP-RS-INPUT-001`、`UT-CONSUMER-RS-INPUT-001` | ready / local tests・Clippy・Rust 1.85 check・format・document links pass（2026-11-03）、同revision CI待ち |
-| `UNIT-WRAP-CPP-INPUT-001` | C++ borrowed view、move-only Subscription、callback例外隔離 | `UT-WRAP-CPP-INPUT-001`、`UT-CONSUMER-CPP-INPUT-001` | planned / fake ABI・consumer |
-| `UNIT-WRAP-CS-INPUT-001` | C# callback view、delegate root、Dispose競合、例外隔離 | `UT-WRAP-CS-INPUT-001`、`UT-CONSUMER-CS-INPUT-001` | planned / fake ABI・consumer |
-| `UNIT-WRAP-PY-INPUT-001` | Python callback view、callable root、GIL/GC、例外隔離 | `UT-WRAP-PY-INPUT-001`、`UT-CONSUMER-PY-INPUT-001` | planned / fake ABI・consumer |
+| `UNIT-WRAP-RS-INPUT-001` | Rust borrowed event facade、closure root、cancel/drop、panic境界 | `UT-WRAP-RS-INPUT-001`、`UT-CONSUMER-RS-INPUT-001` | complete / branch CI run `41642705673` success。統合revision CI確認待ち |
+| `UNIT-WRAP-CPP-INPUT-001` | C++ borrowed view、move-only Subscription、callback例外隔離 | `UT-WRAP-CPP-INPUT-001`、`UT-CONSUMER-CPP-INPUT-001` | complete / branch CI run `41648453537` success。統合revision CI確認待ち |
+| `UNIT-WRAP-CS-INPUT-001` | C# callback view、delegate root、Dispose競合、例外隔離 | `UT-WRAP-CS-INPUT-001`、`UT-CONSUMER-CS-INPUT-001` | complete / branch CI run `42030613702` success。統合revision CI確認待ち |
+| `UNIT-WRAP-PY-INPUT-001` | Python callback view、callable root、GIL/GC、例外隔離 | `UT-WRAP-PY-INPUT-001`、`UT-CONSUMER-PY-INPUT-001` | complete / rerun CI run `42054917806` success（Windows/Linux）。統合revision CI確認待ち |
 | `UNIT-PLATFORM-WINDOWS-007` | native key/TextCommit/primary pointer/activation入力のgeneration-aware mapping | `UT-PLATFORM-WINDOWS-INPUT-001` | planned / fake message mapping。IME・実機inputはrelease qualification |
 
 #### Linux Platform backend unit（DD v1.3 / test design 0.5承認済み）
