@@ -1,0 +1,68 @@
+# Python Input event wrapper
+
+- 計画版: 0.1
+- 状態: 計画0.1は利用者承認済み（2026-11-05、「ok」）。Python branch統合・Input実装・検証中
+- 対象version: `0.0.1`
+- 作業branch: `impl-python-wrapper/input-focus`
+- Core/C ABI branch: `impl-rust/core-input-focus`（revision `4fdbea1`）
+- 取り込み対象: `impl-python-wrapper/window-background-config`（Python wrapper実装revision `3e018a0`、CI run `41178355548` success）
+- 上位計画: [Input / Focus event path実装計画](input-focus-event-path-implementation.md) フェーズ5
+- 対象unit: 予定登録済み `UNIT-WRAP-PY-INPUT-001`
+
+## 背景
+
+上位計画は4言語のInput wrapperを実装対象として承認済みで、PythonのInput event設計も承認済みである。PythonのRuntime・Property・Binding・Command・Controls/Tree/Focus・Window wrapperは`impl-python-wrapper/window-background-config`にあり、fake ABI testsとconsumer testsも存在する。同branchの最新commit `3e018a0`はCI run `41178355548`で成功している。一方、同branchにInput eventの`subscribe_input`、`InputEventView`、callback root/trampolineはまだ見当たらない。
+
+作業branchはCore Input branchから作り、既存Python wrapper branchを同じ言語の実装として取り込む。別言語branchは取り込まない。取り込み手順は[Python Window背景RGB計画](python-window-background-wrapper.md)の先行wrapper統合方針に合わせる。
+
+## 目的
+
+承認済みPython wrapper設計と要求に沿って、各public WidgetへInput event subscriptionとcallback-scoped event viewを追加し、fake ABI testsとseparate public consumerで検証する。既存Runtime/UI APIやCore/C ABIの挙動は変更しない。
+
+## 設計・要求根拠
+
+- 要求: [RQ-03 Language support](../11_requirements/RQ-03_language-support.md)、特にPython 3、明示終了、owner回収、通常終了協調、base初期化範囲。
+- Input/UI要求: [RQ-04 ABI boundary](../11_requirements/RQ-04_abi-boundary.md)、[RQ-05 Ownership/callbacks](../11_requirements/RQ-05_ownership-callbacks.md)、[RQ-06 Threading/dispatch](../11_requirements/RQ-06_threading-dispatch.md)、[RQ-09 UI scope](../11_requirements/RQ-09_ui-scope.md)。
+- Python wrapper: [Python wrapper DD](../13_detail_design/wrappers/python.md) 1.3全文承認済み。Input event API、ctypes/GIL、callable root、error境界、owner/runtime class designを照合する。
+- 共通ABI/UI: [共通C ABI](../13_detail_design/runtime-objects/abi.md)、[UI Controls](../13_detail_design/ui/controls.md)、[UI Tree/Layout](../13_detail_design/ui/tree-layout.md)。
+- 試験: [wrapper test design](../32_unit_test/wrappers.md) 0.6のPython Input cases、[unit inventory](../32_unit_test/implementation-test-inventory.md)、[実装unit台帳契約](../32_unit_test/unit-test-strategy.md)。
+- Python規則: [Python coding rule](../00_rule/coding_rule_Python.md)。
+- Implementation memory: [Python Input wrapper readiness](../01_memory/python-input-wrapper-readiness.md)。
+
+## 作業順と承認ゲート
+
+1. [x] originを更新しPython wrapper最新branchを確認。Runtime/UI baselineは`impl-python-wrapper/window-background-config`の`3e018a0`、Input API/test pathは未実装。
+2. [ ] Core Input branchを先頭にmerge previewを作り、同一Python wrapper branchの実装・test・examples・必要manifestを取り込む。競合は承認済みCore Input設計とPython wrapper契約の両方を保持し、別言語の変更を含めない。
+3. [ ] `tools/units.yaml`の`UNIT-WRAP-PY-INPUT-001` source/config/depends_on/test commandsを実在pathに照合し、着手時に`ready`へ更新する。
+4. [ ] ctypes native declarations、`InputEventKind`/mask/payload view、Widgetの登録API、callback trampoline、callable/CFUNCTYPE root移管、cancel/close寿命、例外処理を実装する。設計から定まらない点が出たら実装を止めてDD差分をレビューする。
+5. [ ] fake ABI testsで5種類のevent/payload、wrong-kind、登録失敗、borrow失効、root/GC、self-cancel、callback中close、foreign-thread GIL、callbackとfailure-handler例外を確認する。
+6. [ ] separate consumerから公開APIを使い、fake hostでdispatch、text copy、handled、cancel/closeを検証する。peer起動は要求しない。
+7. [ ] Python 3.13、pytest、ruff、C ABI build、unit manifest、文書links、`git diff --check`を実行し、証跡を記録する。
+8. [ ] unit testがsourceと同じrevisionで成功した後、日本語commitを作成し本branchへpushする。Input/Focus関連TODO batch完了後に集約PRを作成する。
+
+## 対象外
+
+- C ABI/CoreのInput、Focus、callback、Runtime semantics変更。
+- Python Runtime/Window/Widget baselineの変更・再実装。既存Python branchから必要な実装を取り込む。
+- Python package/native runtime distribution、PyPI、RID/loader、PyPy/free-threaded supportの新規決定。
+- 未承認のPython public API、要求保証、例外方針、threading semanticsの追加。
+- OS実機のkeyboard/IME/pointer合否判断。これはPlatform/release qualificationに分ける。
+
+## 完了条件
+
+- public Python consumerが各eventをcallback-scoped viewとして読み、textをPython `str`へcopyし、handled設定とsubscription cancel/releaseを利用できる。
+- callback rootは登録成功後に限って保持され、C destroy callback後にsafe-point経由で一度だけ回収される。例外はC ABIを越境しない。
+- 必要なfocused/consumer tests、manifest、documentation checksが同一revisionでpassし、Windows/Linux CIがsuccessする。
+
+## レビュー対象
+
+- 既存Python wrapper branchをCore Input branchへ取り込む範囲と競合解決方針。
+- branch親子関係、test commands、完了条件。
+
+計画0.1は利用者承認済み。承認済みDDの範囲で実装し、新規の設計事項が見つかった場合だけ別途レビューを挟む。
+
+## 承認履歴
+
+| 日付 | 対象 | 状態 | 備考 |
+| --- | --- | --- | --- |
+| 2026-11-05 | 計画0.1 | 利用者承認 | 既存Python wrapperをCore Input branchへ取り込んだ上で、承認済みInput DDに沿ってPython Input wrapperを実装する計画を承認 |
