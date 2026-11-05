@@ -108,6 +108,100 @@ def run(arguments, environment, results, name):
         raise RuntimeError(f"{name} failed with exit code {result.returncode}")
 
 
+def run_linux_platform_docker():
+    report_path = ROOT / ".local/verification/linux-platform-docker.json"
+    image = "freemvvm-linux-platform:debian12"
+    report = {
+        "scope": "linux-platform-docker-provisional",
+        "status": "blocked",
+        "qualification": "provisional only; not hardware or release pass",
+        "source_sha": None,
+        "image_id": None,
+        "commands": [],
+    }
+
+    def execute(name, arguments):
+        print(f"\n[{name}] {' '.join(map(str, arguments))}", flush=True)
+        result = subprocess.run(
+            arguments,
+            cwd=ROOT,
+            check=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        print(result.stdout, end="", flush=True)
+        report["commands"].append(
+            {
+                "name": name,
+                "argv": list(map(str, arguments)),
+                "exit_code": result.returncode,
+                "output_tail": result.stdout[-3000:],
+            }
+        )
+        if result.returncode:
+            raise RuntimeError(
+                f"{name} failed with exit code {result.returncode}"
+            )
+        return result.stdout.strip()
+
+    try:
+        report["source_sha"] = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, encoding="utf-8"
+        ).strip()
+        report["worktree_status"] = subprocess.check_output(
+            ["git", "status", "--short"], cwd=ROOT, text=True, encoding="utf-8"
+        ).splitlines()
+        execute(
+            "linux-platform-docker-build",
+            [
+                "docker",
+                "build",
+                "--pull",
+                "-f",
+                "docker/linux-platform/Dockerfile",
+                "-t",
+                image,
+                ".",
+            ],
+        )
+        report["image_id"] = execute(
+            "linux-platform-docker-image-id",
+            ["docker", "image", "inspect", "--format={{.Id}}", image],
+        )
+        execute(
+            "linux-platform-docker-validation",
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--mount",
+                f"type=bind,source={ROOT},target=/workspace",
+                "--workdir",
+                "/workspace",
+                image,
+                "bash",
+                "tools/linux_platform_docker.sh",
+            ],
+        )
+        report["status"] = "provisional_pass"
+    except (RuntimeError, subprocess.CalledProcessError, OSError) as error:
+        report["error"] = str(error)
+        print(
+            f"Linux platform Docker validation unavailable/failed: {error}",
+            file=sys.stderr,
+        )
+    finally:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(report, indent=2) + "\n", encoding="utf-8"
+        )
+        print(f"Report: {report_path.relative_to(ROOT)}", flush=True)
+    return 0 if report["status"] == "provisional_pass" else 1
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -125,24 +219,60 @@ def main():
             "cpp-property-decimal-test",
             "cpp-property-subscription-test",
             "cpp-property-binding-test",
+            "cpp-command-test",
+            "cpp-controls-test",
+            "cpp-input-test",
+            "cpp-input-consumer-test",
             "cpp-package-test",
             "rust-wrapper-runtime-test",
             "rust-wrapper-runtime-consumer-test",
+            "rust-wrapper-ui-controls-test",
+            "rust-wrapper-window-close-test",
             "rust-wrapper-property-bool-i64-test",
             "rust-wrapper-property-utf8-test",
             "rust-wrapper-property-f64-test",
             "rust-wrapper-property-decimal-test",
+            "python-runtime-test",
+            "python-runtime-consumer-test",
+            "python-property-bool-i64-test",
+            "python-property-bool-i64-consumer-test",
+            "python-property-utf8-test",
+            "python-property-utf8-consumer-test",
+            "python-property-f64-test",
+            "python-property-f64-consumer-test",
+            "python-property-decimal-test",
+            "python-property-decimal-consumer-test",
+            "python-binding-test",
+            "python-binding-consumer-test",
+            "python-command-test",
+            "python-command-consumer-test",
+            "python-controls-test",
+            "python-controls-consumer-test",
+            "python-input-test",
+            "python-input-consumer-test",
+            "python-window-test",
+            "python-window-consumer-test",
+            "python-window-peer-smoke-test",
             "csharp-runtime-test",
             "csharp-runtime-consumer-test",
             "csharp-property-test",
             "csharp-property-consumer-test",
             "csharp-command-test",
             "csharp-command-consumer-test",
+            "csharp-controls-test",
+            "csharp-controls-consumer-test",
+            "csharp-window-test",
+            "csharp-window-consumer-test",
+            "csharp-input-test",
+            "csharp-input-consumer-test",
             "format",
             "minimum",
+            "linux-platform-docker",
         ],
     )
     args = parser.parse_args()
+    if args.command == "linux-platform-docker":
+        return run_linux_platform_docker()
     if Path(sys.prefix).resolve() != VENV.resolve():
         parser.error(
             "Run with the repository .venv Python; see DEVELOPMENT.md"
@@ -166,6 +296,10 @@ def main():
             if args.command == "rust-wrapper-runtime-test"
             else "rust-wrapper-runtime-consumer-test"
             if args.command == "rust-wrapper-runtime-consumer-test"
+            else "rust-wrapper-ui-controls-test"
+            if args.command == "rust-wrapper-ui-controls-test"
+            else "rust-wrapper-window-close-test"
+            if args.command == "rust-wrapper-window-close-test"
             else "rust-wrapper-property-bool-i64-consumer-test"
             if args.command == "rust-wrapper-property-bool-i64-test"
             else "rust-wrapper-property-utf8-consumer-test"
@@ -174,12 +308,66 @@ def main():
             if args.command == "rust-wrapper-property-f64-test"
             else "rust-wrapper-property-decimal-consumer-test"
             if args.command == "rust-wrapper-property-decimal-test"
+            else "python-runtime-unit-test"
+            if args.command == "python-runtime-test"
+            else "python-runtime-consumer-test"
+            if args.command == "python-runtime-consumer-test"
+            else "python-property-bool-i64-unit-test"
+            if args.command == "python-property-bool-i64-test"
+            else "python-property-bool-i64-consumer-test"
+            if args.command == "python-property-bool-i64-consumer-test"
+            else "python-property-utf8-unit-test"
+            if args.command == "python-property-utf8-test"
+            else "python-property-utf8-consumer-test"
+            if args.command == "python-property-utf8-consumer-test"
+            else "python-property-f64-unit-test"
+            if args.command == "python-property-f64-test"
+            else "python-property-f64-consumer-test"
+            if args.command == "python-property-f64-consumer-test"
+            else "python-property-decimal-unit-test"
+            if args.command == "python-property-decimal-test"
+            else "python-property-decimal-consumer-test"
+            if args.command == "python-property-decimal-consumer-test"
+            else "python-binding-unit-test"
+            if args.command == "python-binding-test"
+            else "python-binding-consumer-test"
+            if args.command == "python-binding-consumer-test"
+            else "python-command-unit-test"
+            if args.command == "python-command-test"
+            else "python-command-consumer-test"
+            if args.command == "python-command-consumer-test"
+            else "python-controls-unit-test"
+            if args.command == "python-controls-test"
+            else "python-input-event-wrapper-unit-test"
+            if args.command == "python-input-test"
+            else "python-input-event-consumer-test"
+            if args.command == "python-input-consumer-test"
+            else "python-controls-consumer-test"
+            if args.command == "python-controls-consumer-test"
+            else "python-window-unit-test"
+            if args.command == "python-window-test"
+            else "python-window-consumer-test"
+            if args.command == "python-window-consumer-test"
+            else "python-window-peer-smoke-test"
+            if args.command == "python-window-peer-smoke-test"
             else "csharp-runtime-unit-test"
             if args.command == "csharp-runtime-test"
             else "csharp-property-unit-test"
             if args.command == "csharp-property-test"
             else "csharp-command-unit-test"
             if args.command == "csharp-command-test"
+            else "csharp-controls-unit-test"
+            if args.command == "csharp-controls-test"
+            else "csharp-input-unit-test"
+            if args.command == "csharp-input-test"
+            else "csharp-controls-consumer-test"
+            if args.command == "csharp-controls-consumer-test"
+            else "csharp-input-consumer-test"
+            if args.command == "csharp-input-consumer-test"
+            else "csharp-window-unit-test"
+            if args.command == "csharp-window-test"
+            else "csharp-window-consumer-test"
+            if args.command == "csharp-window-consumer-test"
             else "csharp-command-consumer-test"
             if args.command == "csharp-command-consumer-test"
             else "csharp-runtime-consumer-test"
@@ -200,6 +388,8 @@ def main():
             if args.command == "cpp-property-subscription-test"
             else "cpp-property-binding-unit-test"
             if args.command == "cpp-property-binding-test"
+            else "cpp-command-unit-test"
+            if args.command == "cpp-command-test"
             else "cpp-runtime-unit-test"
             if args.command == "cpp-runtime-test"
             else "development-bootstrap"
@@ -209,6 +399,13 @@ def main():
             if args.command == "rust-wrapper-runtime-test"
             else "Rust Runtime consumer test executed against host C ABI"
             if args.command == "rust-wrapper-runtime-consumer-test"
+            else "Rust UI Controls focused and C ABI consumer tests executed"
+            if args.command == "rust-wrapper-ui-controls-test"
+            else (
+                "Rust Window close-request focused and C ABI consumer tests "
+                "executed"
+            )
+            if args.command == "rust-wrapper-window-close-test"
             else "Rust BOOL/I64 Property consumer test executed"
             if args.command == "rust-wrapper-property-bool-i64-test"
             else "Rust UTF-8 Property consumer test executed"
@@ -217,12 +414,85 @@ def main():
             if args.command == "rust-wrapper-property-f64-test"
             else "Rust DECIMAL Property consumer test executed"
             if args.command == "rust-wrapper-property-decimal-test"
+            else "Python Runtime wrapper unit tests executed"
+            if args.command == "python-runtime-test"
+            else "Python Runtime consumer test executed against host C ABI"
+            if args.command == "python-runtime-consumer-test"
+            else "Python BOOL/I64 Property wrapper unit tests executed"
+            if args.command == "python-property-bool-i64-test"
+            else (
+                "Python BOOL/I64 Property consumer test executed "
+                "against host C ABI"
+            )
+            if args.command == "python-property-bool-i64-consumer-test"
+            else "Python UTF-8 Property wrapper unit tests executed"
+            if args.command == "python-property-utf8-test"
+            else (
+                "Python UTF-8 Property consumer test executed "
+                "against host C ABI"
+            )
+            if args.command == "python-property-utf8-consumer-test"
+            else "Python F64 Property wrapper unit tests executed"
+            if args.command == "python-property-f64-test"
+            else (
+                "Python F64 Property consumer test executed against host C ABI"
+            )
+            if args.command == "python-property-f64-consumer-test"
+            else "Python DECIMAL Property wrapper unit tests executed"
+            if args.command == "python-property-decimal-test"
+            else (
+                "Python DECIMAL Property consumer test executed "
+                "against host C ABI"
+            )
+            if args.command == "python-property-decimal-consumer-test"
+            else "Python Binding wrapper unit tests executed"
+            if args.command == "python-binding-test"
+            else "Python Binding consumer test executed against host C ABI"
+            if args.command == "python-binding-consumer-test"
+            else "Python AsyncCommand wrapper unit tests executed"
+            if args.command == "python-command-test"
+            else (
+                "Python AsyncCommand consumer test executed against host C ABI"
+            )
+            if args.command == "python-command-consumer-test"
+            else "Python Controls wrapper unit tests executed"
+            if args.command == "python-controls-test"
+            else "Python Input event wrapper unit tests executed"
+            if args.command == "python-input-test"
+            else "Python Input event consumer test executed with a fake host"
+            if args.command == "python-input-consumer-test"
+            else "Python Controls consumer test executed against host C ABI"
+            if args.command == "python-controls-consumer-test"
+            else "Python Window peer/close-request wrapper unit tests executed"
+            if args.command == "python-window-test"
+            else (
+                "Python Window peer/close-request consumer test executed "
+                "against host C ABI"
+            )
+            if args.command == "python-window-consumer-test"
+            else (
+                "Python Window peer open/close smoke executed against "
+                "the configured host Platform"
+            )
+            if args.command == "python-window-peer-smoke-test"
             else "C# Runtime wrapper unit tests executed"
             if args.command == "csharp-runtime-test"
             else "C# Property wrapper unit tests executed"
             if args.command == "csharp-property-test"
             else "C# asynchronous Command wrapper unit tests executed"
             if args.command == "csharp-command-test"
+            else "C# UI Control wrapper unit tests executed"
+            if args.command == "csharp-controls-test"
+            else "C# Input event wrapper unit tests executed"
+            if args.command == "csharp-input-test"
+            else "C# UI Control consumer test executed against host C ABI"
+            if args.command == "csharp-controls-consumer-test"
+            else "C# Input event consumer test executed against host C ABI"
+            if args.command == "csharp-input-consumer-test"
+            else "C# Window wrapper unit tests executed"
+            if args.command == "csharp-window-test"
+            else "C# Window consumer test executed against host C ABI"
+            if args.command == "csharp-window-consumer-test"
             else "C# Command consumer test executed against host C ABI"
             if args.command == "csharp-command-consumer-test"
             else "C# Runtime consumer test executed against the host C ABI"
@@ -243,6 +513,8 @@ def main():
             if args.command == "cpp-property-subscription-test"
             else "C++ Property Binding wrapper unit test executed"
             if args.command == "cpp-property-binding-test"
+            else "C++ asynchronous Command wrapper unit tests executed"
+            if args.command == "cpp-command-test"
             else "C ABI asynchronous Command consumer smoke executed"
             if args.command == "abi-command-smoke"
             else "C++/C# Runtime and package integration tests executed"
@@ -340,6 +612,8 @@ def main():
         elif args.command in (
             "rust-wrapper-runtime-test",
             "rust-wrapper-runtime-consumer-test",
+            "rust-wrapper-ui-controls-test",
+            "rust-wrapper-window-close-test",
             "rust-wrapper-property-bool-i64-test",
             "rust-wrapper-property-utf8-test",
             "rust-wrapper-property-f64-test",
@@ -375,7 +649,49 @@ def main():
                     + os.pathsep
                     + native_environment.get("LD_LIBRARY_PATH", "")
                 )
-            if args.command == "rust-wrapper-runtime-test":
+            if args.command == "rust-wrapper-window-close-test":
+                run(
+                    ["cargo", "test", "--locked", "-p", "freemvvm"],
+                    native_environment,
+                    results,
+                    "rust-wrapper-window-close-tests",
+                )
+                run(
+                    [
+                        "cargo",
+                        "run",
+                        "--locked",
+                        "-p",
+                        "freemvvm",
+                        "--example",
+                        "window_close_consumer",
+                    ],
+                    native_environment,
+                    results,
+                    "rust-wrapper-window-close-consumer",
+                )
+            elif args.command == "rust-wrapper-ui-controls-test":
+                run(
+                    ["cargo", "test", "--locked", "-p", "freemvvm"],
+                    native_environment,
+                    results,
+                    "rust-wrapper-ui-controls-tests",
+                )
+                run(
+                    [
+                        "cargo",
+                        "run",
+                        "--locked",
+                        "-p",
+                        "freemvvm",
+                        "--example",
+                        "ui_controls_consumer",
+                    ],
+                    native_environment,
+                    results,
+                    "rust-wrapper-ui-controls-consumer",
+                )
+            elif args.command == "rust-wrapper-runtime-test":
                 run(
                     ["cargo", "test", "--locked", "-p", "freemvvm"],
                     native_environment,
@@ -478,6 +794,605 @@ def main():
                 environment,
                 results,
                 "csharp-runtime-unit-tests",
+            )
+        elif args.command == "python-runtime-test":
+            test_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            test_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, test_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "wrappers/python/tests/test_runtime.py",
+                ],
+                test_environment,
+                results,
+                "python-runtime-unit-tests",
+            )
+        elif args.command == "python-runtime-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "python-runtime-consumer-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_dir = target_dir / "debug"
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = native_dir / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            consumer_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, consumer_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "wrappers/python/examples/runtime_consumer.py",
+                    str(native_path.resolve()),
+                ],
+                consumer_environment,
+                results,
+                "python-runtime-c-abi-consumer",
+            )
+        elif args.command == "python-property-bool-i64-test":
+            test_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            test_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, test_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "wrappers/python/tests/test_property_bool_i64.py",
+                ],
+                test_environment,
+                results,
+                "python-property-bool-i64-unit-tests",
+            )
+        elif args.command == "python-property-bool-i64-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "python-property-consumer-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_dir = target_dir / "debug"
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = native_dir / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            consumer_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, consumer_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "wrappers/python/examples/property_bool_i64_consumer.py",
+                    str(native_path.resolve()),
+                ],
+                consumer_environment,
+                results,
+                "python-property-bool-i64-c-abi-consumer",
+            )
+        elif args.command == "python-property-utf8-test":
+            test_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            test_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, test_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "wrappers/python/tests/test_property_utf8.py",
+                ],
+                test_environment,
+                results,
+                "python-property-utf8-unit-tests",
+            )
+        elif args.command == "python-property-utf8-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "python-property-consumer-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_dir = target_dir / "debug"
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = native_dir / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            consumer_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, consumer_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "wrappers/python/examples/property_utf8_consumer.py",
+                    str(native_path.resolve()),
+                ],
+                consumer_environment,
+                results,
+                "python-property-utf8-c-abi-consumer",
+            )
+        elif args.command == "python-property-f64-test":
+            test_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            test_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, test_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "wrappers/python/tests/test_property_f64.py",
+                ],
+                test_environment,
+                results,
+                "python-property-f64-unit-tests",
+            )
+        elif args.command == "python-property-f64-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "python-property-consumer-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_dir = target_dir / "debug"
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = native_dir / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            consumer_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, consumer_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "wrappers/python/examples/property_f64_consumer.py",
+                    str(native_path.resolve()),
+                ],
+                consumer_environment,
+                results,
+                "python-property-f64-c-abi-consumer",
+            )
+        elif args.command == "python-property-decimal-test":
+            test_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            test_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, test_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "wrappers/python/tests/test_property_decimal.py",
+                ],
+                test_environment,
+                results,
+                "python-property-decimal-unit-tests",
+            )
+        elif args.command == "python-property-decimal-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "python-property-consumer-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_dir = target_dir / "debug"
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = native_dir / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            consumer_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, consumer_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "wrappers/python/examples/property_decimal_consumer.py",
+                    str(native_path.resolve()),
+                ],
+                consumer_environment,
+                results,
+                "python-property-decimal-c-abi-consumer",
+            )
+        elif args.command == "python-binding-test":
+            test_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            test_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, test_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "wrappers/python/tests/test_binding.py",
+                ],
+                test_environment,
+                results,
+                "python-binding-unit-tests",
+            )
+        elif args.command == "python-binding-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "python-binding-consumer-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = target_dir / "debug" / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            consumer_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, consumer_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "wrappers/python/examples/binding_consumer.py",
+                    str(native_path.resolve()),
+                ],
+                consumer_environment,
+                results,
+                "python-binding-c-abi-consumer",
+            )
+        elif args.command == "python-command-test":
+            test_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            tests_path = str(ROOT / "wrappers/python/tests")
+            test_environment["PYTHONPATH"] = os.pathsep.join(
+                [
+                    source_path,
+                    tests_path,
+                    test_environment.get("PYTHONPATH", ""),
+                ]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "wrappers/python/tests/test_command.py",
+                ],
+                test_environment,
+                results,
+                "python-command-unit-tests",
+            )
+        elif args.command == "python-command-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "python-command-consumer-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = target_dir / "debug" / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            consumer_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, consumer_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "wrappers/python/examples/command_consumer.py",
+                    str(native_path.resolve()),
+                ],
+                consumer_environment,
+                results,
+                "python-command-c-abi-consumer",
+            )
+        elif args.command == "python-controls-test":
+            test_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            tests_path = str(ROOT / "wrappers/python/tests")
+            test_environment["PYTHONPATH"] = os.pathsep.join(
+                [
+                    source_path,
+                    tests_path,
+                    test_environment.get("PYTHONPATH", ""),
+                ]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "wrappers/python/tests/test_controls.py",
+                ],
+                test_environment,
+                results,
+                "python-controls-unit-tests",
+            )
+        elif args.command in (
+            "python-input-test",
+            "python-input-consumer-test",
+        ):
+            test_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            tests_path = str(ROOT / "wrappers/python/tests")
+            examples_path = str(ROOT / "wrappers/python/examples")
+            test_environment["PYTHONPATH"] = os.pathsep.join(
+                [
+                    source_path,
+                    tests_path,
+                    examples_path,
+                    test_environment.get("PYTHONPATH", ""),
+                ]
+            ).rstrip(os.pathsep)
+            test_file = (
+                "test_input_events.py"
+                if args.command == "python-input-test"
+                else "test_input_consumer.py"
+            )
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    f"wrappers/python/tests/{test_file}",
+                ],
+                test_environment,
+                results,
+                args.command,
+            )
+        elif args.command == "python-controls-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "python-controls-consumer-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = target_dir / "debug" / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            consumer_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, consumer_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "wrappers/python/examples/controls_consumer.py",
+                    str(native_path.resolve()),
+                ],
+                consumer_environment,
+                results,
+                "python-controls-c-abi-consumer",
+            )
+        elif args.command == "python-window-test":
+            test_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            tests_path = str(ROOT / "wrappers/python/tests")
+            test_environment["PYTHONPATH"] = os.pathsep.join(
+                [
+                    source_path,
+                    tests_path,
+                    test_environment.get("PYTHONPATH", ""),
+                ]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "wrappers/python/tests/test_window.py",
+                ],
+                test_environment,
+                results,
+                "python-window-unit-tests",
+            )
+        elif args.command == "python-window-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "python-window-consumer-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = target_dir / "debug" / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            consumer_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, consumer_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "wrappers/python/examples/window_consumer.py",
+                    str(native_path.resolve()),
+                ],
+                consumer_environment,
+                results,
+                "python-window-c-abi-consumer",
+            )
+        elif args.command == "python-window-peer-smoke-test":
+            if not sys.platform.startswith("linux"):
+                raise RuntimeError(
+                    "Window peer smoke requires a Linux Platform host"
+                )
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "python-window-peer-smoke-native-build",
+            )
+            target_dir = Path(
+                environment.get("CARGO_TARGET_DIR", ROOT / "target")
+            )
+            if not target_dir.is_absolute():
+                target_dir = ROOT / target_dir
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = target_dir / "debug" / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_environment = dict(environment)
+            source_path = str(ROOT / "wrappers/python/src")
+            consumer_environment["PYTHONPATH"] = os.pathsep.join(
+                [source_path, consumer_environment.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep)
+            run(
+                [
+                    sys.executable,
+                    "wrappers/python/examples/window_peer_smoke.py",
+                    str(native_path.resolve()),
+                ],
+                consumer_environment,
+                results,
+                "python-window-peer-platform-smoke",
             )
         elif args.command == "csharp-runtime-consumer-test":
             run(
@@ -648,6 +1563,145 @@ def main():
                 environment,
                 results,
                 "csharp-command-c-abi-consumer",
+            )
+        elif args.command in {"csharp-controls-test", "csharp-input-test"}:
+            project = "wrappers/csharp/tests/RuntimeTests/RuntimeTests.csproj"
+            unit_label = (
+                "input" if args.command == "csharp-input-test" else "controls"
+            )
+            run(
+                ["dotnet", "restore", project, "--locked-mode"],
+                environment,
+                results,
+                f"csharp-{unit_label}-test-restore",
+            )
+            run(
+                [
+                    "dotnet",
+                    "run",
+                    "--project",
+                    project,
+                    "--configuration",
+                    "Debug",
+                    "--no-restore",
+                ],
+                environment,
+                results,
+                f"csharp-{unit_label}-unit-tests",
+            )
+        elif args.command in {
+            "csharp-controls-consumer-test",
+            "csharp-input-consumer-test",
+        }:
+            is_input_consumer = args.command == "csharp-input-consumer-test"
+            unit_label = "input" if is_input_consumer else "controls"
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                f"csharp-{unit_label}-consumer-native-build",
+            )
+            project = "wrappers/csharp/tests/Consumer/Consumer.csproj"
+            run(
+                ["dotnet", "restore", project, "--locked-mode"],
+                environment,
+                results,
+                f"csharp-{unit_label}-consumer-restore",
+            )
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = ROOT / "target/debug" / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            consumer_args = [
+                "dotnet",
+                "run",
+                "--project",
+                project,
+                "--configuration",
+                "Debug",
+                "--no-restore",
+                "--",
+            ]
+            if is_input_consumer:
+                consumer_args.append("--input-only")
+            consumer_args.append(str(native_path.resolve()))
+            run(
+                consumer_args,
+                environment,
+                results,
+                f"csharp-{unit_label}-c-abi-consumer",
+            )
+        elif args.command == "csharp-window-test":
+            project = "wrappers/csharp/tests/RuntimeTests/RuntimeTests.csproj"
+            run(
+                ["dotnet", "restore", project, "--locked-mode"],
+                environment,
+                results,
+                "csharp-window-test-restore",
+            )
+            run(
+                [
+                    "dotnet",
+                    "run",
+                    "--project",
+                    project,
+                    "--configuration",
+                    "Debug",
+                    "--no-restore",
+                ],
+                environment,
+                results,
+                "csharp-window-unit-tests",
+            )
+        elif args.command == "csharp-window-consumer-test":
+            run(
+                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
+                environment,
+                results,
+                "csharp-window-consumer-native-build",
+            )
+            project = "wrappers/csharp/tests/Consumer/Consumer.csproj"
+            run(
+                ["dotnet", "restore", project, "--locked-mode"],
+                environment,
+                results,
+                "csharp-window-consumer-restore",
+            )
+            native_name = (
+                "freemvvm_abi_1.dll"
+                if os.name == "nt"
+                else "libfreemvvm_abi_1.dylib"
+                if sys.platform == "darwin"
+                else "libfreemvvm_abi_1.so"
+            )
+            native_path = ROOT / "target/debug" / native_name
+            if not native_path.is_file():
+                raise RuntimeError(
+                    f"Host C ABI library was not built: {native_path}"
+                )
+            run(
+                [
+                    "dotnet",
+                    "run",
+                    "--project",
+                    project,
+                    "--configuration",
+                    "Debug",
+                    "--no-restore",
+                    "--",
+                    str(native_path.resolve()),
+                ],
+                environment,
+                results,
+                "csharp-window-c-abi-consumer",
             )
         elif args.command == "minimum":
             run(
@@ -982,7 +2036,106 @@ def main():
                 results,
                 "cpp-property-binding-test",
             )
-        elif args.command == "cpp-package-test":
+        elif args.command == "cpp-command-test":
+            run(
+                ["cmake", "--preset", "dev"],
+                environment,
+                results,
+                "cmake-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "--preset",
+                    "dev",
+                    "--target",
+                    "freemvvm_cpp_command_tests_exe",
+                ],
+                environment,
+                results,
+                "cpp-command-test-build",
+            )
+            run(
+                [
+                    "ctest",
+                    "--test-dir",
+                    "out/cmake/dev",
+                    "-R",
+                    "^wrapper\\.cpp\\.command$",
+                    "--output-on-failure",
+                ],
+                environment,
+                results,
+                "cpp-command-test",
+            )
+        elif args.command == "cpp-controls-test":
+            run(
+                ["cmake", "--preset", "dev"],
+                environment,
+                results,
+                "cmake-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "--preset",
+                    "dev",
+                    "--target",
+                    "freemvvm_cpp_ui_control_tests_exe",
+                ],
+                environment,
+                results,
+                "cpp-controls-test-build",
+            )
+            run(
+                [
+                    "ctest",
+                    "--test-dir",
+                    "out/cmake/dev",
+                    "-R",
+                    "^wrapper\\.cpp\\.ui-controls$",
+                    "--output-on-failure",
+                ],
+                environment,
+                results,
+                "cpp-controls-test",
+            )
+        elif args.command == "cpp-input-test":
+            run(
+                ["cmake", "--preset", "dev"],
+                environment,
+                results,
+                "cmake-configure",
+            )
+            run(
+                [
+                    "cmake",
+                    "--build",
+                    "--preset",
+                    "dev",
+                    "--target",
+                    "freemvvm_cpp_input_tests_exe",
+                ],
+                environment,
+                results,
+                "cpp-input-test-build",
+            )
+            run(
+                [
+                    "ctest",
+                    "--test-dir",
+                    "out/cmake/dev",
+                    "-R",
+                    "^wrapper\\.cpp\\.input$",
+                    "--output-on-failure",
+                ],
+                environment,
+                results,
+                "cpp-input-test",
+            )
+        elif args.command in ("cpp-package-test", "cpp-input-consumer-test"):
             run(
                 [
                     "cmake",
@@ -1091,13 +2244,28 @@ def main():
                 "document-links",
             )
             run(
-                ["ruff", "format", "--check", "tools", "wrappers/python/src"],
+                [
+                    "ruff",
+                    "format",
+                    "--check",
+                    "tools",
+                    "wrappers/python/src",
+                    "wrappers/python/tests",
+                    "wrappers/python/examples",
+                ],
                 environment,
                 results,
                 "python-format",
             )
             run(
-                ["ruff", "check", "tools", "wrappers/python/src"],
+                [
+                    "ruff",
+                    "check",
+                    "tools",
+                    "wrappers/python/src",
+                    "wrappers/python/tests",
+                    "wrappers/python/examples",
+                ],
                 environment,
                 results,
                 "python-lint",
@@ -1291,10 +2459,210 @@ def main():
                 "csharp-command-consumer",
             )
             run(
+                [sys.executable, "tools/dev.py", "csharp-controls-test"],
+                environment,
+                results,
+                "csharp-controls-unit",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "csharp-controls-consumer-test",
+                ],
+                environment,
+                results,
+                "csharp-controls-consumer",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "csharp-window-test"],
+                environment,
+                results,
+                "csharp-window-unit",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "csharp-window-consumer-test",
+                ],
+                environment,
+                results,
+                "csharp-window-consumer",
+            )
+            run(
                 [sys.executable, "-m", "pip", "check"],
                 environment,
                 results,
                 "python-dependencies",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "python-runtime-test"],
+                environment,
+                results,
+                "python-runtime-unit",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-property-bool-i64-test",
+                ],
+                environment,
+                results,
+                "python-property-bool-i64-unit",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "python-property-utf8-test"],
+                environment,
+                results,
+                "python-property-utf8-unit",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "python-property-f64-test"],
+                environment,
+                results,
+                "python-property-f64-unit",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-property-decimal-test",
+                ],
+                environment,
+                results,
+                "python-property-decimal-unit",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "python-binding-test"],
+                environment,
+                results,
+                "python-binding-unit",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "python-command-test"],
+                environment,
+                results,
+                "python-command-unit",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "python-controls-test"],
+                environment,
+                results,
+                "python-controls-unit",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "python-window-test"],
+                environment,
+                results,
+                "python-window-unit",
+            )
+            run(
+                [sys.executable, "tools/dev.py", "python-input-test"],
+                environment,
+                results,
+                "python-input-event-unit",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-input-consumer-test",
+                ],
+                environment,
+                results,
+                "python-input-event-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-runtime-consumer-test",
+                ],
+                environment,
+                results,
+                "python-runtime-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-property-bool-i64-consumer-test",
+                ],
+                environment,
+                results,
+                "python-property-bool-i64-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-property-utf8-consumer-test",
+                ],
+                environment,
+                results,
+                "python-property-utf8-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-property-f64-consumer-test",
+                ],
+                environment,
+                results,
+                "python-property-f64-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-property-decimal-consumer-test",
+                ],
+                environment,
+                results,
+                "python-property-decimal-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-binding-consumer-test",
+                ],
+                environment,
+                results,
+                "python-binding-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-command-consumer-test",
+                ],
+                environment,
+                results,
+                "python-command-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-controls-consumer-test",
+                ],
+                environment,
+                results,
+                "python-controls-consumer",
+            )
+            run(
+                [
+                    sys.executable,
+                    "tools/dev.py",
+                    "python-window-consumer-test",
+                ],
+                environment,
+                results,
+                "python-window-consumer",
             )
             run(
                 [
@@ -1330,7 +2698,7 @@ def main():
                 [
                     sys.executable,
                     "-c",
-                    "import ctypes, freemvvm; print('skeleton import: OK')",
+                    "import freemvvm; print('Python facade: OK')",
                 ],
                 environment,
                 results,

@@ -1,9 +1,9 @@
 # UIクラス：Window・基本Control・次段階Control
 
-- 文書版: 1.1
+- 文書版: 1.6
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-11-01
+- 状態: 1.2全文承認済み（利用者、2026-10-29）。1.3 / 1.4全文承認済み（利用者、2026-10-30～2026-10-31）。Window単位TextServiceの関連付け1.5全文承認済み（利用者、2026-11-01）。Widget Input subscription 1.6全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -57,8 +57,11 @@ flowchart LR
 | `Focusable`はWidgetごとに扱い、初期既定をTextBox/Button=true、Text/StackPanel/Window=falseとする。Window active/focus状態は子Controlのkeyboard focusと区別する。明示FocusableをContainerに付けた場合の実挙動は後続scope設計へ送る。 | MVVM UIライブラリ Focusの管理単位に関する上位判断案、InputとFocus。既定値がControl役割に合うか確認する。 |
 | 初期Controlには共通`IsVisible`/Hidden/Collapsed APIを追加せず、画面から外す操作はLogical Treeからのremoveで行う案。visibilityによるMeasure/Focus/Accessibility eligibilityを暗黙に作らない。 | 初期要件にvisibility機能は列挙されず、MVVM UIライブラリ Layoutの責務境界に関する上位判断案は詳細を別項目で具体化する。将来必要ならVisible/Hidden/Collapsedの意味を別判断する。 |
 | Windowは一つのLogical content rootを受け持ち、rootの追加/除去と寿命はUIクラス：Tree・Layout・GeometryのTree操作に従う。Windowの開閉・surface生成はControlのLogical ownershipとは分け、Core意味論・Platform操作境界をプラットフォーム：抽象化と共通protocolで接続する。 | MVVM UIライブラリ UI treeの所有・寿命に関する上位判断案、UI Tree。titlebar、native decoration、close callback、Window titleのPlatform表示は確定しない。 |
+| WindowはPlatform peerからgeneration付き論理client areaを受け取り、LayoutEngineへ最新値を渡す。Coreはopen成功前にroot layout/frameを作らず、close後は再open時の新しいclient areaで再計算する。 | [RQ-09-008](../../11_requirements/RQ-09_ui-scope.md#rq-09-008)、[RQ-09-067](../../11_requirements/RQ-09_ui-scope.md#rq-09-067)、Platform内部層契約。WindowのOS decoration/client-area取得方法はPlatform責務。 |
 | StackPanelはUIクラス：Tree・Layout・Geometryの順序付きchildrenとorientation/AlignをそのままControl意味論とし、独自のlayout Propertyや追加spacingを作らない。追加/削除/並び順変更はUIクラス：Tree・Layout・GeometryのUI-thread原子操作へ接続する。 | MVVM UIライブラリ Layoutの責務境界に関する上位判断案、UI Tree、Layout。公開collection facade/child API名は決めない。 |
+| StackPanelはMeasure/ArrangeをLayoutEngineへ委譲し、自身はorientation・順序付きchildren・child Alignを測定計算入力として提供する。初期公開APIに任意サイズ制約setter/getterは加えない。 | [RQ-09-007](../../11_requirements/RQ-09_ui-scope.md#rq-09-007)、[RQ-09-045](../../11_requirements/RQ-09_ui-scope.md#rq-09-045)、[RQ-09-057](../../11_requirements/RQ-09_ui-scope.md#rq-09-057)。新しいサイズAPIは要求差分とABIレビューを要する。 |
 | Textは`Content` UTF-8 Propertyを表示値として持ち、既定は空文字列、OneWay Bindingのtargetにできる読み取り専用Controlとする。Accessibility valueは同じ表示値を参照し、`AccessibleName`は別設定とする。 | MVVM UIライブラリ 初期Control契約に関する上位判断案、公開ABI契約、Binding契約。wrap/ellipsis/selection/copy/action、fallback name、line-break policyはここで決めない。 |
+| Text/TextBox/Buttonは、各々の表示用immutable text snapshotをTextServiceへ渡し、そのmetricsをIntrinsicMeasureProvider経由でLayoutEngineへ返す。TextBoxは編集中表示snapshotを使い、確定Valueだけで測定しない。 | [RQ-09-004](../../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-072](../../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-09-075](../../11_requirements/RQ-09_ui-scope.md#rq-09-075)、TextService内部層契約。font resolve failure時に固定寸法や空GlyphRunで成功扱いしない。未指定fontのPlatform default解決はPlatform DD 1.9を参照。 |
 | TextBoxは公開ABI契約/UIクラス：TextBox・Validation・IME編集の確定`Value` PropertyをTwoWay Binding可能とし、editing text、selection/caret、input state/reasonはUIクラス：TextBox・Validation・IME編集の状態getter/subscriptionに接続する。Control levelに別のTextBox-only Binding semanticsを追加しない。 | 公開ABI契約、UIクラス：TextBox・Validation・IME編集。編集API、公開property handle一覧、symbolはABI/wrapper設計へ送る。 |
 | Buttonは表示用UTF-8 `Text`/labelと`AccessibleName`を独立させ、optional Command associationからactivationを処理する案。Command associationはgeneric Value Propertyでなくtyped Command referenceとし、同Runtime Commandのみを設定可能にする案。 | MVVM UIライブラリ 初期Control契約に関する上位判断案、公開ABI契約、イベントハンドリング：非同期Command。label property名、Command associationの設定/binding面は確認対象。 |
 | Buttonのeffective executable stateを`IsEnabled && assigned Command exists && Command.can_execute`とする案。disabled状態のactivationはCommand.executeへ進まず、実行中の二度押しもイベントハンドリング：非同期Commandの実行可否規則に従う。Commandなしでは生成・表示を許し、activationをno-opで終了する。 | 公開ABI契約、Command、MVVM UIライブラリ Accessibility共通意味論に関する上位判断案。Command由来のProperty notificationを同期flushしない。 |
@@ -130,11 +133,13 @@ WindowのCore意味とControl APIは本節、Sceneの受渡し・frame completio
 |---|---|---|
 | Widget | enabled_property / accessible_name_property / request_focus | getterは独立owned Property。UI threadでcommit |
 | Container | insert/remove/move、children_snapshot | parentのみがchildの所属ownerを保持 |
-| Window | content、title_property、open/close、close_requested | closeはpeer終了、shutdownはRuntime全体終了 |
-| StackPanel | orientation、child Align、constraints | 各入力の検査後Layout dirtyを立てる |
-| Text | content_property | 表示のみ。アプリのsetter/Bindingで更新できる |
-| TextBox | value_property、編集snapshotとedit API | 確定値と編集中の値を分離 |
-| Button | label_property、set_command / command | typed Command参照をstrong保持、getterは新ownerを返す |
+| Window | content、title_property、open/close、close_requested、client_area_changed(generation, area) | closeはpeer終了、shutdownはRuntime全体終了。client areaはPlatform情報をUI threadで受けてLayoutEngineへ渡す |
+| StackPanel | orientation、child Align | 各入力の検査後Layout dirtyを立てる。サイズ計算はLayoutEngineへ委譲 |
+| Text | content_property、measure_snapshot | 表示のみ。アプリのsetter/Bindingで更新でき、TextService metricsで測定 |
+| TextBox | value_property、編集snapshotとedit API、measure_snapshot | 確定値と編集中の値を分離し、表示用snapshotで測定 |
+| Button | label_property、set_command / command、measure_snapshot | typed Command参照をstrong保持、getterは新ownerを返す。label metricsを測定に使う |
+
+1.2改訂案では`WidgetState`が内部layout constraintとVisual identityを保持し、具象Controlは表示内容またはContainer設定をLayoutEngineへimmutable入力として渡す。Measure中にProperty notification、Binding delivery、利用者callbackは実行しない。TextService/provider failureはそのLayout pass全体を失敗させ、Control stateや直前のcomplete LayoutSnapshotを部分更新しない。これはC ABIにmeasurement callbackやbounds getterを追加する提案ではない。
 
 ```mermaid
 stateDiagram-v2
@@ -156,6 +161,23 @@ stateDiagram-v2
 
 CloseRequestはWindow弱参照・peer generation・request IDを持つ。resolveはUI thread、成功後はConsumed。未解決requestをreleaseした場合はDeclineとしてWindowを表示維持する案で、source ownerが失われたためWindowを黙って閉じない。shutdownはveto/deferを経由せず全peerをUIでtear downする。
 
+## Widget Input subscription（1.6全文承認済み）
+
+本節は[RQ-09-068](../../11_requirements/RQ-09_ui-scope.md#rq-09-068)をControl APIへ接続する実現仕様として承認された。公開C ABI宣言は[共通C ABI](../runtime-objects/abi.md) 1.5と対応する。
+
+| 対象 | 追加する操作・意味 | 所有・変更点 |
+|---|---|---|
+| Widget | `input_subscribe(event_mask, callback)`、`has_focus()` | callbackはcurrent Widget・元target・event viewを受ける。InputSubscriptionはWidget/Runtimeに登録され、cancelまたはWidget/Runtime終了までCoreがcallback/userdataを所有。Focus notification callbackは初期追加せずgetterで現在値を読む |
+| InputSubscription | `cancel()` | cancelとhandle releaseは別操作。登録解除後もsubscription handleは明示releaseまで解放されない。in-flight callback中のself-cancelはcallback復帰後にdestroy |
+| Button default action | handledでないprimary pointer down/up pair後に既存semantic activationへ一度接続 | InputRouterがWindow generation付きweak pending pressを保持し、same Buttonへの有効upで一度だけ消費。別target/up handled/detach/disable/closeで破棄。captureはしない。Commandなし/CanExecute=false/disabled/ancestor-disabledは既存Button契約どおりno-op |
+| TextBox default action | handledでないTextCommitを既存TextBoxState edit/validation入口へ渡す | UTF-8 copy、session、Validator、確定値/編集状態はTextBox設計の所管。FocusLostをcommit/cancelへ読み替えない |
+
+event subscriptionは各Widgetに0個以上設定でき、RuntimeのInputRouterがtargetからLogical parentへrouteする。1 Widget内では登録順に呼び、handled後は同Widgetの残りcallback・親route・default actionを止める。callback中にWidgetがdetachまたはeffective-disabledとなった場合も残りrouteとdefault actionを止める。event payload viewはcallback中だけ有効で、利用者に保持させない。
+
+この案では対象eventをKeyDown/KeyUp/TextCommit/PrimaryPointerDown/PrimaryPointerUpに限定する。Button起動の意味上のsource of truthはCore Buttonであり、Platform native button/command動作を直接呼ばない。Focus取得をpointer downへ自動連動させる動作、pointer capture/move/wheel、keyboard shortcut、Tab traversalは追加しない。
+
+wrapperの言語別closure形、C ABI symbol、event-kindの固定数値とpointer button enumはこのControl文書だけでは確定しない。これらはC ABI 1.5案を承認した後、各wrapperの文書とunitを更新して定める。
+
 
 ## クラス設計の補足（1.1承認済み）
 
@@ -169,13 +191,15 @@ Widget/Containerは公開APIの抽象viewであり、Coreに基底classの継承
 
 | 型 | 責務・保持データ | 主要メソッド・操作 | 所有・寿命 |
 | --- | --- | --- | --- |
-| WidgetState | Runtime所属、enabled/accessible-name Property、Visualとの対応を保持 | enabled_property(); accessible_name_property(); request_focus() | 共通stateは具象Controlに従属。getterは独立owned Propertyを返す |
+| WidgetState | Runtime所属、enabled/accessible-name Property、Visualとの対応、初期内部layout constraintを保持 | enabled_property(); accessible_name_property(); request_focus(); measure_snapshot() | 共通stateは具象Controlに従属。初期constraintは内部値で、公開C ABI setter/getterを持たない |
 | ContainerState | 順序付きchild所属と子snapshotを管理 | insert(child, index); remove(child); move(child, index); children_snapshot() | childの所属ownerを保持。child→parentは非所有。変更はTree処理へ委譲 |
-| Window | WidgetState、単一content所属、title Property、peer generation、open/close状態 | set_content(child); title_property(); open(); close(); resolve_close(request, decision) | content所属を所有。peer操作はPlatformへ委譲し、closeでCore content/Propertyを破棄しない |
-| StackPanel | WidgetState/ContainerState、orientation、子のAlignとconstraint | set_orientation(value); measure(limit); arrange(bounds) | 子の所属はContainerState、配置計算はLayoutへ委譲。独自の子所有を重ねない |
-| Text | WidgetStateとUTF8 content Property | content_property(); build_visual(text_snapshot) | 表示値はPropertyから取得。OSのtext objectをCoreの正本にしない |
-| TextBox | WidgetStateと既存TextBoxStateを結合 | value_property(); edit_replace(input); snapshot() | 確定Property・編集snapshot・IME sessionはTextBoxStateの所管。別の値正本を作らない |
-| Button | WidgetState、label Property、optional Command所有参照 | set_command(command); command(); activate(origin) | 共有Commandを強保持。交換成功後に旧参照を解放。Button破棄だけではCommandをcloseしない |
+| Window | WidgetState、単一content所属、title Property、peer generation/client area、open/close状態 | set_content(child); client_area_changed(generation, area); title_property(); open(); close(); resolve_close(request, decision) | content所属を所有。peer操作はPlatformへ委譲し、closeでCore content/Propertyを破棄しない |
+| StackPanel | WidgetState/ContainerState、orientation、子のAlign | set_orientation(value); measure(limit); arrange(bounds) | 子の所属はContainerState、配置計算はLayoutEngineへ委譲。独自の子所有を重ねない |
+| Text | WidgetStateとUTF8 content Property | content_property(); measure_snapshot(); build_visual(text_snapshot) | 表示値はPropertyから取得。OSのtext objectをCoreの正本にしない。measurement/render双方がTextServiceを使う |
+| TextBox | WidgetStateと既存TextBoxStateを結合 | value_property(); edit_replace(input); display_snapshot(); measure_snapshot() | 確定Property・編集snapshot・IME sessionはTextBoxStateの所管。測定は表示用snapshotに一致させる |
+| Button | WidgetState、label Property、optional Command所有参照 | set_command(command); command(); measure_snapshot(); activate(origin) | 共有Commandを強保持。交換成功後に旧参照を解放。Button破棄だけではCommandをcloseしない |
+| LayoutEngine | Window領域/tree revisionを入力しMeasure/ArrangeとLayoutSnapshot作成 | run(root, client_area, visual_snapshot); invalidate(reason) | Core Runtime所有、UI thread専用。failureは旧complete snapshot保持 |
+| IntrinsicMeasureProvider | Text familyのimmutable display snapshotをTextService metricsへ変換 | measure(snapshot, constraints) | Core内部のみ。利用者callback APIではない |
 | CloseRequest | Window弱参照、peer generation、request ID、未解決/Consumed状態 | resolve(decision); release_unresolved() | 一回だけ解決するowned request。stale generationは拒否。未解決releaseのDecline規則は本文を維持 |
 
 ### クラスの関連
@@ -195,6 +219,7 @@ classDiagram
     }
     class Window {
         set_content()
+        client_area_changed()
         title_property()
     }
     class StackPanel {
@@ -210,12 +235,27 @@ classDiagram
         resolve()
         release_unresolved()
     }
+    class LayoutEngine {
+        run()
+        invalidate()
+    }
+    class LayoutSnapshot {
+        bounds()
+        desired_size()
+    }
+    class IntrinsicMeasureProvider {
+        measure()
+    }
     Window *-- WidgetState
     Window *-- ContainerState : content所属
     StackPanel *-- WidgetState
     StackPanel *-- ContainerState : children所属
     Button *-- WidgetState
     Button o-- Command : 共有所有参照
+    Window ..> LayoutEngine : root area / content
+    StackPanel ..> LayoutEngine : Measure / Arrange
+    LayoutEngine o-- LayoutSnapshot : atomic result
+    LayoutEngine --> IntrinsicMeasureProvider : leaf measure
     CloseRequest ..> Window : weak + generation
 ```
 
@@ -247,6 +287,22 @@ Button.activateはUI contextとenabledを確認し、現在のCommandをcall期�
 
 抽象viewの取得で別のWidget objectを生成しない。WindowとStackPanelが同じContainerStateを共有する図ではなく、各instanceが自分のstateを持つ。Text/TextBoxは表に示し、図は共通stateと所有の主要部分に限定した。次段階Controlは既存採用範囲のまま維持する。
 
+## Window background RGB API（1.3）
+
+要求根拠: [RQ-09-074](../../11_requirements/RQ-09_ui-scope.md#rq-09-074)。Window背景色はWindow固有の表示設定であり、Control common `Property`/Binding値にはしない。初期版ではopaque normalized RGBの3成分（各`f32` 0.0～1.0）を使い、alphaは扱わない。
+
+| 操作 | Core動作 | 失敗・副作用 |
+|---|---|---|
+| `background_rgb()` | overrideがあればその値、なければ`RgbColor(1,1,1)`を返す | UI thread/runtime/type validationに従う。getterはWindow stateを変更しない |
+| `set_background_rgb(r,g,b)` | 全成分のfinite・0.0～1.0を先に検証し、Window overrideを一括更新 | invalid入力では状態不変。effective値が変わる場合だけpaint/scene dirty。Layoutはdirtyにしない |
+| `reset_background_rgb()` | overrideをNoneへ戻し、規定値をeffective colorとする | 既に未指定ならno-op。effective colorが変わる場合だけpaint/scene dirty |
+
+Window close/reopenではoverrideを保持し、Runtime shutdown時は通常のWindow state cleanupで破棄する。背景RGBはSceneSnapshotにCoreがeffective値を渡し、backendはrenderer固有の暗黙色に置き換えない。UI threading・Window identity・scene/frame invalidationは既存ControlViewConnector contractに従う。
+
+### v1.4: Control textの未指定fontとPlatform default（全文承認済み）
+
+Text/TextBox/Buttonの初期Controlはfont未指定で作成され、CoreはOS固有font名ではなく`PlatformDefault` requestを対象WindowのTextServiceへ渡す。TextServiceのplatform実装がsystem defaultと必要なsystem fallbackを解決し、metricsと各GlyphRunのfont identityを含むimmutable resultを返す。Coreは同一resolved resultをMeasureとSceneで共有する。Window単位native resourceを持たないprofileはRuntime共通TextServiceを使える。Windows DirectWriteでは同じWindow workerがresolve・shape・face登録・render・releaseを行い、COM objectをCore/worker境界へ渡さない。初期public Font APIは追加しない。詳細なSPIとfailure/lifecycle境界は[Platform internal layers 2.1](../platform/internal-layers.md)を参照する。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -255,3 +311,11 @@ Button.activateはUI contextとenabledを確認し、現在のCommandをcall期�
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-10-29 | 1.2改訂案 | Window client areaからLayoutEngineへの接続、Text familyのintrinsic measurement責務、初期C ABIにサイズ制約APIを追加しない境界を提案。文書全体レビュー待ち。1.1承認範囲を維持 |
+| 2026-10-29 | 1.2全文 | 利用者の「ok」によりWindow/LayoutEngine接続、Text family measurement責務、C ABI境界を含む文書全体を承認。実装・試験合格とは別管理 |
+| 2026-10-30 | 1.3全文 | 利用者の「ok」によりRQ-09-074のWindow背景色API、default/set/reset semanticsを含む文書全体を承認。実装・試験合格は別管理 |
+| 2026-10-31 | 1.4改訂案 | Text-familyの未指定fontをCore-neutral PlatformDefault requestとし、Platform resolver経由で同一metrics/GlyphRun resultをLayout・Sceneで共有する案を追加。全文レビュー待ち |
+| 2026-10-31 | 1.4全文 | 利用者の「ok」により未指定font requestとMeasure/Scene同一resolved snapshotの接続を含む文書全体を承認。実装・試験合格は別管理 |
+| 2026-11-01 | 1.5全文 | 利用者承認。TextServiceをWindow peerへ関連付け、Windows worker内でresolve/shape/face登録/render/releaseを行う。Linux等のRuntime共通serviceは維持。Platform DD 2.1と一体承認。実装・試験合格は別管理 |
+| 2026-11-01 | 1.6改訂案 | RQ-09-068のWidget Input subscription、Button/TextBox default action、handled順序、Focus getterを提案。1.5承認baselineを維持 |
+| 2026-11-01 | 1.6全文 | 利用者の「ok」によりWidgetごとのInput subscription、Button/TextBox default action、handled順序、Focus getterを含む全文を承認。実装・試験状態は別管理 |

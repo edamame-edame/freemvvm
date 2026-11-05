@@ -13,6 +13,14 @@ namespace freemvvm {
 
 class UiError;
 class HandlerRegistration;
+class Command;
+class CommandWorker;
+class Widget;
+class Window;
+class StackPanel;
+class Text;
+class TextBox;
+class Button;
 template <typename T>
 class Property;
 
@@ -44,6 +52,7 @@ class ErrorSnapshot final {
       noexcept;
   friend class Runtime;
   friend class ShutdownRequest;
+  friend class Command;
   ErrorSnapshot(std::uint64_t token,
                 std::shared_ptr<detail::RuntimeCleanupState> state,
                 detail::PendingNode* cleanup_node) noexcept;
@@ -115,6 +124,9 @@ struct HostRegistration final {
 enum class CallbackKind {
   kPropertyNotification,
   kBindingErrorNotification,
+  kCommandStart,
+  kWindowCloseRequest,
+  kInputEvent,
 };
 
 struct CallbackFailure final {
@@ -221,6 +233,14 @@ class Runtime final {
  private:
   template <typename T>
   friend class Property;
+  friend class Command;
+  friend class CommandWorker;
+  friend class Widget;
+  friend class Window;
+  friend class StackPanel;
+  friend class Text;
+  friend class TextBox;
+  friend class Button;
   friend struct detail::RuntimeTestAccess;
   Runtime(std::uint64_t token,
           std::shared_ptr<detail::RuntimeCleanupState> state,

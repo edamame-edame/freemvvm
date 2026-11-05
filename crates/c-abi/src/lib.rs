@@ -4,11 +4,13 @@
 
 use freemvvm_core::abi_support::{
     BindingApiError, CommandApiError, CommandStartCallback, DestroyCallback, ErrorApiError,
-    PostCallback, PropertyApiError, RuntimeCreateError, RuntimeQueryError, RuntimeRetainError,
-    ShutdownApiError, ShutdownApiState, ValidateBoolCallback, ValidateI64Callback,
-    ValidateUtf8Callback, WakeCallback, binding_cancel as core_binding_cancel,
-    binding_create as core_binding_create, binding_error_snapshot as core_binding_error_snapshot,
-    binding_subscribe_error as core_binding_subscribe_error,
+    InputEventApiError, InputEventCallback, PostCallback, PropertyApiError, RuntimeCreateError,
+    RuntimeQueryError, RuntimeRetainError, ShutdownApiError, ShutdownApiState, UiControlApiError,
+    ValidateBoolCallback, ValidateI64Callback, ValidateUtf8Callback, WakeCallback,
+    binding_cancel as core_binding_cancel, binding_create as core_binding_create,
+    binding_error_snapshot as core_binding_error_snapshot,
+    binding_subscribe_error as core_binding_subscribe_error, button_command as core_button_command,
+    button_set_command as core_button_set_command,
     command_can_execute_property as core_command_can_execute_property,
     command_cancel as core_command_cancel,
     command_cancel_token_requested as core_command_cancel_token_requested,
@@ -18,9 +20,13 @@ use freemvvm_core::abi_support::{
     command_complete_success as core_command_complete_success,
     command_create_async as core_command_create_async, command_execute as core_command_execute,
     command_failure_snapshot as core_command_failure_snapshot,
-    command_state_property as core_command_state_property, error_code as core_error_code,
+    command_state_property as core_command_state_property,
+    container_remove as core_container_remove, error_code as core_error_code,
     error_message_utf8 as core_error_message_utf8, error_status as core_error_status,
-    handle_release as core_handle_release,
+    handle_release as core_handle_release, input_event_key as core_input_event_key,
+    input_event_kind as core_input_event_kind, input_event_pointer as core_input_event_pointer,
+    input_event_set_handled as core_input_event_set_handled,
+    input_event_text as core_input_event_text,
     issue_validation_error_snapshot as core_issue_validation_error_snapshot,
     property_create_bool as core_property_create_bool,
     property_create_decimal as core_property_create_decimal,
@@ -37,13 +43,46 @@ use freemvvm_core::abi_support::{
     property_validator_register_bool as core_property_validator_register_bool,
     property_validator_register_i64 as core_property_validator_register_i64,
     property_validator_register_utf8 as core_property_validator_register_utf8,
-    runtime_create_handle, runtime_dispatch_turn, runtime_host_begin_event, runtime_host_end_event,
-    runtime_host_stopped, runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post,
-    runtime_request_shutdown, runtime_retain_handle as core_runtime_retain_handle,
-    runtime_set_ui_loop_bridge, runtime_shutdown, shutdown_request_query,
+    runtime_dispatch_turn, runtime_host_begin_event, runtime_host_end_event, runtime_host_stopped,
+    runtime_is_ui_thread as core_runtime_is_ui_thread, runtime_post, runtime_request_shutdown,
+    runtime_retain_handle as core_runtime_retain_handle, runtime_set_ui_loop_bridge,
+    runtime_shutdown, shutdown_request_query, stack_panel_child_at as core_stack_panel_child_at,
+    stack_panel_child_count as core_stack_panel_child_count,
+    stack_panel_insert as core_stack_panel_insert, stack_panel_move as core_stack_panel_move,
+    stack_panel_orientation as core_stack_panel_orientation,
+    stack_panel_set_child_align as core_stack_panel_set_child_align,
+    stack_panel_set_orientation as core_stack_panel_set_orientation,
     subscription_cancel as core_subscription_cancel,
+    ui_control_accessible_name_property as core_ui_control_accessible_name_property,
+    ui_control_button_label_property as core_ui_control_button_label_property,
+    ui_control_create_button as core_ui_control_create_button,
+    ui_control_create_stack_panel as core_ui_control_create_stack_panel,
+    ui_control_create_text as core_ui_control_create_text,
+    ui_control_create_text_box as core_ui_control_create_text_box,
+    ui_control_create_window as core_ui_control_create_window,
+    ui_control_is_enabled_property as core_ui_control_is_enabled_property,
+    ui_control_text_box_value_property as core_ui_control_text_box_value_property,
+    ui_control_text_content_property as core_ui_control_text_content_property,
+    ui_control_window_title_property as core_ui_control_window_title_property,
     validation_error_create as core_validation_error_create,
+    widget_input_subscribe_abi as core_widget_input_subscribe,
+    widget_request_focus as core_widget_request_focus,
+    window_background_rgb as core_window_background_rgb,
+    window_clear_content as core_window_clear_content, window_close as core_window_close,
+    window_close_request_current as core_window_close_request_current,
+    window_close_request_defer as core_window_close_request_defer,
+    window_close_request_resolve as core_window_close_request_resolve,
+    window_close_request_subscribe as core_window_close_request_subscribe,
+    window_content as core_window_content, window_open as core_window_open,
+    window_reset_background_rgb as core_window_reset_background_rgb,
+    window_set_background_rgb as core_window_set_background_rgb,
+    window_set_content as core_window_set_content,
 };
+
+#[cfg(all(target_os = "linux", not(test)))]
+use freemvvm_core::abi_support::runtime_create_handle_with_platform_factory;
+#[cfg(all(target_os = "windows", not(test)))]
+use freemvvm_core::abi_support::runtime_create_handle_with_platform_factory;
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
 use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -61,11 +100,107 @@ const UI_UNSUPPORTED: u32 = 10;
 const UI_VALIDATION_FAILED: u32 = 11;
 const UI_BUFFER_TOO_SMALL: u32 = 7;
 const UI_PENDING: u32 = 14;
+const UI_ORIENTATION_VERTICAL: u32 = 1;
+const UI_ORIENTATION_HORIZONTAL: u32 = 2;
+const UI_ALIGN_START: u32 = 1;
+const UI_ALIGN_CENTER: u32 = 2;
+const UI_ALIGN_END: u32 = 3;
+const UI_ALIGN_STRETCH: u32 = 4;
+const UI_CLOSE_ACCEPT: u32 = 1;
+const UI_CLOSE_DECLINE: u32 = 2;
 const NUMERIC_NARROW_EXACT: u32 = 0;
 const NUMERIC_NARROW_NEAREST_EVEN: u32 = 1;
 const RUNTIME_VERSION_MAJOR: u32 = 1;
 const RUNTIME_VERSION_MINOR: u32 = 0;
 const RUNTIME_VERSION_PATCH: u32 = 0;
+
+type WindowCloseCallback = unsafe extern "C" fn(*mut c_void, u64);
+
+struct WindowCloseCallbackContext {
+    callback: WindowCloseCallback,
+    userdata: usize,
+    destroy: DestroyCallback,
+}
+
+unsafe extern "C" fn invoke_window_close_callback(context: *mut c_void) {
+    // SAFETY: the pointer is a Box allocated by the registration function and remains owned by
+    // the Core Subscription until its destroy callback runs.
+    let context = unsafe { &*(context as *const WindowCloseCallbackContext) };
+    let request = core_window_close_request_current();
+    if request != 0 {
+        // SAFETY: ownership and callback validity are guaranteed by the C ABI registration.
+        unsafe { (context.callback)(context.userdata as *mut c_void, request) };
+    }
+}
+
+unsafe extern "C" fn destroy_window_close_callback(context: *mut c_void) {
+    // SAFETY: registration transfers this Box to the Core Subscription on success.
+    let context = unsafe { Box::from_raw(context as *mut WindowCloseCallbackContext) };
+    // SAFETY: destroy is invoked once by Subscription cancellation/owner teardown.
+    unsafe { (context.destroy)(context.userdata as *mut c_void) };
+}
+
+fn map_ui_control_error(error: UiControlApiError) -> u32 {
+    match error {
+        UiControlApiError::InvalidHandle => UI_INVALID_HANDLE,
+        UiControlApiError::InvalidArgument => UI_INVALID_ARGUMENT,
+        UiControlApiError::WrongType => UI_WRONG_TYPE,
+        UiControlApiError::WrongRuntime => UI_WRONG_RUNTIME,
+        UiControlApiError::WrongThread => UI_WRONG_THREAD,
+        UiControlApiError::Closed => UI_CLOSED,
+        UiControlApiError::Unsupported => UI_UNSUPPORTED,
+        UiControlApiError::OutOfMemory => UI_OUT_OF_MEMORY,
+        UiControlApiError::Internal => UI_INTERNAL_ERROR,
+    }
+}
+
+fn catch_ui_control<T>(operation: impl FnOnce() -> Result<T, UiControlApiError>) -> Result<T, u32> {
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(map_ui_control_error(error)),
+        Err(_) => Err(UI_INTERNAL_ERROR),
+    }
+}
+
+fn map_input_event_error(error: InputEventApiError) -> u32 {
+    match error {
+        InputEventApiError::InvalidHandle => UI_INVALID_HANDLE,
+        InputEventApiError::InvalidArgument => UI_INVALID_ARGUMENT,
+        InputEventApiError::WrongType => UI_WRONG_TYPE,
+        InputEventApiError::WrongThread => UI_WRONG_THREAD,
+        InputEventApiError::OutOfMemory => UI_OUT_OF_MEMORY,
+        InputEventApiError::Internal => UI_INTERNAL_ERROR,
+    }
+}
+
+fn catch_input_event<T>(
+    operation: impl FnOnce() -> Result<T, InputEventApiError>,
+) -> Result<T, u32> {
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(map_input_event_error(error)),
+        Err(_) => Err(UI_INTERNAL_ERROR),
+    }
+}
+
+unsafe fn clear_error_output(out_error: *mut u64) {
+    if !out_error.is_null() {
+        // SAFETY: each caller documents that a non-null optional output is writable.
+        unsafe { out_error.write(0) };
+    }
+}
+
+unsafe fn read_utf8_input<'a>(bytes: *const u8, byte_length: u64) -> Result<&'a [u8], u32> {
+    let length = usize::try_from(byte_length).map_err(|_| UI_INVALID_ARGUMENT)?;
+    if length == 0 {
+        return Ok(&[]);
+    }
+    if bytes.is_null() {
+        return Err(UI_INVALID_ARGUMENT);
+    }
+    // SAFETY: the caller promises readable storage for `byte_length` bytes.
+    Ok(unsafe { std::slice::from_raw_parts(bytes, length) })
+}
 
 fn map_shutdown_error(error: ShutdownApiError) -> u32 {
     match error {
@@ -140,7 +275,17 @@ pub unsafe extern "C" fn ui_abi_1_runtime_create(
         return UI_INVALID_ARGUMENT;
     }
 
-    match catch_runtime_creation(runtime_create_handle) {
+    #[cfg(test)]
+    let create = || freemvvm_core::abi_support::runtime_create_handle();
+    #[cfg(all(target_os = "linux", not(test)))]
+    let create = || runtime_create_handle_with_platform_factory(freemvvm_platform_linux::factory());
+    #[cfg(all(target_os = "windows", not(test)))]
+    let create =
+        || runtime_create_handle_with_platform_factory(freemvvm_platform_windows::factory());
+    #[cfg(all(not(test), not(any(target_os = "linux", target_os = "windows"))))]
+    let create = || freemvvm_core::abi_support::runtime_create_handle();
+
+    match catch_runtime_creation(create) {
         Ok(handle) => {
             // SAFETY: the required output pointer was checked non-null above.
             unsafe { out_runtime.write(handle) };
@@ -1950,6 +2095,897 @@ pub unsafe extern "C" fn ui_abi_1_numeric_narrow_f64(
     UI_OK
 }
 
+/// Create an empty Window Control.
+///
+/// # Safety
+/// `out_window` must be non-null writable storage; non-null `out_error` must also be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_create(
+    runtime: u64,
+    out_window: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_window.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_window.write(0) };
+    match catch_ui_control(|| core_ui_control_create_window(runtime)) {
+        Ok(handle) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_window.write(handle) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Create an empty StackPanel Control.
+///
+/// # Safety
+/// `out_panel` must be non-null writable storage; non-null `out_error` must also be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_stack_panel_create(
+    runtime: u64,
+    out_panel: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_panel.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_panel.write(0) };
+    match catch_ui_control(|| core_ui_control_create_stack_panel(runtime)) {
+        Ok(handle) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_panel.write(handle) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Create a TextBox with an initial committed UTF-8 value.
+///
+/// # Safety
+/// Positive byte lengths require readable `initial_utf8` storage. `out_text_box` must be
+/// writable; a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_text_box_create(
+    runtime: u64,
+    initial_utf8: *const u8,
+    initial_byte_length: u64,
+    out_text_box: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_text_box.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_text_box.write(0) };
+    // SAFETY: input pointer/length requirements are part of this function's contract.
+    let bytes = match unsafe { read_utf8_input(initial_utf8, initial_byte_length) } {
+        Ok(bytes) => bytes,
+        Err(status) => return status,
+    };
+    match catch_ui_control(|| core_ui_control_create_text_box(runtime, bytes)) {
+        Ok(handle) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_text_box.write(handle) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Create a Text Control with an initial UTF-8 value.
+///
+/// # Safety
+/// Positive byte lengths require readable `initial_utf8` storage. `out_text` must be writable;
+/// a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_text_create(
+    runtime: u64,
+    initial_utf8: *const u8,
+    initial_byte_length: u64,
+    out_text: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_text.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_text.write(0) };
+    // SAFETY: input pointer/length requirements are part of this function's contract.
+    let bytes = match unsafe { read_utf8_input(initial_utf8, initial_byte_length) } {
+        Ok(bytes) => bytes,
+        Err(status) => return status,
+    };
+    match catch_ui_control(|| core_ui_control_create_text(runtime, bytes)) {
+        Ok(handle) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_text.write(handle) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Create a Button Control with an initial UTF-8 label.
+///
+/// # Safety
+/// Positive byte lengths require readable `initial_label_utf8` storage. `out_button` must be
+/// writable; a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_button_create(
+    runtime: u64,
+    initial_label_utf8: *const u8,
+    initial_byte_length: u64,
+    out_button: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_button.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_button.write(0) };
+    // SAFETY: input pointer/length requirements are part of this function's contract.
+    let bytes = match unsafe { read_utf8_input(initial_label_utf8, initial_byte_length) } {
+        Ok(bytes) => bytes,
+        Err(status) => return status,
+    };
+    match catch_ui_control(|| core_ui_control_create_button(runtime, bytes)) {
+        Ok(handle) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_button.write(handle) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+macro_rules! ui_control_property_getter {
+    ($name:ident, $core:ident, $kind:literal) => {
+        #[doc = concat!("Return a new owned token for the Control's ", $kind, " Property.")]
+        ///
+        /// # Safety
+        /// `out_owned_property` must be non-null writable storage.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn $name(control: u64, out_owned_property: *mut u64) -> u32 {
+            if out_owned_property.is_null() {
+                return UI_INVALID_ARGUMENT;
+            }
+            // SAFETY: required output writability is part of this function's contract.
+            unsafe { out_owned_property.write(0) };
+            match catch_ui_control(|| $core(control)) {
+                Ok(handle) => {
+                    // SAFETY: required output pointer was checked non-null.
+                    unsafe { out_owned_property.write(handle) };
+                    UI_OK
+                }
+                Err(status) => status,
+            }
+        }
+    };
+}
+
+ui_control_property_getter!(
+    ui_abi_1_widget_is_enabled_property,
+    core_ui_control_is_enabled_property,
+    "IsEnabled"
+);
+ui_control_property_getter!(
+    ui_abi_1_widget_accessible_name_property,
+    core_ui_control_accessible_name_property,
+    "AccessibleName"
+);
+ui_control_property_getter!(
+    ui_abi_1_window_title_property,
+    core_ui_control_window_title_property,
+    "Window title"
+);
+ui_control_property_getter!(
+    ui_abi_1_text_content_property,
+    core_ui_control_text_content_property,
+    "Text content"
+);
+ui_control_property_getter!(
+    ui_abi_1_text_box_value_property,
+    core_ui_control_text_box_value_property,
+    "TextBox value"
+);
+ui_control_property_getter!(
+    ui_abi_1_button_label_property,
+    core_ui_control_button_label_property,
+    "Button label"
+);
+
+/// Request keyboard focus for an eligible Widget in the active Window.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_widget_request_focus(widget: u64, out_error: *mut u64) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_widget_request_focus(widget)).map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Subscribe to typed Input events on one Widget.
+///
+/// # Safety
+/// `callback` and `destroy` must be valid function pointers. `out_subscription` must be writable;
+/// a non-null `out_error` must be writable. Ownership transfers only when this call succeeds.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_widget_input_subscribe(
+    widget: u64,
+    event_mask: u64,
+    callback: Option<InputEventCallback>,
+    userdata: *mut c_void,
+    destroy: Option<DestroyCallback>,
+    out_subscription: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_subscription.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_subscription.write(0) };
+    let (Some(callback), Some(destroy)) = (callback, destroy) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    match catch_ui_control(|| {
+        core_widget_input_subscribe(widget, event_mask, callback, userdata as usize, destroy)
+    }) {
+        Ok(subscription) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_subscription.write(subscription) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Return the kind of a callback-scoped borrowed Input event.
+///
+/// # Safety
+/// `out_kind` must be non-null writable storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_input_event_kind(borrowed_event: u64, out_kind: *mut u32) -> u32 {
+    if out_kind.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_kind.write(0) };
+    match catch_input_event(|| core_input_event_kind(borrowed_event)) {
+        Ok(kind) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_kind.write(kind) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Return the HID keyboard identity and modifier bitmask for a key event.
+///
+/// # Safety
+/// Both outputs must be non-null writable storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_input_event_key(
+    borrowed_event: u64,
+    out_key_identity: *mut u32,
+    out_modifiers: *mut u32,
+) -> u32 {
+    if out_key_identity.is_null() || out_modifiers.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: both required outputs were checked non-null.
+    unsafe {
+        out_key_identity.write(0);
+        out_modifiers.write(0);
+    }
+    match catch_input_event(|| core_input_event_key(borrowed_event)) {
+        Ok((identity, modifiers)) => {
+            // SAFETY: both required outputs were checked non-null.
+            unsafe {
+                out_key_identity.write(identity);
+                out_modifiers.write(modifiers);
+            }
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Copy callback-scoped TextCommit UTF-8 bytes into the caller buffer.
+///
+/// # Safety
+/// `out_length` must be writable. Positive `capacity` requires writable `buffer` storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_input_event_text(
+    borrowed_event: u64,
+    buffer: *mut u8,
+    capacity: u64,
+    out_length: *mut u64,
+) -> u32 {
+    if out_length.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_length.write(0) };
+    let Ok(capacity) = usize::try_from(capacity) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    if capacity > 0 && buffer.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    let text = match catch_input_event(|| core_input_event_text(borrowed_event)) {
+        Ok(text) => text,
+        Err(status) => return status,
+    };
+    let Ok(required) = u64::try_from(text.len()) else {
+        return UI_INTERNAL_ERROR;
+    };
+    // SAFETY: required output pointer was checked non-null.
+    unsafe { out_length.write(required) };
+    if capacity < text.len() {
+        return UI_BUFFER_TOO_SMALL;
+    }
+    if !text.is_empty() {
+        // SAFETY: positive capacity requires writable storage for the supplied capacity.
+        unsafe { std::ptr::copy_nonoverlapping(text.as_ptr(), buffer, text.len()) };
+    }
+    UI_OK
+}
+
+/// Return primary pointer coordinates in client DIPs and the primary button identity.
+///
+/// # Safety
+/// All three outputs must be non-null writable storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_input_event_pointer(
+    borrowed_event: u64,
+    out_x_dip: *mut f64,
+    out_y_dip: *mut f64,
+    out_button: *mut u32,
+) -> u32 {
+    if out_x_dip.is_null() || out_y_dip.is_null() || out_button.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: all required outputs were checked non-null.
+    unsafe {
+        out_x_dip.write(0.0);
+        out_y_dip.write(0.0);
+        out_button.write(0);
+    }
+    match catch_input_event(|| core_input_event_pointer(borrowed_event)) {
+        Ok((x_dip, y_dip, button)) => {
+            // SAFETY: all required outputs were checked non-null.
+            unsafe {
+                out_x_dip.write(x_dip);
+                out_y_dip.write(y_dip);
+                out_button.write(button);
+            }
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Mark the current Input event handled; false never clears an earlier handled result.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_input_event_set_handled(
+    borrowed_event: u64,
+    handled: u8,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if handled > 1 {
+        return UI_INVALID_ARGUMENT;
+    }
+    catch_input_event(|| core_input_event_set_handled(borrowed_event, handled != 0))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Open a Window through its installed Platform peer.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_open(window: u64, out_error: *mut u64) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_window_open(window)).map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Return the Window's effective normalized RGB background color.
+///
+/// # Safety
+/// All three color output pointers must be non-null writable storage. A non-null `out_error`
+/// must also be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_background_rgb(
+    window: u64,
+    out_red: *mut f32,
+    out_green: *mut f32,
+    out_blue: *mut f32,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_red.is_null() || out_green.is_null() || out_blue.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: the caller guarantees all required outputs are writable.
+    unsafe {
+        out_red.write(0.0);
+        out_green.write(0.0);
+        out_blue.write(0.0);
+    }
+    match catch_ui_control(|| core_window_background_rgb(window)) {
+        Ok([red, green, blue]) => {
+            // SAFETY: required outputs were checked non-null above.
+            unsafe {
+                out_red.write(red);
+                out_green.write(green);
+                out_blue.write(blue);
+            }
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Set a Window's normalized RGB background color.
+///
+/// Invalid or non-finite channels are rejected without changing the current color.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_set_background_rgb(
+    window: u64,
+    red: f32,
+    green: f32,
+    blue: f32,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_window_set_background_rgb(window, red, green, blue))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Remove a Window's background override and restore the opaque-white default.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_reset_background_rgb(
+    window: u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_window_reset_background_rgb(window))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Close a Window peer while retaining its Core state for later reopening.
+///
+/// # Safety
+/// A non-null `out_error` must point to writable storage for one ABI handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_close(window: u64, out_error: *mut u64) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_window_close(window)).map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Subscribe to close intents raised for one Window.
+///
+/// A successful registration owns `userdata` until the Subscription is cancelled or its Window
+/// is destroyed. Only one active close-request Subscription is permitted per Window.
+///
+/// # Safety
+/// `out_subscription` must be writable. A non-null `out_error` must be writable. `callback` and
+/// `destroy` must remain valid until `destroy` is called.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_close_request_subscribe(
+    window: u64,
+    callback: Option<WindowCloseCallback>,
+    userdata: *mut c_void,
+    destroy: Option<DestroyCallback>,
+    out_subscription: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_subscription.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_subscription.write(0) };
+    let (Some(callback), Some(destroy)) = (callback, destroy) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    let context = Box::new(WindowCloseCallbackContext {
+        callback,
+        userdata: userdata as usize,
+        destroy,
+    });
+    let raw_context = Box::into_raw(context);
+    let result = catch_ui_control(|| {
+        core_window_close_request_subscribe(
+            window,
+            invoke_window_close_callback,
+            raw_context as usize,
+            destroy_window_close_callback,
+        )
+    });
+    match result {
+        Ok(subscription) => {
+            // SAFETY: required output pointer was checked non-null above.
+            unsafe { out_subscription.write(subscription) };
+            UI_OK
+        }
+        Err(status) => {
+            // Ownership transfers only when Core registration succeeds.
+            // SAFETY: failed registration leaves the context owned by this function.
+            drop(unsafe { Box::from_raw(raw_context) });
+            status
+        }
+    }
+}
+
+/// Promote a callback-scoped borrowed close request to an owned deferred request.
+///
+/// # Safety
+/// `out_owned_request` must be writable. A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_close_request_defer(
+    borrowed_request: u64,
+    out_owned_request: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_owned_request.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_owned_request.write(0) };
+    match catch_ui_control(|| core_window_close_request_defer(borrowed_request)) {
+        Ok(request) => {
+            // SAFETY: required output pointer was checked non-null above.
+            unsafe { out_owned_request.write(request) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Resolve a borrowed-in-callback or owned-deferred close request.
+///
+/// `decision` must be `UI_CLOSE_ACCEPT` or `UI_CLOSE_DECLINE`.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_close_request_resolve(
+    request: u64,
+    decision: u32,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if !matches!(decision, UI_CLOSE_ACCEPT | UI_CLOSE_DECLINE) {
+        return UI_INVALID_ARGUMENT;
+    }
+    catch_ui_control(|| core_window_close_request_resolve(request, decision))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Return an owned token for Window's current content, or zero if it has none.
+///
+/// # Safety
+/// `out_owned_child` must be writable; a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_content(
+    window: u64,
+    out_owned_child: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_owned_child.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_owned_child.write(0) };
+    match catch_ui_control(|| core_window_content(window)) {
+        Ok(Some(handle)) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_owned_child.write(handle) };
+            UI_OK
+        }
+        Ok(None) => UI_OK,
+        Err(status) => status,
+    }
+}
+
+/// Replace Window's single content child without consuming either input token.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_set_content(
+    window: u64,
+    borrowed_child: u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_window_set_content(window, borrowed_child))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Detach Window's current content child.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_clear_content(window: u64, out_error: *mut u64) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_window_clear_content(window)).map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Insert a borrowed child into a StackPanel at a zero-based index.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_container_insert(
+    container: u64,
+    borrowed_child: u64,
+    index: u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    let Ok(index) = usize::try_from(index) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    catch_ui_control(|| core_stack_panel_insert(container, index, borrowed_child))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Detach a borrowed child from its StackPanel without consuming the input token.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_container_remove(
+    container: u64,
+    borrowed_child: u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_container_remove(container, borrowed_child))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Move a StackPanel child; `to_index` is its index in the resulting order.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_container_move(
+    container: u64,
+    from_index: u64,
+    to_index: u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    let (Ok(from_index), Ok(to_index)) = (usize::try_from(from_index), usize::try_from(to_index))
+    else {
+        return UI_INVALID_ARGUMENT;
+    };
+    catch_ui_control(|| core_stack_panel_move(container, from_index, to_index))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Return the StackPanel child count.
+///
+/// # Safety
+/// `out_count` must be non-null writable storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_container_child_count(
+    container: u64,
+    out_count: *mut u64,
+) -> u32 {
+    if out_count.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_count.write(0) };
+    match catch_ui_control(|| core_stack_panel_child_count(container)) {
+        Ok(count) => match u64::try_from(count) {
+            Ok(count) => {
+                // SAFETY: required output pointer was checked non-null.
+                unsafe { out_count.write(count) };
+                UI_OK
+            }
+            Err(_) => UI_INTERNAL_ERROR,
+        },
+        Err(status) => status,
+    }
+}
+
+/// Return a new owned token for a child at the requested index.
+///
+/// # Safety
+/// `out_owned_child` must be writable; a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_container_child_at(
+    container: u64,
+    index: u64,
+    out_owned_child: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_owned_child.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_owned_child.write(0) };
+    let Ok(index) = usize::try_from(index) else {
+        return UI_INVALID_ARGUMENT;
+    };
+    match catch_ui_control(|| core_stack_panel_child_at(container, index)) {
+        Ok(handle) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_owned_child.write(handle) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Read StackPanel orientation.
+///
+/// # Safety
+/// `out_orientation` must be non-null writable storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_stack_panel_orientation(
+    panel: u64,
+    out_orientation: *mut u32,
+) -> u32 {
+    if out_orientation.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_orientation.write(0) };
+    match catch_ui_control(|| core_stack_panel_orientation(panel)) {
+        Ok(value) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_orientation.write(value) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
+/// Change StackPanel orientation using UI_ORIENTATION_* values.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_stack_panel_set_orientation(
+    panel: u64,
+    orientation: u32,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if !matches!(
+        orientation,
+        UI_ORIENTATION_VERTICAL | UI_ORIENTATION_HORIZONTAL
+    ) {
+        return UI_INVALID_ARGUMENT;
+    }
+    catch_ui_control(|| core_stack_panel_set_orientation(panel, orientation))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Set a child's StackPanel alignment using UI_ALIGN_* values.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_stack_panel_set_child_align(
+    panel: u64,
+    borrowed_child: u64,
+    align: u32,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if !matches!(
+        align,
+        UI_ALIGN_START | UI_ALIGN_CENTER | UI_ALIGN_END | UI_ALIGN_STRETCH
+    ) {
+        return UI_INVALID_ARGUMENT;
+    }
+    catch_ui_control(|| core_stack_panel_set_child_align(panel, borrowed_child, align))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Associate or clear a Button's typed Command reference. A zero Command clears it.
+///
+/// # Safety
+/// A non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_button_set_command(
+    button: u64,
+    borrowed_command_or_zero: u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    catch_ui_control(|| core_button_set_command(button, borrowed_command_or_zero))
+        .map_or_else(|status| status, |_| UI_OK)
+}
+
+/// Return a new owned Command token associated with Button, or zero if unassigned.
+///
+/// # Safety
+/// `out_owned_command` must be writable; a non-null `out_error` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_button_command(
+    button: u64,
+    out_owned_command: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_owned_command.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_owned_command.write(0) };
+    match catch_ui_control(|| core_button_command(button)) {
+        Ok(Some(handle)) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_owned_command.write(handle) };
+            UI_OK
+        }
+        Ok(None) => UI_OK,
+        Err(status) => status,
+    }
+}
+
 /// Report whether an ABI feature is available in this library build.
 ///
 /// No feature is advertised until its complete public contract is implemented.
@@ -1969,8 +3005,9 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
         return UI_INVALID_ARGUMENT;
     }
 
-    if feature_id == 3 || feature_id == 7 {
-        // Feature 3 is numeric conversion; feature 7 is Runtime post/dispatch.
+    if feature_id == 3 || feature_id == 7 || feature_id == 8 || feature_id == 9 {
+        // Feature 3 is numeric conversion, 7 is Runtime post/dispatch, 8 is the complete initial
+        // UI Control contract, and 9 is the complete typed UI Input event contract.
         // SAFETY: the caller guarantees that the non-null output points to writable `u8` storage.
         unsafe { out_supported.write(1) };
     }
@@ -1981,33 +3018,49 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
 #[cfg(test)]
 mod tests {
     use super::{
-        RuntimeRetainError, UI_BUFFER_TOO_SMALL, UI_INTERNAL_ERROR, UI_INVALID_ARGUMENT,
-        UI_INVALID_HANDLE, UI_OK, UI_OUT_OF_MEMORY, UI_PENDING, UI_UNSUPPORTED,
+        RuntimeRetainError, UI_ALIGN_CENTER, UI_BUFFER_TOO_SMALL, UI_INTERNAL_ERROR,
+        UI_INVALID_ARGUMENT, UI_INVALID_HANDLE, UI_OK, UI_ORIENTATION_HORIZONTAL,
+        UI_ORIENTATION_VERTICAL, UI_OUT_OF_MEMORY, UI_PENDING, UI_UNSUPPORTED,
         UI_VALIDATION_FAILED, UI_WRONG_RUNTIME, UI_WRONG_THREAD, UI_WRONG_TYPE,
         catch_runtime_creation, catch_runtime_query, catch_runtime_retain, ui_abi_1_binding_cancel,
         ui_abi_1_binding_create, ui_abi_1_binding_error_snapshot, ui_abi_1_binding_subscribe_error,
-        ui_abi_1_command_can_execute_property, ui_abi_1_command_cancel,
-        ui_abi_1_command_cancel_token_requested, ui_abi_1_command_close,
+        ui_abi_1_button_command, ui_abi_1_button_create, ui_abi_1_button_label_property,
+        ui_abi_1_button_set_command, ui_abi_1_command_can_execute_property,
+        ui_abi_1_command_cancel, ui_abi_1_command_cancel_token_requested, ui_abi_1_command_close,
         ui_abi_1_command_complete_cancelled, ui_abi_1_command_create_async,
         ui_abi_1_command_execute, ui_abi_1_command_failure_snapshot,
-        ui_abi_1_command_state_property, ui_abi_1_error_code, ui_abi_1_error_message_utf8,
+        ui_abi_1_command_state_property, ui_abi_1_container_child_at,
+        ui_abi_1_container_child_count, ui_abi_1_container_insert, ui_abi_1_container_move,
+        ui_abi_1_container_remove, ui_abi_1_error_code, ui_abi_1_error_message_utf8,
         ui_abi_1_error_status, ui_abi_1_get_version, ui_abi_1_handle_release,
-        ui_abi_1_handle_retain, ui_abi_1_has_feature, ui_abi_1_numeric_expand_f32,
-        ui_abi_1_numeric_narrow_f64, ui_abi_1_property_create_bool,
-        ui_abi_1_property_create_decimal, ui_abi_1_property_create_f64,
-        ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8, ui_abi_1_property_get_bool,
-        ui_abi_1_property_get_decimal, ui_abi_1_property_get_f64, ui_abi_1_property_get_i64,
-        ui_abi_1_property_get_utf8, ui_abi_1_property_kind, ui_abi_1_property_set_bool,
-        ui_abi_1_property_set_decimal, ui_abi_1_property_set_f64, ui_abi_1_property_set_i64,
-        ui_abi_1_property_set_utf8, ui_abi_1_property_subscribe,
+        ui_abi_1_handle_retain, ui_abi_1_has_feature, ui_abi_1_input_event_key,
+        ui_abi_1_input_event_kind, ui_abi_1_input_event_pointer, ui_abi_1_input_event_set_handled,
+        ui_abi_1_input_event_text, ui_abi_1_numeric_expand_f32, ui_abi_1_numeric_narrow_f64,
+        ui_abi_1_property_create_bool, ui_abi_1_property_create_decimal,
+        ui_abi_1_property_create_f64, ui_abi_1_property_create_i64, ui_abi_1_property_create_utf8,
+        ui_abi_1_property_get_bool, ui_abi_1_property_get_decimal, ui_abi_1_property_get_f64,
+        ui_abi_1_property_get_i64, ui_abi_1_property_get_utf8, ui_abi_1_property_kind,
+        ui_abi_1_property_set_bool, ui_abi_1_property_set_decimal, ui_abi_1_property_set_f64,
+        ui_abi_1_property_set_i64, ui_abi_1_property_set_utf8, ui_abi_1_property_subscribe,
         ui_abi_1_property_validator_cancel, ui_abi_1_property_validator_register_bool,
         ui_abi_1_property_validator_register_i64, ui_abi_1_property_validator_register_utf8,
         ui_abi_1_runtime_create, ui_abi_1_runtime_dispatch_turn, ui_abi_1_runtime_host_begin_event,
         ui_abi_1_runtime_host_end_event, ui_abi_1_runtime_host_stopped,
         ui_abi_1_runtime_is_ui_thread, ui_abi_1_runtime_post, ui_abi_1_runtime_request_shutdown,
         ui_abi_1_runtime_set_ui_loop_bridge, ui_abi_1_runtime_shutdown,
-        ui_abi_1_shutdown_request_query, ui_abi_1_subscription_cancel,
-        ui_abi_1_validation_error_create,
+        ui_abi_1_shutdown_request_query, ui_abi_1_stack_panel_create,
+        ui_abi_1_stack_panel_orientation, ui_abi_1_stack_panel_set_child_align,
+        ui_abi_1_stack_panel_set_orientation, ui_abi_1_subscription_cancel,
+        ui_abi_1_text_box_create, ui_abi_1_text_box_value_property, ui_abi_1_text_content_property,
+        ui_abi_1_text_create, ui_abi_1_validation_error_create,
+        ui_abi_1_widget_accessible_name_property, ui_abi_1_widget_input_subscribe,
+        ui_abi_1_widget_is_enabled_property, ui_abi_1_widget_request_focus,
+        ui_abi_1_window_background_rgb, ui_abi_1_window_clear_content, ui_abi_1_window_close,
+        ui_abi_1_window_close_request_defer, ui_abi_1_window_close_request_resolve,
+        ui_abi_1_window_close_request_subscribe, ui_abi_1_window_content, ui_abi_1_window_create,
+        ui_abi_1_window_open, ui_abi_1_window_reset_background_rgb,
+        ui_abi_1_window_set_background_rgb, ui_abi_1_window_set_content,
+        ui_abi_1_window_title_property,
     };
     use std::ffi::c_void;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -2031,6 +3084,181 @@ mod tests {
         operation_id: AtomicU64,
         retained_command: AtomicU64,
         retained_cancel: AtomicU64,
+    }
+
+    #[derive(Default)]
+    struct InputEventProbe {
+        callbacks: AtomicUsize,
+        destroys: AtomicUsize,
+        last_event: AtomicU64,
+        retained_widget: AtomicU64,
+        self_cancel_subscription: AtomicU64,
+        self_cancel_status: AtomicUsize,
+        observations: Mutex<Vec<InputEventObservation>>,
+    }
+
+    #[derive(Debug)]
+    struct InputEventObservation {
+        current_widget: u64,
+        original_target: u64,
+        kind_status: u32,
+        kind: u32,
+        key_status: u32,
+        key_identity: u32,
+        modifiers: u32,
+        text_status: u32,
+        text: Vec<u8>,
+        pointer_status: u32,
+        x_dip: f64,
+        y_dip: f64,
+        button: u32,
+        handled_true_status: u32,
+        handled_false_status: u32,
+        borrowed_widget_release_status: u32,
+    }
+
+    struct AbiInputTestFactory;
+
+    impl freemvvm_core::abi_support::PlatformRuntimeFactory for AbiInputTestFactory {
+        fn create_window_peer(
+            &self,
+            _: std::sync::Arc<dyn freemvvm_core::abi_support::PlatformFrameCompletionSink>,
+        ) -> Result<
+            std::sync::Arc<dyn freemvvm_core::abi_support::PlatformWindowPeer>,
+            freemvvm_core::abi_support::PlatformOperationError,
+        > {
+            Ok(std::sync::Arc::new(AbiInputTestPeer))
+        }
+    }
+
+    struct AbiInputTestPeer;
+
+    impl freemvvm_core::abi_support::PlatformWindowPeer for AbiInputTestPeer {
+        fn open(
+            &self,
+            _: u64,
+        ) -> Result<
+            freemvvm_core::abi_support::WindowOpenInfo,
+            freemvvm_core::abi_support::PlatformOperationError,
+        > {
+            Ok(freemvvm_core::abi_support::WindowOpenInfo {
+                client_area: freemvvm_core::abi_support::WindowClientArea {
+                    width_dip: 320.0,
+                    height_dip: 240.0,
+                },
+                device_scale: freemvvm_core::abi_support::DeviceScale::new(1.0, 1.0)
+                    .expect("valid test scale"),
+            })
+        }
+
+        fn close(&self) -> Result<(), freemvvm_core::abi_support::PlatformOperationError> {
+            Ok(())
+        }
+
+        fn submit_frame(
+            &self,
+            _: freemvvm_core::abi_support::FrameTicket,
+            _: std::sync::Arc<freemvvm_core::abi_support::SceneSnapshot>,
+        ) -> Result<(), freemvvm_core::abi_support::PlatformOperationError> {
+            Ok(())
+        }
+    }
+
+    unsafe extern "C" fn input_event_probe_callback(
+        userdata: *mut c_void,
+        current_widget: u64,
+        original_target: u64,
+        borrowed_event: u64,
+    ) {
+        // SAFETY: the test keeps InputEventProbe alive through cancellation and destroy.
+        let probe = unsafe { &*(userdata as *const InputEventProbe) };
+        let mut kind = u32::MAX;
+        // SAFETY: callback receives a valid borrowed event and writable output.
+        let kind_status = unsafe { ui_abi_1_input_event_kind(borrowed_event, &mut kind) };
+        let mut key_identity = u32::MAX;
+        let mut modifiers = u32::MAX;
+        // SAFETY: callback receives a valid borrowed event and writable outputs.
+        let key_status =
+            unsafe { ui_abi_1_input_event_key(borrowed_event, &mut key_identity, &mut modifiers) };
+        let mut text_length = u64::MAX;
+        // SAFETY: null buffer with zero capacity is a length query; length output is writable.
+        let mut text_status = unsafe {
+            ui_abi_1_input_event_text(borrowed_event, std::ptr::null_mut(), 0, &mut text_length)
+        };
+        let mut text = Vec::new();
+        if text_status == UI_BUFFER_TOO_SMALL {
+            text.resize(text_length as usize, 0);
+            // SAFETY: vector storage is writable for exactly its capacity and length.
+            text_status = unsafe {
+                ui_abi_1_input_event_text(
+                    borrowed_event,
+                    text.as_mut_ptr(),
+                    text.len() as u64,
+                    &mut text_length,
+                )
+            };
+        }
+        let mut x_dip = f64::NAN;
+        let mut y_dip = f64::NAN;
+        let mut button = u32::MAX;
+        // SAFETY: callback receives a valid borrowed event and writable outputs.
+        let pointer_status = unsafe {
+            ui_abi_1_input_event_pointer(borrowed_event, &mut x_dip, &mut y_dip, &mut button)
+        };
+        // SAFETY: both calls pass a valid borrowed event and a supported ui_bool value.
+        let handled_true_status =
+            unsafe { ui_abi_1_input_event_set_handled(borrowed_event, 1, std::ptr::null_mut()) };
+        // SAFETY: false is accepted and cannot clear an earlier handled result.
+        let handled_false_status =
+            unsafe { ui_abi_1_input_event_set_handled(borrowed_event, 0, std::ptr::null_mut()) };
+        // SAFETY: current_widget is borrowed and release during callback must be rejected.
+        let borrowed_widget_release_status = ui_abi_1_handle_release(current_widget);
+        if probe.retained_widget.load(Ordering::SeqCst) == 0 {
+            let mut retained = 0;
+            // SAFETY: current_widget is borrowed and may be retained during the callback.
+            let status = unsafe { ui_abi_1_handle_retain(current_widget, &mut retained) };
+            if status == UI_OK {
+                probe.retained_widget.store(retained, Ordering::SeqCst);
+            }
+        }
+        probe.last_event.store(borrowed_event, Ordering::SeqCst);
+        probe.callbacks.fetch_add(1, Ordering::SeqCst);
+        let self_cancel_subscription = probe.self_cancel_subscription.swap(0, Ordering::SeqCst);
+        if self_cancel_subscription != 0 {
+            // SAFETY: the probe owns this live subscription token and the error output is optional.
+            let status = unsafe {
+                ui_abi_1_subscription_cancel(self_cancel_subscription, std::ptr::null_mut())
+            };
+            probe
+                .self_cancel_status
+                .store(status as usize, Ordering::SeqCst);
+        }
+        if let Ok(mut observations) = probe.observations.lock() {
+            observations.push(InputEventObservation {
+                current_widget,
+                original_target,
+                kind_status,
+                kind,
+                key_status,
+                key_identity,
+                modifiers,
+                text_status,
+                text,
+                pointer_status,
+                x_dip,
+                y_dip,
+                button,
+                handled_true_status,
+                handled_false_status,
+                borrowed_widget_release_status,
+            });
+        }
+    }
+
+    unsafe extern "C" fn input_event_probe_destroy(userdata: *mut c_void) {
+        // SAFETY: the probe outlives the subscribed callback and the cancellation in its test.
+        let probe = unsafe { &*(userdata as *const InputEventProbe) };
+        probe.destroys.fetch_add(1, Ordering::SeqCst);
     }
 
     unsafe extern "C" fn command_start(
@@ -2154,6 +3382,25 @@ mod tests {
     struct PostProbe {
         callbacks: AtomicUsize,
         destroys: AtomicUsize,
+    }
+
+    #[derive(Default)]
+    struct WindowCloseProbe {
+        callbacks: AtomicUsize,
+        destroys: AtomicUsize,
+    }
+
+    unsafe extern "C" fn window_close_callback(userdata: *mut c_void, request: u64) {
+        // SAFETY: tests keep the probe alive through Subscription cancellation.
+        let probe = unsafe { &*userdata.cast::<WindowCloseProbe>() };
+        assert_ne!(request, 0);
+        probe.callbacks.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn window_close_destroy(userdata: *mut c_void) {
+        // SAFETY: tests keep the probe alive through Subscription cancellation.
+        let probe = unsafe { &*userdata.cast::<WindowCloseProbe>() };
+        probe.destroys.fetch_add(1, Ordering::SeqCst);
     }
 
     #[derive(Default)]
@@ -4772,6 +6019,806 @@ mod tests {
         }
     }
 
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[test]
+    fn window_background_color_abi_supports_get_set_and_reset_atomically() {
+        let mut runtime = 0;
+        let mut window = 0;
+        assert_eq!(
+            unsafe { super::ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let bridge = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        assert_eq!(
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&bridge as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { super::ui_abi_1_window_create(runtime, &mut window, std::ptr::null_mut()) },
+            UI_OK
+        );
+
+        let (mut red, mut green, mut blue) = (0.0, 0.0, 0.0);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_background_rgb(
+                    window,
+                    &mut red,
+                    &mut green,
+                    &mut blue,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!([red, green, blue], [1.0, 1.0, 1.0]);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_set_background_rgb(
+                    window,
+                    0.2,
+                    f32::INFINITY,
+                    0.4,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_background_rgb(
+                    window,
+                    &mut red,
+                    &mut green,
+                    &mut blue,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!([red, green, blue], [1.0, 1.0, 1.0]);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_set_background_rgb(window, 0.2, 0.4, 0.8, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_background_rgb(
+                    window,
+                    &mut red,
+                    &mut green,
+                    &mut blue,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!([red, green, blue], [0.2, 0.4, 0.8]);
+        assert_eq!(
+            unsafe { ui_abi_1_window_reset_background_rgb(window, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_background_rgb(
+                    window,
+                    &mut red,
+                    &mut green,
+                    &mut blue,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!([red, green, blue], [1.0, 1.0, 1.0]);
+
+        assert_eq!(ui_abi_1_handle_release(window), UI_OK);
+        complete_runtime_shutdown_at_host_boundary(runtime);
+        assert_eq!(bridge.destroyed.load(Ordering::SeqCst), 1);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[test]
+    fn controls_abi_creates_properties_connects_tree_and_retains_button_command() {
+        let mut runtime = 0;
+        let mut runtime2 = 0;
+        assert_eq!(
+            unsafe { super::ui_abi_1_runtime_create(&mut runtime, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { super::ui_abi_1_runtime_create(&mut runtime2, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let bridge = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        assert_eq!(
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime,
+                    Some(record_wake),
+                    (&bridge as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let bridge2 = BridgeProbe {
+            priorities: Mutex::new(Vec::new()),
+            destroyed: AtomicUsize::new(0),
+        };
+        assert_eq!(
+            unsafe {
+                ui_abi_1_runtime_set_ui_loop_bridge(
+                    runtime2,
+                    Some(record_wake),
+                    (&bridge2 as *const BridgeProbe).cast_mut().cast(),
+                    Some(record_destroy),
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+
+        let (mut window, mut panel, mut text, mut text_box, mut button) = (0, 0, 0, 0, 0);
+        assert_eq!(
+            unsafe { ui_abi_1_window_create(runtime, &mut window, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_stack_panel_create(runtime, &mut panel, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let text_bytes = b"label";
+        assert_eq!(
+            unsafe {
+                ui_abi_1_text_create(
+                    runtime,
+                    text_bytes.as_ptr(),
+                    text_bytes.len() as u64,
+                    &mut text,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let value_bytes = b"value";
+        assert_eq!(
+            unsafe {
+                ui_abi_1_text_box_create(
+                    runtime,
+                    value_bytes.as_ptr(),
+                    value_bytes.len() as u64,
+                    &mut text_box,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe {
+                ui_abi_1_button_create(
+                    runtime,
+                    std::ptr::null(),
+                    0,
+                    &mut button,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert!(
+            [window, panel, text, text_box, button]
+                .iter()
+                .all(|handle| *handle != 0)
+        );
+        let close_probe = WindowCloseProbe::default();
+        let mut close_subscription = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_close_request_subscribe(
+                    window,
+                    Some(window_close_callback),
+                    (&close_probe as *const WindowCloseProbe).cast_mut().cast(),
+                    Some(window_close_destroy),
+                    &mut close_subscription,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let mut duplicate_subscription = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_close_request_subscribe(
+                    window,
+                    Some(window_close_callback),
+                    (&close_probe as *const WindowCloseProbe).cast_mut().cast(),
+                    Some(window_close_destroy),
+                    &mut duplicate_subscription,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(duplicate_subscription, 0);
+        assert_eq!(close_probe.destroys.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            unsafe { ui_abi_1_subscription_cancel(close_subscription, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(close_probe.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(ui_abi_1_handle_release(close_subscription), UI_OK);
+        // Linux Window.open uses DRM/KMS hardware; keep this ABI wiring test hardware-independent.
+        #[cfg(not(target_os = "linux"))]
+        assert_eq!(
+            unsafe { ui_abi_1_window_open(window, std::ptr::null_mut()) },
+            UI_UNSUPPORTED
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_window_close(window, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_widget_request_focus(text_box, std::ptr::null_mut()) },
+            UI_INVALID_ARGUMENT
+        );
+        let mut deferred_request = u64::MAX;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_window_close_request_defer(0, &mut deferred_request, std::ptr::null_mut())
+            },
+            UI_INVALID_HANDLE
+        );
+        assert_eq!(deferred_request, 0);
+        assert_eq!(
+            unsafe { ui_abi_1_window_close_request_resolve(0, 99, std::ptr::null_mut()) },
+            UI_INVALID_ARGUMENT
+        );
+        let mut unassigned_command = u64::MAX;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_button_command(button, &mut unassigned_command, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        assert_eq!(unassigned_command, 0);
+
+        let mut property_handles = [0; 6];
+        assert_eq!(
+            unsafe { ui_abi_1_widget_is_enabled_property(button, &mut property_handles[0]) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_widget_accessible_name_property(button, &mut property_handles[1]) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_window_title_property(window, &mut property_handles[2]) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_text_content_property(text, &mut property_handles[3]) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_text_box_value_property(text_box, &mut property_handles[4]) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_button_label_property(button, &mut property_handles[5]) },
+            UI_OK
+        );
+        assert!(property_handles.iter().all(|handle| *handle != 0));
+
+        assert_eq!(
+            unsafe { ui_abi_1_window_set_content(window, panel, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let mut window_child = 0;
+        assert_eq!(
+            unsafe { ui_abi_1_window_content(window, &mut window_child, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_ne!(window_child, 0);
+        assert_eq!(ui_abi_1_handle_release(window_child), UI_OK);
+        assert_eq!(
+            unsafe { ui_abi_1_container_insert(panel, text, 0, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_container_insert(panel, button, 1, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let mut child_count = 0;
+        assert_eq!(
+            unsafe { ui_abi_1_container_child_count(panel, &mut child_count) },
+            UI_OK
+        );
+        assert_eq!(child_count, 2);
+        let mut child = 0;
+        assert_eq!(
+            unsafe { ui_abi_1_container_child_at(panel, 1, &mut child, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_ne!(child, 0);
+        assert_eq!(ui_abi_1_handle_release(child), UI_OK);
+        assert_eq!(
+            unsafe { ui_abi_1_container_move(panel, 0, 1, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_container_remove(panel, text, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_container_insert(panel, text, 1, std::ptr::null_mut()) },
+            UI_OK
+        );
+
+        let mut orientation = 0;
+        assert_eq!(
+            unsafe { ui_abi_1_stack_panel_orientation(panel, &mut orientation) },
+            UI_OK
+        );
+        assert_eq!(orientation, UI_ORIENTATION_VERTICAL);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_stack_panel_set_orientation(
+                    panel,
+                    UI_ORIENTATION_HORIZONTAL,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_stack_panel_orientation(panel, &mut orientation) },
+            UI_OK
+        );
+        assert_eq!(orientation, UI_ORIENTATION_HORIZONTAL);
+        assert_eq!(
+            unsafe {
+                ui_abi_1_stack_panel_set_child_align(
+                    panel,
+                    button,
+                    UI_ALIGN_CENTER,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_stack_panel_set_orientation(panel, 99, std::ptr::null_mut()) },
+            UI_INVALID_ARGUMENT
+        );
+
+        let command_probe = CommandProbe::default();
+        let mut command = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_command_create_async(
+                    runtime,
+                    0,
+                    Some(command_start),
+                    (&command_probe as *const CommandProbe).cast_mut().cast(),
+                    Some(command_destroy),
+                    &mut command,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        let foreign_probe = CommandProbe::default();
+        let mut foreign_command = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_command_create_async(
+                    runtime2,
+                    0,
+                    Some(command_start),
+                    (&foreign_probe as *const CommandProbe).cast_mut().cast(),
+                    Some(command_destroy),
+                    &mut foreign_command,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_button_set_command(button, command, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            unsafe { ui_abi_1_button_set_command(button, foreign_command, std::ptr::null_mut()) },
+            UI_WRONG_RUNTIME
+        );
+        assert_eq!(ui_abi_1_handle_release(command), UI_OK);
+        let mut associated_command = 0;
+        assert_eq!(
+            unsafe {
+                ui_abi_1_button_command(button, &mut associated_command, std::ptr::null_mut())
+            },
+            UI_OK
+        );
+        assert_ne!(associated_command, 0);
+        let mut state_property = 0;
+        assert_eq!(
+            unsafe { ui_abi_1_command_state_property(associated_command, &mut state_property) },
+            UI_OK
+        );
+        assert_eq!(ui_abi_1_handle_release(state_property), UI_OK);
+        assert_eq!(
+            unsafe { ui_abi_1_button_set_command(button, 0, std::ptr::null_mut()) },
+            UI_OK
+        );
+        let mut cleared_command = u64::MAX;
+        assert_eq!(
+            unsafe { ui_abi_1_button_command(button, &mut cleared_command, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(cleared_command, 0);
+        assert_eq!(ui_abi_1_handle_release(associated_command), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(foreign_command), UI_OK);
+
+        assert_eq!(
+            unsafe { ui_abi_1_window_clear_content(window, std::ptr::null_mut()) },
+            UI_OK
+        );
+        for handle in property_handles {
+            assert_eq!(ui_abi_1_handle_release(handle), UI_OK);
+        }
+        for handle in [window, panel, text, text_box, button] {
+            assert_eq!(ui_abi_1_handle_release(handle), UI_OK);
+        }
+        complete_runtime_shutdown_at_host_boundary(runtime);
+        complete_runtime_shutdown_at_host_boundary(runtime2);
+        assert_eq!(command_probe.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(foreign_probe.destroys.load(Ordering::SeqCst), 1);
+        assert_eq!(bridge.destroyed.load(Ordering::SeqCst), 1);
+        assert_eq!(bridge2.destroyed.load(Ordering::SeqCst), 1);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(runtime2), UI_OK);
+    }
+
+    #[test]
+    fn input_event_callbacks_borrow_payload_for_five_kinds_and_cancel_cleanly() {
+        let runtime = freemvvm_core::abi_support::runtime_create_handle_with_platform_factory(
+            std::sync::Arc::new(AbiInputTestFactory),
+        )
+        .expect("create fake-platform Runtime");
+        let mut window = 0;
+        let mut panel = 0;
+        let mut button = 0;
+        let mut error = 0;
+        // SAFETY: the runtime token is valid and both output slots are writable.
+        assert_eq!(
+            // SAFETY: the runtime token is valid and both output slots are writable.
+            unsafe { super::ui_abi_1_window_create(runtime, &mut window, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: the runtime token is valid and both output slots are writable.
+            unsafe { super::ui_abi_1_stack_panel_create(runtime, &mut panel, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: the runtime token and output slots are valid for this creation call.
+            unsafe {
+                super::ui_abi_1_button_create(runtime, b"run".as_ptr(), 3, &mut button, &mut error)
+            },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: both controls belong to this live Runtime and error output is writable.
+            unsafe { super::ui_abi_1_window_set_content(window, panel, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: both controls belong to this live Runtime and error output is writable.
+            unsafe { super::ui_abi_1_container_insert(panel, button, 0, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: the Window token is live and the error output is writable.
+            unsafe { ui_abi_1_window_open(window, &mut error) },
+            UI_OK
+        );
+
+        let probe = InputEventProbe::default();
+        let mut subscription = u64::MAX;
+        assert_eq!(
+            // SAFETY: outputs are writable and the invalid mask transfers no userdata ownership.
+            unsafe {
+                ui_abi_1_widget_input_subscribe(
+                    button,
+                    0,
+                    Some(input_event_probe_callback),
+                    (&probe as *const InputEventProbe).cast_mut().cast(),
+                    Some(input_event_probe_destroy),
+                    &mut subscription,
+                    &mut error,
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(subscription, 0);
+        subscription = u64::MAX;
+        assert_eq!(
+            // SAFETY: outputs are writable and the unknown mask transfers no userdata ownership.
+            unsafe {
+                ui_abi_1_widget_input_subscribe(
+                    button,
+                    0x20,
+                    Some(input_event_probe_callback),
+                    (&probe as *const InputEventProbe).cast_mut().cast(),
+                    Some(input_event_probe_destroy),
+                    &mut subscription,
+                    &mut error,
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(subscription, 0);
+        subscription = u64::MAX;
+        assert_eq!(
+            // SAFETY: outputs are writable and null callback is rejected before userdata use.
+            unsafe {
+                ui_abi_1_widget_input_subscribe(
+                    button,
+                    1,
+                    None,
+                    (&probe as *const InputEventProbe).cast_mut().cast(),
+                    Some(input_event_probe_destroy),
+                    &mut subscription,
+                    &mut error,
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(subscription, 0);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 0);
+        subscription = u64::MAX;
+        assert_eq!(
+            // SAFETY: the probe and output slots remain valid through cancellation and destroy.
+            unsafe {
+                ui_abi_1_widget_input_subscribe(
+                    button,
+                    0x1f,
+                    Some(input_event_probe_callback),
+                    (&probe as *const InputEventProbe).cast_mut().cast(),
+                    Some(input_event_probe_destroy),
+                    &mut subscription,
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+        assert_ne!(subscription, 0);
+
+        for event in [
+            (1, 0x04, 5, "", 0.0, 0.0),
+            (2, 0x28, 0, "", 0.0, 0.0),
+            (3, 0, 0, "日本語🙂", 0.0, 0.0),
+            (4, 0, 0, "", 1.25, 2.5),
+            (5, 0, 0, "", 3.5, 4.75),
+        ] {
+            assert!(
+                freemvvm_core::abi_support::test_dispatch_widget_input(
+                    window,
+                    button,
+                    freemvvm_core::abi_support::TestInputEvent {
+                        kind: event.0,
+                        key_identity: event.1,
+                        modifiers: event.2,
+                        text: event.3.to_string(),
+                        x_dip: event.4,
+                        y_dip: event.5,
+                    },
+                )
+                .expect("inject typed event")
+            );
+        }
+
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 5);
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 0);
+        let observations = probe.observations.lock().expect("input observations lock");
+        assert_eq!(observations.len(), 5);
+        for (index, observation) in observations.iter().enumerate() {
+            assert_ne!(observation.current_widget, 0);
+            assert_eq!(observation.current_widget, observation.original_target);
+            assert_ne!(observation.current_widget, button);
+            assert_eq!(observation.kind_status, UI_OK);
+            assert_eq!(observation.kind, index as u32 + 1);
+            assert_eq!(observation.handled_true_status, UI_OK);
+            assert_eq!(observation.handled_false_status, UI_OK);
+            assert_eq!(
+                observation.borrowed_widget_release_status,
+                UI_INVALID_HANDLE
+            );
+            match observation.kind {
+                1 | 2 => {
+                    assert_eq!(observation.key_status, UI_OK);
+                    assert_eq!(observation.text_status, UI_WRONG_TYPE);
+                    assert_eq!(observation.pointer_status, UI_WRONG_TYPE);
+                }
+                3 => {
+                    assert_eq!(observation.key_status, UI_WRONG_TYPE);
+                    assert_eq!(observation.text_status, UI_OK);
+                    assert_eq!(observation.text, "日本語🙂".as_bytes());
+                    assert_eq!(observation.pointer_status, UI_WRONG_TYPE);
+                }
+                4 | 5 => {
+                    assert_eq!(observation.key_status, UI_WRONG_TYPE);
+                    assert_eq!(observation.text_status, UI_WRONG_TYPE);
+                    assert_eq!(observation.pointer_status, UI_OK);
+                    assert_eq!(observation.button, 1);
+                }
+                _ => unreachable!("only the five specified event kinds are dispatched"),
+            }
+        }
+        assert_eq!(observations[0].key_identity, 0x04);
+        assert_eq!(observations[0].modifiers, 5);
+        assert_eq!(observations[3].x_dip, 1.25);
+        assert_eq!(observations[3].y_dip, 2.5);
+        let last_event = probe.last_event.load(Ordering::SeqCst);
+        drop(observations);
+
+        let mut stale_kind = u32::MAX;
+        assert_eq!(
+            // SAFETY: `stale_kind` is writable and the inactive event token is rejected.
+            unsafe { ui_abi_1_input_event_kind(last_event, &mut stale_kind) },
+            UI_INVALID_HANDLE
+        );
+        assert_eq!(stale_kind, 0);
+        let retained_widget = probe.retained_widget.load(Ordering::SeqCst);
+        assert_ne!(retained_widget, 0);
+        let mut retained_subscription = 0;
+        assert_eq!(
+            // SAFETY: the retained Widget and probe are live; output slots are writable.
+            unsafe {
+                ui_abi_1_widget_input_subscribe(
+                    retained_widget,
+                    1,
+                    Some(input_event_probe_callback),
+                    (&probe as *const InputEventProbe).cast_mut().cast(),
+                    Some(input_event_probe_destroy),
+                    &mut retained_subscription,
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: the subscription is live and cancellation runs on the UI thread.
+            unsafe { ui_abi_1_subscription_cancel(retained_subscription, &mut error) },
+            UI_OK
+        );
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 1);
+        // SAFETY: the canceled Subscription token remains independently releasable.
+        assert_eq!(ui_abi_1_handle_release(retained_subscription), UI_OK);
+
+        assert_eq!(
+            // SAFETY: the subscription is live and cancellation runs on its Runtime UI thread.
+            unsafe { ui_abi_1_subscription_cancel(subscription, &mut error) },
+            UI_OK
+        );
+        assert_eq!(probe.destroys.load(Ordering::SeqCst), 2);
+        // SAFETY: a canceled Subscription token remains independently releasable.
+        assert_eq!(ui_abi_1_handle_release(subscription), UI_OK);
+        assert!(
+            !freemvvm_core::abi_support::test_dispatch_widget_input(
+                window,
+                button,
+                freemvvm_core::abi_support::TestInputEvent {
+                    kind: 1,
+                    key_identity: 0x04,
+                    modifiers: 0,
+                    text: String::new(),
+                    x_dip: 0.0,
+                    y_dip: 0.0,
+                },
+            )
+            .expect("dispatch after cancel")
+        );
+        assert_eq!(probe.callbacks.load(Ordering::SeqCst), 5);
+        // SAFETY: retained Widget and the remaining handles are owned by this test.
+        assert_eq!(ui_abi_1_handle_release(retained_widget), UI_OK);
+
+        let self_cancel_probe = InputEventProbe::default();
+        let mut self_cancel_subscription = 0;
+        assert_eq!(
+            // SAFETY: the probe and output slots remain valid through self-cancel and destroy.
+            unsafe {
+                ui_abi_1_widget_input_subscribe(
+                    button,
+                    1,
+                    Some(input_event_probe_callback),
+                    (&self_cancel_probe as *const InputEventProbe)
+                        .cast_mut()
+                        .cast(),
+                    Some(input_event_probe_destroy),
+                    &mut self_cancel_subscription,
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+        self_cancel_probe
+            .self_cancel_subscription
+            .store(self_cancel_subscription, Ordering::SeqCst);
+        // SAFETY: this injects a valid event into the open Window and attached Button.
+        assert!(
+            freemvvm_core::abi_support::test_dispatch_widget_input(
+                window,
+                button,
+                freemvvm_core::abi_support::TestInputEvent {
+                    kind: 1,
+                    key_identity: 0x04,
+                    modifiers: 0,
+                    text: String::new(),
+                    x_dip: 0.0,
+                    y_dip: 0.0,
+                },
+            )
+            .expect("dispatch self-cancel event")
+        );
+        assert_eq!(self_cancel_probe.callbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            self_cancel_probe.self_cancel_status.load(Ordering::SeqCst),
+            UI_OK as usize
+        );
+        assert_eq!(self_cancel_probe.destroys.load(Ordering::SeqCst), 1);
+        // SAFETY: self-cancel stops delivery but leaves the owned token releasable.
+        assert_eq!(ui_abi_1_handle_release(self_cancel_subscription), UI_OK);
+        assert!(
+            !freemvvm_core::abi_support::test_dispatch_widget_input(
+                window,
+                button,
+                freemvvm_core::abi_support::TestInputEvent {
+                    kind: 1,
+                    key_identity: 0x04,
+                    modifiers: 0,
+                    text: String::new(),
+                    x_dip: 0.0,
+                    y_dip: 0.0,
+                },
+            )
+            .expect("dispatch after self-cancel")
+        );
+        assert_eq!(self_cancel_probe.callbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            ui_abi_1_handle_release(self_cancel_probe.retained_widget.load(Ordering::SeqCst)),
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: the Window token and output slot remain valid until this call.
+            unsafe { super::ui_abi_1_window_close(window, &mut error) },
+            UI_OK
+        );
+        assert_eq!(ui_abi_1_handle_release(button), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(panel), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(window), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
+    }
+
     #[test]
     fn has_feature_reports_only_complete_public_contracts() {
         for feature_id in [1, 2, 4, 5, 6] {
@@ -4793,6 +6840,18 @@ mod tests {
         let status = unsafe { ui_abi_1_has_feature(7, &mut post_dispatch_supported) };
         assert_eq!(status, UI_OK);
         assert_eq!(post_dispatch_supported, 1);
+
+        let mut controls_supported = 0;
+        // SAFETY: the output points to writable storage.
+        let status = unsafe { ui_abi_1_has_feature(8, &mut controls_supported) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(controls_supported, 1);
+
+        let mut input_supported = 0;
+        // SAFETY: the output points to writable storage.
+        let status = unsafe { ui_abi_1_has_feature(9, &mut input_supported) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(input_supported, 1);
 
         let mut unknown_supported = 1;
         // SAFETY: `unknown_supported` is valid writable storage for the output value.

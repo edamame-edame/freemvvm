@@ -402,7 +402,10 @@ mod tests {
     use crate::property::{Property, PropertyValue};
     use std::collections::HashMap;
     use std::sync::{Mutex, MutexGuard};
-    use std::{cell::Cell, rc::Rc};
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+    };
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -534,6 +537,38 @@ mod tests {
         error_message: Vec<u8>,
         release_failures: HashMap<u64, usize>,
         release_calls: HashMap<u64, usize>,
+        ui_child_count: u64,
+        ui_orientation: u32,
+        close_subscribe_status: u32,
+        close_subscribe_error: u64,
+        close_subscription_token: u64,
+        close_callback: Option<freemvvm_sys::WindowCloseCallback>,
+        close_userdata: usize,
+        close_destroy: Option<freemvvm_sys::DestroyCallback>,
+        close_destroy_count: usize,
+        close_defer_status: u32,
+        close_defer_error: u64,
+        close_resolve_status: u32,
+        close_resolve_error: u64,
+        close_resolutions: Vec<(u64, u32)>,
+        input_subscribe_status: u32,
+        input_subscribe_error: u64,
+        input_subscription_token: u64,
+        input_callback: Option<freemvvm_sys::InputCallback>,
+        input_userdata: usize,
+        input_destroy: Option<freemvvm_sys::DestroyCallback>,
+        input_destroy_count: usize,
+        input_widget: u64,
+        input_mask: u64,
+        input_getter_status: u32,
+        input_kind: u32,
+        input_key: u32,
+        input_modifiers: u32,
+        input_text: Vec<u8>,
+        input_x: f64,
+        input_y: f64,
+        input_button: u32,
+        input_handled_count: usize,
     }
 
     #[derive(Default)]
@@ -566,6 +601,40 @@ mod tests {
 
         fn last_runtime(&self) -> u64 {
             self.state.lock().unwrap().next_handle
+        }
+
+        fn invoke_close_request(&self, request: u64) {
+            let (callback, userdata) = {
+                let state = self.state.lock().unwrap();
+                (state.close_callback, state.close_userdata)
+            };
+            if let Some(callback) = callback {
+                // SAFETY: the fake retains callback userdata until it runs the destroy callback.
+                unsafe { callback(userdata as *mut std::ffi::c_void, request) };
+            }
+        }
+
+        fn close_destroy_count(&self) -> usize {
+            self.state.lock().unwrap().close_destroy_count
+        }
+
+        fn invoke_input_event(&self, event: u64) {
+            let (callback, userdata, widget) = {
+                let state = self.state.lock().unwrap();
+                (
+                    state.input_callback,
+                    state.input_userdata,
+                    state.input_widget,
+                )
+            };
+            if let Some(callback) = callback {
+                // SAFETY: the fake retains callback userdata until destroy is invoked.
+                unsafe { callback(userdata as *mut std::ffi::c_void, widget, widget, event) };
+            }
+        }
+
+        fn input_destroy_count(&self) -> usize {
+            self.state.lock().unwrap().input_destroy_count
         }
     }
 
@@ -629,6 +698,226 @@ mod tests {
             } else {
                 native_api::OK
             }
+        }
+
+        fn ui_create(
+            &self,
+            _kind: crate::native_api::UiControlKind,
+            _runtime: u64,
+            _bytes: &[u8],
+        ) -> (u32, u64, u64) {
+            let mut state = self.state.lock().unwrap();
+            state.next_handle += 1;
+            (native_api::OK, state.next_handle, 0)
+        }
+
+        fn ui_property(
+            &self,
+            _kind: crate::native_api::UiPropertyKind,
+            _control: u64,
+        ) -> (u32, u64) {
+            let mut state = self.state.lock().unwrap();
+            state.next_handle += 1;
+            (native_api::OK, state.next_handle)
+        }
+
+        fn ui_tree(
+            &self,
+            action: crate::native_api::UiTreeAction,
+            _parent: u64,
+            _child: u64,
+            _index: u64,
+            _to_index: u64,
+        ) -> (u32, u64, u64) {
+            let mut state = self.state.lock().unwrap();
+            match action {
+                crate::native_api::UiTreeAction::Insert => {
+                    state.ui_child_count += 1;
+                    (native_api::OK, 0, 0)
+                }
+                crate::native_api::UiTreeAction::Remove => {
+                    state.ui_child_count = state.ui_child_count.saturating_sub(1);
+                    (native_api::OK, 0, 0)
+                }
+                crate::native_api::UiTreeAction::ChildCount => {
+                    (native_api::OK, state.ui_child_count, 0)
+                }
+                crate::native_api::UiTreeAction::WindowContent
+                | crate::native_api::UiTreeAction::ChildAt => (native_api::OK, 0, 0),
+                _ => (native_api::OK, 0, 0),
+            }
+        }
+
+        fn ui_stack_panel(
+            &self,
+            action: crate::native_api::UiStackPanelAction,
+            _panel: u64,
+            _child: u64,
+            value: u32,
+        ) -> (u32, u64, u64) {
+            let mut state = self.state.lock().unwrap();
+            match action {
+                crate::native_api::UiStackPanelAction::Orientation => {
+                    (native_api::OK, u64::from(state.ui_orientation), 0)
+                }
+                crate::native_api::UiStackPanelAction::SetOrientation => {
+                    state.ui_orientation = value;
+                    (native_api::OK, 0, 0)
+                }
+                crate::native_api::UiStackPanelAction::SetChildAlign => (native_api::OK, 0, 0),
+            }
+        }
+
+        fn ui_button(
+            &self,
+            _action: crate::native_api::UiButtonAction,
+            _button: u64,
+            _command: u64,
+        ) -> (u32, u64, u64) {
+            (native_api::OK, 0, 0)
+        }
+
+        fn close_request_subscribe(
+            &self,
+            _window: u64,
+            callback: Option<freemvvm_sys::WindowCloseCallback>,
+            userdata: *mut std::ffi::c_void,
+            destroy: Option<freemvvm_sys::DestroyCallback>,
+        ) -> (u32, u64, u64) {
+            let mut state = self.state.lock().unwrap();
+            if state.close_subscribe_status != native_api::OK {
+                return (state.close_subscribe_status, 0, state.close_subscribe_error);
+            }
+            state.next_handle += 1;
+            let token = state.next_handle;
+            state.close_subscription_token = token;
+            state.close_callback = callback;
+            state.close_userdata = userdata as usize;
+            state.close_destroy = destroy;
+            (native_api::OK, token, 0)
+        }
+
+        fn close_request_defer(&self, _borrowed: u64) -> (u32, u64, u64) {
+            let mut state = self.state.lock().unwrap();
+            if state.close_defer_status != native_api::OK {
+                return (state.close_defer_status, 0, state.close_defer_error);
+            }
+            state.next_handle += 1;
+            (native_api::OK, state.next_handle, 0)
+        }
+
+        fn close_request_resolve(&self, request: u64, decision: u32) -> (u32, u64) {
+            let mut state = self.state.lock().unwrap();
+            state.close_resolutions.push((request, decision));
+            (state.close_resolve_status, state.close_resolve_error)
+        }
+
+        fn input_subscribe(
+            &self,
+            widget: u64,
+            event_mask: u64,
+            callback: Option<freemvvm_sys::InputCallback>,
+            userdata: *mut std::ffi::c_void,
+            destroy: Option<freemvvm_sys::DestroyCallback>,
+        ) -> (u32, u64, u64) {
+            let mut state = self.state.lock().unwrap();
+            if state.input_subscribe_status != native_api::OK {
+                return (state.input_subscribe_status, 0, state.input_subscribe_error);
+            }
+            if event_mask == 0 || event_mask & !native_api::INPUT_MASK_ALL != 0 {
+                return (native_api::INVALID_ARGUMENT, 0, 0);
+            }
+            state.next_handle += 1;
+            let token = state.next_handle;
+            state.input_subscription_token = token;
+            state.input_callback = callback;
+            state.input_userdata = userdata as usize;
+            state.input_destroy = destroy;
+            state.input_widget = widget;
+            state.input_mask = event_mask;
+            (native_api::OK, token, 0)
+        }
+
+        fn input_event_kind(&self, _event: u64) -> (u32, u32) {
+            let state = self.state.lock().unwrap();
+            (state.input_getter_status, state.input_kind)
+        }
+
+        fn input_event_key(&self, _event: u64) -> (u32, u32, u32) {
+            let state = self.state.lock().unwrap();
+            (
+                state.input_getter_status,
+                state.input_key,
+                state.input_modifiers,
+            )
+        }
+
+        fn input_event_text(&self, _event: u64, buffer: Option<&mut [u8]>) -> (u32, u64) {
+            let state = self.state.lock().unwrap();
+            if state.input_getter_status != native_api::OK {
+                return (state.input_getter_status, 0);
+            }
+            let required = state.input_text.len() as u64;
+            match buffer {
+                None if required == 0 => (native_api::OK, 0),
+                None => (native_api::BUFFER_TOO_SMALL, required),
+                Some(buffer) if buffer.len() < state.input_text.len() => {
+                    (native_api::BUFFER_TOO_SMALL, required)
+                }
+                Some(buffer) => {
+                    buffer[..state.input_text.len()].copy_from_slice(&state.input_text);
+                    (native_api::OK, required)
+                }
+            }
+        }
+
+        fn input_event_pointer(&self, _event: u64) -> (u32, f64, f64, u32) {
+            let state = self.state.lock().unwrap();
+            (
+                state.input_getter_status,
+                state.input_x,
+                state.input_y,
+                state.input_button,
+            )
+        }
+
+        fn input_event_set_handled(&self, _event: u64, _handled: bool) -> (u32, u64) {
+            let mut state = self.state.lock().unwrap();
+            state.input_handled_count += 1;
+            (native_api::OK, 0)
+        }
+
+        fn subscription_cancel(&self, token: u64) -> (u32, u64) {
+            let (destroy, userdata) = {
+                let mut state = self.state.lock().unwrap();
+                if token == state.input_subscription_token && token != 0 {
+                    state.input_destroy_count += 1;
+                    let userdata = state.input_userdata;
+                    state.input_callback = None;
+                    state.input_userdata = 0;
+                    state.input_subscription_token = 0;
+                    (state.input_destroy, userdata)
+                } else if token != state.close_subscription_token || token == 0 {
+                    drop(state);
+                    let mut error = 0;
+                    // SAFETY: fake API falls back to native cancellation for unrelated handles.
+                    let status =
+                        unsafe { freemvvm_sys::ui_abi_1_subscription_cancel(token, &mut error) };
+                    return (status, error);
+                } else {
+                    state.close_destroy_count += 1;
+                    let userdata = state.close_userdata;
+                    state.close_callback = None;
+                    state.close_userdata = 0;
+                    state.close_subscription_token = 0;
+                    (state.close_destroy, userdata)
+                }
+            };
+            if let Some(destroy) = destroy {
+                // SAFETY: successful fake cancellation ends the registered userdata lifetime.
+                unsafe { destroy(userdata as *mut std::ffi::c_void) };
+            }
+            (native_api::OK, 0)
         }
 
         fn error_status(&self, _error: u64) -> (u32, u32) {
@@ -1245,6 +1534,441 @@ mod tests {
             state.close().unwrap();
             can_execute.close().unwrap();
             eligibility.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn ui_controls_preserve_runtime_identity_tree_and_layout_contracts() {
+        let _guard = serialize_registry_test();
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api).unwrap();
+        let other_api = Arc::new(FakeApi::default());
+        other_api.set_ui_thread(true);
+        let mut other_runtime = UiRuntime::try_create_with_api(other_api).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let other_ui = other_runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let mut panel = crate::ui::StackPanel::create(&ui).unwrap();
+            let mut text = crate::ui::Text::create(&ui, "hello").unwrap();
+            let mut content = text.content_property(&ui).unwrap();
+            assert_eq!(panel.child_count(&ui).unwrap(), 0);
+            panel.insert(&ui, 0, &text).unwrap();
+            assert_eq!(panel.child_count(&ui).unwrap(), 1);
+            panel
+                .set_orientation(&ui, crate::ui::Orientation::Horizontal)
+                .unwrap();
+            assert_eq!(
+                panel.orientation(&ui).unwrap(),
+                crate::ui::Orientation::Horizontal
+            );
+            window.set_content(&ui, &panel).unwrap();
+            assert!(window.content(&ui).unwrap().is_none());
+            assert_eq!(
+                panel
+                    .set_orientation(&other_ui, crate::ui::Orientation::Vertical)
+                    .unwrap_err()
+                    .raw_status(),
+                native_api::WRONG_RUNTIME
+            );
+            assert_eq!(
+                content
+                    .set(&other_ui, String::from("foreign"))
+                    .unwrap_err()
+                    .raw_status(),
+                native_api::WRONG_RUNTIME
+            );
+            content.close().unwrap();
+            text.close().unwrap();
+            panel.close().unwrap();
+            window.close().unwrap();
+        }
+        other_runtime.close().unwrap();
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn input_callback_decodes_payloads_marks_handled_and_destroys_once() {
+        let _guard = serialize_registry_test();
+        struct DropProbe(Rc<Cell<usize>>);
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let events = Rc::new(RefCell::new(Vec::new()));
+            let callback_events = Rc::clone(&events);
+            let dropped = Rc::new(Cell::new(0));
+            let probe = DropProbe(Rc::clone(&dropped));
+            let mut subscription = window
+                .subscribe_input(&ui, crate::input::InputEventMask::ALL, move |event| {
+                    let _keep_probe_until_destroy = &probe;
+                    match event {
+                        crate::input::InputEvent::KeyDown { key, modifiers, .. } => {
+                            callback_events
+                                .borrow_mut()
+                                .push(format!("down:{}:{}", key.0, modifiers.0));
+                            event.set_handled().unwrap();
+                        }
+                        crate::input::InputEvent::KeyUp { key, modifiers, .. } => callback_events
+                            .borrow_mut()
+                            .push(format!("up:{}:{}", key.0, modifiers.0)),
+                        crate::input::InputEvent::TextCommit { text, .. } => {
+                            callback_events.borrow_mut().push(format!("text:{text}"))
+                        }
+                        crate::input::InputEvent::PrimaryPointerDown { position, .. } => {
+                            callback_events
+                                .borrow_mut()
+                                .push(format!("pointer-down:{},{}", position.x, position.y))
+                        }
+                        crate::input::InputEvent::PrimaryPointerUp { position, .. } => {
+                            callback_events
+                                .borrow_mut()
+                                .push(format!("pointer-up:{},{}", position.x, position.y))
+                        }
+                    }
+                })
+                .unwrap();
+
+            assert_eq!(api.state.lock().unwrap().input_mask, (1 << 5) - 1);
+            {
+                let mut state = api.state.lock().unwrap();
+                state.input_kind = native_api::INPUT_KEY_DOWN;
+                state.input_key = 0x04;
+                state.input_modifiers = crate::input::Modifiers::SHIFT;
+            }
+            api.invoke_input_event(900);
+            {
+                let mut state = api.state.lock().unwrap();
+                state.input_kind = native_api::INPUT_KEY_UP;
+                state.input_key = 0x28;
+                state.input_modifiers = crate::input::Modifiers::CONTROL;
+            }
+            api.invoke_input_event(901);
+            {
+                let mut state = api.state.lock().unwrap();
+                state.input_kind = native_api::INPUT_TEXT_COMMIT;
+                state.input_text = "日本語".as_bytes().to_vec();
+            }
+            api.invoke_input_event(902);
+            {
+                let mut state = api.state.lock().unwrap();
+                state.input_kind = native_api::INPUT_POINTER_DOWN;
+                state.input_x = 1.5;
+                state.input_y = 2.5;
+                state.input_button = native_api::INPUT_POINTER_PRIMARY;
+            }
+            api.invoke_input_event(903);
+            {
+                let mut state = api.state.lock().unwrap();
+                state.input_kind = native_api::INPUT_POINTER_UP;
+                state.input_x = 3.5;
+                state.input_y = 4.5;
+            }
+            api.invoke_input_event(904);
+
+            assert_eq!(
+                *events.borrow(),
+                [
+                    "down:4:1",
+                    "up:40:2",
+                    "text:日本語",
+                    "pointer-down:1.5,2.5",
+                    "pointer-up:3.5,4.5",
+                ]
+            );
+            assert_eq!(api.state.lock().unwrap().input_handled_count, 1);
+            assert_eq!(dropped.get(), 0);
+            subscription.cancel(&ui).unwrap();
+            assert_eq!(api.input_destroy_count(), 1);
+            assert_eq!(dropped.get(), 1);
+            api.invoke_input_event(905);
+            assert_eq!(
+                events.borrow().len(),
+                5,
+                "cancel stops future callback starts"
+            );
+            subscription.close().unwrap();
+            assert_eq!(api.input_destroy_count(), 1);
+            window.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn input_registration_failure_and_validation_keep_callback_wrapper_owned() {
+        let _guard = serialize_registry_test();
+        struct DropProbe(Rc<Cell<usize>>);
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        api.state.lock().unwrap().input_subscribe_status = native_api::UNSUPPORTED;
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        let other_api = Arc::new(FakeApi::default());
+        other_api.set_ui_thread(true);
+        let mut other_runtime = UiRuntime::try_create_with_api(other_api).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let other_ui = other_runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let dropped = Rc::new(Cell::new(0));
+            let probe = DropProbe(Rc::clone(&dropped));
+            let error = match window.subscribe_input(
+                &ui,
+                crate::input::InputEventMask::KEY_DOWN,
+                move |_| {
+                    let _keep_probe_until_destroy = &probe;
+                },
+            ) {
+                Err(error) => error,
+                Ok(_) => panic!("fake input registration unexpectedly succeeded"),
+            };
+            assert_eq!(error.raw_status(), native_api::UNSUPPORTED);
+            assert_eq!(dropped.get(), 1);
+
+            api.state.lock().unwrap().input_subscribe_status = native_api::OK;
+            let invalid_mask_drop = Rc::new(Cell::new(0));
+            let invalid_mask_probe = DropProbe(Rc::clone(&invalid_mask_drop));
+            let invalid_mask =
+                match window.subscribe_input(&ui, crate::input::InputEventMask(0), move |_| {
+                    let _keep_probe_until_destroy = &invalid_mask_probe;
+                }) {
+                    Err(error) => error,
+                    Ok(_) => panic!("zero event mask unexpectedly succeeded"),
+                };
+            assert_eq!(invalid_mask.raw_status(), native_api::INVALID_ARGUMENT);
+            assert_eq!(invalid_mask_drop.get(), 1);
+
+            let foreign_drop = Rc::new(Cell::new(0));
+            let foreign_probe = DropProbe(Rc::clone(&foreign_drop));
+            let foreign_error = match window.subscribe_input(
+                &other_ui,
+                crate::input::InputEventMask::KEY_DOWN,
+                move |_| {
+                    let _keep_probe_until_destroy = &foreign_probe;
+                },
+            ) {
+                Err(error) => error,
+                Ok(_) => panic!("foreign Runtime input registration unexpectedly succeeded"),
+            };
+            assert_eq!(foreign_error.raw_status(), native_api::WRONG_RUNTIME);
+            assert_eq!(foreign_drop.get(), 1);
+
+            let wrong_thread_drop = Rc::new(Cell::new(0));
+            let wrong_thread_probe = DropProbe(Rc::clone(&wrong_thread_drop));
+            api.set_ui_thread(false);
+            let wrong_thread_error = match window.subscribe_input(
+                &ui,
+                crate::input::InputEventMask::KEY_DOWN,
+                move |_| {
+                    let _keep_probe_until_destroy = &wrong_thread_probe;
+                },
+            ) {
+                Err(error) => error,
+                Ok(_) => panic!("wrong-thread input registration unexpectedly succeeded"),
+            };
+            assert_eq!(wrong_thread_error.raw_status(), native_api::WRONG_THREAD);
+            assert_eq!(wrong_thread_drop.get(), 1);
+            api.set_ui_thread(true);
+            window.close().unwrap();
+        }
+        other_runtime.close().unwrap();
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn input_callback_panic_is_contained_and_marks_event_handled() {
+        let _guard = serialize_registry_test();
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let mut subscription = window
+                .subscribe_input(&ui, crate::input::InputEventMask::KEY_DOWN, |_| {
+                    panic!("test input callback panic")
+                })
+                .unwrap();
+            api.state.lock().unwrap().input_kind = native_api::INPUT_KEY_DOWN;
+            api.invoke_input_event(906);
+            assert_eq!(api.state.lock().unwrap().input_handled_count, 1);
+            subscription.cancel(&ui).unwrap();
+            subscription.close().unwrap();
+            window.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn window_close_callback_is_owned_until_cancel_and_destroy_runs_once() {
+        let _guard = serialize_registry_test();
+        struct DropProbe(Rc<Cell<usize>>);
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let calls = Rc::new(Cell::new(0));
+            let callback_drop_count = Rc::new(Cell::new(0));
+            let probe = DropProbe(Rc::clone(&callback_drop_count));
+            let callback_calls = Rc::clone(&calls);
+            let mut subscription = window
+                .on_close_request(&ui, move |_request| {
+                    let _keep_probe_until_destroy = &probe;
+                    callback_calls.set(callback_calls.get() + 1);
+                })
+                .unwrap();
+
+            api.invoke_close_request(800);
+            assert_eq!(calls.get(), 1);
+            assert_eq!(callback_drop_count.get(), 0);
+            subscription.cancel(&ui).unwrap();
+            assert_eq!(api.close_destroy_count(), 1);
+            assert_eq!(callback_drop_count.get(), 1);
+            api.invoke_close_request(802);
+            assert_eq!(calls.get(), 1, "cancel prevents later callback starts");
+            subscription.close().unwrap();
+            assert_eq!(api.close_destroy_count(), 1);
+            window.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn failed_window_close_registration_keeps_callback_on_rust_side() {
+        let _guard = serialize_registry_test();
+        struct DropProbe(Rc<Cell<usize>>);
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        api.state.lock().unwrap().close_subscribe_status = native_api::UNSUPPORTED;
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let dropped = Rc::new(Cell::new(0));
+            let probe = DropProbe(Rc::clone(&dropped));
+            let error = match window.on_close_request(&ui, move |_request| {
+                let _keep_probe_in_callback = &probe;
+            }) {
+                Err(error) => error,
+                Ok(_) => panic!("fake close registration unexpectedly succeeded"),
+            };
+            assert_eq!(error.raw_status(), native_api::UNSUPPORTED);
+            assert_eq!(dropped.get(), 1);
+            window.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn window_close_callback_panic_does_not_cross_the_abi_boundary() {
+        let _guard = serialize_registry_test();
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let mut subscription = window
+                .on_close_request(&ui, |_request| panic!("test callback panic"))
+                .unwrap();
+            api.invoke_close_request(801);
+            subscription.cancel(&ui).unwrap();
+            subscription.close().unwrap();
+            window.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn close_request_view_defers_without_capturing_ui_context_and_resolves() {
+        let _guard = serialize_registry_test();
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let deferred = Rc::new(std::cell::RefCell::new(None));
+            let callback_deferred = Rc::clone(&deferred);
+            let mut subscription = window
+                .on_close_request(&ui, move |request| {
+                    *callback_deferred.borrow_mut() = Some(request.defer().unwrap());
+                })
+                .unwrap();
+
+            api.invoke_close_request(803);
+            let mut request = deferred.borrow_mut().take().unwrap();
+            request
+                .resolve(&ui, crate::ui::CloseDecision::Accept)
+                .unwrap();
+            assert_eq!(api.state.lock().unwrap().close_resolutions.len(), 1);
+
+            request.close().unwrap();
+            subscription.cancel(&ui).unwrap();
+            subscription.close().unwrap();
+            window.close().unwrap();
+        }
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn close_request_view_defer_checks_thread_and_reports_abi_failure() {
+        let _guard = serialize_registry_test();
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            let defer_status = Rc::new(Cell::new(None));
+            let callback_status = Rc::clone(&defer_status);
+            let mut subscription = window
+                .on_close_request(&ui, move |request| {
+                    callback_status.set(Some(request.defer().err().unwrap().raw_status()));
+                })
+                .unwrap();
+
+            api.set_ui_thread(false);
+            api.invoke_close_request(804);
+            assert_eq!(defer_status.get(), Some(native_api::WRONG_THREAD));
+
+            api.set_ui_thread(true);
+            api.state.lock().unwrap().close_defer_status = native_api::UNSUPPORTED;
+            api.invoke_close_request(805);
+            assert_eq!(defer_status.get(), Some(native_api::UNSUPPORTED));
+
+            subscription.cancel(&ui).unwrap();
+            subscription.close().unwrap();
+            window.close().unwrap();
         }
         runtime.close().unwrap();
     }

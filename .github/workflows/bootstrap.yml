@@ -50,6 +50,15 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            fontconfig \
+            fonts-noto-cjk \
+            libdrm-dev \
+            libfreetype-dev \
+            libgbm-dev \
+            libharfbuzz-dev \
+            pkg-config
           python -m venv .venv
           ./.venv/bin/python -m pip install -r tools/requirements-dev.txt
       - name: Run all bootstrap gates (Windows)
@@ -62,9 +71,19 @@ jobs:
       - name: Run all bootstrap gates (Linux)
         if: runner.os == 'Linux'
         shell: bash
+        env:
+          FC_LANG: ja-jp
         run: |
           ./.venv/bin/python tools/dev.py check
           ./.venv/bin/python tools/dev.py minimum
+      - name: Run Linux Platform device unit tests
+        if: runner.os == 'Linux'
+        shell: bash
+        run: cargo test -p freemvvm-platform-linux platform_device_ --locked
+      - name: Run Windows Platform adapter unit tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo test -p freemvvm-platform-windows --all-targets --locked
       - name: Retain bootstrap reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

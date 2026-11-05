@@ -1,3 +1,4 @@
+#include "freemvvm/command.hpp"
 #include "freemvvm/property.hpp"
 #include "freemvvm/runtime.hpp"
 #include "freemvvm/subscription.hpp"
@@ -193,6 +194,114 @@ ui_status api_binding_subscribe_error(ui_handle binding, ui_callback callback,
                                       ui_handle* out_error) {
   return ui_abi_1_binding_subscribe_error(binding, callback, userdata, destroy,
                                           out_subscription, out_error);
+}
+
+ui_status api_handle_retain(ui_handle borrowed, ui_handle* out_owned) {
+  return ui_abi_1_handle_retain(borrowed, out_owned);
+}
+
+ui_status api_command_create_async(ui_handle runtime, ui_handle eligibility,
+                                   ui_command_start_callback start,
+                                   void* userdata,
+                                   ui_destroy_callback destroy,
+                                   ui_handle* out_command,
+                                   ui_handle* out_error) {
+  return ui_abi_1_command_create_async(runtime, eligibility, start, userdata,
+                                       destroy, out_command, out_error);
+}
+
+ui_status api_command_execute(ui_handle command, std::uint64_t* out_id,
+                              ui_handle* out_error) {
+  return ui_abi_1_command_execute(command, out_id, out_error);
+}
+
+ui_status api_command_cancel(ui_handle command, std::uint64_t operation_id,
+                             ui_handle* out_error) {
+  return ui_abi_1_command_cancel(command, operation_id, out_error);
+}
+
+ui_status api_command_close(ui_handle command, ui_handle* out_error) {
+  return ui_abi_1_command_close(command, out_error);
+}
+
+ui_status api_command_state_property(ui_handle command,
+                                     ui_handle* out_property) {
+  return ui_abi_1_command_state_property(command, out_property);
+}
+
+ui_status api_command_can_execute_property(ui_handle command,
+                                           ui_handle* out_property) {
+  return ui_abi_1_command_can_execute_property(command, out_property);
+}
+
+ui_status api_command_failure_snapshot(ui_handle command,
+                                      ui_handle* out_snapshot) {
+  return ui_abi_1_command_failure_snapshot(command, out_snapshot);
+}
+
+ui_status api_command_cancel_token_requested(ui_handle token,
+                                             ui_bool* out_requested) {
+  return ui_abi_1_command_cancel_token_requested(token, out_requested);
+}
+
+ui_status api_command_complete_success(ui_handle command,
+                                      std::uint64_t operation_id) {
+  return ui_abi_1_command_complete_success(command, operation_id);
+}
+
+ui_status api_command_complete_failure_utf8(
+    ui_handle command, std::uint64_t operation_id, std::uint32_t domain,
+    std::uint32_t code, const std::uint8_t* message,
+    std::uint64_t message_byte_length) {
+  return ui_abi_1_command_complete_failure_utf8(
+      command, operation_id, domain, code, message, message_byte_length);
+}
+
+ui_status api_command_complete_cancelled(ui_handle command,
+                                         std::uint64_t operation_id) {
+  return ui_abi_1_command_complete_cancelled(command, operation_id);
+}
+
+ui_status api_runtime_post(ui_handle runtime, ui_callback callback,
+                           void* userdata, ui_destroy_callback destroy,
+                           ui_handle* out_error) {
+  return ui_abi_1_runtime_post(runtime, callback, userdata, destroy,
+                               out_error);
+}
+
+ui_status api_widget_input_subscribe(ui_handle widget, std::uint64_t mask,
+                                     ui_input_callback callback,
+                                     void* userdata,
+                                     ui_destroy_callback destroy,
+                                     ui_handle* out_subscription,
+                                     ui_handle* out_error) {
+  return ui_abi_1_widget_input_subscribe(widget, mask, callback, userdata,
+                                         destroy, out_subscription, out_error);
+}
+
+ui_status api_input_event_kind(ui_handle event, std::uint32_t* out_kind) {
+  return ui_abi_1_input_event_kind(event, out_kind);
+}
+
+ui_status api_input_event_key(ui_handle event, std::uint32_t* out_key,
+                              std::uint32_t* out_modifiers) {
+  return ui_abi_1_input_event_key(event, out_key, out_modifiers);
+}
+
+ui_status api_input_event_text(ui_handle event, std::uint8_t* buffer,
+                               std::uint64_t capacity,
+                               std::uint64_t* out_length) {
+  return ui_abi_1_input_event_text(event, buffer, capacity, out_length);
+}
+
+ui_status api_input_event_pointer(ui_handle event, double* out_x,
+                                  double* out_y, std::uint32_t* out_button) {
+  return ui_abi_1_input_event_pointer(event, out_x, out_y, out_button);
+}
+
+ui_status api_input_event_set_handled(ui_handle event, ui_bool handled,
+                                      ui_handle* out_error) {
+  return ui_abi_1_input_event_set_handled(event, handled, out_error);
 }
 
 void report_callback_exception(const std::exception_ptr& exception) noexcept {
@@ -461,6 +570,55 @@ std::shared_ptr<const AbiApi> linked_api() {
       &api_binding_cancel,
       &api_binding_error_snapshot,
       &api_binding_subscribe_error,
+      &api_handle_retain,
+      &api_command_create_async,
+      &api_command_execute,
+      &api_command_cancel,
+      &api_command_close,
+      &api_command_state_property,
+      &api_command_can_execute_property,
+      &api_command_failure_snapshot,
+      &api_command_cancel_token_requested,
+      &api_command_complete_success,
+      &api_command_complete_failure_utf8,
+      &api_command_complete_cancelled,
+      &api_runtime_post,
+      &ui_abi_1_window_create,
+      &ui_abi_1_stack_panel_create,
+      &ui_abi_1_text_create,
+      &ui_abi_1_text_box_create,
+      &ui_abi_1_button_create,
+      &ui_abi_1_widget_is_enabled_property,
+      &ui_abi_1_widget_accessible_name_property,
+      &ui_abi_1_widget_request_focus,
+      &ui_abi_1_window_content,
+      &ui_abi_1_window_set_content,
+      &ui_abi_1_window_clear_content,
+      &ui_abi_1_window_title_property,
+      &ui_abi_1_window_open,
+      &ui_abi_1_window_close,
+      &ui_abi_1_window_close_request_subscribe,
+      &ui_abi_1_window_close_request_defer,
+      &ui_abi_1_window_close_request_resolve,
+      &ui_abi_1_container_insert,
+      &ui_abi_1_container_remove,
+      &ui_abi_1_container_move,
+      &ui_abi_1_container_child_count,
+      &ui_abi_1_container_child_at,
+      &ui_abi_1_stack_panel_orientation,
+      &ui_abi_1_stack_panel_set_orientation,
+      &ui_abi_1_stack_panel_set_child_align,
+      &ui_abi_1_text_content_property,
+      &ui_abi_1_text_box_value_property,
+      &ui_abi_1_button_label_property,
+      &ui_abi_1_button_set_command,
+      &ui_abi_1_button_command,
+      &api_widget_input_subscribe,
+      &api_input_event_kind,
+      &api_input_event_key,
+      &api_input_event_text,
+      &api_input_event_pointer,
+      &api_input_event_set_handled,
   });
   return api;
 }

@@ -26,6 +26,12 @@ typedef ui_status (*ui_command_start_callback)(void *userdata,
                                                ui_handle borrowed_command,
                                                uint64_t operation_id,
                                                ui_handle borrowed_cancel_token);
+typedef void (*ui_window_close_callback)(void *userdata,
+                                         ui_handle borrowed_close_request);
+typedef void (*ui_input_callback)(void *userdata,
+                                  ui_handle current_widget,
+                                  ui_handle original_target,
+                                  ui_handle borrowed_event);
 
 enum {
   UI_OK = 0,
@@ -64,6 +70,35 @@ enum {
   UI_SHUTDOWN_REQUEST_PENDING = 0,
   UI_SHUTDOWN_REQUEST_COMPLETED = 1,
   UI_SHUTDOWN_REQUEST_HOST_UNAVAILABLE = 2
+};
+
+enum {
+  UI_ORIENTATION_VERTICAL = 1,
+  UI_ORIENTATION_HORIZONTAL = 2,
+  UI_ALIGN_START = 1,
+  UI_ALIGN_CENTER = 2,
+  UI_ALIGN_END = 3,
+  UI_ALIGN_STRETCH = 4,
+  UI_CLOSE_ACCEPT = 1,
+  UI_CLOSE_DECLINE = 2
+};
+
+enum {
+  UI_INPUT_KEY_DOWN = 1,
+  UI_INPUT_KEY_UP = 2,
+  UI_INPUT_TEXT_COMMIT = 3,
+  UI_INPUT_PRIMARY_POINTER_DOWN = 4,
+  UI_INPUT_PRIMARY_POINTER_UP = 5,
+  UI_INPUT_MASK_KEY_DOWN = 1u << 0,
+  UI_INPUT_MASK_KEY_UP = 1u << 1,
+  UI_INPUT_MASK_TEXT_COMMIT = 1u << 2,
+  UI_INPUT_MASK_PRIMARY_POINTER_DOWN = 1u << 3,
+  UI_INPUT_MASK_PRIMARY_POINTER_UP = 1u << 4,
+  UI_MODIFIER_SHIFT = 0x01,
+  UI_MODIFIER_CONTROL = 0x02,
+  UI_MODIFIER_ALT = 0x04,
+  UI_MODIFIER_META = 0x08,
+  UI_POINTER_BUTTON_PRIMARY = 1
 };
 
 ui_status ui_abi_1_runtime_create(ui_handle *out_runtime, ui_handle *out_error);
@@ -200,6 +235,112 @@ ui_status ui_abi_1_runtime_post(ui_handle runtime, ui_callback callback,
                                 ui_handle *out_error);
 ui_status ui_abi_1_runtime_dispatch_turn(ui_handle runtime);
 ui_status ui_abi_1_runtime_shutdown(ui_handle runtime, ui_handle *out_error);
+
+ui_status ui_abi_1_window_create(ui_handle runtime, ui_handle *out_window,
+                                 ui_handle *out_error);
+ui_status ui_abi_1_stack_panel_create(ui_handle runtime,
+                                      ui_handle *out_panel,
+                                      ui_handle *out_error);
+ui_status ui_abi_1_text_create(ui_handle runtime,
+                               const uint8_t *initial_utf8,
+                               uint64_t initial_byte_length,
+                               ui_handle *out_text, ui_handle *out_error);
+ui_status ui_abi_1_text_box_create(ui_handle runtime,
+                                   const uint8_t *initial_utf8,
+                                   uint64_t initial_byte_length,
+                                   ui_handle *out_text_box,
+                                   ui_handle *out_error);
+ui_status ui_abi_1_button_create(ui_handle runtime,
+                                 const uint8_t *initial_label_utf8,
+                                 uint64_t initial_byte_length,
+                                 ui_handle *out_button, ui_handle *out_error);
+ui_status ui_abi_1_widget_is_enabled_property(
+    ui_handle widget, ui_handle *out_owned_property);
+ui_status ui_abi_1_widget_accessible_name_property(
+    ui_handle widget, ui_handle *out_owned_property);
+ui_status ui_abi_1_widget_request_focus(ui_handle widget, ui_handle *out_error);
+ui_status ui_abi_1_widget_input_subscribe(
+    ui_handle widget, uint64_t event_mask, ui_input_callback callback,
+    void *userdata, ui_destroy_callback destroy,
+    ui_handle *out_subscription, ui_handle *out_error);
+ui_status ui_abi_1_input_event_kind(ui_handle borrowed_event,
+                                    uint32_t *out_kind);
+ui_status ui_abi_1_input_event_key(ui_handle borrowed_event,
+                                   uint32_t *out_key_identity,
+                                   uint32_t *out_modifiers);
+ui_status ui_abi_1_input_event_text(ui_handle borrowed_event,
+                                    uint8_t *buffer, uint64_t capacity,
+                                    uint64_t *out_length);
+ui_status ui_abi_1_input_event_pointer(ui_handle borrowed_event,
+                                       double *out_x_dip,
+                                       double *out_y_dip,
+                                       uint32_t *out_button);
+ui_status ui_abi_1_input_event_set_handled(ui_handle borrowed_event,
+                                           ui_bool handled,
+                                           ui_handle *out_error);
+ui_status ui_abi_1_window_content(ui_handle window,
+                                  ui_handle *out_owned_child,
+                                  ui_handle *out_error);
+ui_status ui_abi_1_window_set_content(ui_handle window,
+                                      ui_handle borrowed_child,
+                                      ui_handle *out_error);
+ui_status ui_abi_1_window_clear_content(ui_handle window,
+                                        ui_handle *out_error);
+ui_status ui_abi_1_window_title_property(ui_handle window,
+                                         ui_handle *out_owned_property);
+ui_status ui_abi_1_window_background_rgb(ui_handle window, float *out_red,
+                                         float *out_green, float *out_blue,
+                                         ui_handle *out_error);
+ui_status ui_abi_1_window_set_background_rgb(ui_handle window, float red,
+                                             float green, float blue,
+                                             ui_handle *out_error);
+ui_status ui_abi_1_window_reset_background_rgb(ui_handle window,
+                                               ui_handle *out_error);
+ui_status ui_abi_1_window_open(ui_handle window, ui_handle *out_error);
+ui_status ui_abi_1_window_close(ui_handle window, ui_handle *out_error);
+ui_status ui_abi_1_window_close_request_subscribe(
+    ui_handle window, ui_window_close_callback callback, void *userdata,
+    ui_destroy_callback destroy, ui_handle *out_subscription,
+    ui_handle *out_error);
+ui_status ui_abi_1_window_close_request_defer(
+    ui_handle borrowed_request, ui_handle *out_owned_request,
+    ui_handle *out_error);
+ui_status ui_abi_1_window_close_request_resolve(
+    ui_handle request, uint32_t decision, ui_handle *out_error);
+ui_status ui_abi_1_container_insert(ui_handle container,
+                                    ui_handle borrowed_child, uint64_t index,
+                                    ui_handle *out_error);
+ui_status ui_abi_1_container_remove(ui_handle container,
+                                    ui_handle borrowed_child,
+                                    ui_handle *out_error);
+ui_status ui_abi_1_container_move(ui_handle container, uint64_t from_index,
+                                  uint64_t to_index, ui_handle *out_error);
+ui_status ui_abi_1_container_child_count(ui_handle container,
+                                         uint64_t *out_count);
+ui_status ui_abi_1_container_child_at(ui_handle container, uint64_t index,
+                                      ui_handle *out_owned_child,
+                                      ui_handle *out_error);
+ui_status ui_abi_1_stack_panel_orientation(ui_handle panel,
+                                           uint32_t *out_orientation);
+ui_status ui_abi_1_stack_panel_set_orientation(ui_handle panel,
+                                               uint32_t orientation,
+                                               ui_handle *out_error);
+ui_status ui_abi_1_stack_panel_set_child_align(ui_handle panel,
+                                              ui_handle borrowed_child,
+                                              uint32_t align,
+                                              ui_handle *out_error);
+ui_status ui_abi_1_text_content_property(ui_handle text,
+                                         ui_handle *out_owned_property);
+ui_status ui_abi_1_text_box_value_property(ui_handle text_box,
+                                           ui_handle *out_owned_property);
+ui_status ui_abi_1_button_label_property(ui_handle button,
+                                         ui_handle *out_owned_property);
+ui_status ui_abi_1_button_set_command(ui_handle button,
+                                      ui_handle borrowed_command_or_zero,
+                                      ui_handle *out_error);
+ui_status ui_abi_1_button_command(ui_handle button,
+                                  ui_handle *out_owned_command,
+                                  ui_handle *out_error);
 
 ui_status ui_abi_1_handle_release(ui_handle owned);
 ui_status ui_abi_1_handle_retain(ui_handle borrowed, ui_handle *out_owned);
