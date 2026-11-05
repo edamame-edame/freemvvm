@@ -66,7 +66,7 @@ main
          └─ impl-rust/platform-adapter-windows-input
 ```
 
-Core branch同期と新規実装branch作成はこの計画のレビュー承認後に行う。wrapperは相互に親とせず、Windows Adapterもwrapper branchを親にしない。実装完了後の統合はCore APIsを先に、その後4 wrapperとPlatform Adapterをまとめる。
+各Input wrapper branchはCore Input APIsを親として作成し、同言語の完了済みUI Control wrapper branchを統合してからInput facadeを実装する。具体的なControl branchと既存unitの対応は[統合計画](input-wrapper-control-branch-integration.md)に従う。wrapperは相互に親とせず、Windows Adapterもwrapper branchを親にしない。実装完了後の統合はCore APIsを先に、その後4 wrapperとPlatform Adapterをまとめる。
 
 ## 試験・完了条件
 
@@ -95,3 +95,5 @@ Core branch同期と新規実装branch作成はこの計画のレビュー承認
 | 2026-11-03 | フェーズ4 | 進行中 | Buttonの未handled primary downでweak pending pressを記録し、新downで置換。未handled upで同Button・同Window generationを照合して一度だけCommandを実行する既定動作を追加。handled、target不一致、祖先disable、detach、Window close/reopenでは実行しない。UT-INPUT-005を含むCore全202件、workspace Clippy/format、Rust 1.85 check、文書リンク、diff checkがpass。C ABIは継続中 |
 | 2026-11-03 | フェーズ4 / UNIT-ABI-022 | 実装・local検証完了、同revision CI待ち | ABI feature 9、5種Input callback、callback-scoped event getter/setter、borrowed Widget retain、外部cancel/self-cancelとdestroy、C/C++ header、C ABI smokeを追加。C ABI全40件、workspace Clippy/format、Rust 1.85 check、文書リンク、diff check、Windows CMake C/C++ header probe・ABI runtime smokeがpass。local default Ninja presetはNinja未導入のためVS 2026 generatorで同じCMake targetsを検証。最新実装revisionを作業branchへpush後、同revision CIを確認 |
 | 2026-11-03 | フェーズ4 / UNIT-CORE-091 | ready / 同revision CI待ち | 依存UNIT-CORE-090 complete、UNIT-CORE-092 readyを確認。Input/Focus実装を含むCore全202件がpass。UNIT-CORE-091のsource/test pathは登録済みのものと一致し、`tools/units.yaml`とinventoryをreadyへ更新。現環境からGitHub status APIに接続できず、CI状態は確認保留 |
+| 2026-11-03 | wrapper branch依存 | 利用者承認・適用 | 完了済みUI Control wrapperを各Input wrapper child branchへ統合し、既存Control unitを現Core Input revision上で再検証してからInput facadeを実装する計画0.1を承認 |
+| 2026-11-03 | フェーズ5 / UNIT-WRAP-RS-INPUT-001 | 実装・local検証完了、同revision CI待ち | Rust Input facadeとconsumer testを実装。Rust crate tests、Clippy、Rust 1.85 workspace check、format、文書リンク検査、diff checkがpass。working branchへのcommit/push後に同revision CIを確認 |
