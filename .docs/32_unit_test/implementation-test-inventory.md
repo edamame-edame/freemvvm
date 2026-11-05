@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
-- 文書版: 2.0（レビュー案）
-- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsとclose-request unitsの試験設計は承認済み（2026-11-01）。Input/Focus実装unit 7件の登録・試験設計は承認済み（2026-11-03）。Rust/C++/C#/Python Input wrapperは各branch revisionのCI pass。Core/ABIの統合revision CIと本統合revisionのCIは確認待ち。Windows native input bridgeは未実装・planned
+- 文書版: 2.1
+- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsとclose-request unitsの試験設計は承認済み（2026-11-01）。Python wrapper実行記録とInput/Focus実装unitを統合した2.1全文は利用者承認済み（2026-11-06）。Rust/C++/C#/Python Input wrapperのbranch CIは成功。統合revisionのCIは確認待ち。Windows native input bridgeは未実装・planned
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -33,17 +33,17 @@
 
 #### Input / Focus event path implementation units（設計・試験登録承認済み）
 
-Core Input/Focusの`UT-INPUT-001..006`・`UT-FOCUS-001..004`は[UI試験設計](ui.md#inputfocus)に定義済み。ここではC ABI・4 wrapper・Windows Adapterの試験を登録した。各wrapperのsource/test pathとcommandは確認済み。wrapper consumerは公開API面を確認し、OS実機入力の発生を仮定しない。Windows native input bridgeは未実装であり、plannedのままとする。
+Core Input/Focusの`UT-INPUT-001..006`・`UT-FOCUS-001..004`は[UI試験設計](ui.md#inputfocus)に定義済み。ここではCore、C ABI、4 wrapper、Windows Adapterの計8 unitを登録する。wrapper consumerは公開API面を確認し、OS実機入力の発生を仮定しない。Windows native input bridgeは未実装のため、UNIT-PLATFORM-WINDOWS-007はplannedのままとする。
 
 | unit | 責務 | test設計 | 状態 |
 | --- | --- | --- | --- |
 | `UNIT-CORE-092` | TextBox編集state、UTF-8 candidate transaction、Property Validator接続、外部Value同期 | `UT-TEXTBOX-CORE-001..004` | ready / local Core tests・Clippy・Rust 1.85 check pass。同revisionのpush後CI確認待ち |
-| `UNIT-CORE-091` | Input route/handled、callback中のdetach/disable、Focus無効化、Button pending press、TextCommitからTextBox editingへの接続 | `UT-INPUT-001..006`、`UT-FOCUS-001..004` | ready / Core 202件pass、依存unit pass。最新revisionのCI確認待ち |
-| `UNIT-ABI-022` | feature 9、typed input callback、borrowed event getters/handled、C consumer | `UT-ABI-INPUT-001`、`UT-CONSUMER-ABI-INPUT-001` | ready / local tests pass、最新revisionのpush後に同revision CI確認待ち |
+| `UNIT-CORE-091` | Input route/handled、callback中のdetach/disable、Focus無効化、Button pending press、TextCommitからTextBox editingへの接続 | `UT-INPUT-001..006`、`UT-FOCUS-001..004` | complete / Core 202件・同一Core revisionを含むwrapper CI run `41642705673` success。統合revision CI確認待ち |
+| `UNIT-ABI-022` | feature 9、typed input callback、borrowed event getters/handled、C consumer | `UT-ABI-INPUT-001`、`UT-CONSUMER-ABI-INPUT-001` | complete / C ABI probes・consumerを含むwrapper CI run `41642705673` success。統合revision CI確認待ち |
 | `UNIT-WRAP-RS-INPUT-001` | Rust borrowed event facade、closure root、cancel/drop、panic境界 | `UT-WRAP-RS-INPUT-001`、`UT-CONSUMER-RS-INPUT-001` | complete / branch CI run `41642705673` success。統合revision CI確認待ち |
 | `UNIT-WRAP-CPP-INPUT-001` | C++ borrowed view、move-only Subscription、callback例外隔離 | `UT-WRAP-CPP-INPUT-001`、`UT-CONSUMER-CPP-INPUT-001` | complete / branch CI run `41648453537` success。統合revision CI確認待ち |
-| `UNIT-WRAP-CS-INPUT-001` | C# callback view、delegate root、Dispose競合、例外隔離 | `UT-WRAP-CS-INPUT-001`、`UT-CONSUMER-CS-INPUT-001` | complete / fake ABI・consumer、branch CI run `42030613702` pass。統合revision CI確認待ち |
-| `UNIT-WRAP-PY-INPUT-001` | Python callback view、callable root、GIL/GC、例外隔離 | `UT-WRAP-PY-INPUT-001`、`UT-CONSUMER-PY-INPUT-001` | complete / rerun CI run `42054917806` success（Windows/Linux）。統合revision CI確認待ち |
+| `UNIT-WRAP-CS-INPUT-001` | C# callback view、delegate root、Dispose競合、例外隔離 | `UT-WRAP-CS-INPUT-001`、`UT-CONSUMER-CS-INPUT-001` | complete / branch CI run `42030613702` success。統合revision CI確認待ち |
+| `UNIT-WRAP-PY-INPUT-001` | Python callback view、callable root、GIL/GC、例外隔離 | `UT-WRAP-PY-INPUT-001`、`UT-CONSUMER-PY-INPUT-001` | complete / Windows/Linux rerun CI run `42054917806` success。統合revision CI確認待ち |
 | `UNIT-PLATFORM-WINDOWS-007` | native key/TextCommit/primary pointer/activation入力のgeneration-aware mapping | `UT-PLATFORM-WINDOWS-INPUT-001` | planned / fake message mapping。IME・実機inputはrelease qualification |
 
 #### Linux Platform backend unit（DD v1.3 / test design 0.5承認済み）
@@ -135,6 +135,22 @@ UNIT-CORE-082の統合testはfake Platformを使い、Coreが所有する実Cont
 
 実行記録: 実装SHA `2d52a48a1c6f5ec8509e6fe77c898f826c770525` で `UT-CORE-GLYPH-RUN-001`（focused 1件）、Core suite 170件、`cargo test --workspace --all-targets --locked`（Windows Platform 12件、Linux Platform 10件を含む全suite）、workspace Clippy、Rust 1.85 workspace check、formatがlocal pass。同SHA [Windows/Linux CI 41269767449](https://github.com/edamame-edame/freemvvm/actions/runs/41269767449)もsuccess。文書検査は76 documents / 7057 local links、`tools/units.yaml` JSON parse、`git diff --check`がpass。実画面Text描画は後続UNIT-PLATFORM-WINDOWS-003とWindows GUI profile確認の対象。
 
+#### Python Window background RGB wrapper unit（Python DD 2.1 / test design 1.4承認済み）
+
+| unit | 責務 | test設計 | 状態 |
+| --- | --- | --- | --- |
+| `UNIT-WRAP-PY-WINDOW-BG-001` | Python `Window.background_rgb` get/setとresetをC ABIへ写し、native status/errorを既存`UiError`へ伝える | `UT-WRAP-PY-WINDOW-BG-001`、`UT-CONSUMER-PY-WINDOW-BG-001` | complete / Windows local focused・real C ABI consumer pass、Windows/Linux CI success |
+
+実行記録: 同一作業revisionで`.venv/Scripts/python.exe tools/dev.py python-window-test`（16 tests）と`python-window-consumer-test`がWindows local pass。fake ABIはdefault/set/get/reset、Core validation failureのstatus伝達、getter error mappingを確認。別process consumerは実C ABIでdefault opaque white、RGB roundtrip、reset後white、既存Window明示closeを確認する。consumerはheadless-safeに`Window.open()`を呼ばない。`UNIT-WRAP-PY-WINDOW-BG-001`は実装SHA `a7bfceaccc66f4f590d65d0099e52f91ca61d50c` の[Windows/Linux CI run 41176829432](https://github.com/edamame-edame/freemvvm/actions/runs/41176829432)でsuccess。CIのLinux jobでもconsumerを含む全bootstrap gateがpassし、実機peer smokeは起動していない。実機peer open/closeは独立した`UNIT-PLATFORM-003` / `UT-SMOKE-PY-WINDOW-OPEN-001`としてplannedで、実機profileが準備できるまで実行しない。
+
+#### Linux Platform Python Window peer smoke
+
+| unit | 責務 | test設計 | 状態 |
+| --- | --- | --- | --- |
+| `UNIT-PLATFORM-003` | Linux Platform実機profile上でPython `Window.open()` / `close_peer()`を実C ABI経由で明示確認する | `UT-SMOKE-PY-WINDOW-OPEN-001` | planned / 実機準備待ち。通常の`tools/dev.py check`およびCIから除外 |
+
+実機未準備のため未実行。headless runnerの`UI_INTERNAL_ERROR`を許容して合格にせず、DRM/display実機での実行結果を別記録する。
+
 TextServiceは未実装のため、本番のText/TextBox/Button intrinsic measurementを創作しない。providerを内部入力境界に保ち、試験ではfake providerを使う。TextServiceを必要とする実Leafの測定不能はpass全体を失敗させ、scene producer/public ABIは本unitに含めない。
 
 実行記録: 実装SHA `162f333bfb6425f237bcfc2de306a5518f1aeff1` で `cargo test -p freemvvm-core runtime_layout_snapshot_ --locked`（1 test）、`cargo test --workspace --all-targets --locked`（Core 168 / C ABI 38 / Linux Platform 10 testsを含む全suite）、`cargo clippy --workspace --all-targets --locked -- -D warnings`、`cargo +1.85.0 check --workspace --all-targets --locked`、`cargo fmt --all -- --check` がpass。`.venv/Scripts/python.exe tools/check_docs.py`（76 documents / 6984 local links）、`tools/units.yaml` JSON parse、`git diff --check`もpass。実機・Docker検証は本unitで実施していない。fake measurementのみの確認であり、TextService/production leaf metrics、Scene producer、描画・実機表示の完了は意味しない。
@@ -218,6 +234,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | 1.0 | 2026-10-17 | UT-INVENTORY / 9判断とinterface・所有・状態遷移を正本へ適用し、旧判断との対応を保持 | Codex |
 | 1.1 | 2026-10-17 | 利用者の設計ID追跡廃止指示に従い、適用設計を文書・版・設計項目で示すschema 2へ変更。実装/test IDと実行規則は維持 | Codex |
+| 1.2 | 2026-10-31 | Python Window背景RGB wrapper unitとWindows local focused/real C ABI consumer実行記録を追加 | Codex |
 | 1.3 | 2026-11-01 | UNIT-PLATFORM-WINDOWS-005の対応試験・local検証状態を記録し、unitをreadyへ更新 | Codex |
 | 1.4 | 2026-11-01 | Core/Windows TextService unitの同revision Windows/Ubuntu CI結果を記録し、両unitをcompleteへ更新 | Codex |
 | 1.5 | 2026-11-01 | 承認済みnative close intent/Core dispatch試験をUNIT-CORE-090とUNIT-PLATFORM-WINDOWS-006へ対応付け | Codex |
@@ -225,5 +242,5 @@ flowchart LR
 | 1.7 | 2026-11-01 | UNIT-CORE-090の同revision Windows/Linux CI成功を記録し、unitをcompleteへ更新 | Codex |
 | 1.8 | 2026-11-01 | UNIT-PLATFORM-WINDOWS-006の実装・local検証結果を記録し、unitをreadyへ更新 | Codex |
 | 1.9 | 2026-11-01 | UNIT-PLATFORM-WINDOWS-006の同revision Windows/Linux CI成功を記録し、unitをcompleteへ更新 | Codex |
-| 2.0案 | 2026-11-02 | Input/FocusのCore・C ABI・4 wrapper・Windows Adapterを7件のplanned unitとして登録提案。試験文書全体のレビュー待ち | Codex |
-| 2.1 | 2026-11-03 | Rust Input wrapper unitの実装とlocal検証を記録し、UNIT-WRAP-RS-INPUT-001をreadyへ更新 | Codex |
+| 2.0案 | 2026-11-02 | Input/FocusのCore・C ABI・4 wrapper・Windows Adapterを7件のplanned unitとして登録提案 | Codex |
+| 2.1全文 | 2026-11-06 | Python wrapper実行記録とInput/Focus実装unitを統合した文書全体を利用者が承認 | 利用者 |
