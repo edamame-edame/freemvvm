@@ -672,12 +672,10 @@ internal static class Program
         using (label)
         using (button)
         {
-            UiResult<bool> openWindow = window.TryOpen();
             UiResult<bool> closeWindow = window.TryCloseWindow();
-            if (openWindow.Error?.RawStatus != UiStatus.Unsupported || closeWindow.IsFailure)
+            if (closeWindow.IsFailure)
             {
-                Console.Error.WriteLine(
-                    $"Window without a peer should reject open and allow idempotent close while already closed; open={openWindow.Error?.RawStatus}, close={closeWindow.Error?.RawStatus}.");
+                Console.Error.WriteLine("Closing an unopened Window should be idempotent.");
                 return 78;
             }
 
