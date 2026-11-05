@@ -1,7 +1,7 @@
 # 0.0.1 Input / Focus event path実装開始計画
 
 - 計画版: 0.1
-- 状態: 計画承認済み（利用者、2026-11-02）。Core Input/Focus・C ABIとRust/C++/C#/Python wrapperの実装・各branch CIは完了し、`integrate/input-focus-0.0.1`でversion向け統合中。統合revisionの検証・PR確認待ち。Windows native input bridge（UNIT-PLATFORM-WINDOWS-007）は未実装の残課題
+- 状態: 計画承認済み（利用者、2026-11-02）。Core Input/Focus・C ABIとRust/C++/C#/Python wrapperを`integrate/input-focus-0.0.1`へ統合し、revision `82923807`のWindows/Ubuntu CI runs `42118740862`・`42118808951`成功。version向けPR #5レビュー待ち。Windows native input bridge（UNIT-PLATFORM-WINDOWS-007）は未実装の残課題
 - 対象version: `0.0.1`
 - 親計画: [Input / Focus event path次工程計画](input-focus-event-path.md) 0.2（承認済み）
 - 目的: 承認済み共通設計に残る実装境界を閉じ、Core/C ABI・4 wrapper・Windows Adapterを依存順に実装・検証できる状態にする
@@ -31,8 +31,8 @@ Pointer move/wheel/capture、Tab traversal、shortcut、public Focus notificatio
 | 1. API境界の具体化 | Rust/C++/C#/Python wrapper DD、共通C ABI DD、Windows platform DD | 各言語のevent型・callback署名・subscription cancel/dispose・event view寿命・例外隔離、C ABI feature/payload、key/modifier/button表、Windows key/text/IME取得経路と順序を文書化し、全対象文書の承認を得る | 完了。対象DD全件承認・push済み |
 | 2. 試験・unit登録 | `.docs/32_unit_test/wrappers.md`、`ui.md`追補、`.docs/32_unit_test/implementation-test-inventory.md`、`tools/units.yaml` | 各unitにtest path・command・RQ/TC・承認済み設計文書/版/節を登録。`planned`で登録し、実装着手時にpath確認後`ready`へ更新する | 利用者承認済み、commit `8992b04` push済み。文書リンク・manifest整合pass |
 | 3. Branch同期 | `version/0.0.1` → Core APIs child | `origin/version/0.0.1`を現Core APIs branchへ取り込み、close-intent差分が保持されたこととCI/差分を確認してpush。次に`impl-rust/core-input-focus`を同期済みCore APIs branchから作成 | 完了。version commit `39b65b8`をmerge commit `f2047b5`で同期。差分はrelease TODO 1ファイルのみ。Windows/Ubuntu CI runs `41377564736` success。child `impl-rust/core-input-focus`を作成・push済み |
-| 4. Core / C ABI | `UNIT-CORE-091`、`UNIT-ABI-022`候補 | route/reentrancy/lifetime/focus/default actionのCore試験後、borrowed event callback/getter/handled setterをABI probesとreal ABI smokeで検証。各unitは同一revisionで必要gates pass後に日本語commit/push | 実装・local検証完了。wrapper branchのCIに含まれている。集約revision CI待ち |
-| 5. Language wrappers | Rust、C++、C#、Python各wrapper unit | 4本をCore Input branchの同じ確定commitから独立に切る。各unitでfake ABI試験と利用者向けconsumer試験を実施し、callback root/cancel/borrow lifetime/例外隔離を確認。同一unitの試験pass後に各branchを日本語commit/push | 4 unit実装・各branch CI完了。`integrate/input-focus-0.0.1`へ順次取り込み済み |
+| 4. Core / C ABI | `UNIT-CORE-091`、`UNIT-ABI-022`候補 | route/reentrancy/lifetime/focus/default actionのCore試験後、borrowed event callback/getter/handled setterをABI probesとreal ABI smokeで検証。各unitは同一revisionで必要gates pass後に日本語commit/push | 実装・local検証・wrapper branch CI・統合revision CI完了 |
+| 5. Language wrappers | Rust、C++、C#、Python各wrapper unit | 4本をCore Input branchの同じ確定commitから独立に切る。各unitでfake ABI試験と利用者向けconsumer試験を実施し、callback root/cancel/borrow lifetime/例外隔離を確認。同一unitの試験pass後に各branchを日本語commit/push | 4 unit実装・各branch CI・統合revision CI完了 |
 | 6. Windows Adapter | `UNIT-PLATFORM-WINDOWS-007`候補 | Windows branchはCore Input branchから独立に切る。fake message mapping、stale generation、event order、shutdownを試験し、Windows build/CIを通す。実機IME/keyboard/mouse smokeはrelease qualificationに残す | 未着手。Coreの入力sinkとWindows native event mapping接続が不足。別残課題として保持 |
 | 7. 集約レビュー | Core・4 wrappers・Windows Adapterの変更一式 | unit台帳、対応試験、同revision CI、release testの未実施項目を照合。関連TODOが全て完了してからまとめてmerge PRを作成 | Windows Adapterを除くCore・4 wrapperをversion向けPRへ集約中。Windows Adapter未実装をPR範囲と完了表示に含めない |
 
@@ -100,3 +100,4 @@ main
 | 2026-11-06 | フェーズ4 / UNIT-CORE-091・UNIT-ABI-022 | 実装・検証完了 | CoreとC ABIの変更はRust wrapper branchの祖先revisionとして含まれ、全体CI run `41642705673`で確認。Input/Focus共通unitの統合revision CIは別途確認 |
 | 2026-11-06 | フェーズ5 / Rust・C++・C#・Python | 実装・branch CI完了 | Rust `f3ab3b2` / run `41642705673`、C++ `3ae22ed` / run `41648453537`、C# `cb82aae` / run `42030613702`、Python `1cf5cec` / Windows/Linux rerun `42054917806`。4 wrapperとCore/C ABIを統合中 |
 | 2026-11-06 | フェーズ6 / UNIT-PLATFORM-WINDOWS-007 | 未着手・残課題 | Windows native input mappingからCore sinkへの接続は実装されていない。別作業として保持し、今回のInputFocus統合では完了としない |
+| 2026-11-06 | フェーズ7 / version向け統合 | PRレビュー待ち | `integrate/input-focus-0.0.1` revision `82923807`のWindows/Ubuntu push・PR CI runs `42118740862`・`42118808951`がsuccess。Pull request [#5](https://github.com/edamame-edame/freemvvm/pull/5)を`version/0.0.1`向けに作成。Windows native input bridgeは残課題として明示 |
