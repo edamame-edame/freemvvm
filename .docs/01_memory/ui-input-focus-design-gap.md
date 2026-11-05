@@ -1,0 +1,3 @@
+# UI設計: Input / Focus配送の承認境界
+
+RQ-09-068のhandled/bubbling保証は初期共通基盤の要求。承認済み`ui/input-focus.md` 1.1はroute候補と内部InputRouter案を持つが、public subscription・handled state・ABIを未決としていた。2026-11-01、利用者はInput/Focus 1.2、Controls 1.6、ABI 1.5、Platform internal layers 2.3、unit test 1.7と計画0.2を全文承認した。採用範囲はWidgetごとのtyped Input subscription、target-to-Logical bubbling、callback中だけのborrowed event view、handled後の祖先/default停止、Focus getter、primary pointer down/upによるButton起動。Property subscriptionは引数なしcallbackなのでInput event payloadには使わない。RQ-09-046によりfocused WidgetまたはancestorのdisableでFocusを解除し、無効期間の入力をretarget/遅延再生しない。Pointer move/wheel/captureとkeybindingは初期範囲に含めない。各wrapper unitとWindows Adapter unitはCore API branchから分け、対応するtest完了後commit/pushする。実装開始承認は別途管理。

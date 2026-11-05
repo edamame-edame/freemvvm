@@ -2,6 +2,8 @@
 members = [
     "crates/core-runtime",
     "crates/c-abi",
+    "crates/platform-linux",
+    "crates/platform-windows",
     "wrappers/rust/freemvvm-sys",
     "wrappers/rust/freemvvm",
 ]

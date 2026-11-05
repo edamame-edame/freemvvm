@@ -1,9 +1,9 @@
 # 言語ラッパー：C#
 
-- 文書版: 1.4改訂案
+- 文書版: 1.6
 - 文書ロール: detailed-design
-- 更新日: 2026-10-24
-- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.2/1.3までの承認履歴を維持。実装・試験状態は別管理
+- 更新日: 2026-11-02
+- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-30）。1.6全文承認済み（利用者、2026-11-02）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -533,6 +533,46 @@ sequenceDiagram
 - Command close/Runtime shutdownは新規実行・UI完了反映を止めるがworkerをjoinしない。遅延/古いoperation IDの報告を現在状態へ反映せず、shutdown後にterminal stateがUIから観測できる保証を加えない。
 - wrapperのstart callback exceptionはC ABIを越境させず、`CommandStart` failure kindで既存handlerへ報告する。未設定handler時の既定診断は既存`Trace.TraceError`規則を適用する。worker例外はアプリ側がdomain/code/messageへ明示変換し、wrapperが未定義の既定codeを追加しない。
 
+## Window background RGB wrapper API（1.5）
+
+C#は依存packageを増やさないreadonly `RgbColor`値型（3つのnormalized `float`）を使う。`Window.BackgroundRgb` getter/setterは対応するC ABI getter/setterを呼び、`Window.ResetBackgroundRgb()`で規定値へ戻す。未指定時のgetterはopaque white `#FFFFFF`を返す。呼出・error mappingは既存C# wrapper契約に従い、Window/property stateをwrapper側へ複製しない。
+
+```csharp
+public readonly struct RgbColor
+{
+    public float Red { get; }
+    public float Green { get; }
+    public float Blue { get; }
+}
+
+public RgbColor BackgroundRgb { get; set; }
+public void ResetBackgroundRgb();
+```
+
+## Input event wrapper API（1.6改訂案・全文レビュー待ち）
+
+要求根拠: [RQ-03-002](../../11_requirements/RQ-03_language-support.md#rq-03-002)、[RQ-03-006](../../11_requirements/RQ-03_language-support.md#rq-03-006)、[RQ-04-008](../../11_requirements/RQ-04_abi-boundary.md#rq-04-008)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-068](../../11_requirements/RQ-09_ui-scope.md#rq-09-068)。
+
+各public Widget wrapperに同じ操作を追加する。InputEventViewはC ABI borrowed handleを内包するcallback-only viewで、native tokenをretainしない。利用者が参照を保存した場合、callback終了後のKind propertyはInvalidOperationExceptionを投げ、Try* accessorはUI_INVALID_HANDLEを含むfailure resultを返す。
+
+    public UiResult<UiSubscription> TrySubscribeInput(
+        InputEventMask kinds,
+        Action<InputEventView> callback);
+
+    public sealed class InputEventView
+    {
+        public InputEventKind Kind { get; }
+        public UiResult<KeyIdentity> TryGetKey();
+        public UiResult<Modifiers> TryGetModifiers();
+        public UiResult<string> TryGetText();
+        public UiResult<PointDip> TryGetPointerPosition();
+        public UiResult<bool> TrySetHandled();
+    }
+
+Text getterはcallback中にUTF-8をmanaged stringへcopyし、pointer位置はclient DIPとする。kindとpayloadが一致しないgetterはUI_WRONG_TYPEを含む失敗結果を返す。
+
+registration失敗時はGC rootをC#側で解放し、成功時はnative destroyまでrootする。UiSubscription.TryCancel()は新規callback開始を止める。TryClose()/Dispose()はhandleをreleaseするだけでcancelの代わりにしない。delegate例外はunmanaged trampoline内で捕捉し既存callback failure handlerへ渡し、handler未設定時はstderrへ診断を出す。eventをhandledへしてdefault actionを止め、handler自身の例外もunmanaged境界へ出さない。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -546,3 +586,6 @@ sequenceDiagram
 | 2026-10-24 | 1.3全文 | 利用者の「承認します、実装を進めてください」により文書全体を承認。実装・試験状態は別管理 |
 | 2026-10-24 | 1.4改訂案 | 非同期CommandのC#公開型、class diagram、実行/完了sequence、worker参照とfailure境界を追加。計画 `.docs/20_todo/csharp-async-command.md` に基づく |
 | 2026-10-24 | 1.4全文 | 利用者の「承認します。実装を進めてください」により文書全体を承認。実装・試験状態は別管理 |
+| 2026-10-30 | 1.5改訂案 | RQ-09-074に対応する`RgbColor`・`BackgroundRgb`・reset APIを提案。全文レビュー待ち |
+| 2026-10-30 | 1.5全文 | 利用者の「ok」によりC# Window `RgbColor`・`BackgroundRgb`・reset APIを含む全文を承認。実装・試験合格は別管理 |
+| 2026-11-02 | 1.6全文 | 利用者の「ok」により、Input event callback/view、lifetime、cancelと例外境界を含む全文を承認。実装・試験状態は別管理 |

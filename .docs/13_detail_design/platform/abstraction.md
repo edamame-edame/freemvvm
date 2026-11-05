@@ -1,9 +1,9 @@
 # プラットフォーム：抽象化と共通protocol
 
-- 文書版: 1.1
+- 文書版: 1.2
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-11-01
+- 状態: 1.1全文承認済み（利用者、2026-10-17）。1.2全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -59,7 +59,7 @@ CoreとAdapterの間では、OS resourceをopaqueなAdapter内部resourceとし�
 | Visual/Property/Tree/Layout変更はCore dirty stateへ集約する。描画frameを作る直前に必要なMeasure/Arrangeを完了し、同じUI thread上の一貫したVisual/Layout/Control snapshotをRendererへ渡す。連続したdirty要求・resizeは未開始frameに集約し、部分更新に失敗した場合は前回のcomplete frame相当状態を保持する。 | ランタイム：実行基盤と終了、UIクラス：Tree・Layout・Geometry、UIクラス：Window・基本Control・次段階Control。damage region、partial redraw、snapshot格納形式、厳密なframe clockは決めない。 |
 | Frame requestと通常post/input/notificationはランタイム：実行基盤と終了のbounded UI dispatch内で処理する。shutdown control taskは実行中callback/eventが戻った次の処理機会でframe/通常workより優先し、開始済みrender/host eventを途中で再入終了させない。描画要求が続いても同じdispatch turnを無制限に占有しない。 | UI dispatcher、Runtime shutdownのcallback中dispatchに関する上位判断。OS loopのpriority APIやrefresh synchronizationはbackend別後続。 |
 | Window peerはCore Windowへ関連付けた状態でsurfaceを作成し、Platformから来る利用可能領域・scale等のenvironment変更をCoreへ通知する。Core Windowは意味状態を維持し、surface resize/device recreation時にLayout dirtyとframe dirtyを立てて再描画する。OS peer喪失時もCore Tree/Property/Binding/Focus意味状態をOS resourceと一緒に破棄しない。 | MVVM UIライブラリ Layoutの責務境界に関する上位判断案、UIクラス：Tree・Layout・Geometry。 具体化は[ランタイム：実行基盤と終了](../runtime-objects/runtime.md)、[プラットフォーム：OS・描画・text・IME内部レイヤー](internal-layers.md)、[プラットフォーム：OS・描画・text・IME内部レイヤー](internal-layers.md)を参照する。 |
-| OSのclose intentはPlatform AdapterからCoreへのclose requestとして通知する。OS eventを受けたことだけでRuntime shutdownやCommand/screen ownerのcloseを実行しない。 具体化は[ランタイム：実行基盤と終了](../runtime-objects/runtime.md)、[プラットフォーム：OS・描画・text・IME内部レイヤー](internal-layers.md)、[プラットフォーム：OS・描画・text・IME内部レイヤー](internal-layers.md)を参照する。 | UIクラス：Window・基本Control・次段階Control §7、ランタイム：実行基盤と終了、MVVM UIライブラリ 初期描画方式と検証順序に関する上位判断案。close policyをこの案だけで決めない。 |
+| OSのclose intentはPlatform AdapterからCoreへのclose requestとして通知する。結果Acceptでは対象Windowのpeerを閉じてCore Window/Tree/Propertyを保持し、再open可能にする。Decline/Defer中はpeerを表示状態に保つ。OS eventを受けたことだけでRuntime shutdownやCommand/screen ownerのcloseを実行しない。 | [RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、UIクラス：Window・基本Control・次段階Control §7、[ランタイム：実行基盤と終了](../runtime-objects/runtime.md)。 |
 | Adapterはraw pointer/keyboard/window eventをMVVM UIライブラリ Input eventの責務境界に関する上位判断案/UIクラス：InputとFocusの共通Input eventへ正規化し、Core UI threadへ順序を保って渡す。AdapterはOS座標・device情報を保持し、Core Layout座標への変換点を一箇所に置く。Coreのroute/Focus/activationはUIクラス：InputとFocusに従い、backendごとに再実装しない。 | MVVM UIライブラリ Input eventの責務境界に関する上位判断案、UIクラス：Tree・Layout・Geometry、UIクラス：Window・基本Control・次段階Control。 具体化は[ランタイム：実行基盤と終了](../runtime-objects/runtime.md)、[プラットフォーム：OS・描画・text・IME内部レイヤー](internal-layers.md)、[プラットフォーム：OS・描画・text・IME内部レイヤー](internal-layers.md)を参照する。 |
 | TextBoxにactive focusが移る時、Adapterは対応するOS IME sessionを開始し、preedit/commit/cancelをUIクラス：TextBox・Validation・IME編集が定める共通IME eventへ変換する。Core focus離脱、TextBox detach/destroy、外部確定値update、Runtime shutdownではsessionを終了し、session外・stale eventをCore編集状態へ反映しない。Candidate UI位置はCore text/layout情報をAdapterへ渡す接点まで定める。 | MVVM UIライブラリ Focus移動時のIME compositionに関する上位判断案、UIクラス：InputとFocus。OS API、内部caret単位、candidate window placement/render、OS event ordering差は確定しない。 |
 | Surface/device/render failureはCore UI状態のcommitと分離して診断する。失敗したframeをCoreの成功済みsnapshotとして扱わず、dirtyを保持してAdapterがrecoverまたは明示failure状態を通知する。surface喪失中もInput/IME eventは無効surfaceへ配送しない。 | Layout、ランタイム：実行基盤と終了、MVVM UIライブラリ 初期描画方式と検証順序に関する上位判断案。status code、再試行回数、device fallback、software renderer切替は後続判断。 |
@@ -136,8 +136,9 @@ Native focus changeとCore Focus changeの同期、event timestamp/order、座�
 
 #### CloseとRuntime shutdown
 
-- OS close intentはCore Windowへrequestとして通知する。Runtime/Command ownerのshutdownは暗黙に始めない。
-- closeが受理された場合のpeer teardownとCore Window保持/破棄の関係はPlatform接続で利用者確認が必要。
+- OS close intentはgeneration付きCore Window requestとしてUI dispatcherへ通知する。Runtime/Command ownerのshutdownは暗黙に始めない。
+- Accept時は対象peerを閉じ、Core Window/Tree/Propertyを保持して明示再openを可能にする。Declineはpeerを維持し、Deferはpeerを維持したままrequest解決を待つ。未解決request破棄時はDeclineとして扱う。
+- Dispatcherへのclose intent配送が失敗した場合、OS closeを成功扱いせずpeerを維持する。Runtime shutdownはclose requestのveto/deferとは独立して既定の全peer teardownを行う。
 - Runtime shutdownではRuntime shutdownのcallback中dispatchに関する上位判断/ランタイム：実行基盤と終了優先度に従う。実行中のcallback/eventを終えた次処理機会で、未開始post/frameをcancelし、IME session、peer、surface、graphics resourceをUI thread上で停止・破棄する。
 - worker同期shutdownはランタイム：実行基盤と終了のhost停止通知で未完了と理由を返し、cleanup完了と区別する。具体化は[ランタイム：実行基盤と終了](../runtime-objects/runtime.md)、[プラットフォーム：OS・描画・text・IME内部レイヤー](internal-layers.md)、[プラットフォーム：OS・描画・text・IME内部レイヤー](internal-layers.md)を参照する。
 
@@ -362,3 +363,5 @@ Coreの意味更新→Layout確定→SceneSnapshot/AX snapshot構築→Renderer/
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-11-01 | 1.2改訂案 | RQ-09-071とUI class DDに合わせ、OS close intentのAccept/Decline/Defer時のpeer/Core状態を明記。文書全体レビュー待ち。1.1承認範囲を維持 |
+| 2026-11-01 | 1.2全文 | 利用者の「おK」により、OS close intentのpeer/Core lifecycleを含む全文を承認。実装・試験状態は別管理 |

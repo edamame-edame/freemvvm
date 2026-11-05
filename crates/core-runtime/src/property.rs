@@ -1,4 +1,5 @@
 use crate::handle_registry::registry::ObjectIdentity;
+use crate::ui_input::InputEventFrame;
 use crate::value::{TypedValue, ValueCommit, ValueKind, ValueKindMismatch, ValueStorage};
 use std::ffi::c_void;
 use std::sync::{Arc, Mutex, Weak};
@@ -145,7 +146,12 @@ struct SubscriptionClosure {
 pub(crate) struct Subscription {
     lifecycle: SubscriptionLifecycle,
     closure: Mutex<Option<SubscriptionClosure>>,
+    input_mask: Option<u64>,
+    input_handler: Mutex<Option<Arc<InputHandler>>>,
 }
+
+pub(crate) type InputHandler =
+    dyn Fn(ObjectIdentity, ObjectIdentity, &mut InputEventFrame) + Send + Sync + 'static;
 
 #[allow(dead_code)] // Exercised now; Runtime integration consumes these methods in a later slice.
 impl Subscription {
@@ -167,6 +173,17 @@ impl Subscription {
                 userdata: userdata as usize,
                 destroy,
             })),
+            input_mask: None,
+            input_handler: Mutex::new(None),
+        }
+    }
+
+    pub(crate) fn new_input(mask: u64, handler: Arc<InputHandler>) -> Self {
+        Self {
+            lifecycle: SubscriptionLifecycle::new(),
+            closure: Mutex::new(None),
+            input_mask: Some(mask),
+            input_handler: Mutex::new(Some(handler)),
         }
     }
 
@@ -190,19 +207,56 @@ impl Subscription {
 
         if self.lifecycle.finish_delivery() {
             self.destroy_closure();
+            self.destroy_input_handler();
         }
         closure.is_some()
+    }
+
+    /// Runs one typed Input handler while its event frame is borrowed.
+    pub(crate) fn invoke_input(
+        &self,
+        current_widget: ObjectIdentity,
+        original_target: ObjectIdentity,
+        frame: &mut InputEventFrame,
+    ) -> bool {
+        if !self.lifecycle.begin_delivery() {
+            return false;
+        }
+        let handler = self
+            .input_handler
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .cloned();
+        let delivery = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if let Some(handler) = &handler {
+                handler(current_widget, original_target, frame);
+            }
+        }));
+        if self.lifecycle.finish_delivery() {
+            self.destroy_closure();
+            self.destroy_input_handler();
+        }
+        if let Err(payload) = delivery {
+            std::panic::resume_unwind(payload);
+        }
+        handler.is_some()
     }
 
     /// Prevents future delivery starts and destroys the closure when no callback is in flight.
     pub(crate) fn cancel(&self) {
         if self.lifecycle.cancel() {
             self.destroy_closure();
+            self.destroy_input_handler();
         }
     }
 
     pub(crate) fn is_active(&self) -> bool {
         self.lifecycle.is_active()
+    }
+
+    pub(crate) fn input_mask(&self) -> Option<u64> {
+        self.input_mask
     }
 
     fn destroy_closure(&self) {
@@ -216,6 +270,15 @@ impl Subscription {
             // The owning Runtime invokes cancel/delivery on its UI thread.
             unsafe { (closure.destroy)(closure.userdata as *mut c_void) };
         }
+    }
+
+    fn destroy_input_handler(&self) {
+        let handler = self
+            .input_handler
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        drop(handler);
     }
 }
 
