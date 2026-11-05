@@ -533,6 +533,116 @@ sequenceDiagram
 - Command close/Runtime shutdownは新規実行・UI完了反映を止めるがworkerをjoinしない。遅延/古いoperation IDの報告を現在状態へ反映せず、shutdown後にterminal stateがUIから観測できる保証を加えない。
 - wrapperのstart callback exceptionはC ABIを越境させず、`CommandStart` failure kindで既存handlerへ報告する。未設定handler時の既定診断は既存`Trace.TraceError`規則を適用する。worker例外はアプリ側がdomain/code/messageへ明示変換し、wrapperが未定義の既定codeを追加しない。
 
+## 初期UI Control wrapper（1.5承認済み）
+
+本節は承認済みUI Control/C ABI契約をC# facadeへ写像し、Controlの外部動作やCore stateを追加しない。Core/ABIの正本は[UIクラス：Window・基本Control](../ui/controls.md)、[UIクラス：Tree・Layout・Focus](../ui/tree-layout.md)、[共通C ABI](../runtime-objects/abi.md)である。C# wrapperはC ABIだけを利用し、未接続native peerから成功を返したり、UI-affine呼出しをworkerから自動dispatchしたりしない。
+
+要求根拠は上記対応表の「初期UI Control wrapper」に示す。公開名と戻り値は本節の承認範囲とし、C# facadeの利用者向け保証はリンク先RQを超えない。
+
+### 公開型・操作
+
+| 型 | 責務・保持データ案 | 公開操作案 | 所有・寿命案 |
+| --- | --- | --- | --- |
+| `UiWidget` | 抽象Widget base。Control token owner、Runtime anchor、callback handler state | `TryGetIsEnabledProperty()`、`TryGetAccessibleNameProperty()`、`TryRequestFocus()`、`TryClose()`、`Dispose()` | Control tokenとRuntime anchorを別ownerにする。`TryClose`/`Dispose`はtoken releaseのみで、Tree所属やWindow peerを暗黙変更しない |
+| `UiContainer` | 抽象Container base | `TryInsert(child, index)`、`TryRemove(child)`、`TryMove(from, to)`、`TryGetChildCount()`、`TryGetChildAt(index)` | child引数はcall中だけborrowする。Core TreeOwnerの所有とpublic wrapper tokenの寿命を分ける |
+| `UiWindow` | Window Control | `TryCreate(runtime)`、`TryGetTitleProperty()`、`TryGetContent()`、`TrySetContent(child)`、`TryClearContent()`、`TryOpen()`、`TryCloseWindow()`、`TrySubscribeCloseRequest(callback)` | content getterは独立したowned wrapperを返す。peer closeとControl token close、Runtime shutdownは別操作 |
+| `UiStackPanel` | StackPanel Control | `TryCreate(runtime)`、`TryGetOrientation()`、`TrySetOrientation(value)`、`TrySetChildAlignment(child, value)` | EnumはC ABIの固定値へ明示変換し、不明値を受け入れない。child alignmentの設定対象は当該panelの所属childだけ |
+| `UiText` | 読取専用表示Control | `TryCreate(runtime, initialText)`、`TryGetContentProperty()` | contentは既存UTF-8 `UiProperty<string>`とし、Control stateに値を複製しない |
+| `UiTextBox` | 文字列入力Control | `TryCreate(runtime, initialText)`、`TryGetValueProperty()` | Valueは既存UTF-8 Property/Bindingを再利用する。本版はC ABIが別途定義する編集snapshot・input validator callbackをこのControl facadeへ追加しない |
+| `UiButton` | Labelとoptional Commandを持つControl | `TryCreate(runtime, initialLabel)`、`TryGetLabelProperty()`、`TrySetCommand(command?)`、`TryGetCommand()` | 設定時のCommandはborrowし、Core参照を保持する。取得時は独立owned `UiCommand`を返し、未設定は成功値`null`とする |
+| `UiWindowCloseRequest` | close callback中のみ利用できるborrowed判断対象 | `TryResolve(decision)`、`TryDefer()` | `TryDefer`成功時だけ独立owned request wrapperへtokenを移す。borrowed objectはcallback終了時に失効し、Dispose対象にしない |
+| `UiDeferredWindowCloseRequest` | 遅延close判断のowned tokenとRuntime anchor | `TryResolve(decision)`、`TryClose()`、`Dispose()` | resolveはrequest tokenを消費しない。未解決のまま最後のownerをreleaseするとCore契約によりDeclineされる |
+
+`UiControlOrientation`（Vertical/Horizontal）、`UiChildAlignment`（Start/Center/End/Stretch）、`UiWindowCloseDecision`（Accept/Decline）をC ABI enum値と対応させる。C ABIにcontrol-kind queryがないため、`TryGetContent`/`TryGetChildAt`の戻り値は共通操作だけを持つ`UiWidget`とし、実型を推測してdowncastしない。具体ControlのAPIが必要なアプリは生成時の型付きwrapperを保持する。動的型判定が必要との判断になった場合は共通C ABIへの追加の要否を別途レビューする。
+
+### 所有関係・主要flow
+
+```mermaid
+classDiagram
+    direction TB
+    class UiRuntime
+    class UiWidget {
+        TryGetIsEnabledProperty()
+        TryGetAccessibleNameProperty()
+        TryRequestFocus()
+        TryClose()
+    }
+    class UiContainer {
+        TryInsert(child, index)
+        TryRemove(child)
+        TryMove(from, to)
+        TryGetChildCount()
+        TryGetChildAt(index)
+    }
+    class UiWindow {
+        TrySetContent(child)
+        TryOpen()
+        TryCloseWindow()
+        TrySubscribeCloseRequest(callback)
+    }
+    class UiStackPanel {
+        TrySetOrientation(value)
+        TrySetChildAlignment(child, value)
+    }
+    class UiText
+    class UiTextBox
+    class UiButton {
+        TrySetCommand(command)
+        TryGetCommand()
+    }
+    class UiProperty~T~
+    class UiCommand
+    class UiSubscription
+    class UiWindowCloseRequest
+    class UiDeferredWindowCloseRequest
+    UiWidget <|-- UiContainer
+    UiWidget <|-- UiText
+    UiWidget <|-- UiTextBox
+    UiWidget <|-- UiButton
+    UiContainer <|-- UiWindow
+    UiContainer <|-- UiStackPanel
+    UiRuntime o-- UiWidget : retained Runtime anchor
+    UiRuntime o-- UiDeferredWindowCloseRequest : retained Runtime anchor
+    UiWidget ..> UiProperty : independent owned property
+    UiButton ..> UiCommand : Core retains borrowed command
+    UiWindow ..> UiSubscription : close callback registration
+    UiSubscription ..> UiWindowCloseRequest : callback-scoped borrowed view
+    UiWindowCloseRequest ..> UiDeferredWindowCloseRequest : defer creates owned token
+```
+
+```mermaid
+sequenceDiagram
+    participant App as C# app
+    participant Parent as UiContainer / UiWindow
+    participant Child as typed UiWidget
+    participant Core as Rust Core / C ABI
+    App->>Parent: TryInsert(child, index)
+    Parent->>Parent: acquire parent/child call leases
+    Parent->>Core: container_insert(parent, borrowed child)
+    Core->>Core: validate Runtime/thread/type and atomically commit TreeOwner
+    Core-->>Parent: status/error
+    Parent-->>App: UiResult
+    App->>Parent: TryGetChildAt(index)
+    Parent->>Core: container_child_at(out owned handle)
+    Core-->>Parent: independent owned child handle
+    Parent->>Parent: wrap as generic UiWidget + Runtime anchor
+    Parent-->>App: UiResult~UiWidget~
+```
+
+### Callback・failure・thread境界
+
+- Control factoryはcall前にtoken owner、cleanup ticket、Runtime anchorを確保する。C ABI成功時のみreturned handleをownerへadoptする。失敗時はerrorを既存`PreparedError`でcaptureし、仮確保したowner/anchorをreleaseする。release失敗は既存CleanupTicketへ移し、所有tokenを捨てない。
+- 各Control API呼出しは既存`TokenOwner.AcquireLease`を使い、Controlと引数の双方のleaseを保持してからnative callを行う。Disposeとの競合時もactive call中のtokenをreleaseしない。Control property getterはnative owned property handleを専用`TokenOwner`へ移し、既存`UiProperty<T>`へwrapする。
+- Tree mutationのC# layerは入力null、wrapper dispose済み、同じnative API instanceでない引数をnative call前に拒否する。Runtime identity・handle type・UI threadの正本はC ABI/Coreにあり、managed checkだけでnative validationを代替しない。
+- Window close subscriberは既存`UiSubscription`、static unmanaged trampoline、GC root、destroy callback規則を使う。callbackに渡す`UiWindowCloseRequest`はborrowed scope stateを持ち、callback終了時にinvalidateする。callback例外は新しい`UiCallbackFailureKind.WindowCloseRequest`として既存Runtime handlerへ渡し、ABI境界へ出さない。
+- Close callbackがresolveもdeferもしない場合（例外で終了した場合を含む）、C ABI契約どおり既定Acceptとなる。アプリがvetoしたい場合はAccept/Declineを明示するか、deferでowned requestを取得して後から一度resolveする。shutdownはclose vetoを待たない。
+- `TryOpen`/`TryCloseWindow`はpeer操作statusをそのまま返し、CoreのWindow/Tree/Propertyを暗黙破棄しない。peer未接続の`UI_UNSUPPORTED`を例外的成功やmanaged-only open状態へ変換しない。
+- 全Control操作はC ABIのthread規則どおりUI threadで行う。C# wrapperがworker callを自動dispatchしたり、Focus失敗・Tree拒否を成功値に丸めたりしない。
+
+### 試験対象境界
+
+wrapper focused testsはfake `INativeApi`でowner adoption/cleanup failure、Dispose中call lease、型付きProperty owner分離、異API引数拒否、Tree childのborrowed call lifetime、enum/status変換、typed Command wrapperの所有を確認する。close requestではcallback中のborrowed利用、defer後の独立owner、expired borrowed wrapper拒否、callback exception handler、subscription cancel/destroy一回性を検査する。別process consumerは実C ABIからControl treeを作り、Property/Binding/Command接続・unsupported peer結果を検証する。Coreの描画pixel、OS event loop、native IME/accessibilityはPlatform/release scenario側であり、本wrapper unitでは合格を主張しない。
+
 ## Window background RGB wrapper API（1.5）
 
 C#は依存packageを増やさないreadonly `RgbColor`値型（3つのnormalized `float`）を使う。`Window.BackgroundRgb` getter/setterは対応するC ABI getter/setterを呼び、`Window.ResetBackgroundRgb()`で規定値へ戻す。未指定時のgetterはopaque white `#FFFFFF`を返す。呼出・error mappingは既存C# wrapper契約に従い、Window/property stateをwrapper側へ複製しない。
@@ -549,7 +659,7 @@ public RgbColor BackgroundRgb { get; set; }
 public void ResetBackgroundRgb();
 ```
 
-## Input event wrapper API（1.6改訂案・全文レビュー待ち）
+## Input event wrapper API（1.6承認済み）
 
 要求根拠: [RQ-03-002](../../11_requirements/RQ-03_language-support.md#rq-03-002)、[RQ-03-006](../../11_requirements/RQ-03_language-support.md#rq-03-006)、[RQ-04-008](../../11_requirements/RQ-04_abi-boundary.md#rq-04-008)、[RQ-05-009](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-05-012](../../11_requirements/RQ-05_ownership-callbacks.md#rq-05-012)、[RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-068](../../11_requirements/RQ-09_ui-scope.md#rq-09-068)。
 
@@ -586,6 +696,7 @@ registration失敗時はGC rootをC#側で解放し、成功時はnative destroy
 | 2026-10-24 | 1.3全文 | 利用者の「承認します、実装を進めてください」により文書全体を承認。実装・試験状態は別管理 |
 | 2026-10-24 | 1.4改訂案 | 非同期CommandのC#公開型、class diagram、実行/完了sequence、worker参照とfailure境界を追加。計画 `.docs/20_todo/csharp-async-command.md` に基づく |
 | 2026-10-24 | 1.4全文 | 利用者の「承認します。実装を進めてください」により文書全体を承認。実装・試験状態は別管理 |
+| 2026-10-25 | 1.5全文 | 利用者の「ok」により初期UI Control wrapperの公開surface、ownership、callback、failure、thread境界を含む全文を承認。実装・試験状態は別管理 |
 | 2026-10-30 | 1.5改訂案 | RQ-09-074に対応する`RgbColor`・`BackgroundRgb`・reset APIを提案。全文レビュー待ち |
 | 2026-10-30 | 1.5全文 | 利用者の「ok」によりC# Window `RgbColor`・`BackgroundRgb`・reset APIを含む全文を承認。実装・試験合格は別管理 |
 | 2026-11-02 | 1.6全文 | 利用者の「ok」により、Input event callback/view、lifetime、cancelと例外境界を含む全文を承認。実装・試験状態は別管理 |

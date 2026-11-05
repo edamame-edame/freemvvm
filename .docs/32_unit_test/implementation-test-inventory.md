@@ -42,7 +42,7 @@ Core Input/Focusの`UT-INPUT-001..006`・`UT-FOCUS-001..004`は[UI試験設計](
 | `UNIT-ABI-022` | feature 9、typed input callback、borrowed event getters/handled、C consumer | `UT-ABI-INPUT-001`、`UT-CONSUMER-ABI-INPUT-001` | ready / local tests pass、最新revisionのpush後に同revision CI確認待ち |
 | `UNIT-WRAP-RS-INPUT-001` | Rust borrowed event facade、closure root、cancel/drop、panic境界 | `UT-WRAP-RS-INPUT-001`、`UT-CONSUMER-RS-INPUT-001` | complete / branch CI run `41642705673` success。統合revision CI確認待ち |
 | `UNIT-WRAP-CPP-INPUT-001` | C++ borrowed view、move-only Subscription、callback例外隔離 | `UT-WRAP-CPP-INPUT-001`、`UT-CONSUMER-CPP-INPUT-001` | complete / branch CI run `41648453537` success。統合revision CI確認待ち |
-| `UNIT-WRAP-CS-INPUT-001` | C# callback view、delegate root、Dispose競合、例外隔離 | `UT-WRAP-CS-INPUT-001`、`UT-CONSUMER-CS-INPUT-001` | complete / branch CI run `42030613702` success。統合revision CI確認待ち |
+| `UNIT-WRAP-CS-INPUT-001` | C# callback view、delegate root、Dispose競合、例外隔離 | `UT-WRAP-CS-INPUT-001`、`UT-CONSUMER-CS-INPUT-001` | complete / fake ABI・consumer、branch CI run `42030613702` pass。統合revision CI確認待ち |
 | `UNIT-WRAP-PY-INPUT-001` | Python callback view、callable root、GIL/GC、例外隔離 | `UT-WRAP-PY-INPUT-001`、`UT-CONSUMER-PY-INPUT-001` | complete / rerun CI run `42054917806` success（Windows/Linux）。統合revision CI確認待ち |
 | `UNIT-PLATFORM-WINDOWS-007` | native key/TextCommit/primary pointer/activation入力のgeneration-aware mapping | `UT-PLATFORM-WINDOWS-INPUT-001` | planned / fake message mapping。IME・実機inputはrelease qualification |
 
