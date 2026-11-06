@@ -124,9 +124,27 @@ loaderはroot manifestのglobを読み、全shardのschema、`unit_name`一意�
 
 既存unit recordの意味・fieldを変えずに移行し、unit ID集合と各unitの内容が移行前後で一致することを機械的に比較する。文書とツールが`tools/units.yaml`を読む箇所を全件検索し、同じloader契約へ更新する。
 
+## Phase 1 baseline: CLI commandとreport
+
+`4e07fba`時点で`tools/dev.py`は2,757行、`tools/units.yaml`は10,784行。CLIは位置引数のcommandを1つ受け付ける。全61 commandを次の責務群に分けて移行前baselineとする。
+
+| 責務群 | 件数 | command |
+| --- | ---: | --- |
+| bootstrap | 4 | `doctor`, `check`, `format`, `minimum` |
+| ABI | 3 | `abi-smoke`, `abi-command-smoke`, `abi-smoke-cpp` |
+| C++ wrapper | 12 | `cpp-runtime-test`, `cpp-property-test`, `cpp-property-utf8-test`, `cpp-property-f64-test`, `cpp-property-decimal-test`, `cpp-property-subscription-test`, `cpp-property-binding-test`, `cpp-command-test`, `cpp-controls-test`, `cpp-input-test`, `cpp-input-consumer-test`, `cpp-package-test` |
+| Rust wrapper | 8 | `rust-wrapper-runtime-test`, `rust-wrapper-runtime-consumer-test`, `rust-wrapper-ui-controls-test`, `rust-wrapper-window-close-test`, `rust-wrapper-property-bool-i64-test`, `rust-wrapper-property-utf8-test`, `rust-wrapper-property-f64-test`, `rust-wrapper-property-decimal-test` |
+| Python wrapper | 21 | `python-runtime-test`, `python-runtime-consumer-test`, `python-property-bool-i64-test`, `python-property-bool-i64-consumer-test`, `python-property-utf8-test`, `python-property-utf8-consumer-test`, `python-property-f64-test`, `python-property-f64-consumer-test`, `python-property-decimal-test`, `python-property-decimal-consumer-test`, `python-binding-test`, `python-binding-consumer-test`, `python-command-test`, `python-command-consumer-test`, `python-controls-test`, `python-controls-consumer-test`, `python-input-test`, `python-input-consumer-test`, `python-window-test`, `python-window-consumer-test`, `python-window-peer-smoke-test` |
+| C# wrapper | 12 | `csharp-runtime-test`, `csharp-runtime-consumer-test`, `csharp-property-test`, `csharp-property-consumer-test`, `csharp-command-test`, `csharp-command-consumer-test`, `csharp-controls-test`, `csharp-controls-consumer-test`, `csharp-window-test`, `csharp-window-consumer-test`, `csharp-input-test`, `csharp-input-consumer-test` |
+| Platform | 1 | `linux-platform-docker` |
+
+通常commandのreportは`.local/verification/<command>.json`に書く。共通fieldは`scope`、`product_tests`、`host`、`python`、`results`、`status`。成功時や失敗時の追加fieldは`tools`、`compiler_environment`、`git_head`、`dirty_worktree`、`input_hashes`、`error`。`results`の各entryは`gate`、`command`、`exit_code`、`elapsed_seconds`を持つ。初期statusは`failed`、全gate完了後だけ`passed`になる。
+
+`linux-platform-docker`はPython venv/toolchain gateを通らず専用処理へ分岐し、`.local/verification/linux-platform-docker.json`へ`scope`、`status`、`qualification`、`source_sha`、`image_id`、`commands`を記録する。command entryは`name`、`argv`、`exit_code`、`output_tail`。成功statusは`provisional_pass`で、通常の`passed`やrelease合格を意味しない。既存のcommand名、dispatch先、report field名・status意味・出力pathをmodule分割後も保持する。
+
 ## 作業フェーズ
 
-進捗: manifest baselineで170 unitと既存のdangling dependency 1件を確認した。phase 1のCLI command/report baseline一覧は未完了。phase 2のschema 2/3 loader実装とfocused testを完了し、現catalog検査をbootstrap `check`へ接続した。schema 2にあるdangling dependencyは互換読込で保持し、schema 3ではstrictに検査する。shard移行はこの既存参照の対応確認後に行う。
+進捗: phase 1のCLI 61 command・report shapeとmanifest baselineを記録済み。phase 2のschema 2/3 loader実装・focused test・bootstrap `check`接続を完了した。schema 2にあるdangling dependencyは互換読込で保持し、schema 3ではstrictに検査する。shard移行はこの既存参照の対応確認後に行う。
 
 | 順 | 作業 | 完了条件 |
 | --- | --- | --- |
