@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
-- 文書版: 2.1
-- 状態: 1.1まで設計承認済み・正本適用済み（2026-10-17）。Windows Adapter unitsとclose-request unitsの試験設計は承認済み（2026-11-01）。Python wrapper実行記録とInput/Focus実装unitを統合した2.1全文は利用者承認済み（2026-11-06）。InputFocus統合revision `82923807` のWindows/Ubuntu CI runs `42118740862`・`42118808951` success。Windows native input bridgeは未実装・planned
+- 文書版: 2.2
+- 状態: schema 3のsharded catalog構成を承認済み計画0.3に基づき適用（2026-11-07）。既存170 unitを保持。InputFocus統合revision `82923807` のWindows/Ubuntu CI runs `42118740862`・`42118808951` success。Windows native input bridgeは未実装・planned
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -13,7 +13,7 @@
 | 設計ID | 実現手段・責務 | 要求根拠 |
 | --- | --- | --- |
 | <a id="ut-inv-01"></a>UT-INV-01 | 単位IDはUNIT-<domain>-NNN、実testはUT-/REQT-/ABI-/WRAP-/INT-/SYS-/PLAT-/PKG-/REL-/VER-を境界に合わせる。論理TCと別fieldにする。 | 上記の根拠RQ |
-| <a id="ut-inv-02"></a>UT-INV-02 | units.yamlにsource/config/generated inputs、depends_on、test command、RQ/DD/SD、logical casesを記録。未作成pathはplanned状態で実行対象と区別する。 | 上記の根拠RQ |
+| <a id="ut-inv-02"></a>UT-INV-02 | schema 3 root manifestはshard patternを持ち、owner/category別JSON互換YAML shardはunit_name/path/casesを中心にsource/config/generated inputs、depends_on、test command、RQ/DD/SD、logical casesを記録する。未作成pathはplanned状態で実行対象と区別する。 | 上記の根拠RQ |
 | <a id="ut-inv-03"></a>UT-INV-03 | source変更から依存逆閉包を選択。renameは旧新path、deletionは旧manifestのmapping、shared/config/header変更は該当全suite。 | 上記の根拠RQ |
 | <a id="ut-inv-04"></a>UT-INV-04 | pushとpull_requestのchecked-out SHAを同じsource/testへ使う。PR merge commitを試す場合はmerge SHAとhead/base SHAをすべて証跡に記す。 | 上記の根拠RQ |
 | <a id="ut-inv-05"></a>UT-INV-05 | Rust cargo test、C/C++ CTest、C# dotnet test、Python pytestを採用。fake host/clock/allocator/OS boundaryで異常注入する。 | 上記の根拠RQ |
@@ -26,7 +26,7 @@
 
 ### 開発基盤の現行登録
 
-[tools/units.yaml](../../tools/units.yaml)にschema2のUNIT-BUILD-001を登録した。YAMLのJSON互換記法を使い、開発コマンド・設定・probeと、[bootstrap検証](development-bootstrap.md)の実入口を対応付ける。readyはbootstrapの実在source/commandと実行確認に限り、下記planned例の製品UNIT-CORE-001やUT-CORE-HANDLE-001をreadyへ昇格しない。CIの現状は全bootstrap gateの常時実行で、製品unitのpath選択器は未実装である。
+[tools/units.yaml](../../tools/units.yaml)はschema 3の小さいroot manifestであり、recordsは[owner/category別shards](../../tools/units/)へ分割した。各recordはunit_nameに既存unit IDを保持し、pathにsource/config/test-design path、cases.releaseにlogical TC、cases.unitにUT IDとcommandをまとめる。configにはroot manifestと所属shardも含める。requirements/designはunit-levelに維持し、個々のcaseへ推測で割り当てない。readyはbootstrapの実在source/commandと実行確認に限り、下記planned例の製品UNIT-CORE-001やUT-CORE-HANDLE-001をreadyへ昇格しない。CIの現状は全bootstrap gateの常時実行で、製品unitのpath選択器は未実装である。
 
 | `UNIT-CORE-084` | Core-neutral `PlatformDefault` requestとresolved font identity/metrics snapshot。revision mismatchおよびTextService failureの部分結果拒否をfake serviceで確認 | `UT-TEXT-SERVICE-SEAM-001` | complete / commit `b6c64ea` pushed。focused 4 tests、Core 179・C ABI 39・Linux Platform 10を含むworkspace tests、Clippy、Rust 1.85 check、fmt pass。Layout/Scene wiringはUNIT-CORE-085 |
 | `UNIT-CORE-085` | Text/TextBox/Button labelをPlatform TextServiceで解決し、同じrevision-stamped snapshotをLayoutとVisual sceneで共有。property更新後の再解決とfailure atomicityをfake serviceで確認 | `UT-TEXT-PLATFORM-DEFAULT-001` | complete / commit `d489ca5` pushed。focused test 1件、Core 181・ABI 39・Linux Platform 10を含むworkspace tests、Clippy、Rust 1.85 check、fmt、Windows/Ubuntu CI pass。Actions run `41204164249` |
@@ -172,28 +172,49 @@ TextServiceは未実装のため、本番のText/TextBox/Button intrinsic measur
 
 ### 台帳案
 
-```yaml
-schema: 2
-units:
-  - id: UNIT-CORE-001
-    state: planned
-    sources: ["crates/core-runtime/src/handle_registry/**"]
-    config: ["Cargo.toml", "Cargo.lock"]
-    depends_on: []
-    design:
-      - path: .docs/13_detail_design/runtime-objects/objects-values.md
-        version: "1.0"
-        section: handle登録と検証
-    requirements: ["RQ-04-018", "RQ-05-011"]
-    cases: ["TC-CORE-OBJ-01", "TC-LIFE-01"]
-    tests:
-      - id: UT-CORE-HANDLE-001
-        command: ["cargo", "test", "-p", "freemvvm-core", "handle_registry"]
+```json
+{
+  "units": [
+    {
+      "unit_name": "UNIT-CORE-001",
+      "state": "planned",
+      "path": {
+        "source": ["crates/core-runtime/src/handle_registry/**"],
+        "config": ["Cargo.toml", "Cargo.lock"],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.0",
+          "section": "handle登録と検証"
+        }
+      ],
+      "requirements": ["RQ-04-018", "RQ-05-011"],
+      "cases": {
+        "release": ["TC-CORE-OBJ-01", "TC-LIFE-01"],
+        "unit": [
+          {
+            "id": "UT-CORE-HANDLE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "handle_registry"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
 ```
 
 上記path/crate/commandは提案構成で現repositoryに実装済みではない。state=plannedはCIのpass対象にならず、unit着手時に実在path/targetへ更新しreadyへ移す。readyに未存在path/commandがあればselection checkを失敗させる。
 
-schema 2の設計根拠は文書パス・対象版・設計項目で指定する。設計判断IDの配列は新規登録しない。要求と実装単位の責務から適用する設計文書を選び、readyにする前に承認範囲と参照先の存在を確認する。実装unit IDとtest/case IDはそのまま使う。
+schema 3の設計根拠は文書パス・対象版・設計項目で指定する。設計判断IDの配列は新規登録しない。要求と実装単位の責務から適用する設計文書を選び、readyにする前に承認範囲と参照先の存在を確認する。実装unit IDとtest/case IDはそのまま使う。
 
 | unit候補 | 前提/操作 | 局所oracle | 上位logical case |
 |---|---|---|---|
@@ -227,6 +248,7 @@ flowchart LR
 | 日付 | 対象版・範囲 | 承認者 | 結果・根拠 |
 | --- | --- | --- | --- |
 | 2026-10-17 | 1.0 / UT-INVENTORY / 9判断とinterface・所有・状態遷移 | 利用者 | 全件反映を指示。設計採用・本文適用を承認。実装・公開・試験合格を意味しない |
+| 2026-11-06 | 2.2 / schema 3 sharded catalog | 利用者 | 開発CLI・unit台帳分割計画0.3を承認。既存unit ID・要求/設計・TC/UT対応を保持する構成変更 |
 
 ## 改訂履歴（具体化適用）
 
@@ -244,3 +266,4 @@ flowchart LR
 | 1.9 | 2026-11-01 | UNIT-PLATFORM-WINDOWS-006の同revision Windows/Linux CI成功を記録し、unitをcompleteへ更新 | Codex |
 | 2.0案 | 2026-11-02 | Input/FocusのCore・C ABI・4 wrapper・Windows Adapterを7件のplanned unitとして登録提案 | Codex |
 | 2.1全文 | 2026-11-06 | Python wrapper実行記録とInput/Focus実装unitを統合した文書全体を利用者が承認 | 利用者 |
+| 2.2 | 2026-11-07 | schema 3 root manifest/shards、unit_name/path/casesのrecord shapeへ移行。要求/設計対応はunit-levelに維持 | Codex |

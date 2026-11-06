@@ -116,31 +116,42 @@ def _validate_record_shape(record, name, sharded_schema):
                     f"Unit {name} path.{key} must contain paths"
                 )
 
-    cases = record.get("cases", [])
-    if not isinstance(cases, list):
-        raise CatalogError(f"Unit {name} cases must be a list")
     if sharded_schema:
-        case_names = set()
-        for case in cases:
-            if not isinstance(case, dict):
-                raise CatalogError(f"Unit {name} cases must contain objects")
-            case_name = case.get("case_name")
-            if not isinstance(case_name, str) or not case_name:
-                raise CatalogError(f"Unit {name} case must define case_name")
-            if case_name in case_names:
-                raise CatalogError(
-                    f"Unit {name} has duplicate case_name: {case_name}"
-                )
-            case_names.add(case_name)
-            command = case.get("command", [])
+        cases = record.get("cases")
+        if not isinstance(cases, dict):
+            raise CatalogError(f"Unit {name} cases must be an object")
+        release_cases = cases.get("release", [])
+        if not isinstance(release_cases, list) or not all(
+            isinstance(item, str) and item for item in release_cases
+        ):
+            raise CatalogError(
+                f"Unit {name} cases.release must be a list of case IDs"
+            )
+        unit_tests = cases.get("unit", [])
+        if not isinstance(unit_tests, list):
+            raise CatalogError(f"Unit {name} cases.unit must be a list")
+        test_ids = set()
+        for test in unit_tests:
+            if not isinstance(test, dict):
+                raise CatalogError(f"Unit {name} cases.unit must contain objects")
+            test_id = test.get("id")
+            if not isinstance(test_id, str) or not test_id:
+                raise CatalogError(f"Unit {name} unit test must define id")
+            if test_id in test_ids:
+                raise CatalogError(f"Unit {name} has duplicate test id: {test_id}")
+            test_ids.add(test_id)
+            command = test.get("command")
             if not isinstance(command, list) or not all(
                 isinstance(item, str) and item for item in command
             ):
                 raise CatalogError(
-                    f"Unit {name} case {case_name} command must be a list "
+                    f"Unit {name} test {test_id} command must be a list "
                     "of arguments"
                 )
     else:
+        cases = record.get("cases", [])
+        if not isinstance(cases, list):
+            raise CatalogError(f"Unit {name} cases must be a list")
         tests = record.get("tests", [])
         if not isinstance(tests, list):
             raise CatalogError(f"Unit {name} tests must be a list")

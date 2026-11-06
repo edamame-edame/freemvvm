@@ -1,0 +1,1620 @@
+{
+  "units": [
+    {
+      "unit_name": "UNIT-CORE-033",
+      "state": "complete",
+      "scope": "decimal-canonical-u64-encoding",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/value.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-031"
+      ],
+      "requirements": [
+        "RQ-02-017",
+        "RQ-02-019"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "DECIMAL canonical encoding"
+        },
+        {
+          "path": ".docs/12_design/runtime-objects/model-values.md",
+          "version": "1.0",
+          "section": "Decimal sign/scale/coefficient representation"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-ABI-REP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-VALUE-007",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "value::tests::decimal_canonical"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-039",
+      "state": "complete",
+      "scope": "core-property-kind-query",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/value.rs",
+          "crates/core-runtime/src/property.rs",
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-038"
+      ],
+      "requirements": [
+        "RQ-02-017",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "初期公開Property kindとABI表"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "token検証pinとUI thread store解決"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-THREAD-01",
+          "TC-CORE-OBJ-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-KIND-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::property_kind_query_returns_initial_kind_on_ui_thread"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-040",
+      "state": "complete",
+      "scope": "core-property-change-generation-queue",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/property.rs",
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-038",
+        "UNIT-CORE-039"
+      ],
+      "requirements": [
+        "RQ-02-017",
+        "RQ-04-025",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Property commit identity, generation order, and coalescing"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Runtime-owned identity and failure-atomic state update"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-CORE-OBJ-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-NOTIFY-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "property_change_queue_coalesces_per_pending_generation"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-041",
+      "state": "complete",
+      "scope": "core-property-subscription-lifecycle-state",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/property.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-040"
+      ],
+      "requirements": [
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-008",
+        "RQ-05-009"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Subscription active state, cancel, and in-flight callback lifetime"
+        },
+        {
+          "path": ".docs/12_design/runtime-objects/runtime.md",
+          "version": "1.0",
+          "section": "Runtime registration ownership and callback lifetime"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CALLBACK-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-SUBSCRIPTION-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "subscription_lifecycle"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-042",
+      "state": "complete",
+      "scope": "core-property-subscription-callback-closure",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/property.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-041"
+      ],
+      "requirements": [
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-008",
+        "RQ-05-009"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Subscription closure ownership, cancel, and in-flight callback lifetime"
+        },
+        {
+          "path": ".docs/12_design/runtime-objects/runtime.md",
+          "version": "1.0",
+          "section": "Registration ownership and callback lifetime"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CALLBACK-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-SUBSCRIPTION-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "subscription_callback"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-043",
+      "state": "complete",
+      "scope": "runtime-property-subscription-owner-registry",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/property.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-042"
+      ],
+      "requirements": [
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Runtime strong ownership and cancellation of Subscription"
+        },
+        {
+          "path": ".docs/12_design/runtime-objects/runtime.md",
+          "version": "1.0",
+          "section": "Runtime registration ownership and UI thread"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-SUBSCRIPTION-003",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_subscription_owner"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-044",
+      "state": "complete",
+      "scope": "property-subscription-weak-index",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/property.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-043"
+      ],
+      "requirements": [
+        "RQ-02-017",
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Property weak subscriber index and delivery snapshot"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-SUBSCRIPTION-004",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "property_subscription_weak_index"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-045",
+      "state": "complete",
+      "scope": "property-subscription-runtime-index",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/property.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-044"
+      ],
+      "requirements": [
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Property weak subscriber index and delivery snapshot"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "購読と解除"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-SUBSCRIPTION-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_property_subscription_index"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-046",
+      "state": "complete",
+      "scope": "property-delivery-snapshot-preparation",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/property.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-045"
+      ],
+      "requirements": [
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Notification queueと購読"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "DeliveryItem"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-NOTIFY-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "property_delivery_generation_snapshot"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-047",
+      "state": "complete",
+      "scope": "property-delivery-item-invocation",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-046"
+      ],
+      "requirements": [
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-009",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Notification queueと購読"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "終了と所有権"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CALLBACK-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-NOTIFY-003",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "property_delivery_item_invocation"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-048",
+      "state": "complete",
+      "scope": "property-delivery-bounded-slice",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-047"
+      ],
+      "requirements": [
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-009",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Notification queueと購読"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "有限作業枠と保留"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-CALLBACK-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-NOTIFY-004",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "property_delivery_slice"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-049",
+      "state": "complete",
+      "scope": "property-notification-host-boundary",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/dispatcher.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-048"
+      ],
+      "requirements": [
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-009",
+        "RQ-06-001",
+        "RQ-06-005"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Notification queueと購読"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "有限作業枠と保留"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-CALLBACK-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-NOTIFY-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "property_notification"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-052",
+      "state": "complete",
+      "scope": "core-binding-oneway-graph-invariants",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/binding.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-040"
+      ],
+      "requirements": [
+        "RQ-07-007",
+        "RQ-07-015"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding graphと因果連鎖 / approved OneWay topology"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "BindingのC ABI / graph failure categories"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-BINDING-GRAPH-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "binding_graph"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-053",
+      "state": "complete",
+      "scope": "core-binding-twoway-group-merge",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/binding.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-052"
+      ],
+      "requirements": [
+        "RQ-07-003",
+        "RQ-07-007",
+        "RQ-07-015"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding graphと因果連鎖 / TwoWay synchronization groups"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "BindingのC ABI / graph failure categories"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-BINDING-GRAPH-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "binding_graph"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-054",
+      "state": "complete",
+      "scope": "core-binding-initial-value-copy-prepare",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/value.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-040",
+        "UNIT-CORE-053"
+      ],
+      "requirements": [
+        "RQ-07-009",
+        "RQ-07-010"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding作成 / source値snapshotとtarget検証・資源確保"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "typed value equivalence / failure atomicity"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01",
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-BINDING-INIT-COPY-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "binding_initial_copy"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-055",
+      "state": "complete",
+      "scope": "core-binding-initial-copy-and-oneway-graph-prepare",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/binding.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-053",
+        "UNIT-CORE-054"
+      ],
+      "requirements": [
+        "RQ-07-002",
+        "RQ-07-007",
+        "RQ-07-009",
+        "RQ-07-010",
+        "RQ-07-015"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding作成 / graph検査と初期値準備"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "typed value equivalence / failure atomicity"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01",
+          "TC-BIND-INIT-REJECT-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-BINDING-INIT-PREPARE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "binding_initial_prepare"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-056",
+      "state": "complete",
+      "scope": "runtime-oneway-binding-initial-sync-atomic-commit",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/binding.rs",
+          "crates/core-runtime/src/property.rs",
+          "crates/core-runtime/src/value.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-051",
+        "UNIT-CORE-055"
+      ],
+      "requirements": [
+        "RQ-07-002",
+        "RQ-07-007",
+        "RQ-07-009",
+        "RQ-07-010",
+        "RQ-07-015"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding作成 / 値・graph・notification commit boundary"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "typed value / Property commit"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01",
+          "TC-BIND-INIT-REJECT-01",
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-RUNTIME-BINDING-INIT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_one_way_binding_initial"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-057",
+      "state": "complete",
+      "scope": "core-oneway-propagation-edge-snapshot-order",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/binding.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-053",
+        "UNIT-CORE-056"
+      ],
+      "requirements": [
+        "RQ-07-002",
+        "RQ-07-005",
+        "RQ-07-006",
+        "RQ-07-007"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "通知slice内の伝播 / 配信中のgraph変更可視性"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01",
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-BINDING-PROPAGATION-ORDER-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "binding_propagation_order"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-058",
+      "state": "complete",
+      "scope": "runtime-oneway-propagation-candidate-preparation",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/binding.rs",
+          "crates/core-runtime/src/property.rs",
+          "crates/core-runtime/src/value.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-056",
+        "UNIT-CORE-057"
+      ],
+      "requirements": [
+        "RQ-07-002",
+        "RQ-07-005",
+        "RQ-07-006",
+        "RQ-07-009",
+        "RQ-07-010"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "通知slice内の伝播"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Property value prepare / commit"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01",
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-RUNTIME-BINDING-PROP-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_one_way_propagation_prepares_chain_candidates"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-059",
+      "state": "complete",
+      "scope": "runtime-oneway-propagation-value-and-notification-commit",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/property.rs",
+          "crates/core-runtime/src/value.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-056",
+        "UNIT-CORE-058"
+      ],
+      "requirements": [
+        "RQ-07-002",
+        "RQ-07-005",
+        "RQ-07-006",
+        "RQ-07-009",
+        "RQ-07-010"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "通知slice内の伝播 / Binding propagationが作る次配信回"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Property commit / next generation"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01",
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-RUNTIME-BINDING-COMMIT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_one_way_propagation_commits_candidates"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-060",
+      "state": "complete",
+      "scope": "runtime-oneway-propagation-before-property-delivery",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/property.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-058",
+        "UNIT-CORE-059"
+      ],
+      "requirements": [
+        "RQ-07-002",
+        "RQ-07-005",
+        "RQ-07-006",
+        "RQ-07-008"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "通知slice内の伝播"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "外側処理区間 / 次generation"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01",
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-RUNTIME-BINDING-DELIVERY-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_one_way_delivery_propagates_before_subscribers"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-061",
+      "state": "complete",
+      "scope": "runtime-twoway-binding-initial-sync-group-commit",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/binding.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-056",
+        "UNIT-CORE-060"
+      ],
+      "requirements": [
+        "RQ-07-003",
+        "RQ-07-007",
+        "RQ-07-009",
+        "RQ-07-010",
+        "RQ-07-015"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding作成 / TwoWay同期グループ"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Property commit / typed value equivalence"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01",
+          "TC-BIND-INIT-REJECT-01",
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-RUNTIME-TWOWAY-INIT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_two_way_binding_initial"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-062",
+      "state": "complete",
+      "scope": "runtime-twoway-group-propagation-and-direct-order",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/binding.rs",
+          "crates/core-runtime/src/property.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-060",
+        "UNIT-CORE-061"
+      ],
+      "requirements": [
+        "RQ-07-003",
+        "RQ-07-005",
+        "RQ-07-006",
+        "RQ-07-008",
+        "RQ-07-009"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "外側UI処理区間の直接setter順序 / TwoWay同期グループ / 通知slice内の伝播"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Property generation / next generation"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01",
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-RUNTIME-TWOWAY-INIT-GROUP-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_two_way_binding_initial_updates_the_entire_existing_target_group"
+            ]
+          },
+          {
+            "id": "UT-CORE-RUNTIME-TWOWAY-PROPAGATION-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_two_way_group_propagation"
+            ]
+          },
+          {
+            "id": "UT-CORE-RUNTIME-ONEWAY-TWOWAY-GROUP-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_one_way_edges_propagate_into_and_out_of_two_way_groups"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-063",
+      "state": "complete",
+      "scope": "runtime-binding-active-owner-cancel-shutdown",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/binding.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-056",
+        "UNIT-CORE-062"
+      ],
+      "requirements": [
+        "RQ-05-002",
+        "RQ-07-011"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding registration lifecycle / 通知slice内の伝播"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "Runtime ownership / shutdown cleanup"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-BINDING-GRAPH-CANCEL-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "binding_graph_cancel_removes_one_way_edges_and_splits_two_way_groups"
+            ]
+          },
+          {
+            "id": "UT-CORE-RUNTIME-BINDING-LIFECYCLE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_binding_lifecycle"
+            ]
+          },
+          {
+            "id": "UT-CORE-RUNTIME-BINDING-CANCEL-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_binding_cancel"
+            ]
+          },
+          {
+            "id": "UT-CORE-RUNTIME-TWOWAY-CANCEL-SHUTDOWN-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_two_way_cancel_splits_group_and_shutdown_clears_active_owners"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-065",
+      "state": "complete",
+      "scope": "runtime-binding-propagation-validation-error-snapshot",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/property.rs",
+          "crates/core-runtime/src/binding.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-064",
+        "UNIT-ABI-015"
+      ],
+      "requirements": [
+        "RQ-07-005",
+        "RQ-07-006",
+        "RQ-07-009",
+        "RQ-07-010"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "通知slice内の伝播 / 診断・回復とerror catalog"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Bindingエラーの読み取りと通知"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-PROPAGATION-REJECT-01",
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-BINDING-VALIDATION-PROPAGATION-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_binding_validation_rejection"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-066",
+      "state": "complete",
+      "scope": "runtime-async-command-state-machine-and-versioned-c-abi",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/command.rs",
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/property.rs",
+          "crates/c-abi/src/lib.rs",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/probes/abi_command_smoke.c",
+          "tools/dev.py"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "CMakeLists.txt",
+          "tools/units.yaml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units/core-events.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/events.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-CORE-065",
+        "UNIT-ABI-019"
+      ],
+      "requirements": [
+        "RQ-02-004",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-04-022",
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-06-004",
+        "RQ-06-008",
+        "RQ-06-009",
+        "RQ-06-010",
+        "RQ-06-011",
+        "RQ-09-006"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/events/commands.md",
+          "version": "1.1",
+          "section": "Async Command execution, state, cancellation, completion, and ownership"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Async Command C ABI"
+        },
+        {
+          "path": ".docs/12_design/events/notifications-commands.md",
+          "version": "1.1",
+          "section": "Command progress and terminal state"
+        },
+        {
+          "path": ".docs/12_design/runtime-objects/model-values.md",
+          "version": "1.1",
+          "section": "Command contract"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CMD-01",
+          "TC-ABI-COMP-01",
+          "TC-OWN-01",
+          "TC-THREAD-01",
+          "TC-LIFE-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-COMMAND-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "command::tests"
+            ]
+          },
+          {
+            "id": "UT-ABI-COMMAND-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "command_"
+            ]
+          },
+          {
+            "id": "UT-ABI-COMMAND-SMOKE-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "abi-command-smoke"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,301 @@
+{
+  "units": [
+    {
+      "unit_name": "UNIT-PLATFORM-001",
+      "state": "complete",
+      "scope": "linux-drm-device-output-selection-and-gbm-egl-surface-lifecycle",
+      "path": {
+        "source": [
+          "crates/platform-linux/src/device.rs",
+          "crates/platform-linux/src/lib.rs",
+          "tools/probes/abi_runtime_smoke.c",
+          "tools/probes/abi_cpp_runtime_smoke.cpp"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/c-abi/Cargo.toml",
+          "crates/platform-linux/Cargo.toml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units.yaml",
+          "tools/units/platform-linux.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-073"
+      ],
+      "requirements": [
+        "RQ-11-009",
+        "RQ-11-014",
+        "RQ-11-019",
+        "RQ-11-020",
+        "RQ-11-022"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.3 approved",
+          "section": "v1.3: Linux device/surface policy"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PLAT-01",
+          "TC-LIFE-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-PLATFORM-DEVICE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-linux",
+              "platform_device_",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-PLATFORM-002",
+      "state": "complete",
+      "scope": "Core-SceneSnapshot-DeviceScale-and-normalized-RGB-background-and-linux-gles-clip-fillrect-render-drm-pageflip-completion-resource-loss; Clip changes visibility only, defer GlyphRun",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/platform/scene.rs",
+          "crates/core-runtime/src/platform/frame.rs",
+          "crates/core-runtime/src/ui_controls.rs",
+          "crates/core-runtime/src/lib.rs",
+          "crates/platform-linux/src/renderer.rs",
+          "crates/platform-linux/src/device.rs",
+          "crates/platform-linux/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/platform-linux/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/platform-linux.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-075",
+        "UNIT-PLATFORM-001"
+      ],
+      "requirements": [
+        "RQ-09-067",
+        "RQ-11-008",
+        "RQ-11-019",
+        "RQ-11-020",
+        "RQ-11-022"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.4 proposal",
+          "section": "v1.4: Core scale/background and Clip rendering contract"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PLAT-01",
+          "TC-THREAD-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-PLATFORM-PRESENT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-linux",
+              "platform_present_",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-PLATFORM-LOSS-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-linux",
+              "platform_loss_",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-PLATFORM-SCALE-CORE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "platform_frame_scene_snapshot_",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-PLATFORM-003",
+      "state": "complete",
+      "scope": "linux-fontconfig-system-default-fallback-harfbuzz-shaping-freetype-metrics-and-glyph-masks",
+      "path": {
+        "source": [
+          "crates/platform-linux/src/text_service.rs",
+          "crates/platform-linux/src/lib.rs",
+          "crates/platform-linux/Cargo.toml",
+          "crates/c-abi/src/lib.rs",
+          "crates/core-runtime/src/text_service.rs",
+          "crates/core-runtime/src/lib.rs",
+          "docker/linux-platform/Dockerfile",
+          ".github/workflows/bootstrap.yml"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/platform-linux/Cargo.toml",
+          "docker/linux-platform/Dockerfile",
+          ".github/workflows/bootstrap.yml",
+          "tools/units.yaml",
+          "tools/units/platform-linux.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-084",
+        "UNIT-PLATFORM-002"
+      ],
+      "requirements": [
+        "RQ-09-075",
+        "RQ-11-020",
+        "RQ-11-023",
+        "RQ-11-024"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.9 approved",
+          "section": "Linux Fontconfig system default, ordered coverage fallback, HarfBuzz and FreeType realization"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PLAT-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-PLATFORM-FONT-FALLBACK-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-linux",
+              "linux_",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-LINUX-FONTCONFIG-DEFAULT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-linux",
+              "linux_candidate_list_",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-CORE-TEXT-METRICS-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "text_metrics_",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-PLATFORM-004",
+      "state": "complete",
+      "scope": "render-resolved-linux-glyph-masks-through-gles-atlas-with-core-paint-scale-clip-and-explicit-failure",
+      "path": {
+        "source": [
+          "crates/platform-linux/src/renderer.rs",
+          "crates/platform-linux/src/text_service.rs",
+          "crates/platform-linux/src/device.rs",
+          "crates/platform-linux/src/lib.rs",
+          "crates/core-runtime/src/platform/scene.rs",
+          "crates/core-runtime/src/visual.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/platform-linux/Cargo.toml",
+          "docker/linux-platform/Dockerfile",
+          "tools/linux_platform_docker.sh",
+          ".github/workflows/bootstrap.yml",
+          "tools/units.yaml",
+          "tools/units/platform-linux.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-PLATFORM-003",
+        "UNIT-CORE-085",
+        "UNIT-PLATFORM-002"
+      ],
+      "requirements": [
+        "RQ-09-067",
+        "RQ-09-072",
+        "RQ-09-075",
+        "RQ-11-008",
+        "RQ-11-020",
+        "RQ-11-023"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.9 approved; Linux profile/implementation plan 0.3 approved",
+          "section": "ResolvedTextSnapshot identity reuse, Core-owned text paint, DeviceScale/Clip, GLES glyph-mask atlas and explicit frame failure"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PLAT-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-LINUX-GLYPH-RENDER-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-linux",
+              "headless_gles_renders_glyph_runs_with_device_scale_and_clip",
+              "--locked",
+              "--",
+              "--ignored",
+              "--nocapture"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

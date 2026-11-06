@@ -1,7 +1,7 @@
 # 実装単位・unit-testの契約
 
-- 文書版: 0.4
-- 状態: 契約承認済み（2026-10-17）。workflow/test実装は未完了
+- 文書版: 0.5
+- 状態: 契約承認済み（2026-10-17）。UT-STR-01のcatalog参照は承認済み計画0.3に基づきschema 3へ改訂（2026-11-06）。workflow/test実装は継続中
 - 作成日: 2026-10-12
 - 文書種別: 実装とunit-testの対応・継続検証方針
 
@@ -41,7 +41,7 @@ UT-STR-01～06と本改訂の対応・選択契約は2026-10-17の全案反映�
 
 | ID | 判断案 | 根拠・境界 | 状態 |
 |---|---|---|---|
-| UT-STR-01 | 実装単位ごとに、実装ID・対象path・適用要求/RQ・設計文書/版/設計項目・unit-test設計ID/test path・実行command・結果を対応づける。IDはUNIT-<domain>-NNN、台帳はimplementation-test-inventoryのschema 2を使う。設計判断IDによる追跡は行わない | 利用者指示。requirementsと設計文書を試験oracleの出典とする | 承認済み契約を継承し、設計参照方式を利用者指示により変更（2026-10-17） |
+| UT-STR-01 | 実装単位ごとに、実装ID・対象path・適用要求/RQ・設計文書/版/設計項目・unit-test設計ID/test path・実行command・結果を対応づける。IDはUNIT-<domain>-NNN、台帳はimplementation-test-inventoryのschema 3 sharded catalogを使う。設計判断IDによる追跡は行わない | 利用者指示。requirementsと設計文書を試験oracleの出典とする | 承認済み契約を継承し、2026-11-06承認の開発CLI・unit台帳分割計画0.3に従い台帳形式を更新 |
 | UT-STR-02 | 実装単位の実装前または同一作業phaseでunit-testを設計し、実装に対応するtestを駆動・実行する。実装だけが変更され対応testがない状態をCIで見逃さない | 利用者指示。必須TDDサイクルや言語別手法はこの案では決めない | 承認済み（2026-10-17） |
 | UT-STR-03 | unit-testの期待結果は承認済み要求/設計から導き、testコードだけを根拠に製品仕様を追加しない。上位で未決の振る舞いは未決のまま記録し、testのpass要件に捏造しない | AGENTS.mdの設計承認境界、RQ/BD/DD | 承認済み（2026-10-17） |
 | UT-STR-04 | GitHub Actionsはpushおよびpull request作成・更新で起動し、変更された実装単位のunit-testと影響テストを実行する | 利用者指示。GitHubへ未送信のローカル変更はworkflowの対象外 | 承認済み（2026-10-17） |
@@ -160,12 +160,14 @@ RQと論理requirements test caseの対応はrequirements test matrixに保つ�
 | 日付 | 版・対象 | 承認者 | 結果 |
 | --- | --- | --- | --- |
 | 2026-10-17 | 0.2 / UT-STR-01～06と変更選択・同一SHA契約 | 利用者 | 全案反映指示により承認。実装・実行証跡のない項目は未実装・未実行を維持 |
+| 2026-11-06 | 0.5 / UT-STR-01 catalog schema参照 | 利用者 | 承認済み計画0.3のschema 3 sharded catalog構成に従う改訂 |
 
 ## 改訂履歴（今回）
 
 | 版 | 日付 | 内容 | 作成者 |
 | --- | --- | --- | --- |
 | 0.2 | 2026-10-17 | UT-STR-01～06と変更選択・同一SHA契約 | Codex |
+| 0.5 | 2026-11-07 | UT-STR-01の台帳schema参照をschema 3 sharded catalogへ更新。要求/設計根拠とunit/test ID契約は維持 | Codex |
 
 ## 具体化した実装台帳・変更検証
 

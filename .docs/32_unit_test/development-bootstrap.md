@@ -24,7 +24,7 @@
 
 Windows x64で両入口を実行する。結果の正本は `.local/verification/check.json` と `minimum.json`。SHAとdirty状態、全入力hash、tool版と各gate終了codeを保持し、未commit変更をHEADに含まれる実装として報告しない。GitHub上は同じcheckout source/testを実行するworkflowを作成したが、リモートrunは未実施。
 
-2026-11-06のlocal focused確認ではUT-BUILD-TOOLS-001の9件がpassし、schema 2 catalogは170 unitとして読み込めた。document linksは76文書/7792 local linksでpass。worktreeに固定venvとRuffがないため、bootstrap全体とRuff gateはこの確認では実行していない。
+2026-11-06のlocal focused確認ではUT-BUILD-TOOLS-001の9件がpassし、schema 2 catalogは170 unitとして読み込めた。2026-11-07のshard移行確認ではschema 3の12 shardを読み、170 IDとrecordをbaseline比較した。document linksは76文書/7792 local linksでpass。worktreeに固定venvとRuffがないため、bootstrap全体とRuff gateはlocalでは実行していない。
 
 この単位はビルド環境の確認であり、要求test92TCや製品単体試験70項目の合格を意味しない。Linux/ARM/実GPU/IME/provider/native loader・署名済みartifactは未検証。正式supportのprofile lockは別に作成する。
 

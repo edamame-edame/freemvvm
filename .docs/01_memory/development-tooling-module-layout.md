@@ -17,6 +17,7 @@
 - 共通process/environment/report helperと各大区分・言語固有handlerを分け、異なる言語branchが同じdispatcherを編集しない形にする。
 - Unit recordsはunit単位まで細分化せず、Coreの責務カテゴリ、ABI、Platform、build/package、wrapper言語のowner単位でshard化する。
 - Root manifestは小さく保ち、shardを決定的に発見して重複ID・未解決依存を検査する。提案中のrecord構造は`unit_name`（現行unit ID）・`path`・`cases`を中心にする。これは構成例であり、現行のJSON互換YAML形式を維持してparser依存を追加しない。
-- `path`は現行のsource/config/test-design等を役割別に保持する。`cases`にはUT ID・commandと要求/設計/release test caseの対応を保持し、状態や依存関係はunit-level metadataに置く。schema2からの移行はunit ID・record・依存・traceabilityの全件比較で検証し、unit-test文書とCIの参照先も更新する。
-- 計画0.3は2026-11-06に承認された。実装中のloaderはschema 2を互換読込し、schema 3 shardではunit_name重複・依存欠落・path/command形を検査する。schema 2の現catalogには`UNIT-WRAP-CS-BIND-001`から不存在の`UNIT-WRAP-CPP-BIND-001`への参照があり、移行時に勝手に削除せず対応を確認する。
+- `path`は現行のsource/config/test-design等を役割別に保持する。`cases.release`は旧logical TC配列、`cases.unit`はUT ID・commandを持つ。RQ/DD対応は旧形式と同じunit-levelに残し、caseごとの関係を推測しない。
+- 計画0.3は2026-11-06に承認された。実装中のloaderはschema 2を互換読込し、schema 3 shardではunit_name重複・依存欠落・path/command形を検査する。schema 2の`UNIT-WRAP-CS-BIND-001`からのdangling dependencyは、scopeが一致する`UNIT-WRAP-CPP-007`へschema 3移行時に修正して明記する。
 - `tools/dev.py`のbaselineは2026-11-06時点で2,757行・61 commands。通常reportは`.local/verification/<command>.json`へ出し、Linux Docker provisional commandは独立schema/pathを使う。command一覧・report field・status意味を分割前後で比較する。
+- schema 3移行では170 unitを12 owner/category shardに分けた。`cases.release`は旧TC配列、`cases.unit`はUT ID/commandを保持し、requirements/designはunit-levelのままにする。config pathへroot manifestと所属shardを追加し、旧recordを機械的に再構成して比較する。

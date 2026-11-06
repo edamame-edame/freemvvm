@@ -12,7 +12,7 @@
 
 `tools/units.yaml`はschema 2のJSON互換形式で約10,773行・170 unitを1ファイルに持つ。unit追加や状態更新が同じ巨大ファイルへの変更になり、merge conflictとGit上でのdiff閲覧を難しくしている。
 
-実装着手時のbaseline確認で、schema 2の`UNIT-WRAP-CS-BIND-001`が存在しない`UNIT-WRAP-CPP-BIND-001`を`depends_on`に持つ既存参照を確認した。既存データはこの作業で黙って変更せず、schema 2の互換読込では受け入れ、schema 3移行時に参照先の対応を確認して記録する。
+実装着手時のbaseline確認で、schema 2の`UNIT-WRAP-CS-BIND-001`が存在しない`UNIT-WRAP-CPP-BIND-001`を`depends_on`に持つ既存参照を確認した。対応する現行unitはscopeが同じC++ Property Bindingの`UNIT-WRAP-CPP-007`と確認した。schema 3移行でこの1辺を`UNIT-WRAP-CPP-007`へ修正し、移行差分に明記する。それ以外の依存辺は全件同一であることを比較する。
 
 ## 目的
 
@@ -52,58 +52,69 @@ tools/dev_support/
 
 ### Unit catalog
 
-`tools/units.yaml`は小さいroot manifestとして残し、JSON互換YAML記法でschemaとshard globだけを記録する。unit records本体はowner/category別の`.yaml` shardsに置く。データ形式は現行どおりJSON互換を維持し、以下は項目構造の例として示す。各recordの`unit_name`には現行unit IDを保持し、移行時に識別子を変更しない。
+`tools/units.yaml`は小さいroot manifestとして残し、schemaとshard globだけを記録する。unit records本体はowner/category別の`.yaml` shardsに置き、JSONとして読み込めるJSON互換YAMLを維持する。以下は構成例である。各recordの`unit_name`には現行unit IDを保持し、移行時に識別子を変更しない。
 
-```yaml
-schema: 3
-unit_shards: "units/**/*.yaml"
+```json
+{
+  "schema": 3,
+  "unit_shards": "units/**/*.yaml"
+}
 ```
 
-shard内では、`unit_name`・`path`・`cases`を中心に読みやすくまとめる。`path`は現行のsource/config/test-design等のパスを役割別に保持し、`cases`は試験ケースごとに既存のUT ID、実行command、要求・設計・リリース試験との対応を保持する。状態や依存関係などケースに属さないunit metadataは別fieldとして残す。
+shard内では、`unit_name`・`path`・`cases`を中心にまとめる。`path`は現行のsource/config/test-design等のパスを役割別に保持する。`cases.release`は既存のlogical TC IDs、`cases.unit`はUT IDと実行commandを持つ。schema 2には個々のTC/UTとRQ/DDとの対応が記録されていないため、`requirements`と`design`はunit-levelに残し、個別caseとの関係を推測して割り当てない。状態や依存関係などケースに属さないmetadataもunit-levelに残す。
 
-```yaml
-units:
-  - unit_name: UNIT-CORE-085
-    state: complete
-    scope: resolve-control-text-once-and-share-revision-stamped-snapshot-with-layout-and-scene
-    path:
-      source:
-        - crates/core-runtime/src/lib.rs
-        - crates/core-runtime/src/runtime.rs
-      config:
-        - Cargo.toml
-        - Cargo.lock
-      test_design: .docs/32_unit_test/ui.md
-    depends_on:
-      - UNIT-CORE-084
-      - UNIT-PLATFORM-003
-    cases:
-      - case_name: platform-default-text-snapshot
-        unit_test_id: UT-TEXT-PLATFORM-DEFAULT-001
-        command:
-          - cargo
-          - test
-          - -p
-          - freemvvm-core
-          - platform_default_text_snapshot_is_shared_by_layout_and_visual_scene
-          - --locked
-        requirements:
-          - RQ-09-004
-          - RQ-09-006
-        design:
-          - path: .docs/13_detail_design/ui/controls.md
-            version: 1.4 approved
-            section: Text-family immutable display snapshot
-        release_cases:
-          - TC-LAYOUT-01
+```json
+{
+  "units": [
+    {
+      "unit_name": "UNIT-CORE-085",
+      "state": "complete",
+      "scope": "resolve-control-text-once-and-share-revision-stamped-snapshot-with-layout-and-scene",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": ["Cargo.toml", "Cargo.lock"],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": ["UNIT-CORE-084", "UNIT-PLATFORM-003"],
+      "requirements": ["RQ-09-004", "RQ-09-006"],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.4 approved",
+          "section": "Text-family immutable display snapshot"
+        }
+      ],
+      "cases": {
+        "release": ["TC-LAYOUT-01"],
+        "unit": [
+          {
+            "id": "UT-TEXT-PLATFORM-DEFAULT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "platform_default_text_snapshot_is_shared_by_layout_and_visual_scene",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
 ```
 
 ```text
 tools/units.yaml                     # schema + unit shard pattern
 tools/units/
-  core-runtime.yaml
+  core-events.yaml
+  core-runtime-objects.yaml
   core-ui.yaml
-  core-scene-text.yaml
+  core-platform.yaml
   abi.yaml
   platform-linux.yaml
   platform-windows.yaml
@@ -118,7 +129,7 @@ tools/units/
 
 ### Unit loaderと検査
 
-loaderはroot manifestのglobを読み、全shardのschema、`unit_name`一意性、`depends_on`解決、path/command形式を検査する。`unit_name`は既存のunit IDをそのまま保持する。`cases`の各項目は試験を一意に識別し、既存の`cases`（release test case IDs）と`tests`（UT ID・command）およびunit-levelの要求/設計対応を欠落なく移行できる構造とする。既存データにケース単位でない要求/設計対応がある場合は、移行前に対応するcaseへ割り当てるかunit metadataとして残し、意味を推測して変更しない。
+loaderはroot manifestのglobを読み、全shardのschema、`unit_name`一意性、`depends_on`解決、path/command形式を検査する。`unit_name`は既存のunit IDをそのまま保持する。`cases.release`は旧`cases`配列、`cases.unit`は旧`tests`配列を対応させる。要求/設計対応は旧形式どおりunit-levelに置き、個別caseとの関係を推測しない。
 
 この項目構造はJSON互換YAMLでも表現できるため、parser依存は追加しない。現行のJSON読込契約を維持し、shardもJSONとして読み込めるJSON互換YAMLにする。
 
@@ -144,7 +155,7 @@ loaderはroot manifestのglobを読み、全shardのschema、`unit_name`一意�
 
 ## 作業フェーズ
 
-進捗: phase 1のCLI 61 command・report shapeとmanifest baselineを記録済み。phase 2のschema 2/3 loader実装・focused test・bootstrap `check`接続を完了した。schema 2にあるdangling dependencyは互換読込で保持し、schema 3ではstrictに検査する。shard移行はこの既存参照の対応確認後に行う。
+進捗: phase 1のCLI 61 command・report shapeとmanifest baseline、phase 2のloader実装・focused test・bootstrap `check`接続、phase 3の170 unit/12 shard移行を完了した。旧recordの再構成比較は全件pass。既存dangling dependencyの対応先`UNIT-WRAP-CPP-007`へ1辺を修正し、root manifestと所属shardをconfig pathへ追加した。phase 4のCLI共通基盤分離へ進む。
 
 | 順 | 作業 | 完了条件 |
 | --- | --- | --- |

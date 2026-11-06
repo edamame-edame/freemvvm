@@ -1,0 +1,1030 @@
+{
+  "units": [
+    {
+      "unit_name": "UNIT-WRAP-CS-001",
+      "state": "complete",
+      "scope": "csharp-runtime-owner-call-lease-shutdown-receipt-and-cleanup-ticket",
+      "path": {
+        "source": [
+          "wrappers/csharp/FreeMvvm/**/*.cs",
+          "wrappers/csharp/tests/RuntimeTests/**/*.cs",
+          "wrappers/csharp/tests/Consumer/**/*.cs",
+          "tools/dev.py"
+        ],
+        "config": [
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/tests/RuntimeTests/*.csproj",
+          "wrappers/csharp/tests/Consumer/*.csproj",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "Cargo.toml",
+          "Cargo.lock",
+          "tools/dev.py",
+          "tools/units.yaml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units/wrappers-csharp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-004",
+        "UNIT-ABI-005",
+        "UNIT-ABI-007",
+        "UNIT-ABI-018"
+      ],
+      "requirements": [
+        "RQ-03-002",
+        "RQ-03-006",
+        "RQ-03-013",
+        "RQ-03-014",
+        "RQ-04-004",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-04-022",
+        "RQ-05-003",
+        "RQ-05-010",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-06-005",
+        "RQ-06-006",
+        "RQ-06-012"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.1",
+          "section": "公開API・call lease・native load / Dispose/CallLeaseの線形化 / 型の責務と所有"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Runtime lifecycle / handle release / Shutdown receipt"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Runtime UI thread / Runtime shutdown / cleanup"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-ERROR-01",
+          "TC-WRAP-CS-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CS-RT-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-runtime-test"
+            ]
+          },
+          {
+            "id": "UT-WRAP-CS-OWN-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-runtime-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CS-RT-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-runtime-consumer-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CS-PROP-BOOL-I64-001",
+      "state": "complete",
+      "scope": "csharp-bool-i64-property-create-get-set-close",
+      "path": {
+        "source": [
+          "wrappers/csharp/FreeMvvm/**/*.cs",
+          "wrappers/csharp/tests/RuntimeTests/**/*.cs",
+          "wrappers/csharp/tests/Consumer/**/*.cs",
+          "tools/dev.py"
+        ],
+        "config": [
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/tests/RuntimeTests/*.csproj",
+          "wrappers/csharp/tests/Consumer/*.csproj",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "Cargo.toml",
+          "Cargo.lock",
+          "tools/dev.py",
+          "tools/units.yaml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units/wrappers-csharp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-009",
+        "UNIT-ABI-010",
+        "UNIT-ABI-011",
+        "UNIT-ABI-018",
+        "UNIT-WRAP-CS-001"
+      ],
+      "requirements": [
+        "RQ-02-001",
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.1",
+          "section": "公開API・call lease・native load / 型の責務と所有"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property値のC ABI / Property生成と通知購読のC ABI"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Property値・更新・thread contract"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-WRAP-CS-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CS-PROP-BOOL-I64-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-property-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CS-PROP-BOOL-I64-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-property-consumer-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CS-PROP-F64-001",
+      "state": "complete",
+      "scope": "csharp-f64-property-create-get-set-close-and-bit-preservation",
+      "path": {
+        "source": [
+          "wrappers/csharp/FreeMvvm/**/*.cs",
+          "wrappers/csharp/tests/RuntimeTests/**/*.cs",
+          "wrappers/csharp/tests/Consumer/**/*.cs",
+          "tools/dev.py"
+        ],
+        "config": [
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/tests/RuntimeTests/*.csproj",
+          "wrappers/csharp/tests/Consumer/*.csproj",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "Cargo.toml",
+          "Cargo.lock",
+          "tools/dev.py",
+          "tools/units.yaml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units/wrappers-csharp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-CORE-029",
+        "UNIT-ABI-009",
+        "UNIT-ABI-010",
+        "UNIT-ABI-011",
+        "UNIT-ABI-018",
+        "UNIT-WRAP-CS-001",
+        "UNIT-WRAP-CS-PROP-BOOL-I64-001"
+      ],
+      "requirements": [
+        "RQ-02-001",
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-02-018",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.1",
+          "section": "公開API・call lease・native load / 型の責務と所有"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property値のC ABI / Property生成と通知購読のC ABI"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "F64 equivalence and ValueStorage"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-ABI-REP-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-WRAP-CS-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CS-PROP-F64-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-property-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CS-PROP-F64-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-property-consumer-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CS-PROP-UTF8-001",
+      "state": "complete",
+      "scope": "csharp-utf8-property-create-get-set-close-and-strict-buffer-mapping",
+      "path": {
+        "source": [
+          "wrappers/csharp/FreeMvvm/**/*.cs",
+          "wrappers/csharp/tests/RuntimeTests/**/*.cs",
+          "wrappers/csharp/tests/Consumer/**/*.cs",
+          "tools/dev.py"
+        ],
+        "config": [
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/tests/RuntimeTests/*.csproj",
+          "wrappers/csharp/tests/Consumer/*.csproj",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "Cargo.toml",
+          "Cargo.lock",
+          "tools/dev.py",
+          "tools/units.yaml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units/wrappers-csharp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-CORE-027",
+        "UNIT-CORE-028",
+        "UNIT-ABI-009",
+        "UNIT-ABI-010",
+        "UNIT-ABI-011",
+        "UNIT-WRAP-CS-001",
+        "UNIT-WRAP-CS-PROP-BOOL-I64-001",
+        "UNIT-WRAP-CS-PROP-F64-001"
+      ],
+      "requirements": [
+        "RQ-02-001",
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-04-003",
+        "RQ-04-020",
+        "RQ-04-021",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.1",
+          "section": "公開API・call lease・native load / 型の責務と所有"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "UTF-8とcaller buffer / Property生成・取得・設定"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "UTF-8 and buffer ownership rules"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-ABI-REP-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-WRAP-CS-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CS-PROP-UTF8-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-property-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CS-PROP-UTF8-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-property-consumer-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CS-PROP-DECIMAL-001",
+      "state": "complete",
+      "scope": "csharp-decimal64-value-conversions-and-property-canonical-bits-mapping",
+      "path": {
+        "source": [
+          "wrappers/csharp/FreeMvvm/**/*.cs",
+          "wrappers/csharp/tests/RuntimeTests/**/*.cs",
+          "wrappers/csharp/tests/Consumer/**/*.cs",
+          "tools/dev.py"
+        ],
+        "config": [
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/tests/RuntimeTests/*.csproj",
+          "wrappers/csharp/tests/Consumer/*.csproj",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "Cargo.toml",
+          "Cargo.lock",
+          "tools/dev.py",
+          "tools/units.yaml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units/wrappers-csharp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-019",
+        "UNIT-WRAP-CS-001",
+        "UNIT-WRAP-CS-PROP-BOOL-I64-001",
+        "UNIT-WRAP-CS-PROP-F64-001",
+        "UNIT-WRAP-CS-PROP-UTF8-001",
+        "UNIT-WRAP-CPP-005"
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-02-019",
+        "RQ-02-020",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.1",
+          "section": "公開API・型の責務と所有 / DecimalValue"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property値のC ABI / DECIMAL Property生成・取得・設定"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "DECIMAL encoding・範囲・数値同値性"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-ERROR-01",
+          "TC-ABI-REP-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-WRAP-CS-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CS-PROP-DECIMAL-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-property-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CS-PROP-DECIMAL-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-property-consumer-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CS-PROP-SUB-001",
+      "state": "complete",
+      "scope": "csharp-property-notification-subscription-and-callback-failure-handler",
+      "path": {
+        "source": [
+          "wrappers/csharp/FreeMvvm/**/*.cs",
+          "wrappers/csharp/tests/RuntimeTests/**/*.cs",
+          "wrappers/csharp/tests/Consumer/**/*.cs",
+          "tools/dev.py"
+        ],
+        "config": [
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/tests/RuntimeTests/*.csproj",
+          "wrappers/csharp/tests/Consumer/*.csproj",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "Cargo.toml",
+          "Cargo.lock",
+          "tools/dev.py",
+          "tools/units.yaml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units/wrappers-csharp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-019",
+        "UNIT-WRAP-CS-001",
+        "UNIT-WRAP-CS-PROP-BOOL-I64-001",
+        "UNIT-WRAP-CS-PROP-F64-001",
+        "UNIT-WRAP-CS-PROP-UTF8-001",
+        "UNIT-WRAP-CS-PROP-DECIMAL-001",
+        "UNIT-WRAP-CPP-005"
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-008",
+        "RQ-05-009",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.2",
+          "section": "Property notification Subscription / C# callback failure handler"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property生成と通知購読のC ABI / 購読と解除"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Notification queueと購読 / Subscription lifecycle"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-CALLBACK-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-ERROR-01",
+          "TC-WRAP-CS-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CS-PROP-SUB-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-property-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CS-PROP-SUB-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-property-consumer-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CS-BIND-001",
+      "state": "complete",
+      "scope": "csharp-property-binding-modes-error-snapshot-and-error-subscription",
+      "path": {
+        "source": [
+          "wrappers/csharp/FreeMvvm/**/*.cs",
+          "wrappers/csharp/tests/RuntimeTests/**/*.cs",
+          "wrappers/csharp/tests/Consumer/**/*.cs",
+          "tools/dev.py"
+        ],
+        "config": [
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/tests/RuntimeTests/*.csproj",
+          "wrappers/csharp/tests/Consumer/*.csproj",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "Cargo.toml",
+          "Cargo.lock",
+          "tools/dev.py",
+          "tools/units.yaml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units/wrappers-csharp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-019",
+        "UNIT-WRAP-CS-PROP-SUB-001",
+        "UNIT-WRAP-CS-PROP-DECIMAL-001",
+        "UNIT-WRAP-CPP-007"
+      ],
+      "requirements": [
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-07-001",
+        "RQ-07-002",
+        "RQ-07-003",
+        "RQ-07-004",
+        "RQ-07-005",
+        "RQ-07-006",
+        "RQ-07-007",
+        "RQ-07-008",
+        "RQ-07-009",
+        "RQ-07-010",
+        "RQ-07-011"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.3",
+          "section": "Property Binding / Bindingを含む型の責務・関係"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "BindingのC ABI / 作成と解除 / Bindingエラーの読み取りと通知"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding registration lifecycle / 遅延検証失敗通知"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01",
+          "TC-BIND-INIT-REJECT-01",
+          "TC-BIND-PROPAGATION-REJECT-01",
+          "TC-CALLBACK-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-ERROR-01",
+          "TC-WRAP-CS-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CS-BIND-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-property-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CS-BIND-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-property-consumer-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CS-COMMAND-001",
+      "state": "complete",
+      "scope": "csharp-async-command-worker-cancel-terminal-report-and-lifetime",
+      "path": {
+        "source": [
+          "wrappers/csharp/FreeMvvm/**/*.cs",
+          "wrappers/csharp/tests/RuntimeTests/**/*.cs",
+          "wrappers/csharp/tests/Consumer/**/*.cs",
+          "tools/dev.py"
+        ],
+        "config": [
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/tests/RuntimeTests/*.csproj",
+          "wrappers/csharp/tests/Consumer/*.csproj",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "Cargo.toml",
+          "Cargo.lock",
+          "tools/dev.py",
+          "tools/units.yaml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units/wrappers-csharp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-066",
+        "UNIT-WRAP-CS-001",
+        "UNIT-WRAP-CS-BIND-001"
+      ],
+      "requirements": [
+        "RQ-02-004",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-04-022",
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-009",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-06-004",
+        "RQ-06-008",
+        "RQ-06-009",
+        "RQ-06-010"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.4",
+          "section": "非同期Command wrapper"
+        },
+        {
+          "path": ".docs/13_detail_design/events/commands.md",
+          "version": "1.1",
+          "section": "Async Command execution, state, cancellation, completion, and ownership"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Async Command C ABI"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CMD-01",
+          "TC-OWN-01",
+          "TC-THREAD-01",
+          "TC-LIFE-01",
+          "TC-ERROR-01",
+          "TC-WRAP-CS-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CS-COMMAND-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-command-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CS-COMMAND-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-command-consumer-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CS-CONTROLS-001",
+      "state": "complete",
+      "scope": "csharp-ui-control-creation-properties-tree-layout-focus-and-command-facade",
+      "path": {
+        "source": [
+          "wrappers/csharp/FreeMvvm/**/*.cs",
+          "wrappers/csharp/tests/RuntimeTests/**/*.cs",
+          "wrappers/csharp/tests/Consumer/**/*.cs",
+          "tools/dev.py"
+        ],
+        "config": [
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/tests/RuntimeTests/*.csproj",
+          "wrappers/csharp/tests/Consumer/*.csproj",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "Cargo.toml",
+          "Cargo.lock",
+          "CMakeLists.txt",
+          "tools/dev.py",
+          "tools/units.yaml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units/wrappers-csharp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-CORE-070",
+        "UNIT-CORE-071",
+        "UNIT-CORE-072",
+        "UNIT-ABI-020",
+        "UNIT-ABI-021",
+        "UNIT-WRAP-CS-001",
+        "UNIT-WRAP-CS-PROP-BOOL-I64-001",
+        "UNIT-WRAP-CS-PROP-UTF8-001",
+        "UNIT-WRAP-CS-BIND-001",
+        "UNIT-WRAP-CS-COMMAND-001"
+      ],
+      "requirements": [
+        "RQ-02-004",
+        "RQ-03-002",
+        "RQ-03-006",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-04-022",
+        "RQ-04-025",
+        "RQ-05-003",
+        "RQ-05-007",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-07-001",
+        "RQ-07-003",
+        "RQ-09-001",
+        "RQ-09-002",
+        "RQ-09-003",
+        "RQ-09-004",
+        "RQ-09-005",
+        "RQ-09-006",
+        "RQ-09-043",
+        "RQ-09-044",
+        "RQ-09-045",
+        "RQ-09-046",
+        "RQ-09-059",
+        "RQ-09-067",
+        "RQ-09-070"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.5",
+          "section": "初期UI Control wrapper / 公開型・操作案 / 所有関係・主要flow"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "初期UI ControlのC ABI操作"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.1",
+          "section": "基本Controlの型と責務"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "Tree / Layout"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/input-focus.md",
+          "version": "1.1",
+          "section": "Focus状態と遷移"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-VERT-01",
+          "TC-TREE-01",
+          "TC-OWN-01",
+          "TC-LAYOUT-01",
+          "TC-FOCUS-01",
+          "TC-BIND-01",
+          "TC-CMD-01",
+          "TC-THREAD-01",
+          "TC-ERROR-01",
+          "TC-WRAP-CS-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CS-CONTROLS-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-controls-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CS-CONTROLS-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-controls-consumer-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CS-WINDOW-001",
+      "state": "complete",
+      "scope": "csharp-window-peer-open-close-and-close-request-callback-lifecycle",
+      "path": {
+        "source": [
+          "wrappers/csharp/FreeMvvm/**/*.cs",
+          "wrappers/csharp/tests/RuntimeTests/**/*.cs",
+          "wrappers/csharp/tests/Consumer/**/*.cs",
+          "tools/dev.py"
+        ],
+        "config": [
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/tests/RuntimeTests/*.csproj",
+          "wrappers/csharp/tests/Consumer/*.csproj",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "Cargo.toml",
+          "Cargo.lock",
+          "CMakeLists.txt",
+          "tools/dev.py",
+          "tools/units.yaml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units/wrappers-csharp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-WRAP-CS-CONTROLS-001",
+        "UNIT-ABI-021",
+        "UNIT-CORE-072"
+      ],
+      "requirements": [
+        "RQ-04-006",
+        "RQ-05-002",
+        "RQ-05-007",
+        "RQ-05-009",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-09-001",
+        "RQ-09-071",
+        "RQ-11-020"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.5",
+          "section": "初期UI Control wrapper / Callback・failure・thread境界案"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "Window peerとclose requestの境界"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/abstraction.md",
+          "version": "1.1",
+          "section": "Window peerとsurface状態"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PLAT-01",
+          "TC-CALLBACK-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-ERROR-01",
+          "TC-WRAP-CS-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CS-WINDOW-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-window-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CS-WINDOW-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-window-consumer-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CS-INPUT-001",
+      "state": "complete",
+      "scope": "csharp-input-event-borrow-view-delegate-root-dispose-race-and-exception-boundary",
+      "path": {
+        "source": [
+          "wrappers/csharp/FreeMvvm/**/*.cs",
+          "wrappers/csharp/tests/RuntimeTests/Program.cs",
+          "wrappers/csharp/tests/Consumer/Program.cs",
+          "tools/dev.py"
+        ],
+        "config": [
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/tests/RuntimeTests/RuntimeTests.csproj",
+          "wrappers/csharp/tests/Consumer/Consumer.csproj",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/dev.py",
+          "tools/units.yaml",
+          "tools/units/wrappers-csharp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-022",
+        "UNIT-WRAP-CS-COMMAND-001",
+        "UNIT-WRAP-CS-CONTROLS-001",
+        "UNIT-WRAP-CS-WINDOW-001"
+      ],
+      "requirements": [
+        "RQ-03-002",
+        "RQ-03-006",
+        "RQ-04-008",
+        "RQ-05-002",
+        "RQ-05-009",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-09-010",
+        "RQ-09-068"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.6 approved",
+          "section": "Input event wrapper API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.6 approved",
+          "section": "Input event subscription ABI"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-INPUT-01",
+          "TC-CALLBACK-01",
+          "TC-LIFE-01",
+          "TC-WRAP-CS-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CS-INPUT-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-input-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CS-INPUT-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-input-consumer-test"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

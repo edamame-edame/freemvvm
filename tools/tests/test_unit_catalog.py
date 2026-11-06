@@ -37,11 +37,27 @@ def test_loads_schema_three_shards_in_stable_order(tmp_path):
     )
     write_json(
         tmp_path / "units" / "zeta.yaml",
-        {"units": [{"unit_name": "UNIT-Z", "path": {}, "cases": []}]},
+        {
+            "units": [
+                {
+                    "unit_name": "UNIT-Z",
+                    "path": {},
+                    "cases": {"release": [], "unit": []},
+                }
+            ]
+        },
     )
     write_json(
         tmp_path / "units" / "alpha.yaml",
-        {"units": [{"unit_name": "UNIT-A", "path": {}, "cases": []}]},
+        {
+            "units": [
+                {
+                    "unit_name": "UNIT-A",
+                    "path": {},
+                    "cases": {"release": [], "unit": []},
+                }
+            ]
+        },
     )
 
     assert [unit["unit_name"] for unit in load_catalog(manifest)] == [
@@ -65,7 +81,11 @@ def test_rejects_duplicate_unit_names_across_shards(tmp_path):
         tmp_path / "units.yaml",
         {"schema": 3, "unit_shards": "units/*.yaml"},
     )
-    record = {"unit_name": "UNIT-A", "path": {}, "cases": []}
+    record = {
+        "unit_name": "UNIT-A",
+        "path": {},
+        "cases": {"release": [], "unit": []},
+    }
     write_json(tmp_path / "units" / "one.yaml", {"units": [record]})
     write_json(tmp_path / "units" / "two.yaml", {"units": [record]})
 
@@ -96,7 +116,7 @@ def test_rejects_missing_dependencies(tmp_path):
                     "unit_name": "UNIT-A",
                     "path": {},
                     "depends_on": ["UNIT-MISSING"],
-                    "cases": [],
+                    "cases": {"release": [], "unit": []},
                 }
             ]
         },
@@ -118,12 +138,15 @@ def test_rejects_invalid_case_command(tmp_path):
                 {
                     "unit_name": "UNIT-A",
                     "path": {},
-                    "cases": [
-                        {
-                            "case_name": "case-a",
-                            "command": ["cargo", "test", 4],
-                        }
-                    ],
+                    "cases": {
+                        "release": [],
+                        "unit": [
+                            {
+                                "id": "UT-CASE-001",
+                                "command": ["cargo", "test", 4],
+                            }
+                        ],
+                    },
                 }
             ]
         },

@@ -1,0 +1,1020 @@
+{
+  "units": [
+    {
+      "unit_name": "UNIT-CORE-085",
+      "state": "complete",
+      "scope": "resolve-control-text-once-and-share-revision-stamped-snapshot-with-layout-and-scene",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/ui_controls.rs",
+          "crates/core-runtime/src/ui_window.rs",
+          "crates/core-runtime/src/visual.rs",
+          "crates/platform-linux/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/platform-linux/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-084",
+        "UNIT-CORE-078",
+        "UNIT-CORE-079",
+        "UNIT-PLATFORM-003"
+      ],
+      "requirements": [
+        "RQ-09-004",
+        "RQ-09-006",
+        "RQ-09-072",
+        "RQ-09-075",
+        "RQ-11-023"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.4 approved",
+          "section": "Text-family immutable display snapshot and shared TextService result"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.9 approved",
+          "section": "Core request, PlatformDefault resolution, and same-revision Layout/Scene reuse"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LAYOUT-01",
+          "TC-PLAT-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-TEXT-PLATFORM-DEFAULT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "platform_default_text_snapshot_is_shared_by_layout_and_visual_scene",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-068",
+      "state": "complete",
+      "scope": "core-logical-tree-attach-commit-detach-and-child-owner-reissue",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/ui_tree.rs",
+          "crates/core-runtime/src/handle_registry/registry.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-067"
+      ],
+      "requirements": [
+        "RQ-02-007",
+        "RQ-02-013",
+        "RQ-04-025",
+        "RQ-05-002",
+        "RQ-05-003",
+        "RQ-06-001",
+        "RQ-09-003",
+        "RQ-09-043",
+        "RQ-09-044"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "UI要素の所属と寿命 / 所属状態と操作ごとの失敗境界 / クラス設計"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.3",
+          "section": "Tree内部ownerとpublic参照の独立管理"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-TREE-01",
+          "TC-LIFE-01",
+          "TC-OWN-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-TREE-003",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "tree_owner_tree_"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-069",
+      "state": "complete",
+      "scope": "runtime-ui-object-store-logical-tree-lifecycle-integration",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/ui_tree.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-068"
+      ],
+      "requirements": [
+        "RQ-02-007",
+        "RQ-02-013",
+        "RQ-05-002",
+        "RQ-05-003",
+        "RQ-06-001",
+        "RQ-09-043",
+        "RQ-09-044"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "UI要素の所属と寿命 / 所属状態と操作ごとの失敗境界 / ランタイムとの所有境界"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.3",
+          "section": "Tree内部ownerとpublic参照の独立管理"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-TREE-01",
+          "TC-LIFE-01",
+          "TC-OWN-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-TREE-003",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "tree_owner_tree_runtime_"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-076",
+      "state": "complete",
+      "scope": "core-layout-measure-arrange-kernel-and-atomic-layout-snapshot",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/ui_layout.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-072"
+      ],
+      "requirements": [
+        "RQ-09-007",
+        "RQ-09-008",
+        "RQ-09-045",
+        "RQ-09-057",
+        "RQ-09-067"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.3 approved",
+          "section": "Measure / Arrange / LayoutSnapshot"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.2 approved",
+          "section": "LayoutEngine / IntrinsicMeasureProvider"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LAYOUT-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-LAYOUT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "ui_layout::tests",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-077",
+      "state": "complete",
+      "scope": "window-client-area-initial-and-generation-checked-updates",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/ui_window.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/lib.rs",
+          "crates/platform-linux/src/lib.rs",
+          "crates/platform-linux/src/device.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/platform-linux/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-073",
+        "UNIT-CORE-076"
+      ],
+      "requirements": [
+        "RQ-09-008",
+        "RQ-09-067",
+        "RQ-09-071"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.3 approved",
+          "section": "Window root input / client-area generation"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.5 approved",
+          "section": "Window client area from peer to Core"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.2 approved",
+          "section": "Window client_area_changed"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LAYOUT-01",
+          "TC-PLAT-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-LAYOUT-ROOT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "client_area_",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-PLATFORM-ADAPTER-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-linux",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-078",
+      "state": "complete",
+      "scope": "control-tree-layout-snapshot-integration",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/ui_window.rs",
+          "crates/core-runtime/src/ui_layout.rs",
+          "crates/core-runtime/src/ui_controls.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-076",
+        "UNIT-CORE-077"
+      ],
+      "requirements": [
+        "RQ-09-007",
+        "RQ-09-008",
+        "RQ-09-045",
+        "RQ-09-057",
+        "RQ-09-067"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.3 approved",
+          "section": "Layout実行入力・出力契約 / LayoutEngine"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.2 approved",
+          "section": "Control接続API / LayoutEngine"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LAYOUT-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-LAYOUT-ABI-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_layout_snapshot_",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-LAYOUT-ATOMIC-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_layout_snapshot_failure",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-079",
+      "state": "complete",
+      "scope": "window-background-rgb-default-override-reset-and-scene-forwarding",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/platform/scene.rs",
+          "crates/core-runtime/src/ui_window.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/ui_controls.rs",
+          "crates/c-abi/src/lib.rs",
+          "crates/c-abi/include/freemvvm/abi.h"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-075",
+        "UNIT-CORE-078"
+      ],
+      "requirements": [
+        "RQ-09-074"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.3 approved",
+          "section": "Window background RGB API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.4 approved",
+          "section": "Window background RGB API"
+        },
+        {
+          "path": ".docs/12_design/platform/abstraction.md",
+          "version": "1.1 approved",
+          "section": "Core-owned Window background RGB backend forwarding"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-WINDOW-BG-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WINDOW-BACKGROUND-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "window_background_color_is_core_owned_validated_and_forwarded_to_scene",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-ABI-WINDOW-BACKGROUND-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "window_background_color_abi_supports_get_set_and_reset_atomically",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-080",
+      "state": "complete",
+      "scope": "control-view-scene-geometry-and-clip-flattening",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/visual.rs",
+          "crates/core-runtime/src/ui_layout.rs",
+          "crates/core-runtime/src/platform/scene.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-075",
+        "UNIT-CORE-078",
+        "UNIT-CORE-079"
+      ],
+      "requirements": [
+        "RQ-09-008",
+        "RQ-09-067",
+        "RQ-11-008",
+        "RQ-11-020"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.4 approved",
+          "section": "Control-View connector / Layout FinalBounds coordinates"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.6 approved",
+          "section": "ControlViewConnector and SceneSnapshot boundary"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LAYOUT-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-VIEW-GEOMETRY-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "control_view_connector_",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-081",
+      "state": "complete",
+      "scope": "revision-checked-control-tree-snapshot-to-visual-scene-projection",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/visual.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-080"
+      ],
+      "requirements": [
+        "RQ-09-001",
+        "RQ-09-006",
+        "RQ-09-007",
+        "RQ-09-008",
+        "RQ-11-008",
+        "RQ-11-020"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.4 approved",
+          "section": "Control-View connector / same-revision SceneSnapshot"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.6 approved",
+          "section": "ControlViewConnector and renderer-neutral SceneSnapshot"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LAYOUT-01",
+          "TC-LIFE-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-VIEW-CONNECTOR-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "control_tree_visual_snapshot_",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-082",
+      "state": "complete",
+      "scope": "runtime-live-control-tree-capture-matched-to-published-clean-layout",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/visual.rs",
+          "crates/core-runtime/src/ui_controls.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-078",
+        "UNIT-CORE-081"
+      ],
+      "requirements": [
+        "RQ-09-001",
+        "RQ-09-007",
+        "RQ-09-008",
+        "RQ-11-008",
+        "RQ-11-020"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.4 approved",
+          "section": "ControlViewConnector / same-revision Logical Control and Layout snapshots"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.6 approved",
+          "section": "ControlViewConnector on the UI thread"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LAYOUT-01",
+          "TC-LIFE-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-VIEW-CONNECTOR-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_control_tree_snapshot_",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-086",
+      "state": "complete",
+      "scope": "produce-visual-operations-from-attached-core-controls-and-same-revision-layout-text-snapshots",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/ui_controls.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/visual.rs",
+          "crates/core-runtime/src/text_service.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-081",
+        "UNIT-CORE-082",
+        "UNIT-CORE-085"
+      ],
+      "requirements": [
+        "RQ-09-001",
+        "RQ-09-004",
+        "RQ-09-006",
+        "RQ-09-007",
+        "RQ-09-008",
+        "RQ-09-072",
+        "RQ-09-075",
+        "RQ-11-008"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.4 approved",
+          "section": "initial control text snapshots and Text/TextBox/Button display-value semantics"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.4 approved",
+          "section": "same-revision ControlViewConnector input and attached tree projection"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.9 approved",
+          "section": "resolved text snapshot reuse and renderer-neutral Scene production"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LAYOUT-01",
+          "TC-LIFE-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-VIEW-CONNECTOR-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "production_visual_",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-092",
+      "state": "ready",
+      "scope": "core-text-box-editing-state-and-atomic-candidate-transaction",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/ui_controls.rs",
+          "crates/core-runtime/src/ui_text_box.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-090"
+      ],
+      "requirements": [
+        "RQ-02-009",
+        "RQ-09-038",
+        "RQ-09-039",
+        "RQ-09-042",
+        "RQ-09-055",
+        "RQ-09-065"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/text-editing.md",
+          "version": "1.1 approved",
+          "section": "TextBox editing candidate, Property validation, and external committed Value synchronization"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-IME-01",
+          "TC-BIND-01",
+          "TC-ERROR-01",
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-TEXTBOX-CORE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "text_box_editing_initial_state",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-TEXTBOX-CORE-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "text_box_editing_candidate_transaction",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-TEXTBOX-CORE-003",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "text_box_editing_property_validation",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-TEXTBOX-CORE-004",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "text_box_editing_external_value_sync",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-091",
+      "state": "complete",
+      "scope": "core-input-routing-focus-transitions-and-button-primary-activation",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/ui_controls.rs",
+          "crates/core-runtime/src/ui_focus.rs",
+          "crates/core-runtime/src/ui_tree.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-090",
+        "UNIT-CORE-092"
+      ],
+      "requirements": [
+        "RQ-05-009",
+        "RQ-06-001",
+        "RQ-09-006",
+        "RQ-09-008",
+        "RQ-09-010",
+        "RQ-09-046",
+        "RQ-09-049",
+        "RQ-09-055",
+        "RQ-09-068"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/ui/input-focus.md",
+          "version": "1.1 approved",
+          "section": "Input routing, handled, Focus transitions, and primary pointer default action"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.5 approved",
+          "section": "Button activation and Widget lifetime"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.6 approved",
+          "section": "Input subscription lifecycle and borrowed event contract"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-INPUT-01",
+          "TC-FOCUS-01",
+          "TC-IME-01",
+          "TC-CALLBACK-01",
+          "TC-LAYOUT-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-INPUT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "input_routing",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-INPUT-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "input_bubbling",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-INPUT-003",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "input_route_revalidation",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-INPUT-004",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "input_text_commit",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-INPUT-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "input_primary_pointer",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-INPUT-006",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "input_subscription_lifecycle",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-FOCUS-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "focus_transition",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-FOCUS-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "focus_empty_target",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-FOCUS-003",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "focus_internal_transition",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-FOCUS-004",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "focus_disabled_subtree",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
