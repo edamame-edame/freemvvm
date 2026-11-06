@@ -6,8 +6,8 @@
 
 ## 現状
 
-- `tools/dev.py`は単一entrypoint内にargparse command一覧、共通環境・report処理、ABI/platform gate、Rust/C++/C#/Python wrapper test dispatchを持つ約2,740行のPython file。
-- `tools/units.yaml`はJSON互換YAML schema 2の単一catalogで、2026-11-06のversion branchで170 unit・約10,773行。unit records内の`config`がroot catalog pathを繰り返し参照する。
+- `tools/dev.py`は互換entrypointとして全61 commandを維持する。共通environment/process/report helperは2026-11-07に`tools/dev_support/`へ抽出済み。ABI/platform gateとRust/C++/C#/Python wrapper dispatchのmodule分割は後続phase。
+- `tools/units.yaml`はschema 3の小さなJSON互換manifest。170 unitを12個のowner/category shardへ移行済み。
 - `.docs/32_unit_test/implementation-test-inventory.md`と複数計画・DEVELOPMENT文書がroot catalogを説明・参照するため、split時は全consumerを検索する。
 - `python tools/dev.py ...`はDEVELOPMENTとGitHub Actionsから直接呼ばれる。分割後も互換entrypointと全command名を維持する必要がある。
 
@@ -21,3 +21,4 @@
 - 計画0.3は2026-11-06に承認された。実装中のloaderはschema 2を互換読込し、schema 3 shardではunit_name重複・依存欠落・path/command形を検査する。schema 2の`UNIT-WRAP-CS-BIND-001`からのdangling dependencyは、scopeが一致する`UNIT-WRAP-CPP-007`へschema 3移行時に修正して明記する。
 - `tools/dev.py`のbaselineは2026-11-06時点で2,757行・61 commands。通常reportは`.local/verification/<command>.json`へ出し、Linux Docker provisional commandは独立schema/pathを使う。command一覧・report field・status意味を分割前後で比較する。
 - schema 3移行では170 unitを12 owner/category shardに分けた。`cases.release`は旧TC配列、`cases.unit`はUT ID/commandを保持し、requirements/designはunit-levelのままにする。config pathへroot manifestと所属shardを追加し、旧recordを機械的に再構成して比較する。
+- phase 4ではbootstrap environment構築、MSVC/child process実行、JSON report書込を独立helperへ抽出する。`tools/dev.py`からは互換名でimportし、CLIのreport field・command/result記録を変えない。`test_dev_support.py`はhost environmentの非変更、PATH順、process result field、JSON encoding/newlineを検証する。

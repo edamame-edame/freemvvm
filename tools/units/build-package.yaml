@@ -81,6 +81,15 @@
               "pytest",
               "tools/tests/test_unit_catalog.py"
             ]
+          },
+          {
+            "id": "UT-BUILD-TOOLS-002",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_dev_support.py"
+            ]
           }
         ]
       }

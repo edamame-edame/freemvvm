@@ -17,6 +17,7 @@
 | UT-BUILD-ENV-001 | 固定toolとvenvを照合し、全言語の骨格をcompile/build。C/C++ probeで固定幅値・C++17・float特性とatomic利用を確認し、C++ Runtime unitとrelocated package consumerを実行 | venv Pythonで `tools/dev.py check` |
 | UT-BUILD-MIN-001 | Rust1.85/edition2024で全workspaceをcompile check。minimum未確認を開発版成功で代替しない | venv Pythonで `tools/dev.py minimum` |
 | UT-BUILD-TOOLS-001 | schema 2 catalogの読込互換を維持し、schema 3の複数shardを安定順で結合する。shard patternの逸脱、空glob、重複unit名、schema 3の未解決依存、不正なcase commandを拒否する | `python -m pytest tools/tests/test_unit_catalog.py` と `tools/dev.py check` |
+| UT-BUILD-TOOLS-002 | bootstrap child environmentがhost値を保ちつつ固定値を設定する。executable解決・gate result field・JSON reportのpath/encoding/newline契約を維持する | `python -m pytest tools/tests/test_dev_support.py` |
 
 後始末はcompiler/installerの子process終了を確認し、生成物をvenv/target/out/obj/bin/egg-infoへ分離する。checkで開発wheelをrepositoryのvenvへ再導入するが、OS既定環境へinstallしない。自動再帰削除は行わず、再実行時はbuild toolの増分更新を使う。
 
@@ -24,7 +25,7 @@
 
 Windows x64で両入口を実行する。結果の正本は `.local/verification/check.json` と `minimum.json`。SHAとdirty状態、全入力hash、tool版と各gate終了codeを保持し、未commit変更をHEADに含まれる実装として報告しない。GitHub上は同じcheckout source/testを実行するworkflowを作成したが、リモートrunは未実施。
 
-2026-11-06のlocal focused確認ではUT-BUILD-TOOLS-001の9件がpassし、schema 2 catalogは170 unitとして読み込めた。2026-11-07のshard移行確認ではschema 3の12 shardを読み、170 IDとrecordをbaseline比較した。document linksは76文書/7792 local linksでpass。worktreeに固定venvとRuffがないため、bootstrap全体とRuff gateはlocalでは実行していない。
+2026-11-06のlocal focused確認ではUT-BUILD-TOOLS-001の9件がpassし、schema 2 catalogは170 unitとして読み込めた。2026-11-07のshard移行確認ではschema 3の12 shardを読み、170 IDとrecordをbaseline比較した。共通environment/process/report helperの抽出ではUT-BUILD-TOOLS-001/002の13件、`tools/dev.py --help`、170-unit catalog validation、document links 76文書/7792 local linksがpassした。worktreeに固定venvとRuffがないため、bootstrap全体とRuff gateはlocalでは実行していない。
 
 この単位はビルド環境の確認であり、要求test92TCや製品単体試験70項目の合格を意味しない。Linux/ARM/実GPU/IME/provider/native loader・署名済みartifactは未検証。正式supportのprofile lockは別に作成する。
 

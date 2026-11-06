@@ -155,7 +155,7 @@ loaderはroot manifestのglobを読み、全shardのschema、`unit_name`一意�
 
 ## 作業フェーズ
 
-進捗: phase 1のCLI 61 command・report shapeとmanifest baseline、phase 2のloader実装・focused test・bootstrap `check`接続、phase 3の170 unit/12 shard移行を完了した。旧recordの再構成比較は全件pass。既存dangling dependencyの対応先`UNIT-WRAP-CPP-007`へ1辺を修正し、root manifestと所属shardをconfig pathへ追加した。phase 4のCLI共通基盤分離へ進む。
+進捗: phase 1のCLI 61 command・report shapeとmanifest baseline、phase 2のloader実装・focused test・bootstrap `check`接続、phase 3の170 unit/12 shard移行、phase 4のCLI共通基盤分離を完了した。旧recordの再構成比較は全件pass。既存dangling dependencyの対応先`UNIT-WRAP-CPP-007`へ1辺を修正し、root manifestと所属shardをconfig pathへ追加した。environment/process/report helperを`dev_support`へ抽出し、`tools/dev.py`のcommand listと挙動を維持。13 focused tests、CLI help、catalog、document linksを確認した。次はphase 5のcommand module分割へ進む。
 
 | 順 | 作業 | 完了条件 |
 | --- | --- | --- |
