@@ -78,13 +78,19 @@ Linux/ARMのsysroot・compiler・container digestを固定するrelease profile�
 | wrappers/rust/freemvvm-sys | 共通native artifactへ接続するraw FFI。Core依存なし |
 | wrappers/rust/freemvvm | sysへ依存するsafe facade |
 | wrappers/cpp / csharp / python | 各言語のthin facadeとbuild構成 |
-| tools | 開発コマンド、文書検査、環境probe、依存pin |
+| tools | CLI entrypoint、責務別command module、文書検査、unit catalog、環境probe、依存pin |
 
 共通native runtimeをwrapperへ独立複製しない。現段階のC++ INTERFACE targetやPython importは、未実装の公開APIが使えることを意味しない。
 
+### 開発CLIとunit catalog
+
+`tools/dev.py`は既存名を保つCLI entrypointとして残し、commandの実処理は`tools/dev_support/commands/`へ責務別に置く。bootstrap、ABI、Linux Platform、Rust/C++/C#/Python wrapperごとにcommand registry・handler・report scopeを管理する。新しいcommandを追加するときは対象moduleとfocused testを更新し、entrypointへ個別処理を増やさない。
+
+`tools/units.yaml`はschemaとshard patternを持つroot manifestで、unit record本体は`tools/units/`の責務・owner別shardに置く。新しいunitは対応するshardへ追加し、`python tools/dev_support/unit_catalog.py`で重複名・依存関係・case形式を検証する。wrapper言語ごとのunitは、それぞれの言語shardへ記録する。
+
 ## CIと次の実装単位
 
-[bootstrap workflow](.github/workflows/bootstrap.yml)はpush/PRでWindows2022・Ubuntu24.04の全bootstrap gateを実行し、同じcheckout SHAの入力を使う。Actionsはfull SHAへpinし、read-only権限で起動する。未pushのローカル編集をCI実行済みとはしない。workflowは今回作成したが、リモート実行はまだ行っていない。
+[bootstrap workflow](.github/workflows/bootstrap.yml)はpush/PRでWindows2022・Ubuntu24.04の全bootstrap gateを実行し、同じcheckout SHAの入力を使う。Actionsはfull SHAへpinし、read-only権限で起動する。未pushのローカル編集をCI実行済みとはしない。CIの合否は対象branch・commit SHAのActions runを確認する。
 
 bootstrap全件を常時実行する初期構成であり、製品unitのpath mapping/依存逆閉包選択はまだ実装していない。次は[handle単位の試験設計](.docs/32_unit_test/core-runtime.md)をもとに実source/test/commandを台帳へ登録し、対応unit-testと一緒に実装する。各製品unit着手時にCI選択と同一revisionの証拠も追加する。[設計接続gap](.docs/32_unit_test/README.md)があるCommand進捗・TextBox通知等は、該当単位をreadyにする前に整合する。
 

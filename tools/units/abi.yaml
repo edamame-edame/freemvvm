@@ -1,0 +1,1588 @@
+{
+  "units": [
+    {
+      "unit_name": "UNIT-ABI-001",
+      "state": "ready",
+      "scope": "c-abi-feature-query",
+      "path": {
+        "source": [
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [],
+      "requirements": [
+        "RQ-04-006",
+        "RQ-04-010"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "API表・feature・検査順・互換性 / feature ID assignments and has_feature"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-ABI-COMP-02",
+          "TC-ABI-REP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "has_feature"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-002",
+      "state": "ready",
+      "scope": "c-abi-runtime-version-query",
+      "path": {
+        "source": [
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-001"
+      ],
+      "requirements": [
+        "RQ-04-006",
+        "RQ-04-009",
+        "RQ-04-028",
+        "RQ-04-030"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "API table / get_version and output initialization"
+        },
+        {
+          "path": ".docs/13_detail_design/build/toolchain-packages.md",
+          "version": "1.1",
+          "section": "Initial stable Runtime 1.0.0 / ABI 1"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-ABI-COMP-02",
+          "TC-ABI-REP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "get_version"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-003",
+      "state": "ready",
+      "scope": "abi-f32-f64-explicit-conversion",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/numeric.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-001"
+      ],
+      "requirements": [
+        "RQ-04-002",
+        "RQ-04-006",
+        "RQ-04-010",
+        "RQ-04-029"
+      ],
+      "design": [
+        {
+          "path": ".docs/12_design/runtime-objects/model-values.md",
+          "version": "1.0",
+          "section": "F32 value route / numeric conversion"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Numeric conversion and converter / FloatCodec"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "F32 conversion API and output initialization"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-NUM-01",
+          "TC-ABI-REP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-NUMERIC-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "numeric::tests"
+            ]
+          },
+          {
+            "id": "UT-ABI-003",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "numeric"
+            ]
+          },
+          {
+            "id": "UT-ABI-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "has_feature"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-004",
+      "state": "ready",
+      "scope": "c-abi-runtime-create",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime_handles.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-026",
+        "UNIT-ABI-001"
+      ],
+      "requirements": [
+        "RQ-04-004",
+        "RQ-04-006",
+        "RQ-04-015",
+        "RQ-04-018"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "API declaration / output and error / ownership table / panic boundary"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Runtime creation without a host-loop bridge"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01",
+          "TC-ABI-REP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-004",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "runtime_create"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-005",
+      "state": "ready",
+      "scope": "c-abi-runtime-ui-thread-query",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime_handles.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-026",
+        "UNIT-ABI-001",
+        "UNIT-ABI-004"
+      ],
+      "requirements": [
+        "RQ-04-004",
+        "RQ-04-006",
+        "RQ-04-015",
+        "RQ-04-019",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "API declaration / common status / output initialization"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Runtime identity / runtime_is_ui_thread"
+        },
+        {
+          "path": ".docs/12_design/runtime-objects/runtime.md",
+          "version": "1.0",
+          "section": "Runtime UI thread identity"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01",
+          "TC-THREAD-01",
+          "TC-ABI-REP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "runtime_is_ui_thread"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-006",
+      "state": "ready",
+      "scope": "c-abi-runtime-handle-retain",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime_handles.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-026",
+        "UNIT-ABI-001",
+        "UNIT-ABI-004"
+      ],
+      "requirements": [
+        "RQ-04-005",
+        "RQ-04-006",
+        "RQ-04-015",
+        "RQ-04-018",
+        "RQ-04-019",
+        "RQ-05-002"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "Ownership API / handle_retain / common status / output initialization"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "HandleRegistry retain preserves input token and issues a token to the same object"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01",
+          "TC-LIFE-01",
+          "TC-ABI-REP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-HANDLE-RET-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_handles::tests::retain_issues_independent_token_to_same_runtime"
+            ]
+          },
+          {
+            "id": "UT-ABI-006",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "handle_retain"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-007",
+      "state": "ready",
+      "scope": "c-abi-runtime-shutdown-and-host-loop-bridge",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/dispatcher.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/runtime_handles.rs",
+          "crates/core-runtime/src/lib.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-016",
+        "UNIT-CORE-019",
+        "UNIT-ABI-004",
+        "UNIT-ABI-005"
+      ],
+      "requirements": [
+        "RQ-04-006",
+        "RQ-05-003",
+        "RQ-06-001",
+        "RQ-06-002",
+        "RQ-06-005",
+        "RQ-06-006",
+        "RQ-06-007",
+        "RQ-06-012"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host boundary, shutdown request and completion observation"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "UI loop bridge ABI, common status and ownership"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Runtime-owned handle release"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-ABI-REP-01",
+          "TC-THREAD-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-007",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "runtime_shutdown"
+            ]
+          },
+          {
+            "id": "UT-ABI-HOST-STOP-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "runtime_shutdown"
+            ]
+          },
+          {
+            "id": "UT-RUNTIME-BRIDGE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::runtime_core_registers_bridge_once_on_owner_thread"
+            ]
+          },
+          {
+            "id": "UT-RUNTIME-BRIDGE-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "dispatcher::tests::normal_and_shutdown_work_use_distinct_host_wake_priorities"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-008",
+      "state": "complete",
+      "scope": "c-abi-runtime-post-and-dispatch-turn",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/dispatcher.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/lib.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-006",
+        "UNIT-CORE-007",
+        "UNIT-CORE-008",
+        "UNIT-ABI-007"
+      ],
+      "requirements": [
+        "RQ-04-006",
+        "RQ-05-003",
+        "RQ-05-008",
+        "RQ-06-001",
+        "RQ-06-002",
+        "RQ-06-005"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "runtime_post and UI loop connection"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "FIFO dispatch turns and host event loop boundary"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Runtime-owned handle release"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-ABI-REP-01",
+          "TC-THREAD-01",
+          "TC-LIFE-01",
+          "TC-CALLBACK-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-008",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "runtime_post"
+            ]
+          },
+          {
+            "id": "UT-RUNTIME-DISPATCH-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "dispatcher::tests::normal_and_shutdown_work_use_distinct_host_wake_priorities"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-009",
+      "state": "complete",
+      "scope": "c-abi-property-create-kind-and-release",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-038",
+        "UNIT-CORE-039",
+        "UNIT-ABI-004",
+        "UNIT-ABI-006"
+      ],
+      "requirements": [
+        "RQ-02-017",
+        "RQ-04-003",
+        "RQ-04-006",
+        "RQ-04-018",
+        "RQ-04-020",
+        "RQ-05-002",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property create, kind query, thread, and output rules"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "initial Property kind IDs and create ABI"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Runtime-owned object handles and release cleanup"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-ABI-REP-01",
+          "TC-CORE-OBJ-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-009",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "property_"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-010",
+      "state": "complete",
+      "scope": "c-abi-property-typed-getters",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/lib.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-009",
+        "UNIT-CORE-038",
+        "UNIT-CORE-039"
+      ],
+      "requirements": [
+        "RQ-02-017",
+        "RQ-04-003",
+        "RQ-04-006",
+        "RQ-04-019",
+        "RQ-04-020",
+        "RQ-04-021",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property getter signatures, thread, and output rules"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "initial Property value representations"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "caller-buffer copy and no-partial-write rules"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-ABI-REP-01",
+          "TC-CORE-OBJ-01",
+          "TC-THREAD-01",
+          "TC-OWN-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-010",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "property_get"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-011",
+      "state": "complete",
+      "scope": "c-abi-property-typed-setters",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-010",
+        "UNIT-CORE-038",
+        "UNIT-CORE-039"
+      ],
+      "requirements": [
+        "RQ-02-017",
+        "RQ-02-018",
+        "RQ-02-019",
+        "RQ-04-003",
+        "RQ-04-006",
+        "RQ-04-019",
+        "RQ-04-020",
+        "RQ-04-025",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property setter signatures and failure rules"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "fixed kinds, equivalence, and validation-before-commit"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "input copy and no partial state update"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-ABI-REP-01",
+          "TC-CORE-OBJ-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-011",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "property_set"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-012",
+      "state": "complete",
+      "scope": "c-abi-property-setter-host-scope",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-011",
+        "UNIT-CORE-049"
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-05-009",
+        "RQ-06-001",
+        "RQ-06-005"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Host event scope and Property setters"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Outermost API boundary and notification delivery"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-CALLBACK-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-012",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "property_setter_host_scope"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-013",
+      "state": "complete",
+      "scope": "c-abi-property-subscribe-cancel",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-012",
+        "UNIT-CORE-051"
+      ],
+      "requirements": [
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-008",
+        "RQ-05-009",
+        "RQ-06-001",
+        "RQ-06-005"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property生成と通知購読のC ABI / 購読と解除"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Notification queueと購読 / 終了と所有権"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "登録所有権とRuntime終了"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-CALLBACK-01",
+          "TC-ABI-REP-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-013",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "property_subscription"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-014",
+      "state": "complete",
+      "scope": "c-abi-binding-create-cancel-release",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-013",
+        "UNIT-CORE-063"
+      ],
+      "requirements": [
+        "RQ-05-002",
+        "RQ-07-002",
+        "RQ-07-003",
+        "RQ-07-011"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "BindingのC ABI / 作成と解除"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding registration lifecycle"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "Runtime ownership / shutdown cleanup"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01",
+          "TC-ABI-REP-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-BINDING-LIFECYCLE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "binding_lifecycle"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-015",
+      "state": "complete",
+      "scope": "c-abi-property-validator-registration-and-validation-error",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-064",
+        "UNIT-ABI-014"
+      ],
+      "requirements": [
+        "RQ-02-020",
+        "RQ-02-021",
+        "RQ-04-022",
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-008",
+        "RQ-07-009",
+        "RQ-07-010"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property Validator ABI / Validation Error"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "Registration closure ownership and Runtime teardown"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-BIND-INIT-REJECT-01",
+          "TC-CALLBACK-01",
+          "TC-ABI-REP-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-PROPERTY-VALIDATOR-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "property_validator"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-016",
+      "state": "complete",
+      "scope": "c-abi-binding-error-snapshot-and-subscription",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/handle_registry/registry.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-065",
+        "UNIT-ABI-015"
+      ],
+      "requirements": [
+        "RQ-05-006",
+        "RQ-05-008",
+        "RQ-07-006",
+        "RQ-07-009",
+        "RQ-07-010",
+        "RQ-07-011"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Bindingエラーの読み取りと通知"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "通知slice内の伝播"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-PROPAGATION-REJECT-01",
+          "TC-CALLBACK-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-BINDING-ERROR-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "binding_error"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-017",
+      "state": "complete",
+      "scope": "c-abi-public-header-c-cpp-compile-probes",
+      "path": {
+        "source": [
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/probes/abi_header_c.c",
+          "tools/probes/abi_header_cpp.cpp"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "DEVELOPMENT.md",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-016"
+      ],
+      "requirements": [
+        "RQ-04-002",
+        "RQ-04-003",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-04-021",
+        "RQ-04-022",
+        "RQ-04-024"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "共通型と操作宣言 / 現在export済みのABI関数"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-ABI-REP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-PUBLIC-HEADER-001",
+            "command": [
+              "cmake",
+              "--build",
+              "--preset",
+              "dev",
+              "--target",
+              "freemvvm_abi_header_probes"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-018",
+      "state": "complete",
+      "scope": "host-native-c-abi-link-load-runtime-smoke",
+      "path": {
+        "source": [
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/probes/abi_runtime_smoke.c"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "DEVELOPMENT.md",
+          "tools/dev.py",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-017"
+      ],
+      "requirements": [
+        "RQ-04-006",
+        "RQ-04-009",
+        "RQ-04-028",
+        "RQ-04-030",
+        "RQ-12-001",
+        "RQ-12-010"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "共通型と操作宣言 / version query / Runtime lifecycle"
+        },
+        {
+          "path": ".docs/13_detail_design/build/toolchain-packages.md",
+          "version": "1.1",
+          "section": "Targetとverification gate"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-ABI-COMP-01",
+          "TC-ABI-REP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-NATIVE-LINK-SMOKE-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "abi-smoke"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-019",
+      "state": "complete",
+      "scope": "host-native-cpp-c-abi-link-load-runtime-smoke",
+      "path": {
+        "source": [
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/probes/abi_cpp_runtime_smoke.cpp"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "DEVELOPMENT.md",
+          "tools/dev.py",
+          "wrappers/cpp/CMakeLists.txt",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-018"
+      ],
+      "requirements": [
+        "RQ-03-001",
+        "RQ-03-005",
+        "RQ-04-006",
+        "RQ-04-009",
+        "RQ-12-001",
+        "RQ-12-010"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "共通型と操作宣言 / version query / Runtime lifecycle"
+        },
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.1",
+          "section": "C ABIへの薄いbinding"
+        },
+        {
+          "path": ".docs/13_detail_design/build/toolchain-packages.md",
+          "version": "1.1",
+          "section": "Targetとverification gate"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-ABI-COMP-01",
+          "TC-ABI-REP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-CPP-NATIVE-LINK-SMOKE-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "abi-smoke-cpp"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-020",
+      "state": "complete",
+      "scope": "c-abi-control-properties-tree-layout-and-command-association",
+      "path": {
+        "source": [
+          "crates/c-abi/include/freemvvm/abi.h",
+          "crates/c-abi/src/lib.rs",
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/ui_controls.rs",
+          "tools/probes/abi_header_c.c",
+          "tools/probes/abi_header_cpp.cpp",
+          "tools/probes/abi_runtime_smoke.c"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "CMakeLists.txt",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-070",
+        "UNIT-CORE-071",
+        "UNIT-CORE-072",
+        "UNIT-ABI-019"
+      ],
+      "requirements": [
+        "RQ-04-006",
+        "RQ-04-025",
+        "RQ-05-002",
+        "RQ-05-003",
+        "RQ-06-001",
+        "RQ-09-001",
+        "RQ-09-003",
+        "RQ-09-004",
+        "RQ-09-005",
+        "RQ-09-006",
+        "RQ-09-007",
+        "RQ-09-043",
+        "RQ-09-044",
+        "RQ-09-045",
+        "RQ-10-003"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "初期UI ControlのC ABI操作 / レビュー用C宣言・生成・所有・失敗"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.1",
+          "section": "基本Controlの型と責務・実装規則"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "Tree操作・Layout設定・dirty invalidation"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-VERT-01",
+          "TC-TREE-01",
+          "TC-LAYOUT-01",
+          "TC-OWN-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CONTROL-ABI-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-abi",
+              "controls_abi_creates_properties_connects_tree_and_retains_button_command"
+            ]
+          },
+          {
+            "id": "UT-TREE-ABI-001",
+            "command": [
+              "ctest",
+              "--preset",
+              "dev",
+              "-R",
+              "abi.runtime-smoke"
+            ]
+          },
+          {
+            "id": "UT-LAYOUT-ABI-001",
+            "command": [
+              "cmake",
+              "--build",
+              "--preset",
+              "dev",
+              "--target",
+              "freemvvm_abi_header_probes"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-021",
+      "state": "complete",
+      "scope": "c-abi-focus-window-peer-close-request-and-feature-advertisement",
+      "path": {
+        "source": [
+          "crates/c-abi/include/freemvvm/abi.h",
+          "crates/c-abi/src/lib.rs",
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/ui_controls.rs",
+          "crates/core-runtime/src/ui_window.rs",
+          "tools/probes/abi_header_c.c",
+          "tools/probes/abi_header_cpp.cpp",
+          "tools/probes/abi_runtime_smoke.c",
+          "tools/probes/abi_cpp_runtime_smoke.cpp"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "CMakeLists.txt",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-020",
+        "UNIT-CORE-072"
+      ],
+      "requirements": [
+        "RQ-05-002",
+        "RQ-06-001",
+        "RQ-09-046",
+        "RQ-09-069",
+        "RQ-09-070",
+        "RQ-09-071",
+        "RQ-11-020"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "初期UI ControlのC ABI操作 / Focus・Window peer・close request・feature"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/input-focus.md",
+          "version": "1.1",
+          "section": "Focus状態と遷移"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/abstraction.md",
+          "version": "1.1",
+          "section": "Window peerとsurface状態"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-FOCUS-01",
+          "TC-PLAT-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WINDOW-ABI-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "controls_abi"
+            ]
+          },
+          {
+            "id": "UT-WINDOW-ABI-CORE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "close_subscription_defers_resolves_and_declines_when_last_owner_is_released"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-ABI-022",
+      "state": "complete",
+      "scope": "c-abi-input-feature-callback-borrowed-event-payload-and-handled-contract",
+      "path": {
+        "source": [
+          "crates/c-abi/include/freemvvm/abi.h",
+          "crates/c-abi/src/lib.rs",
+          "crates/core-runtime/src/lib.rs",
+          "tools/probes/abi_header_c.c",
+          "tools/probes/abi_header_cpp.cpp",
+          "tools/probes/abi_runtime_smoke.c",
+          "tools/probes/abi_cpp_runtime_smoke.cpp"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "CMakeLists.txt",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-021",
+        "UNIT-CORE-091"
+      ],
+      "requirements": [
+        "RQ-04-006",
+        "RQ-04-008",
+        "RQ-04-010",
+        "RQ-05-002",
+        "RQ-05-009",
+        "RQ-06-001",
+        "RQ-09-068"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.6 approved",
+          "section": "UI Input event subscription and Input event value table"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-INPUT-01",
+          "TC-CALLBACK-01",
+          "TC-ABI-EXPOSE-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-INPUT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "input_event",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-ABI-INPUT-001",
+            "command": [
+              "ctest",
+              "--preset",
+              "dev",
+              "-R",
+              "abi.runtime-smoke"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

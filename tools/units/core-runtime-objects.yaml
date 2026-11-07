@@ -1,0 +1,2584 @@
+{
+  "units": [
+    {
+      "unit_name": "UNIT-CORE-001",
+      "state": "ready",
+      "scope": "handle-token-issuer-only",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/handle_registry/token.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001"
+      ],
+      "requirements": [
+        "RQ-04-018"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.1",
+          "section": "handle登録と検証"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-HANDLE-ALLOC-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "handle_registry::token::tests::issues_nonzero_monotonic_tokens_without_reuse"
+            ]
+          },
+          {
+            "id": "UT-HANDLE-ALLOC-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "handle_registry::token::tests::issues_maximum_token_once_then_stays_exhausted"
+            ]
+          },
+          {
+            "id": "UT-HANDLE-ALLOC-003",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "handle_registry::token::tests::concurrent_issuance_returns_unique_tokens"
+            ]
+          },
+          {
+            "id": "UT-HANDLE-ALLOC-004",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "handle_registry::token::tests::poisoned_synchronization_fails_closed"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-002",
+      "state": "ready",
+      "scope": "opaque-handle-token-value",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/handle_registry/handle.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-001"
+      ],
+      "requirements": [
+        "RQ-04-004"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "ABI型と基本関数"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.1",
+          "section": "handle登録と検証"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-HANDLE-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "handle_registry::token::tests::handle_token_"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-003",
+      "state": "ready",
+      "scope": "handle-entry-value-semantics",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/handle_registry/entry.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-001",
+        "UNIT-CORE-002"
+      ],
+      "requirements": [
+        "RQ-04-019",
+        "RQ-05-002"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.1",
+          "section": "handle登録と検証 / クラス設計の補足"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01",
+          "TC-LIFE-01",
+          "TC-OWN-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-HANDLE-ENTRY-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "handle_registry::entry::tests::handle_entry_matches_kind_and_runtime_without_consuming_owner"
+            ]
+          },
+          {
+            "id": "UT-HANDLE-ENTRY-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "handle_registry::entry::tests::handle_entry_consumes_one_owner_reference_once"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-004",
+      "state": "ready",
+      "scope": "runtime-handle-registry-map-pins-and-final-release",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/handle_registry/registry.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-001",
+        "UNIT-CORE-002",
+        "UNIT-CORE-003"
+      ],
+      "requirements": [
+        "RQ-04-018",
+        "RQ-04-019",
+        "RQ-05-002",
+        "RQ-05-010",
+        "RQ-05-011",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-06-002",
+        "RQ-06-003"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "handle登録と検証 / Runtime objectのthread-safe ownerとUI state分離"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "UI dispatcher / shutdown cleanup"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01",
+          "TC-LIFE-01",
+          "TC-OWN-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-HANDLE-REG-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "handle_registry::registry::tests::register_publishes_complete_runtime_entry"
+            ]
+          },
+          {
+            "id": "UT-HANDLE-PIN-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "handle_registry::registry::tests::pin_defers_ui_cleanup_until_last_pin"
+            ]
+          },
+          {
+            "id": "UT-HANDLE-RELEASE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "handle_registry::registry::tests::worker_final_release_is_accepted_and_drained_on_ui_thread"
+            ]
+          },
+          {
+            "id": "UT-HANDLE-RELEASE-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "handle_registry::registry::tests::failed_cleanup_reservation_preserves_live_token"
+            ]
+          },
+          {
+            "id": "UT-HANDLE-RELEASE-003",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "handle_registry::registry::tests::retain_release_race_is_linearizable_without_resurrection"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-005",
+      "state": "ready",
+      "scope": "runtime-cleanup-queue-shutdown-drain",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-004"
+      ],
+      "requirements": [
+        "RQ-05-003",
+        "RQ-06-005",
+        "RQ-06-006",
+        "RQ-06-012"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Runtime objectのthread-safe ownerとUI state分離 / shutdown境界"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "UI dispatcher / shutdown cleanup"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-HANDLE-SHUTDOWN-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::shutdown_drains_reserved_finalizers_before_closed"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-006",
+      "state": "ready",
+      "scope": "runtime-dispatch-queue-fifo-wake-coordination",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/dispatcher.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-005"
+      ],
+      "requirements": [
+        "RQ-05-009",
+        "RQ-06-001",
+        "RQ-06-002"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "UI dispatcherとhost loop / Queueとwake-upの状態"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01",
+          "TC-CALLBACK-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "dispatcher::tests::fifo_single_item_turns_are_not_reentrant"
+            ]
+          },
+          {
+            "id": "UT-RUNTIME-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "dispatcher::tests::posts_at_wake_and_drain_boundaries_are_not_lost"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-007",
+      "state": "ready",
+      "scope": "runtime-dispatch-work-ownership-and-shutdown-cancellation",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/dispatcher.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-006"
+      ],
+      "requirements": [
+        "RQ-05-008",
+        "RQ-06-002"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "UI dispatcherとhost loop / 失敗と所有権"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CALLBACK-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-003",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "dispatcher::tests::post_failure_preserves_work_and_shutdown_destroys_accepted_work_once"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-008",
+      "state": "ready",
+      "scope": "runtime-dispatch-shutdown-priority-and-queued-work-cancellation",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/dispatcher.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-007"
+      ],
+      "requirements": [
+        "RQ-06-005",
+        "RQ-06-006"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "UI dispatcherとhost loop / shutdown control task"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01",
+          "TC-CALLBACK-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-004",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "dispatcher::tests::shutdown_request_precedes_queued_work_and_cancels_it"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-009",
+      "state": "ready",
+      "scope": "runtime-shutdown-completion-record-and-host-unavailable-retry",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-005",
+        "UNIT-CORE-008"
+      ],
+      "requirements": [
+        "RQ-06-007",
+        "RQ-06-012"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host境界・終了要求・完了観測 / CompletionRecord"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-010",
+      "state": "ready",
+      "scope": "runtime-shutdown-cleanup-to-completion-commit",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-005",
+        "UNIT-CORE-009"
+      ],
+      "requirements": [
+        "RQ-06-006",
+        "RQ-06-012"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host境界・終了要求・完了観測 / completion commit"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-011",
+      "state": "ready",
+      "scope": "runtime-host-registration-event-scopes-and-stop-notification",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-009",
+        "UNIT-CORE-010"
+      ],
+      "requirements": [
+        "RQ-06-007",
+        "RQ-06-012"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host/contextとcompletionの所有補足 / HostScopeの対応"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-012",
+      "state": "ready",
+      "scope": "host-outer-event-boundary-dispatches-priority-shutdown",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/dispatcher.rs",
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-008",
+        "UNIT-CORE-011"
+      ],
+      "requirements": [
+        "RQ-06-005",
+        "RQ-06-006"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host/contextとcompletionの所有補足 / end_eventの最外境界"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01",
+          "TC-CALLBACK-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-004",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "dispatcher::tests::shutdown_request_precedes_queued_work_and_cancels_it"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-013",
+      "state": "ready",
+      "scope": "host-boundary-runtime-cleanup-completion-commit",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-010",
+        "UNIT-CORE-012"
+      ],
+      "requirements": [
+        "RQ-05-006",
+        "RQ-06-005",
+        "RQ-06-006",
+        "RQ-06-012"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host境界・終了要求・完了観測 / completion commit"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-014",
+      "state": "ready",
+      "scope": "host-serialized-shutdown-admission-and-priority-wake",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/dispatcher.rs",
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-009",
+        "UNIT-CORE-011",
+        "UNIT-CORE-012"
+      ],
+      "requirements": [
+        "RQ-06-003",
+        "RQ-06-006",
+        "RQ-06-012"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host境界・終了要求・完了観測 / Prepared → Pending"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-015",
+      "state": "ready",
+      "scope": "same-host-shutdown-retry-rearms-dispatcher-wake",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/dispatcher.rs",
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-009",
+        "UNIT-CORE-011",
+        "UNIT-CORE-014"
+      ],
+      "requirements": [
+        "RQ-06-007",
+        "RQ-06-012"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host境界・終了要求・完了観測 / HostUnavailable → Pending"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-016",
+      "state": "ready",
+      "scope": "shutdown-mode-waits-only-on-worker-thread",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-009",
+        "UNIT-CORE-011",
+        "UNIT-CORE-014",
+        "UNIT-CORE-015"
+      ],
+      "requirements": [
+        "RQ-06-005",
+        "RQ-06-007",
+        "RQ-06-012"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host境界・終了要求・完了観測 / mode=ASYNC/SYNC"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01",
+          "TC-CALLBACK-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-017",
+      "state": "ready",
+      "scope": "graceful-host-stop-drains-pending-runtime-shutdown",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-012",
+        "UNIT-CORE-013",
+        "UNIT-CORE-016"
+      ],
+      "requirements": [
+        "RQ-05-006",
+        "RQ-06-006",
+        "RQ-06-012"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host/contextとcompletionの所有補足 / HostScopeの対応"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-018",
+      "state": "ready",
+      "scope": "coalesced-shutdown-completes-every-accepted-request",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-013",
+        "UNIT-CORE-014",
+        "UNIT-CORE-017"
+      ],
+      "requirements": [
+        "RQ-06-006",
+        "RQ-06-012"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host境界・終了要求・完了観測 / CompletionRecord"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-019",
+      "state": "ready",
+      "scope": "owned-shutdown-request-observation-receipt",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-009",
+        "UNIT-CORE-016",
+        "UNIT-CORE-018"
+      ],
+      "requirements": [
+        "RQ-06-012"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Host境界・終了要求・完了観測 / ShutdownRequest"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::completion_record_distinguishes_host_stop_and_allows_ui_retry"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-020",
+      "state": "ready",
+      "scope": "release-closed-runtime-shell-from-worker",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-005",
+        "UNIT-CORE-004"
+      ],
+      "requirements": [
+        "RQ-05-003",
+        "RQ-05-010"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Runtime objectのthread-safe ownerとUI state分離 / shutdown境界"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "状態遷移とregistration cleanup / Shutdown時の状態遷移"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-HANDLE-SHUTDOWN-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::closed_runtime_shell_releases_on_worker_without_ui_cleanup"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-021",
+      "state": "ready",
+      "scope": "runtime-ui-thread-identity-context",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/dispatcher.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-006",
+        "UNIT-CORE-020"
+      ],
+      "requirements": [
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Runtime作成時のUI thread identity / RuntimeState responsibilities"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-THREAD-CONTEXT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::ui_thread_context_distinguishes_creator_from_worker"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-022",
+      "state": "ready",
+      "scope": "runtime-ui-thread-context-propagation",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/dispatcher.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-021"
+      ],
+      "requirements": [
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Runtime作成時のUI thread identity / RuntimeState responsibilities"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-THREAD-CONTEXT-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "dispatcher::tests::injected_ui_thread_context_overrides_component_creation_thread"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-023",
+      "state": "ready",
+      "scope": "runtime-owner-bridge-free-creation-and-registration",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/dispatcher.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-020",
+        "UNIT-CORE-022"
+      ],
+      "requirements": [
+        "RQ-06-001",
+        "RQ-06-002"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "RuntimeState responsibilities / Dispatcher"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "UI loop bridge registration"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-OWNER-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::runtime_core_registers_bridge_once_on_owner_thread"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-024",
+      "state": "ready",
+      "scope": "runtime-core-unique-identity-issuance",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/handle_registry.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-023"
+      ],
+      "requirements": [
+        "RQ-04-018",
+        "RQ-04-019"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Runtime identity / safe token issuance"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Runtime identity ownership"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-IDENTITY-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::runtime_core_identities_are_unique_across_concurrent_creation"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-025",
+      "state": "ready",
+      "scope": "runtime-bound-core-object-control-factory",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-024",
+        "UNIT-CORE-005"
+      ],
+      "requirements": [
+        "RQ-04-019",
+        "RQ-05-010",
+        "RQ-06-003"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Runtime identity / CoreObjectControl / HandleRegistry"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Runtime ownership / RuntimeCleanupQueue"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-OBJECT-CONTROL-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::runtime_core_binds_object_control_to_its_identity_and_cleanup_queue"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-026",
+      "state": "ready",
+      "scope": "runtime-handle-registration-and-borrowed-resolution",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime_handles.rs",
+          "crates/core-runtime/src/handle_registry.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-024",
+        "UNIT-CORE-025"
+      ],
+      "requirements": [
+        "RQ-04-004",
+        "RQ-04-018",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.1",
+          "section": "opaque ui_handle / runtime_create"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.1",
+          "section": "Runtime identity / runtime_is_ui_thread"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-HANDLE-REG-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime_handles::tests"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-027",
+      "state": "complete",
+      "scope": "core-owned-utf8-value",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/value.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [],
+      "requirements": [
+        "RQ-04-003",
+        "RQ-04-020",
+        "RQ-05-004"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "UTF-8 and buffer ownership rules"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-ABI-REP-01",
+          "TC-OWN-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-VALUE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "value::tests::owned_utf8"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-028",
+      "state": "complete",
+      "scope": "core-utf8-caller-buffer-copy",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/value.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-027"
+      ],
+      "requirements": [
+        "RQ-04-021"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "UTF-8 and buffer usage rules"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "UTF-8 and caller buffer"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-OWN-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-VALUE-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "value::tests::owned_utf8_buffer"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-029",
+      "state": "complete",
+      "scope": "core-f64-value-equivalence",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/value.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-027"
+      ],
+      "requirements": [
+        "RQ-02-018",
+        "RQ-02-020"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "F64 equivalence and ValueStorage"
+        },
+        {
+          "path": ".docs/12_design/runtime-objects/model-values.md",
+          "version": "1.0",
+          "section": "kind-specific numeric comparison"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-VALUE-003",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "value::tests::f64_equivalent"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-030",
+      "state": "complete",
+      "scope": "typed-value-equivalence-bool-i64-utf8-f64",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/value.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-027",
+        "UNIT-CORE-029"
+      ],
+      "requirements": [
+        "RQ-02-017",
+        "RQ-02-018",
+        "RQ-02-020"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "ValueStorage typed values and equivalence"
+        },
+        {
+          "path": ".docs/12_design/runtime-objects/model-values.md",
+          "version": "1.0",
+          "section": "typed value kinds and equivalence"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-VALUE-004",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "value::tests::typed_value"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-031",
+      "state": "complete",
+      "scope": "decimal-value-range-and-equivalence",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/value.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-027",
+        "UNIT-CORE-029",
+        "UNIT-CORE-030"
+      ],
+      "requirements": [
+        "RQ-02-017",
+        "RQ-02-019"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Decimal range and numeric equivalence"
+        },
+        {
+          "path": ".docs/12_design/runtime-objects/model-values.md",
+          "version": "1.0",
+          "section": "typed value areas and representation-preserving comparison"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-VALUE-005",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "value::tests::decimal"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-032",
+      "state": "complete",
+      "scope": "typed-value-storage-commit",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/value.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-030",
+        "UNIT-CORE-031"
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-02-018",
+        "RQ-02-019",
+        "RQ-02-020"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "ValueStorage prepare/equivalent/commit/read"
+        },
+        {
+          "path": ".docs/12_design/runtime-objects/model-values.md",
+          "version": "1.0",
+          "section": "Property candidate validation and value commit"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-VALUE-006",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "value::tests::value_storage"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-034",
+      "state": "complete",
+      "scope": "runtime-ui-thread-object-store",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/object_store.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-003",
+        "UNIT-CORE-004"
+      ],
+      "requirements": [
+        "RQ-02-001",
+        "RQ-04-018",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "UiObjectStore and generation-checked ObjectIdentity"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "Runtime UI thread context"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-OBJECT-STORE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "object_store::tests"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-035",
+      "state": "complete",
+      "scope": "runtime-ui-object-store-clear",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/object_store.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-034"
+      ],
+      "requirements": [
+        "RQ-02-001",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "UiObjectStore UI-thread-only state destruction"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "Runtime shutdown drains tracked UI cleanup before Closed"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-OBJECT-STORE-002",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "object_store::tests"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-036",
+      "state": "complete",
+      "scope": "runtime-core-ui-state-shutdown-cleanup",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/object_store.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-034",
+        "UNIT-CORE-035"
+      ],
+      "requirements": [
+        "RQ-02-001",
+        "RQ-05-010",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "Runtime-owned UiObjectStore"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "Runtime shutdown cleanup before Closed"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-UI-STORE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::runtime_core_clears_ui_object_store_before_closed"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-037",
+      "state": "complete",
+      "scope": "runtime-object-registration-and-cleanup",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/handle_registry/registry.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-026",
+        "UNIT-CORE-025",
+        "UNIT-CORE-034",
+        "UNIT-CORE-035",
+        "UNIT-CORE-036"
+      ],
+      "requirements": [
+        "RQ-02-001",
+        "RQ-05-010",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "CoreObjectControl, HandleRegistry registration, final-release cleanup ticket, and UiObjectStore"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "UI-thread object creation and Runtime cleanup queue"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CORE-OBJ-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-RUNTIME-OBJECT-REG-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::runtime_core_registers_ui_object_and_routes_cleanup"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-038",
+      "state": "complete",
+      "scope": "core-property-state",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/property.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/lib.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-037",
+        "UNIT-CORE-004"
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-02-018",
+        "RQ-02-019",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/12_design/runtime-objects/model-values.md",
+          "version": "1.0",
+          "section": "型別値領域とProperty commit"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.2",
+          "section": "ValueStorage and Runtime-owned UiObjectStore"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-THREAD-01",
+          "TC-CORE-OBJ-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "runtime::tests::property_state_registration_read_and_update"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-050",
+      "state": "complete",
+      "scope": "runtime-property-subscription-shutdown-cleanup",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-049"
+      ],
+      "requirements": [
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-008",
+        "RQ-06-005"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "Shutdown時の状態遷移とregistration cleanup"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "終了と所有権 / shutdown優先"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-CALLBACK-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-NOTIFY-006",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "property_notification_shutdown_cancels_pending"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-051",
+      "state": "complete",
+      "scope": "runtime-property-subscription-owner-teardown",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/property.rs",
+          "crates/core-runtime/src/dispatcher.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-050"
+      ],
+      "requirements": [
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-008",
+        "RQ-06-001",
+        "RQ-06-005"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "登録所有権とRuntime終了"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "終了と所有権 / owner Property teardown"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-CALLBACK-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-NOTIFY-007",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "property_owner_teardown"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-064",
+      "state": "complete",
+      "scope": "runtime-property-validator-lock-free-candidate-check",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/property.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/core-runtime.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-063"
+      ],
+      "requirements": [
+        "RQ-02-020",
+        "RQ-02-021"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property Validator ABI / setter validation order"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/runtime.md",
+          "version": "1.2",
+          "section": "UI-thread callback boundary and registration reentrancy"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PROP-01",
+          "TC-CALLBACK-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PROPERTY-VALIDATOR-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "property_validator"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-067",
+      "state": "complete",
+      "scope": "core-object-control-logical-tree-owner-lifecycle",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/handle_registry/registry.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-003",
+        "UNIT-CORE-034",
+        "UNIT-CORE-036"
+      ],
+      "requirements": [
+        "RQ-02-013",
+        "RQ-04-025",
+        "RQ-05-002",
+        "RQ-05-003",
+        "RQ-06-001",
+        "RQ-09-003",
+        "RQ-09-043",
+        "RQ-09-044"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.3",
+          "section": "Tree内部ownerとpublic参照の独立管理"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "UI要素の所属と寿命 / ランタイムとの所有境界"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-TREE-01",
+          "TC-LIFE-01",
+          "TC-OWN-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-TREE-OWNER-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "tree_owner_"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-070",
+      "state": "complete",
+      "scope": "initial-ui-control-state-and-core-owned-properties",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/ui_controls.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/handle_registry/registry.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-036",
+        "UNIT-CORE-069"
+      ],
+      "requirements": [
+        "RQ-04-006",
+        "RQ-04-025",
+        "RQ-05-002",
+        "RQ-05-003",
+        "RQ-06-001",
+        "RQ-09-001",
+        "RQ-09-004",
+        "RQ-09-005",
+        "RQ-09-006",
+        "RQ-10-003"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "初期UI ControlのC ABI操作 / 生成・所有・失敗の共通契約"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.1",
+          "section": "Control契約の一覧 / 実装規則"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "UI要素の所属と寿命"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-VERT-01",
+          "TC-LIFE-01",
+          "TC-OWN-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CONTROL-ABI-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "ui_controls::tests"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-071",
+      "state": "complete",
+      "scope": "window-content-and-stack-panel-logical-tree-operations",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/ui_tree.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/handle_registry/registry.rs",
+          "crates/core-runtime/src/ui_controls.rs",
+          "crates/core-runtime/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-068",
+        "UNIT-CORE-070"
+      ],
+      "requirements": [
+        "RQ-04-025",
+        "RQ-09-003",
+        "RQ-09-043",
+        "RQ-09-044"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "初期UI ControlのC ABI操作 / Window contentとContainer child操作"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "UI要素の所属と寿命 / 所属状態と操作ごとの失敗境界"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/objects-values.md",
+          "version": "1.3",
+          "section": "Tree内部ownerとpublic参照の独立管理"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-TREE-01",
+          "TC-VERT-01",
+          "TC-OWN-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-TREE-ABI-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "ui_controls::tests"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-CORE-072",
+      "state": "complete",
+      "scope": "stack-panel-layout-focus-and-window-close-core-state",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/ui_controls.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/ui_tree.rs",
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/object_store.rs",
+          "crates/core-runtime/src/ui_focus.rs",
+          "crates/core-runtime/src/ui_window.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-runtime-objects.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-070",
+        "UNIT-CORE-071"
+      ],
+      "requirements": [
+        "RQ-09-007",
+        "RQ-09-045",
+        "RQ-09-046",
+        "RQ-09-067",
+        "RQ-09-069",
+        "RQ-09-070",
+        "RQ-09-071",
+        "RQ-11-020"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "初期UI ControlのC ABI操作 / StackPanel設定・Window peer・close判断"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.1",
+          "section": "Window peer・close request / StackPanel・Focus"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "StackPanel配置 / Layout invalidation / Focus"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/input-focus.md",
+          "version": "1.1",
+          "section": "Focus状態と遷移"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/abstraction.md",
+          "version": "1.1",
+          "section": "Window peerとsurface状態"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LAYOUT-01",
+          "TC-PLAT-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-LAYOUT-ABI-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "ui_controls::tests"
+            ]
+          },
+          {
+            "id": "UT-WINDOW-ABI-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "ui_window::tests"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

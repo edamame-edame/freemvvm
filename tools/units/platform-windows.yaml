@@ -1,0 +1,413 @@
+{
+  "units": [
+    {
+      "unit_name": "UNIT-PLATFORM-WINDOWS-001",
+      "state": "complete",
+      "scope": "windows-target-factory-composition-and-win32-window-peer-open-resize-generation-close-reopen-shutdown",
+      "path": {
+        "source": [
+          "crates/platform-windows/src/lib.rs",
+          "crates/platform-windows/src/peer.rs",
+          "crates/platform-windows/src/win32.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/c-abi/Cargo.toml",
+          "crates/platform-windows/Cargo.toml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units.yaml",
+          "tools/units/platform-windows.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-073",
+        "UNIT-CORE-074"
+      ],
+      "requirements": [
+        "RQ-09-001",
+        "RQ-11-004",
+        "RQ-11-009",
+        "RQ-11-020",
+        "RQ-11-022",
+        "RQ-11-024"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.6 approved",
+          "section": "Windows peer, native surface ownership, generation and lifecycle"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LIFE-01",
+          "TC-PLAT-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-PLATFORM-WINDOWS-PEER-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-windows",
+              "platform_windows_peer_",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-PLATFORM-WINDOWS-002",
+      "state": "complete",
+      "scope": "windows-direct2d-render-of-core-scene-background-scale-clip-fillrect-and-frame-completion",
+      "path": {
+        "source": [
+          "crates/platform-windows/src/renderer.rs",
+          "crates/platform-windows/src/win32.rs",
+          "crates/platform-windows/src/peer.rs",
+          "crates/platform-windows/src/lib.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/platform-windows/Cargo.toml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units.yaml",
+          "tools/units/platform-windows.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-074",
+        "UNIT-CORE-075",
+        "UNIT-PLATFORM-WINDOWS-001"
+      ],
+      "requirements": [
+        "RQ-09-067",
+        "RQ-11-008",
+        "RQ-11-019",
+        "RQ-11-020",
+        "RQ-11-022"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.6 approved",
+          "section": "Core SceneSnapshot, renderer factory and Direct2D backend boundary"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PLAT-01",
+          "TC-LAYOUT-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-PLATFORM-WINDOWS-RENDER-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-windows",
+              "platform_windows_render_",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-PLATFORM-WINDOWS-003",
+      "state": "complete",
+      "scope": "windows-directwrite-render-of-approved-glyph-run-snapshot-and-text-renderer-resource-lifecycle",
+      "path": {
+        "source": [
+          "crates/platform-windows/src/text.rs",
+          "crates/platform-windows/src/renderer.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/platform-windows/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/platform-windows.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-PLATFORM-WINDOWS-002",
+        "UNIT-CORE-088"
+      ],
+      "requirements": [
+        "RQ-09-053",
+        "RQ-09-072",
+        "RQ-11-023"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.7 approved",
+          "section": "GlyphRun font and color contract"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PLAT-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-PLATFORM-WINDOWS-TEXT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-windows",
+              "platform_windows_text_",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-PLATFORM-WINDOWS-004",
+      "state": "complete",
+      "scope": "windows-directwrite-text-service-system-default-and-ttf-shaping-with-exact-renderer-face-registration",
+      "path": {
+        "source": [
+          "crates/platform-windows/src/text.rs",
+          "crates/platform-windows/src/renderer.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/platform-windows/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/platform-windows.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-PLATFORM-WINDOWS-003"
+      ],
+      "requirements": [
+        "RQ-09-053",
+        "RQ-09-054",
+        "RQ-09-072",
+        "RQ-11-023"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "1.7 approved",
+          "section": "GlyphRun font and color contract"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PLAT-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-PLATFORM-WINDOWS-TEXT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-windows",
+              "platform_windows_text_",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-PLATFORM-WINDOWS-005",
+      "state": "complete",
+      "scope": "windows-window-bound-text-service-worker-dispatch-and-renderer-face-catalog-connection",
+      "path": {
+        "source": [
+          "crates/platform-windows/src/lib.rs",
+          "crates/platform-windows/src/peer.rs",
+          "crates/platform-windows/src/win32.rs",
+          "crates/platform-windows/src/renderer.rs",
+          "crates/platform-windows/src/text.rs"
+        ],
+        "config": [
+          "tools/units.yaml",
+          "crates/platform-windows/Cargo.toml",
+          "tools/units/platform-windows.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-089",
+        "UNIT-PLATFORM-WINDOWS-004"
+      ],
+      "requirements": [
+        "RQ-06-001",
+        "RQ-06-002",
+        "RQ-09-053",
+        "RQ-09-072",
+        "RQ-09-075",
+        "RQ-11-023"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "2.1 approved",
+          "section": "Window-bound TextService and Windows worker ownership"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-PLAT-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-PLATFORM-WINDOWS-TEXT-FLOW-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-windows",
+              "platform_windows_text_flow",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-PLATFORM-WINDOWS-006",
+      "state": "complete",
+      "scope": "windows-wm-close-intent-dispatch-and-generation-safe-peer-close-command",
+      "path": {
+        "source": [
+          "crates/platform-windows/src/lib.rs",
+          "crates/platform-windows/src/peer.rs",
+          "crates/platform-windows/src/win32.rs"
+        ],
+        "config": [
+          "tools/units.yaml",
+          "crates/platform-windows/Cargo.toml",
+          "tools/units/platform-windows.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-090",
+        "UNIT-PLATFORM-WINDOWS-001",
+        "UNIT-PLATFORM-WINDOWS-005"
+      ],
+      "requirements": [
+        "RQ-09-071",
+        "RQ-11-020"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "2.2 approved",
+          "section": "Windows native close intent and Core request bridge"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LIFE-01",
+          "TC-PLAT-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-PLATFORM-WINDOWS-CLOSE-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-windows",
+              "platform_windows_close_intent",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-PLATFORM-WINDOWS-007",
+      "state": "planned",
+      "scope": "windows-native-key-text-pointer-and-focus-input-message-mapping-to-core-sink",
+      "path": {
+        "source": [
+          "crates/platform-windows/src/lib.rs",
+          "crates/platform-windows/src/peer.rs",
+          "crates/platform-windows/src/win32.rs",
+          "crates/platform-windows/tests/**/*.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/platform-windows/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/platform-windows.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-091",
+        "UNIT-ABI-022",
+        "UNIT-PLATFORM-WINDOWS-006"
+      ],
+      "requirements": [
+        "RQ-06-001",
+        "RQ-09-010",
+        "RQ-09-046",
+        "RQ-09-068",
+        "RQ-09-049"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "2.4 approved",
+          "section": "Windows native input mapping and generation-aware Core bridge"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/abstraction.md",
+          "version": "1.1 approved",
+          "section": "Platform input delivery boundary"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-INPUT-01",
+          "TC-FOCUS-01",
+          "TC-IME-01",
+          "TC-PLAT-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-PLATFORM-WINDOWS-INPUT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-platform-windows",
+              "platform_windows_input",
+              "--locked"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

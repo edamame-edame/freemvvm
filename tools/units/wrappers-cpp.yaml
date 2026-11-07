@@ -1,0 +1,863 @@
+{
+  "units": [
+    {
+      "unit_name": "UNIT-WRAP-CPP-001",
+      "state": "ready",
+      "scope": "cpp-runtime-result-shutdown-and-failed-release-supervisor",
+      "path": {
+        "source": [
+          "wrappers/cpp/include/freemvvm/runtime.hpp",
+          "wrappers/cpp/src/runtime.cpp",
+          "wrappers/cpp/src/runtime_internal.hpp",
+          "wrappers/cpp/tests/runtime_tests.cpp",
+          "tools/probes/abi_cpp_runtime_smoke.cpp",
+          "tools/dev.py"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "wrappers/cpp/CMakeLists.txt",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/units.yaml",
+          "tools/units/wrappers-cpp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-019"
+      ],
+      "requirements": [
+        "RQ-03-014",
+        "RQ-04-006",
+        "RQ-04-016",
+        "RQ-05-012",
+        "RQ-06-012",
+        "RQ-12-004"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.2",
+          "section": "Runtime最小公開APIとcleanup supervisor"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Runtime lifecycle / handle release"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-WRAP-CPP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CPP-RT-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-runtime-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CPP-002",
+      "state": "ready",
+      "scope": "cpp-property-bool-i64-create-get-set-and-owned-cleanup",
+      "path": {
+        "source": [
+          "wrappers/cpp/include/freemvvm/runtime.hpp",
+          "wrappers/cpp/include/freemvvm/property.hpp",
+          "wrappers/cpp/src/runtime.cpp",
+          "wrappers/cpp/src/runtime_internal.hpp",
+          "wrappers/cpp/tests/property_tests.cpp",
+          "wrappers/cpp/tests/package_consumer/main.cpp",
+          "tools/dev.py"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "wrappers/cpp/CMakeLists.txt",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/units.yaml",
+          "tools/units/wrappers-cpp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-019",
+        "UNIT-WRAP-CPP-001",
+        "UNIT-PKG-CPP-001"
+      ],
+      "requirements": [
+        "RQ-02-001",
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.2",
+          "section": "Property<T>::get/set / 値型mapping"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property BOOL/I64 create/get/setとhandle release"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-WRAP-CPP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CPP-PROP-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-property-test"
+            ]
+          },
+          {
+            "id": "UT-PKG-CPP-002",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-package-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CPP-003",
+      "state": "complete",
+      "scope": "cpp-property-utf8-byte-preserving-create-get-set-and-buffer-retry",
+      "path": {
+        "source": [
+          "wrappers/cpp/include/freemvvm/property.hpp",
+          "wrappers/cpp/src/runtime.cpp",
+          "wrappers/cpp/src/runtime_internal.hpp",
+          "wrappers/cpp/tests/property_tests.cpp",
+          "wrappers/cpp/tests/utf8_property_tests.cpp",
+          "wrappers/cpp/tests/package_consumer/main.cpp",
+          "tools/dev.py"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "wrappers/cpp/CMakeLists.txt",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/units.yaml",
+          "tools/units/wrappers-cpp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-019",
+        "UNIT-WRAP-CPP-002",
+        "UNIT-PKG-CPP-001"
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-04-020",
+        "RQ-05-012",
+        "RQ-06-001"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.2",
+          "section": "Errorと値変換 / UTF8 mapping / buffer不足時の失敗"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "UTF-8とbuffer / Property生成・取得・設定"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-ABI-REP-01",
+          "TC-WRAP-CPP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CPP-PROP-UTF8-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-property-utf8-test"
+            ]
+          },
+          {
+            "id": "UT-PKG-CPP-003",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-package-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CPP-004",
+      "state": "complete",
+      "scope": "cpp-property-f64-create-get-set-and-bit-preserving-mapping",
+      "path": {
+        "source": [
+          "wrappers/cpp/include/freemvvm/property.hpp",
+          "wrappers/cpp/src/runtime.cpp",
+          "wrappers/cpp/src/runtime_internal.hpp",
+          "wrappers/cpp/tests/property_tests.cpp",
+          "wrappers/cpp/tests/utf8_property_tests.cpp",
+          "wrappers/cpp/tests/f64_property_tests.cpp",
+          "wrappers/cpp/tests/package_consumer/main.cpp",
+          "tools/dev.py"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "wrappers/cpp/CMakeLists.txt",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/units.yaml",
+          "tools/units/wrappers-cpp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-019",
+        "UNIT-WRAP-CPP-003",
+        "UNIT-PKG-CPP-001"
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-02-018",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-12-004"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.2",
+          "section": "値型mapping / Property<T>::get/set"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Property値のC ABI / F64 Property生成・取得・設定"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "F64等価性・格納表現"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-ABI-REP-01",
+          "TC-WRAP-CPP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CPP-PROP-F64-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-property-f64-test"
+            ]
+          },
+          {
+            "id": "UT-PKG-CPP-004",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-package-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CPP-005",
+      "state": "complete",
+      "scope": "cpp-decimal64-value-and-property-canonical-bits-mapping",
+      "path": {
+        "source": [
+          "wrappers/cpp/include/freemvvm/decimal64.hpp",
+          "wrappers/cpp/include/freemvvm/property.hpp",
+          "wrappers/cpp/src/runtime.cpp",
+          "wrappers/cpp/src/runtime_internal.hpp",
+          "wrappers/cpp/tests/property_tests.cpp",
+          "wrappers/cpp/tests/utf8_property_tests.cpp",
+          "wrappers/cpp/tests/f64_property_tests.cpp",
+          "wrappers/cpp/tests/decimal64_property_tests.cpp",
+          "wrappers/cpp/tests/package_consumer/main.cpp",
+          "tools/dev.py"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "wrappers/cpp/CMakeLists.txt",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/units.yaml",
+          "tools/units/wrappers-cpp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-019",
+        "UNIT-WRAP-CPP-004",
+        "UNIT-PKG-CPP-001"
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-02-017",
+        "RQ-02-019",
+        "RQ-02-020",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-12-004"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.2",
+          "section": "値型 / Decimal64 / Property<T>::get/set"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "DECIMAL Propertyのcanonical uint64表現とcreate/get/set"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "DECIMAL encoding・範囲・数値同値性"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-ERROR-01",
+          "TC-ABI-REP-01",
+          "TC-WRAP-CPP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CPP-PROP-DECIMAL-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-property-decimal-test"
+            ]
+          },
+          {
+            "id": "UT-PKG-CPP-005",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-package-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CPP-006",
+      "state": "complete",
+      "scope": "cpp-property-notification-subscription-and-callback-failure-handler",
+      "path": {
+        "source": [
+          "wrappers/cpp/include/freemvvm/runtime.hpp",
+          "wrappers/cpp/include/freemvvm/property.hpp",
+          "wrappers/cpp/include/freemvvm/subscription.hpp",
+          "wrappers/cpp/src/runtime.cpp",
+          "wrappers/cpp/src/runtime_internal.hpp",
+          "wrappers/cpp/tests/property_subscription_tests.cpp",
+          "wrappers/cpp/tests/package_consumer/main.cpp",
+          "tools/dev.py"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "wrappers/cpp/CMakeLists.txt",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/units.yaml",
+          "tools/units/wrappers-cpp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-019",
+        "UNIT-WRAP-CPP-005",
+        "UNIT-PKG-CPP-001"
+      ],
+      "requirements": [
+        "RQ-02-002",
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-008",
+        "RQ-05-009",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-12-004"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.2",
+          "section": "callback captureとexception境界 / Runtime callback handler / Subscription"
+        },
+        {
+          "path": ".docs/13_detail_design/events/callbacks.md",
+          "version": "1.1",
+          "section": "例外隔離とnotification callbackの継続"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Notification queueと購読 / Subscription lifecycle"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-ERROR-01",
+          "TC-WRAP-CPP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CPP-PROP-SUB-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-property-subscription-test"
+            ]
+          },
+          {
+            "id": "UT-PKG-CPP-006",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-package-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CPP-007",
+      "state": "complete",
+      "scope": "cpp-property-binding-modes-lifecycle-and-error-observation",
+      "path": {
+        "source": [
+          "wrappers/cpp/include/freemvvm/binding.hpp",
+          "wrappers/cpp/include/freemvvm/property.hpp",
+          "wrappers/cpp/src/runtime.cpp",
+          "wrappers/cpp/src/runtime_internal.hpp",
+          "wrappers/cpp/tests/property_binding_tests.cpp",
+          "wrappers/cpp/tests/package_consumer/main.cpp",
+          "tools/dev.py"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "wrappers/cpp/CMakeLists.txt",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/units.yaml",
+          "tools/units/wrappers-cpp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-019",
+        "UNIT-WRAP-CPP-006",
+        "UNIT-PKG-CPP-001"
+      ],
+      "requirements": [
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-07-001",
+        "RQ-07-002",
+        "RQ-07-003",
+        "RQ-07-004",
+        "RQ-07-005",
+        "RQ-07-006",
+        "RQ-07-007",
+        "RQ-07-008",
+        "RQ-07-009",
+        "RQ-07-010",
+        "RQ-07-011",
+        "RQ-12-004"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.3",
+          "section": "Property Binding API / Binding lifecycle / Binding error snapshot and subscription"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.2",
+          "section": "Binding作成と解除 / Bindingエラーの読み取りと通知"
+        },
+        {
+          "path": ".docs/13_detail_design/events/notifications-binding.md",
+          "version": "1.1",
+          "section": "Binding registration lifecycle / 遅延検証失敗通知"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BIND-01",
+          "TC-BIND-INIT-REJECT-01",
+          "TC-BIND-PROPAGATION-REJECT-01",
+          "TC-LIFE-01",
+          "TC-THREAD-01",
+          "TC-ERROR-01",
+          "TC-WRAP-CPP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CPP-BIND-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-property-binding-test"
+            ]
+          },
+          {
+            "id": "UT-PKG-CPP-007",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-package-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CPP-008",
+      "state": "complete",
+      "scope": "cpp-async-command-worker-post-and-failure-wrapper",
+      "path": {
+        "source": [
+          "wrappers/cpp/include/freemvvm/command.hpp",
+          "wrappers/cpp/src/command.cpp",
+          "wrappers/cpp/tests/command_tests.cpp",
+          "wrappers/cpp/tests/package_consumer/main.cpp",
+          "tools/dev.py"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "wrappers/cpp/CMakeLists.txt",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/units.yaml",
+          "tools/units/wrappers-cpp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-019",
+        "UNIT-CORE-066",
+        "UNIT-WRAP-CPP-007",
+        "UNIT-PKG-CPP-001"
+      ],
+      "requirements": [
+        "RQ-02-004",
+        "RQ-03-001",
+        "RQ-03-014",
+        "RQ-04-006",
+        "RQ-04-007",
+        "RQ-04-022",
+        "RQ-05-002",
+        "RQ-05-006",
+        "RQ-05-007",
+        "RQ-05-009",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-06-002",
+        "RQ-06-004",
+        "RQ-06-008",
+        "RQ-06-009",
+        "RQ-06-010",
+        "RQ-06-011",
+        "RQ-12-004"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.4",
+          "section": "Async Commandの公開型と操作 / Command class・worker所有フロー / C ABI mapping"
+        },
+        {
+          "path": ".docs/13_detail_design/events/commands.md",
+          "version": "1.1",
+          "section": "Async Command execution, state, cancellation, completion, and ownership"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "Async Command C ABI / Runtime post ownership"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-CMD-01",
+          "TC-OWN-01",
+          "TC-THREAD-01",
+          "TC-CALLBACK-01",
+          "TC-LIFE-01",
+          "TC-ERROR-01",
+          "TC-WRAP-CPP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CPP-CMD-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-command-test"
+            ]
+          },
+          {
+            "id": "UT-WRAP-CPP-CMD-WORKER-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-command-test"
+            ]
+          },
+          {
+            "id": "UT-PKG-CPP-008",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-package-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CPP-009",
+      "state": "complete",
+      "scope": "cpp-initial-ui-controls-tree-focus-and-window-close-request-wrapper",
+      "path": {
+        "source": [
+          "wrappers/cpp/include/freemvvm/ui_controls.hpp",
+          "wrappers/cpp/src/ui_controls.cpp",
+          "wrappers/cpp/tests/ui_control_tests.cpp",
+          "wrappers/cpp/tests/package_consumer/main.cpp",
+          "tools/dev.py"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "wrappers/cpp/CMakeLists.txt",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/units.yaml",
+          "tools/units/wrappers-cpp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-020",
+        "UNIT-ABI-021",
+        "UNIT-CORE-070",
+        "UNIT-CORE-071",
+        "UNIT-CORE-072",
+        "UNIT-WRAP-CPP-008",
+        "UNIT-PKG-CPP-001"
+      ],
+      "requirements": [
+        "RQ-04-006",
+        "RQ-05-002",
+        "RQ-05-003",
+        "RQ-05-007",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-09-001",
+        "RQ-09-002",
+        "RQ-09-003",
+        "RQ-09-004",
+        "RQ-09-005",
+        "RQ-09-006",
+        "RQ-09-007",
+        "RQ-09-008",
+        "RQ-09-009",
+        "RQ-09-010",
+        "RQ-09-011",
+        "RQ-09-046",
+        "RQ-09-071",
+        "RQ-09-072",
+        "RQ-10-003",
+        "RQ-12-004"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.4",
+          "section": "UI Controlのclassとmethod / Window close-request borrowed/deferred lifetime / C ABI mapping"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.1",
+          "section": "基本Controlの型と責務 / Window close request"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/tree-layout.md",
+          "version": "1.2",
+          "section": "Tree ownership and child operations / StackPanel layout"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/input-focus.md",
+          "version": "1.1",
+          "section": "Focus request and eligibility"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.3",
+          "section": "Initial UI Control C ABI / Window peer close request"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-VERT-01",
+          "TC-TREE-01",
+          "TC-LAYOUT-01",
+          "TC-FOCUS-01",
+          "TC-OWN-01",
+          "TC-LIFE-01",
+          "TC-ERROR-01",
+          "TC-WRAP-CPP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CPP-UI-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-controls-test"
+            ]
+          },
+          {
+            "id": "UT-WRAP-CPP-WINDOW-CLOSE-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-controls-test"
+            ]
+          },
+          {
+            "id": "UT-PKG-CPP-009",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-package-test"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CPP-INPUT-001",
+      "state": "complete",
+      "scope": "cpp-input-event-borrow-facade-subscription-and-exception-boundary",
+      "path": {
+        "source": [
+          "wrappers/cpp/include/freemvvm/**/*.hpp",
+          "wrappers/cpp/src/**/*.cpp",
+          "wrappers/cpp/tests/input_event_tests.cpp",
+          "wrappers/cpp/tests/package_consumer/**"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "wrappers/cpp/CMakeLists.txt",
+          "tools/units.yaml",
+          "tools/units/wrappers-cpp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-022",
+        "UNIT-WRAP-CPP-008",
+        "UNIT-WRAP-CPP-009"
+      ],
+      "requirements": [
+        "RQ-03-001",
+        "RQ-03-005",
+        "RQ-04-008",
+        "RQ-05-002",
+        "RQ-05-009",
+        "RQ-05-012",
+        "RQ-06-001",
+        "RQ-09-068"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.5 approved",
+          "section": "Input event wrapper API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.6 approved",
+          "section": "Input event subscription ABI"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-INPUT-01",
+          "TC-CALLBACK-01",
+          "TC-LIFE-01",
+          "TC-WRAP-CPP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CPP-INPUT-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-input-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CPP-INPUT-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-input-consumer-test"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,225 @@
+{
+  "units": [
+    {
+      "unit_name": "UNIT-BUILD-001",
+      "state": "complete",
+      "scope": "development-bootstrap-only",
+      "path": {
+        "source": [
+          "tools/*.py",
+          "tools/dev_support/**/*.py",
+          "tools/tests/**/*.py",
+          "tools/probes/*"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust-toolchain.toml",
+          "DEVELOPMENT.md",
+          "tools/units.yaml",
+          "CMakeLists.txt",
+          "CMakePresets.json",
+          "global.json",
+          "pyproject.toml",
+          "crates/*/Cargo.toml",
+          "crates/*/src/lib.rs",
+          "wrappers/rust/*/Cargo.toml",
+          "wrappers/rust/*/src/lib.rs",
+          "wrappers/cpp/CMakeLists.txt",
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/FreeMvvm/AssemblyInfo.cs",
+          "wrappers/csharp/FreeMvvm/packages.lock.json",
+          "wrappers/python/pyproject.toml",
+          "wrappers/python/src/freemvvm/__init__.py",
+          "tools/requirements-dev.in",
+          "tools/requirements-dev.txt",
+          "tools/units.yaml",
+          ".github/workflows/bootstrap.yml",
+          "tools/units/build-package.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/development-bootstrap.md"
+      },
+      "depends_on": [],
+      "requirements": [
+        "RQ-03-014",
+        "RQ-12-009",
+        "RQ-11-021"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/build/toolchain-packages.md",
+          "version": "1.1",
+          "section": "Targetとverification gate / Build baseline"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-DEV-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-BUILD-ENV-001",
+            "command": [
+              "python",
+              "tools/dev.py",
+              "check"
+            ]
+          },
+          {
+            "id": "UT-BUILD-MIN-001",
+            "command": [
+              "python",
+              "tools/dev.py",
+              "minimum"
+            ]
+          },
+          {
+            "id": "UT-BUILD-TOOLS-001",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_unit_catalog.py"
+            ]
+          },
+          {
+            "id": "UT-BUILD-TOOLS-002",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_dev_support.py"
+            ]
+          },
+          {
+            "id": "UT-BUILD-CLI-001",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_dev_command_handlers.py"
+            ]
+          },
+          {
+            "id": "UT-BUILD-CLI-002",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_dev_command_handlers.py"
+            ]
+          },
+          {
+            "id": "UT-BUILD-CLI-003",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_dev_platform_command.py"
+            ]
+          },
+          {
+            "id": "UT-BUILD-CLI-004",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_dev_cpp_command.py"
+            ]
+          },
+          {
+            "id": "UT-BUILD-CLI-005",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_dev_csharp_command.py"
+            ]
+          },
+          {
+            "id": "UT-BUILD-CLI-006",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_dev_python_command.py"
+            ]
+          },
+          {
+            "id": "UT-BUILD-CLI-007",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_dev_bootstrap_command.py"
+            ]
+          },
+          {
+            "id": "UT-BUILD-CLI-008",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_command_scopes.py"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "unit_name": "UNIT-PKG-CPP-001",
+      "state": "ready",
+      "scope": "relocatable-cmake-install-export-and-downstream-consumer",
+      "path": {
+        "source": [
+          "wrappers/cpp/CMakeLists.txt",
+          "wrappers/cpp/cmake/FreeMvvmConfig.cmake.in",
+          "wrappers/cpp/tests/package_consumer/CMakeLists.txt",
+          "wrappers/cpp/tests/package_consumer/main.cpp",
+          "tools/dev.py"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "tools/units.yaml",
+          "tools/units/build-package.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-019",
+        "UNIT-WRAP-CPP-001"
+      ],
+      "requirements": [
+        "RQ-12-004"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/build/toolchain-packages.md",
+          "version": "1.1",
+          "section": "CMake package integration"
+        },
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.2",
+          "section": "Runtime最小公開API"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-WRAP-CPP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-PKG-CPP-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-package-test"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
