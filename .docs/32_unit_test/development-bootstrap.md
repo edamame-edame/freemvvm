@@ -25,6 +25,7 @@
 | UT-BUILD-CLI-005 | 12のC# wrapper commandを既存のdotnet restore/run、C ABI build、consumer引数、gate名で実行する | `python -m pytest tools/tests/test_dev_csharp_command.py` |
 | UT-BUILD-CLI-006 | 21のPython wrapper commandを既存pytest/consumer手順、C ABI path、PYTHONPATHとLinux smoke条件で実行する | `python -m pytest tools/tests/test_dev_python_command.py` |
 | UT-BUILD-CLI-007 | doctor・check・format・minimumを既存gate順、command、report labelsでdispatchし、checkのaggregate gate列を維持する | `python -m pytest tools/tests/test_dev_bootstrap_command.py` |
+| UT-BUILD-CLI-008 | 51 commandの既存report scopeを各command moduleのregistryから引き、未登録commandは既定scopeを保持する | `python -m pytest tools/tests/test_command_scopes.py` |
 
 後始末はcompiler/installerの子process終了を確認し、生成物をvenv/target/out/obj/bin/egg-infoへ分離する。checkで開発wheelをrepositoryのvenvへ再導入するが、OS既定環境へinstallしない。自動再帰削除は行わず、再実行時はbuild toolの増分更新を使う。
 
@@ -32,7 +33,7 @@
 
 Windows x64で両入口を実行する。結果の正本は `.local/verification/check.json` と `minimum.json`。SHAとdirty状態、全入力hash、tool版と各gate終了codeを保持し、未commit変更をHEADに含まれる実装として報告しない。GitHub上は同じcheckout source/testを実行するworkflowを作成したが、リモートrunは未実施。
 
-2026-11-06のlocal focused確認ではUT-BUILD-TOOLS-001の9件がpassし、schema 2 catalogは170 unitとして読み込めた。2026-11-07のshard移行確認ではschema 3の12 shardを読み、170 IDとrecordをbaseline比較した。共通environment/process/report helperの抽出ではUT-BUILD-TOOLS-001/002の13件、`tools/dev.py --help`、170-unit catalog validation、document links 76文書/7792 local linksがpassした。CIでRuff format/lintが失敗したため、format gateから4ファイルの差分を適用し、未使用importを削除した。同じRuff format/lint、13 focused tests、catalog、document link検査はすべてpassした。ABI handler抽出ではUT-BUILD-CLI-001を含む17件、Rust handler抽出ではUT-BUILD-CLI-002を含む26件、Platform handler抽出ではUT-BUILD-CLI-003を含む29件、C++ handler抽出ではUT-BUILD-CLI-004を含む13件を含めfocused suite 42件がpassした。C# handler抽出ではUT-BUILD-CLI-005を含む13件、Python handler抽出ではUT-BUILD-CLI-006を含む23件、bootstrap handler抽出ではUT-BUILD-CLI-007の5件がpassした。全handler focused suiteは83件passし、Ruff lint/format、CLI help、170-unit catalog validation、document links 76文書/7792 local linksもpass。CLI help上の既存command順も維持した。
+2026-11-06のlocal focused確認ではUT-BUILD-TOOLS-001の9件がpassし、schema 2 catalogは170 unitとして読み込めた。2026-11-07のshard移行確認ではschema 3の12 shardを読み、170 IDとrecordをbaseline比較した。共通environment/process/report helperの抽出ではUT-BUILD-TOOLS-001/002の13件、`tools/dev.py --help`、170-unit catalog validation、document links 76文書/7792 local linksがpassした。CIでRuff format/lintが失敗したため、format gateから4ファイルの差分を適用し、未使用importを削除した。同じRuff format/lint、13 focused tests、catalog、document link検査はすべてpassした。ABI handler抽出ではUT-BUILD-CLI-001を含む17件、Rust handler抽出ではUT-BUILD-CLI-002を含む26件、Platform handler抽出ではUT-BUILD-CLI-003を含む29件、C++ handler抽出ではUT-BUILD-CLI-004を含む13件を含めfocused suite 42件がpassした。C# handler抽出ではUT-BUILD-CLI-005を含む13件、Python handler抽出ではUT-BUILD-CLI-006を含む23件、bootstrap handler抽出ではUT-BUILD-CLI-007の5件がpassした。report scope registry抽出ではUT-BUILD-CLI-008の2件を追加した。全handler focused suiteは85件passし、Ruff lint/format、CLI help、170-unit catalog validation、document links 76文書/7792 local linksもpass。CLI help上の既存command順も維持した。
 
 この単位はビルド環境の確認であり、要求test92TCや製品単体試験70項目の合格を意味しない。Linux/ARM/実GPU/IME/provider/native loader・署名済みartifactは未検証。正式supportのprofile lockは別に作成する。
 

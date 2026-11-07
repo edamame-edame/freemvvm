@@ -32,3 +32,8 @@ def handle(command, environment, results):
         gate_name,
     )
     return True
+
+
+SCOPES = {
+    "abi-command-smoke": "abi-command-smoke",
+}

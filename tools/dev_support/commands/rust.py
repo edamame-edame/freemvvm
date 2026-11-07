@@ -146,3 +146,23 @@ def handle(command, environment, results):
             gate,
         )
     return True
+
+
+SCOPES = {
+    "rust-wrapper-runtime-test": "rust-wrapper-runtime-unit-test",
+    "rust-wrapper-runtime-consumer-test": "rust-wrapper-runtime-consumer-test",
+    "rust-wrapper-ui-controls-test": "rust-wrapper-ui-controls-test",
+    "rust-wrapper-window-close-test": "rust-wrapper-window-close-test",
+    "rust-wrapper-property-bool-i64-test": (
+        "rust-wrapper-property-bool-i64-consumer-test"
+    ),
+    "rust-wrapper-property-utf8-test": (
+        "rust-wrapper-property-utf8-consumer-test"
+    ),
+    "rust-wrapper-property-f64-test": (
+        "rust-wrapper-property-f64-consumer-test"
+    ),
+    "rust-wrapper-property-decimal-test": (
+        "rust-wrapper-property-decimal-consumer-test"
+    ),
+}

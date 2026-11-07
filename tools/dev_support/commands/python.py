@@ -251,3 +251,32 @@ def handle(command, environment, results):
     else:
         _handle_window_peer_smoke(environment, results)
     return True
+
+
+SCOPES = {
+    "python-runtime-test": "python-runtime-unit-test",
+    "python-runtime-consumer-test": "python-runtime-consumer-test",
+    "python-property-bool-i64-test": "python-property-bool-i64-unit-test",
+    "python-property-bool-i64-consumer-test": (
+        "python-property-bool-i64-consumer-test"
+    ),
+    "python-property-utf8-test": "python-property-utf8-unit-test",
+    "python-property-utf8-consumer-test": "python-property-utf8-consumer-test",
+    "python-property-f64-test": "python-property-f64-unit-test",
+    "python-property-f64-consumer-test": "python-property-f64-consumer-test",
+    "python-property-decimal-test": "python-property-decimal-unit-test",
+    "python-property-decimal-consumer-test": (
+        "python-property-decimal-consumer-test"
+    ),
+    "python-binding-test": "python-binding-unit-test",
+    "python-binding-consumer-test": "python-binding-consumer-test",
+    "python-command-test": "python-command-unit-test",
+    "python-command-consumer-test": "python-command-consumer-test",
+    "python-controls-test": "python-controls-unit-test",
+    "python-input-test": "python-input-event-wrapper-unit-test",
+    "python-input-consumer-test": "python-input-event-consumer-test",
+    "python-controls-consumer-test": "python-controls-consumer-test",
+    "python-window-test": "python-window-unit-test",
+    "python-window-consumer-test": "python-window-consumer-test",
+    "python-window-peer-smoke-test": "python-window-peer-smoke-test",
+}

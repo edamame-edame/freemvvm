@@ -136,3 +136,19 @@ def handle(command, environment, results):
     else:
         _run_consumer_test(command, environment, results)
     return True
+
+
+SCOPES = {
+    "csharp-runtime-test": "csharp-runtime-unit-test",
+    "csharp-property-test": "csharp-property-unit-test",
+    "csharp-command-test": "csharp-command-unit-test",
+    "csharp-controls-test": "csharp-controls-unit-test",
+    "csharp-input-test": "csharp-input-unit-test",
+    "csharp-controls-consumer-test": "csharp-controls-consumer-test",
+    "csharp-input-consumer-test": "csharp-input-consumer-test",
+    "csharp-window-test": "csharp-window-unit-test",
+    "csharp-window-consumer-test": "csharp-window-consumer-test",
+    "csharp-command-consumer-test": "csharp-command-consumer-test",
+    "csharp-runtime-consumer-test": "csharp-runtime-consumer-test",
+    "csharp-property-consumer-test": "csharp-property-consumer-test",
+}

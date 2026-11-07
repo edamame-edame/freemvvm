@@ -265,3 +265,16 @@ def handle(command, environment, results):
         gate,
     )
     return True
+
+
+SCOPES = {
+    "cpp-package-test": "cpp-package-integration-test",
+    "cpp-property-test": "cpp-property-unit-test",
+    "cpp-property-utf8-test": "cpp-property-utf8-unit-test",
+    "cpp-property-f64-test": "cpp-property-f64-unit-test",
+    "cpp-property-decimal-test": "cpp-property-decimal-unit-test",
+    "cpp-property-subscription-test": "cpp-property-subscription-unit-test",
+    "cpp-property-binding-test": "cpp-property-binding-unit-test",
+    "cpp-command-test": "cpp-command-unit-test",
+    "cpp-runtime-test": "cpp-runtime-unit-test",
+}
