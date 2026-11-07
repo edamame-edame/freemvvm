@@ -433,7 +433,7 @@ message loopはkey messageにTranslateMessageを一度実行し、各WndProcは�
 
 この提案はWindows mouseと、OSがprimaryとして示すtouch/pen contactのprimary actionを対象とする。OS IMEの候補UIはWindows既定処理へ委ね、Core TextBoxへ確定文字だけを渡す。IME実機でWM_CHAR/IMEメッセージの重複やsurrogate処理を確認するまで実装仕様として承認しない。
 
-### v2.5改訂案: Core Platform input sinkとRuntime dispatcher接続（全文レビュー待ち）
+### v2.5: Core Platform input sinkとRuntime dispatcher接続（全文承認済み）
 
 本節は承認済み2.3/2.4のWindows input flowとCore InputRouterを、実装可能なprivate Rust SPIで接続する提案である。RQ-06-001/002/003、RQ-09-010/046/049/056/068の利用者向け保証、公開C ABI、wrapper API、native mapping範囲は変更しない。
 

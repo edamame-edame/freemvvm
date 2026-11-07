@@ -1,10 +1,10 @@
 # Core input ingress / Windows Platform input bridge
 
 - 計画版: 0.2（承認済み）
-- 状態: 利用者承認済み（2026-11-08）。phase 1～5完了、Windows adapter実装中
+- 状態: 利用者承認済み（2026-11-08）。phase 1～5完了、phase 6のWindows adapter実装・単体試験完了、同revision CI確認待ち
 - 対象version: `0.0.1`
 - 上位計画: [Input / Focus event path実装計画](input-focus-event-path-implementation.md)
-- 対象unit: Core input ingress `UNIT-CORE-093`（ready）、Windows adapter `UNIT-PLATFORM-WINDOWS-007`（planned）
+- 対象unit: Core input ingress `UNIT-CORE-093`（complete）、Windows adapter `UNIT-PLATFORM-WINDOWS-007`（ready）
 - branch案: `version/0.0.1` → 案件 `change/windows-platform-input-bridge`（commit `20a43a1`）→ Core ingress `impl-rust/core-platform-input-ingress` → Windows adapter `impl-rust/platform-adapter-windows-input`
 - 実装開始条件: この計画0.2と、参照するunit-test設計文書の改訂全文がそれぞれ承認済み
 
@@ -40,12 +40,13 @@ Windows message workerからnative input値をCore UI dispatcherへ非同期に�
 3. [x] `.docs/32_unit_test/ui.md` 1.8全文の承認を得る。Core ingressとWindows mappingのcaseを分離し、前提・操作・oracle・cleanup・要求caseを記載。Core unit `UNIT-CORE-093` / `UT-CORE-PLATFORM-INPUT-001` を登録。
 4. [x] 案件branch `change/windows-platform-input-bridge`（commit `20a43a1`）を親にCore bridge branch `impl-rust/core-platform-input-ingress`を作成。Core側に内部Platform input sinkとUI dispatcherへの入口を実装し、FIFO/owned text/thread/generation/shutdown/post-failureをfake試験する。`UNIT-CORE-093`をreadyとして登録。
 5. [x] Core unit focused test、Core全203 test、workspace tests、Clippy、Rust 1.85 check、format、document links/catalog validationが成功。Core commit `3d463bdbdcabcccdfb27f7849bc30c7b133eecc2`をpushし、同revision Windows/Ubuntu CI run `42385354689`がsuccess。Core ingress変更はCore branchで完結。
-6. [ ] Windows adapter branch `impl-rust/platform-adapter-windows-input`を検証済みCore bridge branchから作成する。fakeable message mapperとworker sink接続を実装し、次を確認する。
+6. [x] Windows adapter branch `impl-rust/platform-adapter-windows-input`を検証済みCore bridge branchから作成する。message mapperとworker sink接続を実装し、次を確認する。
    - key/system-keyのscan code + extended bitからHID keyboard usage、modifier、unknown-key扱い。system keyはneutral eventをpostしつつnative default procedureへ委譲。
    - `TranslateMessage`後のUnicode `WM_CHAR`、surrogate pairのscalar/UTF-8変換、dead/system char除外、同一TextCommitの重複防止。OS IMEの実機挙動はfake試験合格に含めない。
    - mouseとprimary touch/pen down/upのclient座標→DIP一回変換、順序、pointer promotion重複防止。非primary contact、PT_MOUSE重複経路は無視する。
    - activation/focus、event FIFO、stale generation、closed/shutdown peer、post失敗、WndProcからuser callbackを呼ばない境界。
-7. [ ] Windows Rust target build、adapter focused/all-target tests、Rust minimum、workspace CI、document linksを同一revisionで検証し、日本語commit/pushする。実機keyboard/IME/touch/pen確認はCIとは分け、0.0.1 release qualificationへ記録する。adapter unit完了後、検証済みadapter branchを案件branchへ統合する。
+   - `cargo check --target x86_64-pc-windows-msvc`、Windows target unit tests（23 passed, 2 ignored）、Windows target Clippyが成功。
+7. [ ] Windows Rust minimum、workspace CI、document linksを同一revisionで検証し、日本語commit/pushする。実機keyboard/IME/touch/pen確認はCIとは分け、0.0.1 release qualificationへ記録する。adapter unitのCI完了後、検証済みadapter branchを案件branchへ統合する。
 8. [ ] Core ingress/Windows adapterと全Input wrapperのunit台帳・CI証跡を再照合し、Input/Focus関連TODO batch完了後に案件branchから`version/0.0.1`向けの集約merge PRを作成する。マージ後は案件/Core/Platformの作業branchとremote/local追跡refを削除する。
 
 ## branch依存
@@ -73,7 +74,7 @@ version/0.0.1 (InputFocus Core/C ABI/4 wrappersを統合済み)
 - Per-window generationのstale判定をCore ingressで行うか、peerとCoreの両方で行うか。
 - IME確定文字は承認済み2.4の`WM_CHAR`一経路で受ける。Windows profile smokeでduplicate/欠落が観測された場合、実装都合でsourceを増やさず設計変更として扱う。
 
-計画0.2、`internal-layers.md` 2.5、`ui.md` 1.8は全文承認済み。`UNIT-CORE-093`はローカル実装・試験済みで、同revision CI確認中とする。
+計画0.2、`internal-layers.md` 2.5、`ui.md` 1.8は全文承認済み。Core `UNIT-CORE-093`は同revision CIを含めcomplete。Windows `UNIT-PLATFORM-WINDOWS-007`はローカル実装・試験済みで、同revision CI確認中とする。
 
 ## レビュー履歴
 
@@ -84,3 +85,4 @@ version/0.0.1 (InputFocus Core/C ABI/4 wrappersを統合済み)
 | 2026-11-07 | phase 1 unit/CI照合 | 完了 | Input Core/C ABI/4 wrapperの既存complete状態とWindows/Ubuntu統合CI runを確認。`UNIT-CORE-092`はready、`UNIT-PLATFORM-WINDOWS-007`はplannedとして維持 |
 | 2026-11-08 | phase 2/3 DD・test design | 完了 | 利用者が`internal-layers.md` 2.5と`ui.md` 1.8全文を承認。`UNIT-CORE-093` / `UT-CORE-PLATFORM-INPUT-001`を登録し実装へ進行 |
 | 2026-11-08 | phase 4/5 Core input ingress | 完了 | commit `3d463bdbdcabcccdfb27f7849bc30c7b133eecc2`。focused/Core/workspace tests、Clippy、Rust 1.85 check pass。同revision Windows/Ubuntu CI `42385354689` success |
+| 2026-11-08 | phase 6 Windows input adapter | ローカル完了 | Win32 key/text/mouse/touch/pen/activation mappingとsink接続を実装。Windows target build/test/Clippy pass。CI・Rust minimum確認待ち |

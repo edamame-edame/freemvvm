@@ -61,13 +61,13 @@ active Windowとfocusable/enabledなTextBox二つ、非focusable Containerを用
 | UT-FOCUS-004 | Focus中のWidget自身とLogical ancestorを別々にdisableし、TextBox preedit/selection状態を含む場合も試す。再enable後に入力を投入 | subtree内active focusを一度解除してLostを処理し、別Controlを選ばない。TextBox本文/caret/selectionは保持しIME commitなし。再enable後もFocusは自動復元せず、無効期間の入力も遅延再生しない | [RQ-09-046](../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-049](../11_requirements/RQ-09_ui-scope.md#rq-09-049)、[RQ-09-055](../11_requirements/RQ-09_ui-scope.md#rq-09-055)<br/>[TC-FOCUS-01](../30_release_test/requirement-test-matrix.md#case-tc-focus-01)、[TC-IME-01](../30_release_test/requirement-test-matrix.md#case-tc-ime-01) |
 | UT-INPUT-006 | unknown/zero event mask、registration resource failure、normal cancel、self-cancel、Widget detach、Runtime shutdown、callback panicを別fixtureで起こす。callback復帰後のborrowed event viewを再利用 | failed registrationはclosure ownershipを移さずdestroyしない。成功登録は各終了経路でdestroy一度。取消済みsubscriptionを後続route callbackで再度呼ばない。panic/exceptionはABI越境せずhandled扱いでdefault actionを止める。callback後のevent handleはinvalid | [RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-05-003](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-003)、[RQ-05-009](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-009)、[RQ-06-001](../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)<br/>[TC-INPUT-01](../30_release_test/requirement-test-matrix.md#case-tc-input-01)、[TC-LIFE-01](../30_release_test/requirement-test-matrix.md#case-tc-life-01)、[TC-CALLBACK-01](../30_release_test/requirement-test-matrix.md#case-tc-callback-01) |
 
-### Core input ingress / Windows native mapping追加case（1.8案・全文レビュー待ち）
+### Core input ingress / Windows native mapping追加case（1.8全文承認済み）
 
 Core ingressとWindows mappingを別unitで検証する。Core fixtureは既存dispatcherとInputRouter/FocusManagerへの接続を試験し、Windows fixtureはfake native messageからsinkまでのmapping/orderを試験する。Core試験はTextCommitとActivationChangedの前後順も反転し、FocusLost後のcommitを旧・新targetへ再配送しないことを確認する。各fixtureでworkerを停止・joinし、Window peerをcloseしてRuntimeをshutdownし、sink/dispatcher参照を解放する。いずれもOS IME実機動作や物理入力の合格を意味しない。
 
 #### Core Platform input ingress
 
-詳細設計根拠: [Input routing / Focus設計](../13_detail_design/ui/input-focus.md) 1.2全文承認済み、[Platform内部レイヤー設計](../13_detail_design/platform/internal-layers.md) 2.4全文承認済み。今回追加するCore input sink/dispatcher接続は同文書2.5改訂案（全文レビュー待ち）に対応する。
+詳細設計根拠: [Input routing / Focus設計](../13_detail_design/ui/input-focus.md) 1.2全文承認済み、[Platform内部レイヤー設計](../13_detail_design/platform/internal-layers.md) 2.4・2.5全文承認済み。Core input sink/dispatcher接続は同文書2.5に対応する。
 
 Fake `PlatformWindowPeer`とinput sinkからowned neutral eventをworker threadでpostし、UI dispatcher turnを制御する。`TextCommit`のsource bufferはpost直後に破棄し、open/close/reopenでWindow generationを進める。shutdown-pendingとdispatcher reservation failureを別fixtureにする。
 
@@ -77,7 +77,7 @@ Fake `PlatformWindowPeer`とinput sinkからowned neutral eventをworker thread�
 
 #### Windows native message mapping
 
-詳細設計根拠: [Platform内部レイヤー設計](../13_detail_design/platform/internal-layers.md) 2.3～2.4全文承認済み。Core sink/dispatcher接続の境界は同文書2.5改訂案（全文レビュー待ち）を参照する。
+詳細設計根拠: [Platform内部レイヤー設計](../13_detail_design/platform/internal-layers.md) 2.3～2.5全文承認済み。
 
 Windows fake mapperへnative message、scan/HID identity、Window generation、client pixel/DIP scaleを注入する。WndProc/workerからuser callbackを呼ばず、Core sinkへcopyしたevent値だけを順序付きで渡す。
 
