@@ -1015,6 +1015,76 @@
           }
         ]
       }
+    },
+    {
+      "unit_name": "UNIT-CORE-093",
+      "state": "ready",
+      "scope": "core-platform-input-ingress-from-platform-peer-to-ui-dispatcher",
+      "path": {
+        "source": [
+          "crates/core-runtime/src/lib.rs",
+          "crates/core-runtime/src/runtime.rs",
+          "crates/core-runtime/src/ui_controls.rs",
+          "crates/core-runtime/src/ui_input.rs",
+          "crates/core-runtime/src/ui_window.rs",
+          "crates/core-runtime/src/dispatcher.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/core-runtime/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/core-ui.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-090",
+        "UNIT-CORE-091"
+      ],
+      "requirements": [
+        "RQ-06-001",
+        "RQ-06-002",
+        "RQ-06-003",
+        "RQ-09-010",
+        "RQ-09-046",
+        "RQ-09-049",
+        "RQ-09-056",
+        "RQ-09-068"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "2.5 approved",
+          "section": "Core Platform input sink and Runtime dispatcher connection"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/input-focus.md",
+          "version": "1.2 approved",
+          "section": "Input routing, Focus transitions, and activation"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-INPUT-01",
+          "TC-FOCUS-01",
+          "TC-IME-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-CORE-PLATFORM-INPUT-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-core",
+              "platform_input_ingress",
+              "--locked"
+            ]
+          }
+        ]
+      }
     }
   ]
 }
