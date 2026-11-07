@@ -22,3 +22,4 @@
 - `tools/dev.py`のbaselineは2026-11-06時点で2,757行・61 commands。通常reportは`.local/verification/<command>.json`へ出し、Linux Docker provisional commandは独立schema/pathを使う。command一覧・report field・status意味を分割前後で比較する。
 - schema 3移行では170 unitを12 owner/category shardに分けた。`cases.release`は旧TC配列、`cases.unit`はUT ID/commandを保持し、requirements/designはunit-levelのままにする。config pathへroot manifestと所属shardを追加し、旧recordを機械的に再構成して比較する。
 - phase 4ではbootstrap environment構築、MSVC/child process実行、JSON report書込を独立helperへ抽出する。`tools/dev.py`からは互換名でimportし、CLIのreport field・command/result記録を変えない。`test_dev_support.py`はhost environmentの非変更、PATH順、process result field、JSON encoding/newlineを検証する。
+- CI failure diagnosis: `tools/dev.py --help` can run without the pinned venv, but full bootstrap checks require a checkout-local `.venv`. If this managed worktree has no Ruff, run the Ruff binary from the primary checkout against this worktree by passing changed paths; do not edit or stage the primary checkout.

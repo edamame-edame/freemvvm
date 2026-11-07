@@ -13,7 +13,7 @@ import sys
 import sysconfig
 
 from dev_support.environment import bootstrap_environment
-from dev_support.process import capture, msvc_environment, resolve_executable, run
+from dev_support.process import capture, msvc_environment, run
 from dev_support.reports import write_json_report
 
 

@@ -8,7 +8,5 @@ def bootstrap_environment(environment, bin_dir, path_separator):
     result["PYTHONIOENCODING"] = "utf-8"
     result["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1"
     result["DOTNET_NOLOGO"] = "1"
-    result["PATH"] = (
-        f"{bin_dir}{path_separator}{result.get('PATH', '')}"
-    )
+    result["PATH"] = f"{bin_dir}{path_separator}{result.get('PATH', '')}"
     return result

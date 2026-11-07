@@ -25,7 +25,7 @@
 
 Windows x64で両入口を実行する。結果の正本は `.local/verification/check.json` と `minimum.json`。SHAとdirty状態、全入力hash、tool版と各gate終了codeを保持し、未commit変更をHEADに含まれる実装として報告しない。GitHub上は同じcheckout source/testを実行するworkflowを作成したが、リモートrunは未実施。
 
-2026-11-06のlocal focused確認ではUT-BUILD-TOOLS-001の9件がpassし、schema 2 catalogは170 unitとして読み込めた。2026-11-07のshard移行確認ではschema 3の12 shardを読み、170 IDとrecordをbaseline比較した。共通environment/process/report helperの抽出ではUT-BUILD-TOOLS-001/002の13件、`tools/dev.py --help`、170-unit catalog validation、document links 76文書/7792 local linksがpassした。worktreeに固定venvとRuffがないため、bootstrap全体とRuff gateはlocalでは実行していない。
+2026-11-06のlocal focused確認ではUT-BUILD-TOOLS-001の9件がpassし、schema 2 catalogは170 unitとして読み込めた。2026-11-07のshard移行確認ではschema 3の12 shardを読み、170 IDとrecordをbaseline比較した。共通environment/process/report helperの抽出ではUT-BUILD-TOOLS-001/002の13件、`tools/dev.py --help`、170-unit catalog validation、document links 76文書/7792 local linksがpassした。CIでRuff format/lintが失敗したため、format gateから4ファイルの差分を適用し、未使用importを削除した。同じRuff format/lint、13 focused tests、catalog、document link検査はすべてpass。worktreeに固定venvがないためbootstrap全体とminimum gateは未実行。
 
 この単位はビルド環境の確認であり、要求test92TCや製品単体試験70項目の合格を意味しない。Linux/ARM/実GPU/IME/provider/native loader・署名済みartifactは未検証。正式supportのprofile lockは別に作成する。
 

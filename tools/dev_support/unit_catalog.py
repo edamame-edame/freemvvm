@@ -133,12 +133,16 @@ def _validate_record_shape(record, name, sharded_schema):
         test_ids = set()
         for test in unit_tests:
             if not isinstance(test, dict):
-                raise CatalogError(f"Unit {name} cases.unit must contain objects")
+                raise CatalogError(
+                    f"Unit {name} cases.unit must contain objects"
+                )
             test_id = test.get("id")
             if not isinstance(test_id, str) or not test_id:
                 raise CatalogError(f"Unit {name} unit test must define id")
             if test_id in test_ids:
-                raise CatalogError(f"Unit {name} has duplicate test id: {test_id}")
+                raise CatalogError(
+                    f"Unit {name} has duplicate test id: {test_id}"
+                )
             test_ids.add(test_id)
             command = test.get("command")
             if not isinstance(command, list) or not all(

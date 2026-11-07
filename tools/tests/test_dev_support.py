@@ -32,7 +32,9 @@ def test_write_json_report_creates_parent_and_keeps_report_shape(tmp_path):
 
 
 def test_resolve_executable_uses_child_path_and_keeps_arguments():
-    resolved = resolve_executable([sys.executable, "-V"], {"PATH": os.environ["PATH"]})
+    resolved = resolve_executable(
+        [sys.executable, "-V"], {"PATH": os.environ["PATH"]}
+    )
 
     assert resolved[0].lower().endswith(("python.exe", "python"))
     assert resolved[1:] == ["-V"]
@@ -41,7 +43,12 @@ def test_resolve_executable_uses_child_path_and_keeps_arguments():
 def test_run_records_gate_result_shape(capsys):
     results = []
 
-    run([sys.executable, "-c", "pass"], {"PATH": os.environ["PATH"]}, results, "probe")
+    run(
+        [sys.executable, "-c", "pass"],
+        {"PATH": os.environ["PATH"]},
+        results,
+        "probe",
+    )
 
     assert results[0]["gate"] == "probe"
     assert results[0]["command"] == [sys.executable, "-c", "pass"]
