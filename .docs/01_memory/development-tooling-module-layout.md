@@ -6,7 +6,7 @@
 
 ## 現状
 
-- `tools/dev.py`は互換entrypointとして全61 commandを維持する。共通environment/process/report helper、ABI/platform、Rust/C++/C# wrapper command handlerは`tools/dev_support/`へ抽出済み。bootstrapとPython handlerの分割が残る。
+- `tools/dev.py`は互換entrypointとして全61 commandを維持する。共通environment/process/report helper、ABI/platform、Rust/C++/C#/Python wrapper command handlerは`tools/dev_support/`へ抽出済み。bootstrap handlerの分割が残る。
 - `tools/units.yaml`はschema 3の小さなJSON互換manifest。170 unitを12個のowner/category shardへ移行済み。
 - `.docs/32_unit_test/implementation-test-inventory.md`と複数計画・DEVELOPMENT文書がroot catalogを説明・参照するため、split時は全consumerを検索する。
 - `python tools/dev.py ...`はDEVELOPMENTとGitHub Actionsから直接呼ばれる。分割後も互換entrypointと全command名を維持する必要がある。
@@ -28,3 +28,4 @@
 - Platform Docker handler tests stub git and docker subprocesses against a temporary root, and assert both the provisional report contract and blocked error reporting without running Docker.
 - C++ wrapper command extraction keeps all 12 existing command names and report gate strings in `dev_support.commands.cpp`. Fake `run` tests assert CMake targets, CTest filters, and the relocatable package consumer sequence without invoking the toolchain.
 - C# wrapper command extraction keeps runtime unit tests and native C ABI consumer commands grouped by gate label. Fake `run` tests create a temporary native library file and assert platform-specific path selection, consumer args, and existing report labels.
+- Python wrapper command extraction keeps individual pytest gates, C ABI consumers, custom `CARGO_TARGET_DIR`, and the Linux-only window peer smoke in one module. Fake `run` tests cover command argv, native artifact path, `PYTHONPATH`, and host rejection behavior.

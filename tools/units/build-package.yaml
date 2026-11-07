@@ -135,6 +135,15 @@
               "pytest",
               "tools/tests/test_dev_csharp_command.py"
             ]
+          },
+          {
+            "id": "UT-BUILD-CLI-006",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_dev_python_command.py"
+            ]
           }
         ]
       }
