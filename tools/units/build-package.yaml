@@ -117,6 +117,15 @@
               "pytest",
               "tools/tests/test_dev_platform_command.py"
             ]
+          },
+          {
+            "id": "UT-BUILD-CLI-004",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_dev_cpp_command.py"
+            ]
           }
         ]
       }
