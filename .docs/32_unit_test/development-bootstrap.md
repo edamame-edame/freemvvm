@@ -20,6 +20,7 @@
 | UT-BUILD-TOOLS-002 | bootstrap child environmentがhost値を保ちつつ固定値を設定する。executable解決・gate result field・JSON reportのpath/encoding/newline契約を維持する | `python -m pytest tools/tests/test_dev_support.py` |
 | UT-BUILD-CLI-001 | 3つのC/C++ ABI smoke commandが既存のCMake configure/build targetとgate名へdispatchされ、未知commandは未処理で返る | `python -m pytest tools/tests/test_dev_command_handlers.py` |
 | UT-BUILD-CLI-002 | 8つのRust wrapper commandが既存native C ABI build、consumer example/test、gate名とnative library search pathでdispatchされる | `python -m pytest tools/tests/test_dev_command_handlers.py` |
+| UT-BUILD-CLI-003 | Linux Platform Docker commandのbuild/image/validation手順、provisional report、blocked時のerror/output tailを維持する | `python -m pytest tools/tests/test_dev_platform_command.py` |
 
 後始末はcompiler/installerの子process終了を確認し、生成物をvenv/target/out/obj/bin/egg-infoへ分離する。checkで開発wheelをrepositoryのvenvへ再導入するが、OS既定環境へinstallしない。自動再帰削除は行わず、再実行時はbuild toolの増分更新を使う。
 
@@ -27,7 +28,7 @@
 
 Windows x64で両入口を実行する。結果の正本は `.local/verification/check.json` と `minimum.json`。SHAとdirty状態、全入力hash、tool版と各gate終了codeを保持し、未commit変更をHEADに含まれる実装として報告しない。GitHub上は同じcheckout source/testを実行するworkflowを作成したが、リモートrunは未実施。
 
-2026-11-06のlocal focused確認ではUT-BUILD-TOOLS-001の9件がpassし、schema 2 catalogは170 unitとして読み込めた。2026-11-07のshard移行確認ではschema 3の12 shardを読み、170 IDとrecordをbaseline比較した。共通environment/process/report helperの抽出ではUT-BUILD-TOOLS-001/002の13件、`tools/dev.py --help`、170-unit catalog validation、document links 76文書/7792 local linksがpassした。CIでRuff format/lintが失敗したため、format gateから4ファイルの差分を適用し、未使用importを削除した。同じRuff format/lint、13 focused tests、catalog、document link検査はすべてpassした。ABI handler抽出ではUT-BUILD-CLI-001を含む17件、Rust handler抽出ではUT-BUILD-CLI-002を含む26件のfocused testsがpassし、いずれもRuff lint/format、CLI help、catalog、document linksもpass。worktreeに固定venvがないためbootstrap全体とminimum gateは未実行。
+2026-11-06のlocal focused確認ではUT-BUILD-TOOLS-001の9件がpassし、schema 2 catalogは170 unitとして読み込めた。2026-11-07のshard移行確認ではschema 3の12 shardを読み、170 IDとrecordをbaseline比較した。共通environment/process/report helperの抽出ではUT-BUILD-TOOLS-001/002の13件、`tools/dev.py --help`、170-unit catalog validation、document links 76文書/7792 local linksがpassした。CIでRuff format/lintが失敗したため、format gateから4ファイルの差分を適用し、未使用importを削除した。同じRuff format/lint、13 focused tests、catalog、document link検査はすべてpassした。ABI handler抽出ではUT-BUILD-CLI-001を含む17件、Rust handler抽出ではUT-BUILD-CLI-002を含む26件、Platform handler抽出ではUT-BUILD-CLI-003を含む29件のfocused testsがpassし、いずれもRuff lint/format、CLI help、catalog、document linksもpass。worktreeに固定venvがないためbootstrap全体とminimum gateは未実行。
 
 この単位はビルド環境の確認であり、要求test92TCや製品単体試験70項目の合格を意味しない。Linux/ARM/実GPU/IME/provider/native loader・署名済みartifactは未検証。正式supportのprofile lockは別に作成する。
 
