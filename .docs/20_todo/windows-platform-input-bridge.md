@@ -1,7 +1,7 @@
 # Core input ingress / Windows Platform input bridge
 
 - 計画版: 0.2（承認済み）
-- 状態: 利用者承認済み（2026-11-08）。Core ingressとWindows adapterの実装・単体試験・同revision Windows/Ubuntu CI完了。案件branchからversion branchへの集約PR待ち
+- 状態: 利用者承認済み（2026-11-08）。Core ingressとWindows adapterの実装・単体試験・CI完了。集約PR #7を作成し、version branchへのmerge待ち
 - 対象version: `0.0.1`
 - 上位計画: [Input / Focus event path実装計画](input-focus-event-path-implementation.md)
 - 対象unit: Core input ingress `UNIT-CORE-093`（complete）、Windows adapter `UNIT-PLATFORM-WINDOWS-007`（complete）
@@ -48,7 +48,7 @@ Windows message workerからnative input値をCore UI dispatcherへ非同期に�
    - `cargo check --target x86_64-pc-windows-msvc`、Windows target unit tests（23 passed, 2 ignored）、Windows target Clippyが成功。
 7. [x] Windows Rust minimum、workspace CI、document linksを同一revisionで検証し、日本語commit/pushする。実機keyboard/IME/touch/pen確認はCIとは分け、0.0.1 release qualificationへ記録する。adapter unitのCI完了後、検証済みadapter branchを案件branchへ統合する。
 8. [x] Core ingress/Windows adapterと全Input wrapperのunit台帳・CI証跡を再照合する。全unitと同一revision CIが完了したため、Input/Focus関連TODO batchは集約PRを出せる状態。
-9. [ ] `change/windows-platform-input-bridge`から`version/0.0.1`向けの集約merge PRを作成する。マージ後は案件/Core/Platformの作業branchとremote/local追跡refを削除する。
+9. [x] `change/windows-platform-input-bridge`から`version/0.0.1`向けの集約merge PR #7を作成する。マージ後は案件/Core/Platformの作業branchとremote/local追跡refを削除する。
 
 ## branch依存
 
@@ -88,3 +88,4 @@ version/0.0.1 (InputFocus Core/C ABI/4 wrappersを統合済み)
 | 2026-11-08 | phase 4/5 Core input ingress | 完了 | commit `3d463bdbdcabcccdfb27f7849bc30c7b133eecc2`。focused/Core/workspace tests、Clippy、Rust 1.85 check pass。同revision Windows/Ubuntu CI `42385354689` success |
 | 2026-11-08 | phase 6 Windows input adapter | ローカル完了 | Win32 key/text/mouse/touch/pen/activation mappingとsink接続を実装。Windows target build/test/Clippy pass。CI・Rust minimum確認待ち |
 | 2026-11-08 | phase 7/8 Windows CI・全Input台帳照合 | 完了 | Windows target Rust 1.85 checkと同revision CI `42387300758`（Windows/Ubuntu）がsuccess。全Input wrapper/Core/Windows unitを再照合。実機確認はrelease qualificationへ残す |
+| 2026-11-08 | phase 9 集約PR | 作成済み | `change/windows-platform-input-bridge` → `version/0.0.1`。PR #7。merge後にbranch cleanupを行う |
