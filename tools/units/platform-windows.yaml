@@ -345,7 +345,7 @@
     },
     {
       "unit_name": "UNIT-PLATFORM-WINDOWS-007",
-      "state": "ready",
+      "state": "complete",
       "scope": "windows-native-key-text-pointer-and-focus-input-message-mapping-to-core-sink",
       "path": {
         "source": [
