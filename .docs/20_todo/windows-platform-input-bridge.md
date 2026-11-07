@@ -1,7 +1,7 @@
 # Core input ingress / Windows Platform input bridge
 
 - 計画版: 0.2（承認済み）
-- 状態: 利用者承認済み（2026-11-07）。phase 1〜3の準備・試験設計を進行
+- 状態: 利用者承認済み（2026-11-07）。phase 1完了、phase 2のCore ingress契約監査中
 - 対象version: `0.0.1`
 - 上位計画: [Input / Focus event path実装計画](input-focus-event-path-implementation.md)
 - 対象unit: Core platform input ingress（候補 `UNIT-CORE-093`）、既登録 `UNIT-PLATFORM-WINDOWS-007`
@@ -35,7 +35,7 @@ Windows message workerからnative input値をCore UI dispatcherへ非同期に�
 
 ## 実施順
 
-1. [ ] 現行`version/0.0.1`のHEAD、上位計画、unit inventory、Core/C ABI/4 wrapperの完了記録を照合する。既存unitの`complete`状態はそれぞれの同revision CI証跡と突合し、食い違いがある項目だけ修正する。Windows native input bridgeは独立した残課題として維持する。
+1. [x] 現行`version/0.0.1`のHEAD、上位計画、unit inventory、Core/C ABI/4 wrapperの完了記録を照合する。Core `UNIT-CORE-091`、C ABI `UNIT-ABI-022`、4 wrapperの各Input unitはcomplete、統合SHA `82923807a819d6151ee10aeb601dc3da55e3d03a`のWindows run `42118740862`・Ubuntu run `42118808951`もsuccess。`UNIT-CORE-092`は記録どおりreadyのまま、Windows `UNIT-PLATFORM-WINDOWS-007`はplannedのまま維持。Core ingress候補`UNIT-CORE-093`は未登録であり、phase 3の試験設計承認後に依存・IDを確定する。
 2. [ ] Internal input sink契約を実装粒度まで具体化する。少なくともsink接続点、event値の所有/copy、Window generation検査、FIFO、UI-thread wake/dispatch、shutdown/closed後のdrop、post失敗の扱いを確認し、必要なDDを改訂する。既存要求から決まらない保証を追加する必要があれば要求側のレビューへ戻す。
 3. [ ] `.docs/32_unit_test/ui.md`の1.8案を、Core ingressとWindows mappingの前提・操作・oracle・cleanup・コマンドが分かる試験設計に整え、文書全体のレビュー/承認を得る。Unit ID・path・依存・実行commandは承認済み内容とsourceに照合して登録する。承認前は実装branchを作らない。
 4. [ ] 案件branch `change/windows-platform-input-bridge`を最新`version/0.0.1`から作成し、その子にCore bridge branch `impl-rust/core-platform-input-ingress`を作成する。`impl-rust/core-input-focus`はPR #5後に削除済みのため親に指定しない。Core側に内部Platform input sinkとUI dispatcherへの安全な入口を実装し、queue/wake/generation/shutdown失敗境界をfake試験する。`UNIT-CORE-093`は空き番号・命名を台帳で再確認してから確定し、実装開始時に`ready`へする。
@@ -81,3 +81,4 @@ version/0.0.1 (InputFocus Core/C ABI/4 wrappersを統合済み)
 | --- | --- | --- | --- |
 | 2026-11-07 | 計画0.1 | superseded | PR #5後に削除済みの`impl-rust/core-input-focus`をCore ingressの親にしていた |
 | 2026-11-07 | 計画0.2 | 利用者承認 | PR #6 merge後の最新`version/0.0.1`を起点に案件branch/Core/Platformの階層へ変更。unit完了状態は同revision CI証跡と再照合し、PR後に作業branch/追跡refを削除する運用を追加。利用者が「ok」と承認 |
+| 2026-11-07 | phase 1 unit/CI照合 | 完了 | Input Core/C ABI/4 wrapperの既存complete状態とWindows/Ubuntu統合CI runを確認。`UNIT-CORE-092`はready、`UNIT-PLATFORM-WINDOWS-007`はplannedとして維持 |
