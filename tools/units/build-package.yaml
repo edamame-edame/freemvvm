@@ -90,6 +90,15 @@
               "pytest",
               "tools/tests/test_dev_support.py"
             ]
+          },
+          {
+            "id": "UT-BUILD-CLI-001",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_dev_command_handlers.py"
+            ]
           }
         ]
       }

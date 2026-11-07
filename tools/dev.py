@@ -13,6 +13,8 @@ import sys
 import sysconfig
 
 from dev_support.environment import bootstrap_environment
+from dev_support.commands.abi import COMMANDS as ABI_COMMANDS
+from dev_support.commands.abi import handle as handle_abi_command
 from dev_support.process import capture, msvc_environment, run
 from dev_support.reports import write_json_report
 
@@ -121,9 +123,7 @@ def main():
         choices=[
             "doctor",
             "check",
-            "abi-smoke",
-            "abi-command-smoke",
-            "abi-smoke-cpp",
+            *ABI_COMMANDS,
             "cpp-runtime-test",
             "cpp-property-test",
             "cpp-property-utf8-test",
@@ -1624,66 +1624,8 @@ def main():
                 results,
                 "rust-minimum",
             )
-        elif args.command == "abi-smoke":
-            run(
-                ["cmake", "--preset", "dev"],
-                environment,
-                results,
-                "cmake-configure",
-            )
-            run(
-                [
-                    "cmake",
-                    "--build",
-                    "--preset",
-                    "dev",
-                    "--target",
-                    "freemvvm_abi_runtime_smoke",
-                ],
-                environment,
-                results,
-                "abi-runtime-smoke",
-            )
-        elif args.command == "abi-command-smoke":
-            run(
-                ["cmake", "--preset", "dev"],
-                environment,
-                results,
-                "cmake-configure",
-            )
-            run(
-                [
-                    "cmake",
-                    "--build",
-                    "--preset",
-                    "dev",
-                    "--target",
-                    "freemvvm_abi_command_smoke",
-                ],
-                environment,
-                results,
-                "abi-command-smoke",
-            )
-        elif args.command == "abi-smoke-cpp":
-            run(
-                ["cmake", "--preset", "dev"],
-                environment,
-                results,
-                "cmake-configure",
-            )
-            run(
-                [
-                    "cmake",
-                    "--build",
-                    "--preset",
-                    "dev",
-                    "--target",
-                    "freemvvm_abi_cpp_runtime_smoke",
-                ],
-                environment,
-                results,
-                "abi-cpp-runtime-smoke",
-            )
+        elif args.command in ABI_COMMANDS:
+            handle_abi_command(args.command, environment, results)
         elif args.command == "cpp-runtime-test":
             run(
                 ["cmake", "--preset", "dev"],
