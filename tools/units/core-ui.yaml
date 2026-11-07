@@ -1018,7 +1018,7 @@
     },
     {
       "unit_name": "UNIT-CORE-093",
-      "state": "ready",
+      "state": "complete",
       "scope": "core-platform-input-ingress-from-platform-peer-to-ui-dispatcher",
       "path": {
         "source": [

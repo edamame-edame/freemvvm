@@ -1,7 +1,7 @@
 # UT-INVENTORY: 実装unit台帳・test ID・CI・scenario
 
-- 文書版: 2.3
-- 状態: schema 3のsharded catalog構成を承認済み計画0.3に基づき適用（2026-11-07）。InputFocus統合revision `82923807` のWindows/Ubuntu CI runs `42118740862`・`42118808951` success。承認済みDD 2.5/test design 1.8に基づきCore input ingress `UNIT-CORE-093` をreadyとして登録、実装・同revision検証中
+- 文書版: 2.4
+- 状態: schema 3 sharded catalog。InputFocus統合revision `82923807` のWindows/Ubuntu CI runs `42118740862`・`42118808951` success。Core input ingress `UNIT-CORE-093` complete: commit `3d463bdb`、同revision Windows/Ubuntu CI run `42385354689` success。Windows adapter `UNIT-PLATFORM-WINDOWS-007`はplanned
 - 文書種別: unit-test設計・契約
 - 根拠RQ: [RQ-14-002](../11_requirements/RQ-14_delivery-sequence.md#rq-14-002)、[RQ-14-005](../11_requirements/RQ-14_delivery-sequence.md#rq-14-005)、[RQ-14-011](../11_requirements/RQ-14_delivery-sequence.md#rq-14-011)、[RQ-13-001](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011)、[RQ-16-003](../11_requirements/RQ-16_document-governance.md#rq-16-003)
 - 基本設計: [ビルド環境：toolchain・検証・support](../12_design/build/toolchain-support.md)
@@ -44,7 +44,7 @@ Core Input/Focusの`UT-INPUT-001..006`・`UT-FOCUS-001..004`は[UI試験設計](
 | `UNIT-WRAP-CPP-INPUT-001` | C++ borrowed view、move-only Subscription、callback例外隔離 | `UT-WRAP-CPP-INPUT-001`、`UT-CONSUMER-CPP-INPUT-001` | complete / branch CI run `41648453537`、統合revision CI runs `42118740862`・`42118808951` success |
 | `UNIT-WRAP-CS-INPUT-001` | C# callback view、delegate root、Dispose競合、例外隔離 | `UT-WRAP-CS-INPUT-001`、`UT-CONSUMER-CS-INPUT-001` | complete / branch CI run `42030613702`、統合revision CI runs `42118740862`・`42118808951` success |
 | `UNIT-WRAP-PY-INPUT-001` | Python callback view、callable root、GIL/GC、例外隔離 | `UT-WRAP-PY-INPUT-001`、`UT-CONSUMER-PY-INPUT-001` | complete / branch CI run `42054917806`、統合revision CI runs `42118740862`・`42118808951` success |
-| `UNIT-CORE-093` | private Platform input sinkからowned neutral eventをWindow identity/generationへ結び付け、Runtime dispatcher FIFO経由でUI threadの既存InputRouter/Focusへ配送 | `UT-CORE-PLATFORM-INPUT-001` | ready / implementation in progress |
+| `UNIT-CORE-093` | private Platform input sinkからowned neutral eventをWindow identity/generationへ結び付け、Runtime dispatcher FIFO経由でUI threadの既存InputRouter/Focusへ配送 | `UT-CORE-PLATFORM-INPUT-001` | complete / focused test、Core 203件、workspace tests、Clippy、Rust 1.85 check、fmt/document links/catalog pass。同revision [Windows/Ubuntu CI 42385354689](https://github.com/edamame-edame/freemvvm/actions/runs/42385354689) success |
 | `UNIT-PLATFORM-WINDOWS-007` | native key/TextCommit/primary pointer/activation入力のgeneration-aware mapping | `UT-PLATFORM-WINDOWS-INPUT-001` | planned / fake message mapping。IME・実機inputはrelease qualification |
 
 #### Linux Platform backend unit（DD v1.3 / test design 0.5承認済み）
@@ -269,3 +269,4 @@ flowchart LR
 | 2.1全文 | 2026-11-06 | Python wrapper実行記録とInput/Focus実装unitを統合した文書全体を利用者が承認 | 利用者 |
 | 2.2 | 2026-11-07 | schema 3 root manifest/shards、unit_name/path/casesのrecord shapeへ移行。要求/設計対応はunit-levelに維持 | Codex |
 | 2.3 | 2026-11-08 | 承認済みCore Platform input ingress試験をUNIT-CORE-093として登録 | Codex |
+| 2.4 | 2026-11-08 | UNIT-CORE-093の同revision Windows/Ubuntu CI結果を記録しcompleteへ更新 | Codex |
