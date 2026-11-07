@@ -5,3 +5,4 @@
 - UI dispatcher callback内でWindowのopen状態とgenerationを再検証する。閉鎖後・再open前のeventは破棄し、新generationへ付け替えない。
 - `PlatformWindowPeer` sink設定methodにはdefault no-opを使って既存backend/test peerのsource compatibilityを保ち、入力対応backendだけが実装する。
 - `tools/units/<category>.yaml`はJSON互換YAMLで、root manifest経由の`load_catalog`がID重複・依存先・case shapeを検証する。unit登録後にこのloaderを実行する。
+- Dispatcherのcompletion callbackはbounded UI turnで処理する。FIFOは複数turnにまたがるため、順序testはqueue受理直後の非実行と複数turn後の配送順を分けて確認する。

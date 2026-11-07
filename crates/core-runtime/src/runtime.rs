@@ -1336,6 +1336,11 @@ struct RuntimeWindowCloseRequestSink {
     window: ObjectIdentity,
 }
 
+struct RuntimeWindowInputSink {
+    runtime: Weak<RuntimeCore>,
+    window: ObjectIdentity,
+}
+
 impl crate::ui_window::PlatformWindowClientAreaSink for RuntimeWindowClientAreaSink {
     fn client_area_changed(
         &self,
@@ -1377,6 +1382,43 @@ impl crate::ui_window::PlatformWindowCloseRequestSink for RuntimeWindowCloseRequ
                     let _ = crate::abi_support::platform_window_close_intent(
                         runtime, window, generation,
                     );
+                }
+            })))
+            .map_err(|_| PlatformOperationError)
+    }
+}
+
+impl crate::ui_window::PlatformWindowInputSink for RuntimeWindowInputSink {
+    fn post(
+        &self,
+        generation: u64,
+        event: crate::ui_window::PlatformWindowInputEvent,
+    ) -> Result<(), PlatformOperationError> {
+        event.validate()?;
+        let runtime = self.runtime.upgrade().ok_or(PlatformOperationError)?;
+        let dispatcher = runtime
+            .dispatcher()
+            .map_err(|_| PlatformOperationError)?
+            .ok_or(PlatformOperationError)?;
+        let runtime = Arc::downgrade(&runtime);
+        let window = self.window;
+        dispatcher
+            .post_completion(PostedWork::callback(Box::new(move || {
+                let Some(runtime) = runtime.upgrade() else {
+                    return;
+                };
+                if runtime.window_generation(window) != Some(generation) {
+                    return;
+                }
+                match event {
+                    crate::ui_window::PlatformWindowInputEvent::ActivationChanged { active } => {
+                        let _ = runtime.window_set_active(window, active);
+                    }
+                    event => {
+                        if let Some(event) = event.into_input_event() {
+                            runtime.dispatch_window_input_event(window, event);
+                        }
+                    }
                 }
             })))
             .map_err(|_| PlatformOperationError)
@@ -2629,6 +2671,10 @@ impl RuntimeCore {
                 window: identity,
             }));
             peer.set_close_request_sink(Arc::new(RuntimeWindowCloseRequestSink {
+                runtime: Arc::downgrade(self),
+                window: identity,
+            }));
+            peer.set_input_sink(Arc::new(RuntimeWindowInputSink {
                 runtime: Arc::downgrade(self),
                 window: identity,
             }));
@@ -6264,6 +6310,13 @@ impl RuntimeCore {
             .lock()
             .map(|dispatcher| dispatcher.clone())
             .map_err(|_| RuntimeCoreError::SynchronizationPoisoned)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fail_next_dispatcher_reservation_for_test(&self) {
+        if let Ok(Some(dispatcher)) = self.dispatcher() {
+            dispatcher.fail_next_reservation();
+        }
     }
 
     pub(crate) fn dispatch_turn(&self) -> Result<(), RuntimeCoreError> {

@@ -149,7 +149,8 @@ impl UiControlState {
 mod tests {
     use crate::abi_support::{
         Damage, DeviceScale, FramePhase, FrameTicket, PlatformWindowClientAreaSink,
-        PlatformWindowCloseRequestSink, Rect, SceneSnapshot, WindowClientArea, WindowOpenInfo,
+        PlatformWindowCloseRequestSink, PlatformWindowInputEvent, PlatformWindowInputSink, Rect,
+        SceneSnapshot, WindowClientArea, WindowOpenInfo,
     };
     use crate::abi_support::{
         UiControlApiError, button_set_command, command_close, command_create_async, handle_release,
@@ -238,6 +239,7 @@ mod tests {
             std::sync::Mutex<Option<Arc<dyn crate::abi_support::PlatformFrameCompletionSink>>>,
         client_area_sink: std::sync::Mutex<Option<Arc<dyn PlatformWindowClientAreaSink>>>,
         close_request_sink: std::sync::Mutex<Option<Arc<dyn PlatformWindowCloseRequestSink>>>,
+        input_sink: std::sync::Mutex<Option<Arc<dyn PlatformWindowInputSink>>>,
         submitted: std::sync::Mutex<Vec<(FrameTicket, Arc<SceneSnapshot>)>>,
         fail_next_submit: std::sync::atomic::AtomicBool,
         text_service: std::sync::Mutex<Option<Arc<dyn crate::abi_support::TextService>>>,
@@ -360,6 +362,10 @@ mod tests {
                 .close_request_sink
                 .lock()
                 .expect("close-request sink lock") = Some(sink);
+        }
+
+        fn set_input_sink(&self, sink: Arc<dyn PlatformWindowInputSink>) {
+            *self.probe.input_sink.lock().expect("input sink lock") = Some(sink);
         }
 
         fn close(&self) -> Result<(), crate::abi_support::PlatformOperationError> {
@@ -2395,6 +2401,184 @@ mod tests {
         assert_eq!(window_open(window), Ok(3));
         runtime_shutdown(runtime).expect("shutdown Runtime");
         assert!(sink.close_requested(3).is_err());
+        handle_release(window).expect("release Window");
+        handle_release(runtime).expect("release Runtime");
+    }
+
+    #[test]
+    fn platform_input_ingress_posts_owned_fifo_events_and_rejects_stale_or_unavailable_work() {
+        let probe = Arc::new(PlatformProbe::default());
+        let factory: Arc<dyn crate::abi_support::PlatformRuntimeFactory> =
+            Arc::new(TestPlatformFactory(Arc::clone(&probe)));
+        let runtime = runtime_create_handle_with_platform_factory(factory)
+            .expect("create Runtime with fake peer");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        let window = ui_control_create_window(runtime).expect("create Window");
+        let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
+        let text_box = ui_control_create_text_box(runtime, b"start").expect("create TextBox");
+        window_set_content(window, panel).expect("attach StackPanel");
+        stack_panel_insert(panel, 0, text_box).expect("attach TextBox");
+        assert_eq!(window_open(window), Ok(1));
+        let sink = probe
+            .input_sink
+            .lock()
+            .expect("input sink lock")
+            .as_ref()
+            .expect("Core input sink")
+            .clone();
+
+        let worker_sink = Arc::clone(&sink);
+        std::thread::spawn(move || {
+            worker_sink
+                .post(
+                    1,
+                    PlatformWindowInputEvent::ActivationChanged { active: true },
+                )
+                .expect("enqueue activation");
+        })
+        .join()
+        .expect("activation worker");
+        runtime_dispatch_turn(runtime).expect("dispatch activation on UI thread");
+        widget_request_focus(text_box).expect("focus TextBox");
+        assert!(widget_has_focus(text_box).expect("query TextBox focus"));
+
+        let deliveries = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let callback_deliveries = Arc::clone(&deliveries);
+        let subscription = widget_input_subscribe(
+            text_box,
+            InputEventKind::KeyDown.mask_bit()
+                | InputEventKind::KeyUp.mask_bit()
+                | InputEventKind::TextCommit.mask_bit(),
+            Arc::new(move |_, _, frame| {
+                callback_deliveries
+                    .lock()
+                    .expect("input deliveries lock")
+                    .push((frame.event.kind, std::thread::current().id()));
+            }),
+        )
+        .expect("subscribe to TextBox input");
+        let ui_thread = std::thread::current().id();
+        let worker_sink = Arc::clone(&sink);
+        std::thread::spawn(move || {
+            worker_sink
+                .post(
+                    1,
+                    PlatformWindowInputEvent::KeyDown {
+                        identity: 0x04,
+                        modifiers: 0,
+                    },
+                )
+                .expect("enqueue key down");
+            let source_text: Arc<str> = Arc::from("-owned-日本語");
+            worker_sink
+                .post(
+                    1,
+                    PlatformWindowInputEvent::TextCommit(Arc::clone(&source_text)),
+                )
+                .expect("enqueue owned text");
+            drop(source_text);
+            worker_sink
+                .post(
+                    1,
+                    PlatformWindowInputEvent::KeyUp {
+                        identity: 0x04,
+                        modifiers: 0,
+                    },
+                )
+                .expect("enqueue key up");
+        })
+        .join()
+        .expect("input worker");
+        assert!(deliveries.lock().expect("input deliveries lock").is_empty());
+        for _ in 0..3 {
+            runtime_dispatch_turn(runtime).expect("dispatch queued input on UI thread");
+        }
+        assert_eq!(
+            *deliveries.lock().expect("input deliveries lock"),
+            vec![
+                (InputEventKind::KeyDown, ui_thread),
+                (InputEventKind::TextCommit, ui_thread),
+                (InputEventKind::KeyUp, ui_thread),
+            ]
+        );
+
+        let value = ui_control_text_box_value_property(text_box).expect("get TextBox Value");
+        let mut value_bytes = [0; 64];
+        let value_length = property_get_utf8(value, Some(&mut value_bytes)).expect("read Value");
+        assert_eq!(
+            &value_bytes[..value_length],
+            "start-owned-日本語".as_bytes()
+        );
+
+        window_close(window).expect("close Window");
+        assert_eq!(window_open(window), Ok(2));
+        sink.post(
+            2,
+            PlatformWindowInputEvent::ActivationChanged { active: true },
+        )
+        .expect("enqueue reopened activation");
+        runtime_dispatch_turn(runtime).expect("dispatch reopened activation");
+        widget_request_focus(text_box).expect("refocus TextBox");
+        deliveries.lock().expect("input deliveries lock").clear();
+        sink.post(1, PlatformWindowInputEvent::TextCommit(Arc::from("-stale")))
+            .expect("enqueue stale-generation input");
+        sink.post(
+            2,
+            PlatformWindowInputEvent::TextCommit(Arc::from("-current")),
+        )
+        .expect("enqueue current-generation input");
+        for _ in 0..2 {
+            runtime_dispatch_turn(runtime).expect("discard stale and deliver current input");
+        }
+        assert_eq!(
+            deliveries.lock().expect("input deliveries lock").as_slice(),
+            &[(InputEventKind::TextCommit, ui_thread)]
+        );
+        let value_length = property_get_utf8(value, Some(&mut value_bytes)).expect("read Value");
+        assert_eq!(
+            &value_bytes[..value_length],
+            "start-owned-日本語-current".as_bytes()
+        );
+
+        crate::abi_support::window_fail_next_dispatcher_reservation_for_test(window)
+            .expect("inject dispatcher reservation failure");
+        assert!(
+            sink.post(
+                2,
+                PlatformWindowInputEvent::TextCommit(Arc::from("-rejected")),
+            )
+            .is_err()
+        );
+        assert!(
+            sink.post(
+                2,
+                PlatformWindowInputEvent::PrimaryPointerDown {
+                    x_dip: f64::NAN,
+                    y_dip: 0.0,
+                },
+            )
+            .is_err()
+        );
+        let value_length = property_get_utf8(value, Some(&mut value_bytes)).expect("read Value");
+        assert_eq!(
+            &value_bytes[..value_length],
+            "start-owned-日本語-current".as_bytes()
+        );
+
+        subscription_cancel(subscription).expect("cancel input subscription");
+        handle_release(subscription).expect("release input subscription");
+        handle_release(value).expect("release TextBox Value");
+        handle_release(text_box).expect("release TextBox");
+        handle_release(panel).expect("release StackPanel");
+        window_close(window).expect("close Window");
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        assert!(
+            sink.post(
+                2,
+                PlatformWindowInputEvent::TextCommit(Arc::from("-after-shutdown")),
+            )
+            .is_err()
+        );
         handle_release(window).expect("release Window");
         handle_release(runtime).expect("release Runtime");
     }
