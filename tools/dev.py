@@ -15,6 +15,8 @@ import sysconfig
 from dev_support.environment import bootstrap_environment
 from dev_support.commands.abi import COMMANDS as ABI_COMMANDS
 from dev_support.commands.abi import handle as handle_abi_command
+from dev_support.commands.rust import COMMANDS as RUST_COMMANDS
+from dev_support.commands.rust import handle as handle_rust_command
 from dev_support.process import capture, msvc_environment, run
 from dev_support.reports import write_json_report
 
@@ -136,14 +138,7 @@ def main():
             "cpp-input-test",
             "cpp-input-consumer-test",
             "cpp-package-test",
-            "rust-wrapper-runtime-test",
-            "rust-wrapper-runtime-consumer-test",
-            "rust-wrapper-ui-controls-test",
-            "rust-wrapper-window-close-test",
-            "rust-wrapper-property-bool-i64-test",
-            "rust-wrapper-property-utf8-test",
-            "rust-wrapper-property-f64-test",
-            "rust-wrapper-property-decimal-test",
+            *RUST_COMMANDS,
             "python-runtime-test",
             "python-runtime-consumer-test",
             "python-property-bool-i64-test",
@@ -516,170 +511,8 @@ def main():
                 results,
                 "python-format",
             )
-        elif args.command in (
-            "rust-wrapper-runtime-test",
-            "rust-wrapper-runtime-consumer-test",
-            "rust-wrapper-ui-controls-test",
-            "rust-wrapper-window-close-test",
-            "rust-wrapper-property-bool-i64-test",
-            "rust-wrapper-property-utf8-test",
-            "rust-wrapper-property-f64-test",
-            "rust-wrapper-property-decimal-test",
-        ):
-            run(
-                ["cargo", "build", "--locked", "-p", "freemvvm-c-abi"],
-                environment,
-                results,
-                "rust-wrapper-native-build",
-            )
-            target_dir = Path(
-                environment.get("CARGO_TARGET_DIR", ROOT / "target")
-            )
-            if not target_dir.is_absolute():
-                target_dir = ROOT / target_dir
-            native_dir = target_dir / "debug"
-            native_environment = dict(environment)
-            native_environment["FREEMVVM_NATIVE_LIB_DIR"] = str(native_dir)
-            if os.name == "nt":
-                native_environment["PATH"] = (
-                    str(native_dir) + os.pathsep + native_environment["PATH"]
-                )
-            elif sys.platform == "darwin":
-                native_environment["DYLD_LIBRARY_PATH"] = (
-                    str(native_dir)
-                    + os.pathsep
-                    + native_environment.get("DYLD_LIBRARY_PATH", "")
-                )
-            else:
-                native_environment["LD_LIBRARY_PATH"] = (
-                    str(native_dir)
-                    + os.pathsep
-                    + native_environment.get("LD_LIBRARY_PATH", "")
-                )
-            if args.command == "rust-wrapper-window-close-test":
-                run(
-                    ["cargo", "test", "--locked", "-p", "freemvvm"],
-                    native_environment,
-                    results,
-                    "rust-wrapper-window-close-tests",
-                )
-                run(
-                    [
-                        "cargo",
-                        "run",
-                        "--locked",
-                        "-p",
-                        "freemvvm",
-                        "--example",
-                        "window_close_consumer",
-                    ],
-                    native_environment,
-                    results,
-                    "rust-wrapper-window-close-consumer",
-                )
-            elif args.command == "rust-wrapper-ui-controls-test":
-                run(
-                    ["cargo", "test", "--locked", "-p", "freemvvm"],
-                    native_environment,
-                    results,
-                    "rust-wrapper-ui-controls-tests",
-                )
-                run(
-                    [
-                        "cargo",
-                        "run",
-                        "--locked",
-                        "-p",
-                        "freemvvm",
-                        "--example",
-                        "ui_controls_consumer",
-                    ],
-                    native_environment,
-                    results,
-                    "rust-wrapper-ui-controls-consumer",
-                )
-            elif args.command == "rust-wrapper-runtime-test":
-                run(
-                    ["cargo", "test", "--locked", "-p", "freemvvm"],
-                    native_environment,
-                    results,
-                    "rust-wrapper-runtime-tests",
-                )
-            elif args.command == "rust-wrapper-runtime-consumer-test":
-                run(
-                    [
-                        "cargo",
-                        "run",
-                        "--locked",
-                        "-p",
-                        "freemvvm",
-                        "--example",
-                        "runtime_consumer",
-                    ],
-                    native_environment,
-                    results,
-                    "rust-wrapper-runtime-consumer",
-                )
-            elif args.command == "rust-wrapper-property-bool-i64-test":
-                run(
-                    [
-                        "cargo",
-                        "run",
-                        "--locked",
-                        "-p",
-                        "freemvvm",
-                        "--example",
-                        "property_bool_i64_consumer",
-                    ],
-                    native_environment,
-                    results,
-                    "rust-wrapper-property-bool-i64-consumer",
-                )
-            elif args.command == "rust-wrapper-property-utf8-test":
-                run(
-                    [
-                        "cargo",
-                        "run",
-                        "--locked",
-                        "-p",
-                        "freemvvm",
-                        "--example",
-                        "property_utf8_consumer",
-                    ],
-                    native_environment,
-                    results,
-                    "rust-wrapper-property-utf8-consumer",
-                )
-            elif args.command == "rust-wrapper-property-f64-test":
-                run(
-                    [
-                        "cargo",
-                        "run",
-                        "--locked",
-                        "-p",
-                        "freemvvm",
-                        "--example",
-                        "property_f64_consumer",
-                    ],
-                    native_environment,
-                    results,
-                    "rust-wrapper-property-f64-consumer",
-                )
-            else:
-                run(
-                    [
-                        "cargo",
-                        "run",
-                        "--locked",
-                        "-p",
-                        "freemvvm",
-                        "--example",
-                        "property_decimal_consumer",
-                    ],
-                    native_environment,
-                    results,
-                    "rust-wrapper-property-decimal-consumer",
-                )
+        elif args.command in RUST_COMMANDS:
+            handle_rust_command(args.command, environment, results)
         elif args.command == "csharp-runtime-test":
             project = "wrappers/csharp/tests/RuntimeTests/RuntimeTests.csproj"
             run(
