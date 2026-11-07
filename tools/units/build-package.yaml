@@ -144,6 +144,15 @@
               "pytest",
               "tools/tests/test_dev_python_command.py"
             ]
+          },
+          {
+            "id": "UT-BUILD-CLI-007",
+            "command": [
+              "python",
+              "-m",
+              "pytest",
+              "tools/tests/test_dev_bootstrap_command.py"
+            ]
           }
         ]
       }
