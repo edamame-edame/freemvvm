@@ -57,6 +57,14 @@ Window背景色について、利用者が値を指定でき、未指定なら�
 - dependency integration: `impl-rust/core-scene-producer` を親へmerge commit `5cb737d` で統合。別エージェントの `impl-rust/ui-webview-plugin` は統合対象外で、変更も含めていない。
 - wrapper branch: Core API unitの全検証・commit完了後、各対象言語ごとにこのCore branchから独立して作成する。
 
+### 2026-11-08 wrapper統合の進捗
+
+- Core APIsの変更は`version/0.0.1`へ統合済み。wrapper実装中にCore/C ABI変更が必要になった場合のbranch切替・他言語影響確認手順は[Git運用メモ](../01_memory/git-core-change-from-wrapper.md)と[Git管理ルール](../02_git/rule.md)に記録済み。
+- Python: 既存Window APIへget/set/resetを統合済み。実装・fake ABI試験・別process consumer・Windows/Linux CIが成功。
+- C++: `RgbColor`とget/set/resetを既存`Window`へ統合。fake ABIのdefault/set/reset/error試験と、再配置したインストールpackageの別process consumerがlocalで成功。unit recordを`UNIT-WRAP-CPP-WINDOW-BG-001`として登録済み。
+- C#、Rust: 旧実装は現行Window型へ統合されておらず、これから既存型へ移植・検証する。旧wrapper branchを丸ごと取り込まない。
+- 次: C++ unitを日本語commit/pushした後、C#とRustをCore APIs branchからの兄弟wrapper branchとして順次仕上げる。全wrapperの実装・consumer検証・CI確認後にまとめて`version/0.0.1`向けPRを作る。
+
 ## レビュー履歴
 
 | 日付 | 対象 | 状態 | 備考 |

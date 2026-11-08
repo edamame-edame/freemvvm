@@ -18,6 +18,12 @@ enum class Orientation : std::uint32_t {
   kHorizontal = 2,
 };
 
+struct RgbColor final {
+  float red;
+  float green;
+  float blue;
+};
+
 enum class Alignment : std::uint32_t {
   kStart = 1,
   kCenter = 2,
@@ -205,6 +211,9 @@ class Window final : public Container {
   Result<std::optional<Widget>> content() const;
   Result<void> set_content(Widget& child);
   Result<void> clear_content();
+  Result<RgbColor> background_rgb() const;
+  Result<void> set_background_rgb(RgbColor color);
+  Result<void> reset_background_rgb();
   Result<Property<std::string>> title_property() const;
   Result<void> open();
   Result<void> close_peer();
