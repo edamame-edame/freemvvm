@@ -226,6 +226,20 @@ int main() {
   auto label = std::move(*label_result.value());
   auto input = std::move(*input_result.value());
   auto button = std::move(*button_result.value());
+  auto background = window.background_rgb();
+  if (!background.has_value() || background.value()->red != 1.0F ||
+      background.value()->green != 1.0F ||
+      background.value()->blue != 1.0F) return 64;
+  if (!window.set_background_rgb({0.2F, 0.4F, 0.8F}).has_value()) return 65;
+  background = window.background_rgb();
+  if (!background.has_value() || background.value()->red != 0.2F ||
+      background.value()->green != 0.4F ||
+      background.value()->blue != 0.8F) return 66;
+  if (!window.reset_background_rgb().has_value()) return 67;
+  background = window.background_rgb();
+  if (!background.has_value() || background.value()->red != 1.0F ||
+      background.value()->green != 1.0F ||
+      background.value()->blue != 1.0F) return 68;
   int input_events = 0;
   auto input_handler = [&input_events](freemvvm::InputEventView&) {
     ++input_events;

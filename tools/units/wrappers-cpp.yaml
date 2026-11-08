@@ -858,6 +858,77 @@
           }
         ]
       }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CPP-WINDOW-BG-001",
+      "state": "complete",
+      "scope": "cpp-window-background-rgb-get-set-reset-wrapper",
+      "path": {
+        "source": [
+          "wrappers/cpp/include/freemvvm/ui_controls.hpp",
+          "wrappers/cpp/src/runtime.cpp",
+          "wrappers/cpp/src/runtime_internal.hpp",
+          "wrappers/cpp/src/ui_controls.cpp",
+          "wrappers/cpp/tests/ui_control_tests.cpp",
+          "wrappers/cpp/tests/package_consumer/main.cpp"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "wrappers/cpp/CMakeLists.txt",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/dev.py",
+          "tools/units.yaml",
+          "tools/units/wrappers-cpp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-079",
+        "UNIT-WRAP-CPP-009",
+        "UNIT-PKG-CPP-001"
+      ],
+      "requirements": [
+        "RQ-09-001",
+        "RQ-09-074"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/cpp.md",
+          "version": "1.4 approved",
+          "section": "Window background RGB wrapper API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.4 approved",
+          "section": "Window background RGB API"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-WINDOW-BG-01",
+          "TC-ERROR-01",
+          "TC-LIFE-01",
+          "TC-WRAP-CPP-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CPP-WINDOW-BG-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-controls-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CPP-WINDOW-BG-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "cpp-package-test"
+            ]
+          }
+        ]
+      }
     }
   ]
 }

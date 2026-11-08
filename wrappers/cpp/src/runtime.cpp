@@ -196,6 +196,25 @@ ui_status api_binding_subscribe_error(ui_handle binding, ui_callback callback,
                                           out_subscription, out_error);
 }
 
+ui_status api_window_background_rgb(ui_handle window, float* out_red,
+                                    float* out_green, float* out_blue,
+                                    ui_handle* out_error) {
+  return ui_abi_1_window_background_rgb(window, out_red, out_green, out_blue,
+                                        out_error);
+}
+
+ui_status api_window_set_background_rgb(ui_handle window, float red,
+                                        float green, float blue,
+                                        ui_handle* out_error) {
+  return ui_abi_1_window_set_background_rgb(window, red, green, blue,
+                                            out_error);
+}
+
+ui_status api_window_reset_background_rgb(ui_handle window,
+                                          ui_handle* out_error) {
+  return ui_abi_1_window_reset_background_rgb(window, out_error);
+}
+
 ui_status api_handle_retain(ui_handle borrowed, ui_handle* out_owned) {
   return ui_abi_1_handle_retain(borrowed, out_owned);
 }
@@ -584,6 +603,9 @@ std::shared_ptr<const AbiApi> linked_api() {
       &api_command_complete_cancelled,
       &api_runtime_post,
       &ui_abi_1_window_create,
+      &api_window_background_rgb,
+      &api_window_set_background_rgb,
+      &api_window_reset_background_rgb,
       &ui_abi_1_stack_panel_create,
       &ui_abi_1_text_create,
       &ui_abi_1_text_box_create,
