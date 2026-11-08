@@ -1049,8 +1049,7 @@
       },
       "depends_on": [
         "UNIT-CORE-079",
-        "UNIT-WRAP-CS-CONTROLS-001",
-        "UNIT-PKG-CS-001"
+        "UNIT-WRAP-CS-CONTROLS-001"
       ],
       "requirements": [
         "RQ-09-001",
