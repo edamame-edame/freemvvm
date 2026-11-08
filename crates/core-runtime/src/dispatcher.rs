@@ -457,7 +457,7 @@ impl Dispatcher {
     }
 
     #[cfg(test)]
-    fn fail_next_reservation(&self) {
+    pub(crate) fn fail_next_reservation(&self) {
         self.inner
             .state
             .lock()

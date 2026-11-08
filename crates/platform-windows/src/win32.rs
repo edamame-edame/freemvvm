@@ -1,9 +1,14 @@
+use crate::input::{
+    PointerDevice, map_key_message, map_pointer_button, map_utf16_char, modifier_mask,
+    signed_client_pixels,
+};
 use crate::peer::NativeWindowBackend;
 use crate::renderer::direct2d::HwndRenderer;
 use freemvvm_core::abi_support::{
     DeviceScale, FrameTicket, PlatformOperationError, PlatformWindowClientAreaSink,
-    PlatformWindowCloseRequestSink, ResolvedTextSnapshot, SceneSnapshot, TextRequest,
-    TextServiceError, WindowClientArea, WindowOpenInfo,
+    PlatformWindowCloseRequestSink, PlatformWindowInputEvent, PlatformWindowInputSink,
+    ResolvedTextSnapshot, SceneSnapshot, TextRequest, TextServiceError, WindowClientArea,
+    WindowOpenInfo,
 };
 use std::ffi::c_void;
 use std::mem::zeroed;
@@ -11,21 +16,29 @@ use std::ptr::{null, null_mut};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
 use std::thread::{self, JoinHandle};
+use windows_sys::Win32::Foundation::POINT;
 use windows_sys::Win32::Foundation::{
     CloseHandle, GetLastError, HWND, LPARAM, LRESULT, WAIT_FAILED, WAIT_OBJECT_0, WPARAM,
 };
 use windows_sys::Win32::Graphics::Gdi::{
-    BeginPaint, EndPaint, InvalidateRect, PAINTSTRUCT, UpdateWindow,
+    BeginPaint, EndPaint, InvalidateRect, PAINTSTRUCT, ScreenToClient, UpdateWindow,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::{CreateEventW, INFINITE, ResetEvent, SetEvent};
 use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    GetKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+};
+use windows_sys::Win32::UI::Input::Pointer::{GetPointerInfo, GetPointerType, POINTER_INFO};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateWindowExW, DefWindowProcW,
     DestroyWindow, DispatchMessageW, GWLP_USERDATA, GetClientRect, GetWindowLongPtrW, MSG,
-    MsgWaitForMultipleObjects, PM_NOREMOVE, PM_REMOVE, PeekMessageW, RegisterClassW, SW_SHOW,
-    SetWindowLongPtrW, ShowWindow, TranslateMessage, WM_CLOSE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
-    WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+    MsgWaitForMultipleObjects, PM_NOREMOVE, PM_REMOVE, POINTER_MESSAGE_FLAG_FIRSTBUTTON,
+    POINTER_MESSAGE_FLAG_PRIMARY, PT_PEN, PT_TOUCH, PeekMessageW, RegisterClassW, SW_SHOW,
+    SetWindowLongPtrW, ShowWindow, TranslateMessage, WA_INACTIVE, WM_ACTIVATE, WM_CHAR, WM_CLOSE,
+    WM_DEADCHAR, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_NCCREATE,
+    WM_NCDESTROY, WM_PAINT, WM_POINTERDOWN, WM_POINTERUP, WM_SETFOCUS, WM_SIZE, WM_SYSCHAR,
+    WM_SYSDEADCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_OVERLAPPEDWINDOW,
 };
 
 const CLASS_NAME: [u16; 18] = [
@@ -63,6 +76,7 @@ enum Command {
         generation: u64,
         sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
         close_request_sink: Option<Arc<dyn PlatformWindowCloseRequestSink>>,
+        input_sink: Option<Arc<dyn PlatformWindowInputSink>>,
         response: SyncSender<Result<WindowOpenInfo, PlatformOperationError>>,
     },
     Close {
@@ -192,6 +206,7 @@ impl NativeWindowBackend for Backend {
         generation: u64,
         sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
         close_request_sink: Option<Arc<dyn PlatformWindowCloseRequestSink>>,
+        input_sink: Option<Arc<dyn PlatformWindowInputSink>>,
     ) -> Result<WindowOpenInfo, PlatformOperationError> {
         let worker = self.ensure_worker()?;
         let (response, result) = mpsc::sync_channel(1);
@@ -199,6 +214,7 @@ impl NativeWindowBackend for Backend {
             generation,
             sink,
             close_request_sink,
+            input_sink,
             response,
         })?;
         result.recv().map_err(|_| PlatformOperationError)?
@@ -244,6 +260,10 @@ struct WindowState {
     generation: u64,
     sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
     close_request_sink: Option<Arc<dyn PlatformWindowCloseRequestSink>>,
+    input_sink: Option<Arc<dyn PlatformWindowInputSink>>,
+    device_scale: DeviceScale,
+    pending_high_surrogate: Option<u16>,
+    active: bool,
     renderer: Option<HwndRenderer>,
     last_scene: Option<Arc<SceneSnapshot>>,
     pending_render: Option<PendingRender>,
@@ -286,12 +306,18 @@ fn worker_main(receiver: Receiver<Command>, ready: SyncSender<()>, wake_event: u
                         generation,
                         sink,
                         close_request_sink,
+                        input_sink,
                         response,
                     }) => {
                         let result = if window.is_some() {
                             Err(PlatformOperationError)
                         } else {
-                            match open_native_window(generation, sink, close_request_sink) {
+                            match open_native_window(
+                                generation,
+                                sink,
+                                close_request_sink,
+                                input_sink,
+                            ) {
                                 Ok(opened) => {
                                     let info = opened.initial_info;
                                     window = Some(opened);
@@ -379,12 +405,17 @@ fn open_native_window(
     generation: u64,
     sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
     close_request_sink: Option<Arc<dyn PlatformWindowCloseRequestSink>>,
+    input_sink: Option<Arc<dyn PlatformWindowInputSink>>,
 ) -> Result<NativeWindow, PlatformOperationError> {
     register_window_class()?;
     let mut state = Box::new(WindowState {
         generation,
         sink,
         close_request_sink,
+        input_sink,
+        device_scale: DeviceScale::new(1.0, 1.0).map_err(|_| PlatformOperationError)?,
+        pending_high_surrogate: None,
+        active: false,
         renderer: None,
         last_scene: None,
         pending_render: None,
@@ -432,6 +463,16 @@ fn open_native_window(
             return Err(error);
         }
     }
+
+    // SAFETY: handle is a live HWND created and owned by this worker thread.
+    let dpi = unsafe { GetDpiForWindow(handle) };
+    if dpi == 0 {
+        // SAFETY: handle is still a live HWND owned by this worker thread.
+        unsafe { DestroyWindow(handle) };
+        return Err(PlatformOperationError);
+    }
+    let scale = f64::from(dpi) / 96.0;
+    state.device_scale = DeviceScale::new(scale, scale).map_err(|_| PlatformOperationError)?;
 
     // SAFETY: handle is a live top-level Window created by this worker thread.
     unsafe {
@@ -573,6 +614,100 @@ unsafe extern "system" fn window_proc(
         return handle_close_message(generation, sink);
     }
 
+    // Native input is normalized and copied into the Core-owned dispatcher sink. The sink only
+    // enqueues work; it never runs Core routing or application callbacks on this worker thread.
+    // SAFETY: this WndProc invocation belongs to handle's owning thread.
+    let state_pointer = unsafe { GetWindowLongPtrW(handle, GWLP_USERDATA) } as *mut WindowState;
+    if !state_pointer.is_null() {
+        // SAFETY: WindowState is retained by NativeWindow until DestroyWindow returns on this
+        // message thread, and every WndProc invocation runs on that same owner thread.
+        let state = unsafe { &mut *state_pointer };
+        match message {
+            WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP => {
+                let down = matches!(message, WM_KEYDOWN | WM_SYSKEYDOWN);
+                let modifiers = current_modifiers();
+                let event = map_key_message(down, lparam, modifiers);
+                let _ = post_input_event(state, event);
+                if matches!(message, WM_SYSKEYDOWN | WM_SYSKEYUP) {
+                    // System keys must retain native menu/activation behavior.
+                    // SAFETY: native system-key messages require the standard default procedure.
+                    return unsafe { DefWindowProcW(handle, message, wparam, lparam) };
+                }
+            }
+            WM_CHAR => {
+                if let Some(event) =
+                    map_utf16_char(wparam as u16, &mut state.pending_high_surrogate)
+                {
+                    let _ = post_input_event(state, event);
+                }
+                return 0;
+            }
+            WM_DEADCHAR | WM_SYSCHAR | WM_SYSDEADCHAR => {
+                // Text input is sourced only from WM_CHAR; IME result strings use a later adapter.
+            }
+            WM_LBUTTONDOWN | WM_LBUTTONUP => {
+                let (x_px, y_px) = signed_client_pixels(lparam);
+                if let Some(event) = map_pointer_button(
+                    message == WM_LBUTTONDOWN,
+                    PointerDevice::Mouse,
+                    true,
+                    true,
+                    (x_px, y_px),
+                    state.device_scale,
+                ) {
+                    let _ = post_input_event(state, event);
+                }
+            }
+            WM_POINTERDOWN | WM_POINTERUP => {
+                let pointer_id = (wparam & 0xffff) as u32;
+                let mut pointer_type = 0;
+                // SAFETY: pointer_type is writable; pointer_id comes from the WM_POINTER message.
+                if unsafe { GetPointerType(pointer_id, &mut pointer_type) } != 0 {
+                    let device = match pointer_type {
+                        PT_TOUCH => PointerDevice::Touch,
+                        PT_PEN => PointerDevice::Pen,
+                        _ => PointerDevice::Other,
+                    };
+                    let flags = ((wparam >> 16) & 0xffff) as u32;
+                    if matches!(device, PointerDevice::Touch | PointerDevice::Pen)
+                        && flags & POINTER_MESSAGE_FLAG_PRIMARY != 0
+                        && flags & POINTER_MESSAGE_FLAG_FIRSTBUTTON != 0
+                    {
+                        let mut info = POINTER_INFO::default();
+                        // SAFETY: info is a valid output buffer and pointer_id belongs to this event.
+                        if unsafe { GetPointerInfo(pointer_id, &mut info) } != 0 {
+                            let mut point = POINT {
+                                x: info.ptPixelLocation.x,
+                                y: info.ptPixelLocation.y,
+                            };
+                            // SAFETY: handle is the live window for this callback and point is writable.
+                            if unsafe { ScreenToClient(handle, &mut point) } != 0 {
+                                if let Some(event) = map_pointer_button(
+                                    message == WM_POINTERDOWN,
+                                    device,
+                                    true,
+                                    true,
+                                    (point.x, point.y),
+                                    state.device_scale,
+                                ) {
+                                    let _ = post_input_event(state, event);
+                                    return 0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            WM_ACTIVATE => {
+                let active = (wparam & 0xffff) as u32 != WA_INACTIVE;
+                post_activation_change(state, active);
+            }
+            WM_KILLFOCUS => post_activation_change(state, false),
+            WM_SETFOCUS => post_activation_change(state, true),
+            _ => {}
+        }
+    }
+
     if message == WM_SIZE {
         // SAFETY: GWLP_USERDATA is either null or the state installed at WM_NCCREATE.
         let state = unsafe { GetWindowLongPtrW(handle, GWLP_USERDATA) } as *mut WindowState;
@@ -666,6 +801,41 @@ fn handle_close_message(
         let _ = post_close_intent(generation, sink);
     }
     0
+}
+
+fn post_input_event(state: &WindowState, event: PlatformWindowInputEvent) -> bool {
+    let Some(sink) = state.input_sink.as_ref() else {
+        return false;
+    };
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sink.post(state.generation, event)
+    }))
+    .is_ok_and(|result| result.is_ok())
+}
+
+fn post_activation_change(state: &mut WindowState, active: bool) {
+    if state.active == active {
+        return;
+    }
+    state.active = active;
+    if !active {
+        state.pending_high_surrogate = None;
+    }
+    let _ = post_input_event(
+        state,
+        PlatformWindowInputEvent::ActivationChanged { active },
+    );
+}
+
+fn current_modifiers() -> u32 {
+    // SAFETY: GetKeyState reads the current thread's keyboard state and accepts these virtual keys.
+    let pressed = |key| unsafe { GetKeyState(key as i32) < 0 };
+    modifier_mask(
+        pressed(VK_SHIFT),
+        pressed(VK_CONTROL),
+        pressed(VK_MENU),
+        pressed(VK_LWIN) || pressed(VK_RWIN),
+    )
 }
 
 #[cfg(test)]

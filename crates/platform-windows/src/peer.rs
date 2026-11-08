@@ -1,7 +1,8 @@
 use freemvvm_core::abi_support::{
     FrameTicket, PlatformFrameCompletionSink, PlatformOperationError, PlatformWindowClientAreaSink,
-    PlatformWindowCloseRequestSink, PlatformWindowPeer, ResolvedTextSnapshot, SceneSnapshot,
-    TextRequest, TextService, TextServiceError, WindowClientArea, WindowOpenInfo,
+    PlatformWindowCloseRequestSink, PlatformWindowInputSink, PlatformWindowPeer,
+    ResolvedTextSnapshot, SceneSnapshot, TextRequest, TextService, TextServiceError,
+    WindowClientArea, WindowOpenInfo,
 };
 use std::sync::{Arc, Mutex};
 
@@ -11,6 +12,7 @@ pub(crate) trait NativeWindowBackend: Send {
         generation: u64,
         sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
         close_request_sink: Option<Arc<dyn PlatformWindowCloseRequestSink>>,
+        input_sink: Option<Arc<dyn PlatformWindowInputSink>>,
     ) -> Result<WindowOpenInfo, PlatformOperationError>;
 
     fn close(&mut self) -> Result<(), PlatformOperationError>;
@@ -36,6 +38,7 @@ pub(crate) struct WindowsPeer<B: NativeWindowBackend> {
     state: Arc<Mutex<PeerState<B>>>,
     client_area_sink: Mutex<Option<Arc<dyn PlatformWindowClientAreaSink>>>,
     close_request_sink: Mutex<Option<Arc<dyn PlatformWindowCloseRequestSink>>>,
+    input_sink: Mutex<Option<Arc<dyn PlatformWindowInputSink>>>,
     completion_sink: Mutex<Option<Arc<dyn PlatformFrameCompletionSink>>>,
 }
 
@@ -48,6 +51,7 @@ impl<B: NativeWindowBackend> WindowsPeer<B> {
             })),
             client_area_sink: Mutex::new(None),
             close_request_sink: Mutex::new(None),
+            input_sink: Mutex::new(None),
             completion_sink: Mutex::new(None),
         }
     }
@@ -81,12 +85,19 @@ impl<B: NativeWindowBackend + 'static> PlatformWindowPeer for WindowsPeer<B> {
             .lock()
             .map_err(|_| PlatformOperationError)?
             .clone();
+        let input_sink = self
+            .input_sink
+            .lock()
+            .map_err(|_| PlatformOperationError)?
+            .clone();
         let mut state = self.state.lock().map_err(|_| PlatformOperationError)?;
         if state.generation.is_some() {
             return Err(PlatformOperationError);
         }
 
-        let info = state.backend.open(generation, sink, close_request_sink)?;
+        let info = state
+            .backend
+            .open(generation, sink, close_request_sink, input_sink)?;
         if !valid_client_area(info.client_area) {
             let _ = state.backend.close();
             return Err(PlatformOperationError);
@@ -103,6 +114,12 @@ impl<B: NativeWindowBackend + 'static> PlatformWindowPeer for WindowsPeer<B> {
 
     fn set_close_request_sink(&self, sink: Arc<dyn PlatformWindowCloseRequestSink>) {
         if let Ok(mut current) = self.close_request_sink.lock() {
+            *current = Some(sink);
+        }
+    }
+
+    fn set_input_sink(&self, sink: Arc<dyn PlatformWindowInputSink>) {
+        if let Ok(mut current) = self.input_sink.lock() {
             *current = Some(sink);
         }
     }
@@ -171,8 +188,8 @@ mod tests {
     use freemvvm_core::abi_support::{
         Damage, DeviceScale, DrawOp, FrameTicket, FrameTracker, PlatformFrameCompletionSink,
         PlatformOperationError, PlatformWindowClientAreaSink, PlatformWindowCloseRequestSink,
-        PlatformWindowPeer, ResolvedTextSnapshot, SceneSnapshot, TextMetrics, TextRequest,
-        TextServiceError, WindowClientArea, WindowOpenInfo,
+        PlatformWindowInputSink, PlatformWindowPeer, ResolvedTextSnapshot, SceneSnapshot,
+        TextMetrics, TextRequest, TextServiceError, WindowClientArea, WindowOpenInfo,
     };
     use std::collections::VecDeque;
     use std::sync::Arc;
@@ -193,6 +210,7 @@ mod tests {
             generation: u64,
             sink: Option<Arc<dyn PlatformWindowClientAreaSink>>,
             close_request_sink: Option<Arc<dyn PlatformWindowCloseRequestSink>>,
+            _input_sink: Option<Arc<dyn PlatformWindowInputSink>>,
         ) -> Result<WindowOpenInfo, PlatformOperationError> {
             self.open_generations.push(generation);
             self.close_request_sinks.push(close_request_sink);

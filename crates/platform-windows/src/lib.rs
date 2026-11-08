@@ -1,5 +1,7 @@
 //! Windows Win32 window peer for the Core Platform SPI.
 
+#[cfg(any(target_os = "windows", test))]
+mod input;
 mod peer;
 #[cfg(any(target_os = "windows", test))]
 mod renderer;
@@ -31,6 +33,7 @@ mod win32 {
             _close_request_sink: Option<
                 Arc<dyn freemvvm_core::abi_support::PlatformWindowCloseRequestSink>,
             >,
+            _input_sink: Option<Arc<dyn freemvvm_core::abi_support::PlatformWindowInputSink>>,
         ) -> Result<WindowOpenInfo, PlatformOperationError> {
             Err(PlatformOperationError)
         }

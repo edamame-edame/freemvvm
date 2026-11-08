@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 2.4
+- 文書版: 2.5
 - 文書ロール: detailed-design
-- 更新日: 2026-11-02
-- 状態: 1.6全文承認済み（利用者、2026-10-30）。Linux/Core 1.7～1.9全文承認済み（利用者、2026-10-31）。Windows GlyphRun 1.7全文承認済み（利用者、2026-11-01）。Window単位TextServiceとWindows worker所有2.1全文承認済み（利用者、2026-11-01）。2.2全文承認済み（利用者、2026-11-01）。Windows native input bridge 2.3全文承認済み（利用者、2026-11-01）。2.4全文承認済み（利用者、2026-11-02）。実装・試験状態は別管理
+- 更新日: 2026-11-08
+- 状態: 1.6全文承認済み（利用者、2026-10-30）。Linux/Core 1.7～1.9全文承認済み（利用者、2026-10-31）。Windows GlyphRun 1.7全文承認済み（利用者、2026-11-01）。Window単位TextServiceとWindows worker所有2.1全文承認済み（利用者、2026-11-01）。2.2全文承認済み（利用者、2026-11-01）。Windows native input bridge 2.3全文承認済み（利用者、2026-11-01）。2.4全文承認済み（利用者、2026-11-02）。Core Platform input sink/dispatcher接続2.5全文承認済み（利用者、2026-11-08）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -417,7 +417,7 @@ flowchart TB
 
 登録方法（compile-time feature、platform crate、または明示factory injection）、descriptor schema、auto-selection policy、diagnostic formatはこの案で固定しない。現実装のLinux factoryを壊さず、新backend追加がControl/Scene producerを変更しないことを設計上の適合条件にする。
 
-### v2.4改訂案: Windows native messageからneutral Input valuesへの変換（全文レビュー待ち）
+### v2.4: Windows native messageからneutral Input valuesへの変換（全文承認済み）
 
 要求根拠: [RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-046](../../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-049](../../11_requirements/RQ-09_ui-scope.md#rq-09-049)、[RQ-09-056](../../11_requirements/RQ-09_ui-scope.md#rq-09-056)、[RQ-09-068](../../11_requirements/RQ-09_ui-scope.md#rq-09-068)。v2.3 sink/dispatcher/generation境界は維持し、共通ABI 1.6改訂案のneutral valuesへ次のnative inputを写す。OS固有値はCore/C ABIへ渡さない。
 
@@ -432,6 +432,39 @@ flowchart TB
 message loopはkey messageにTranslateMessageを一度実行し、各WndProcは値copyしてsinkへpostした後すぐ戻る。全eventは同一peer generationのFIFOで処理する。stale/closed/shutdown peerでは破棄する。TextCommitとfocus-lossの競合は受信順を保ち、FocusLost後に遅延commitを別targetへ付け替えない。
 
 この提案はWindows mouseと、OSがprimaryとして示すtouch/pen contactのprimary actionを対象とする。OS IMEの候補UIはWindows既定処理へ委ね、Core TextBoxへ確定文字だけを渡す。IME実機でWM_CHAR/IMEメッセージの重複やsurrogate処理を確認するまで実装仕様として承認しない。
+
+### v2.5: Core Platform input sinkとRuntime dispatcher接続（全文承認済み）
+
+本節は承認済み2.3/2.4のWindows input flowとCore InputRouterを、実装可能なprivate Rust SPIで接続する提案である。RQ-06-001/002/003、RQ-09-010/046/049/056/068の利用者向け保証、公開C ABI、wrapper API、native mapping範囲は変更しない。
+
+| 対象 | 実現仕様 | 所有・失敗境界 |
+|---|---|---|
+| `PlatformWindowInputEvent` | `KeyDown`、`KeyUp`、owned `TextCommit(Arc<str>)`、`PrimaryPointerDown/Up(x_dip, y_dip)`、`ActivationChanged(active)`を表すCore/Platform間のRust値 | HWND、WPARAM/LPARAM、borrowed OS bufferを含めない。pointer座標とevent/payload組合せをCore ingressで検査 |
+| `PlatformWindowInputSink` | `post(generation, event) -> Result<(), PlatformOperationError>`で値をCoreへ引き渡す | peer生成時にWindow identityへ結び付く。eventはgenerationを持ち、borrowed native memoryを参照しない |
+| `PlatformWindowPeer` | 既存のclient-area/close sinkと同様、`set_input_sink(Arc<dyn PlatformWindowInputSink>)`でsinkを設定 | sinkはCore/Platform間のRust SPIであり、versioned C ABIや利用者向けwrapper APIではない |
+| Runtime sink | `Weak<RuntimeCore>`とWindow identityを保持し、`Dispatcher::post_completion`へowned event callbackをenqueue | enqueue成功はUI delivery受理のみを示す。Core処理完了をnative workerへ同期応答しない。dispatcher停止・shutdown admission拒否・reserve失敗はopaque platform errorとして返す |
+| UI-thread delivery | FIFO dispatcher callback内でWindow open状態とgenerationを検査してから、Input eventは既存`dispatch_window_input_event`、activationは`window_set_active`へ渡す | stale/closed generation、Runtime消失またはshutdownでは無作用で破棄し、replacement Windowへ再割当しない。InputRouter/FocusManagerが意味処理の正本 |
+
+同一peer workerからのInputとactivationは同じcompletion queueへ順番にenqueueし、`TextCommit`とfocus lossもnative受信順を維持する。queue容量に独自の固定上限・coalescing・retryを追加しない。Dispatcherのreserve/acceptance契約を使い、enqueue後にRuntimeが停止した場合の処理完了は保証しない。
+
+```mermaid
+sequenceDiagram
+    participant W as Windows message worker
+    participant P as WindowPeer
+    participant S as PlatformWindowInputSink
+    participant D as Core Dispatcher
+    participant R as RuntimeCore
+    W->>P: native messageをneutral owned valueへ変換
+    P->>S: post(generation, event)
+    S->>D: post_completion(owned callback)
+    D-->>S: enqueue result
+    S-->>P: return without waiting for Core callback
+    D->>R: FIFO callback on UI thread
+    R->>R: Runtime/window/generation validation
+    R->>R: InputRouter dispatch or Focus activation
+```
+
+この案は`RuntimeWindowCloseRequestSink`/`RuntimeWindowClientAreaSink`と同じWeak Runtime・dispatcher callback patternを使い、workerからControl、Focus state、user callbackを直接操作しない。公開ABIには変更を加えない。Core ingress failureとstale-generationのtest oracleは[UI unit test](../../32_unit_test/ui.md) 1.8改訂案で別途レビューする。
 
 ## 文書の承認・改訂履歴
 
@@ -465,3 +498,4 @@ message loopはkey messageにTranslateMessageを一度実行し、各WndProcは�
 | 2026-11-01 | 2.3改訂案 | Windows input sink、native event順序、DIP変換、IME commit順、Core focus/route責務を提案。2.2承認範囲を維持 |
 | 2026-11-01 | 2.3全文 | 利用者の「ok」によりWindows native input bridge、event順序、DIP変換、Core focus/route境界を含む全文を承認。具体native API・実装・試験は別管理 |
 | 2026-11-02 | 2.4全文 | 利用者の「ok」によりWindows key/text/IME、mouseとprimary touch/pen、DIP/order bridgeを含む全文を承認。native実機試験は別管理 |
+| 2026-11-08 | 2.5全文 | 利用者の「ok」によりCore private input sink、owned event handoff、dispatcher FIFO、generation/shutdown validationを含む文書全体を承認。公開契約は変更せず、実装・試験は別管理 |

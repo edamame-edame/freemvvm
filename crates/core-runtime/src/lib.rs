@@ -74,8 +74,8 @@ pub mod abi_support {
     use crate::ui_window::WindowLifecycleError;
     pub use crate::ui_window::{
         CloseDecision, PlatformFrameCompletionSink, PlatformOperationError, PlatformRuntimeFactory,
-        PlatformWindowClientAreaSink, PlatformWindowCloseRequestSink, PlatformWindowPeer,
-        WindowClientArea, WindowOpenInfo,
+        PlatformWindowClientAreaSink, PlatformWindowCloseRequestSink, PlatformWindowInputEvent,
+        PlatformWindowInputSink, PlatformWindowPeer, WindowClientArea, WindowOpenInfo,
     };
     use crate::value::{
         DecimalValue, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind,
@@ -2641,6 +2641,15 @@ pub mod abi_support {
         runtime
             .window_set_active(identity, active)
             .map_err(map_ui_control_property_error)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_fail_next_dispatcher_reservation_for_test(
+        window: u64,
+    ) -> Result<(), UiControlApiError> {
+        let (_, runtime, _) = validate_ui_control(window, UiControlKind::Window)?;
+        runtime.fail_next_dispatcher_reservation_for_test();
+        Ok(())
     }
 
     pub fn window_close_intent(

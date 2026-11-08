@@ -3,6 +3,7 @@ use crate::platform::frame::{FrameError, FramePhase, FrameTicket, FrameTracker};
 use crate::platform::scene::{Damage, DeviceScale, SceneSnapshot};
 use crate::text_service::ResolvedTextSnapshot;
 use crate::text_service::TextService;
+use crate::ui_input::{InputEvent, InputEventKind, InputEventPayload};
 use crate::ui_layout::LayoutSnapshot;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,6 +19,8 @@ pub trait PlatformWindowPeer: Send + Sync {
     fn set_client_area_sink(&self, _sink: Arc<dyn PlatformWindowClientAreaSink>) {}
     /// Installs the UI-queue sink used by native window close-intent events.
     fn set_close_request_sink(&self, _sink: Arc<dyn PlatformWindowCloseRequestSink>) {}
+    /// Installs the UI-queue sink used by normalized native input events.
+    fn set_input_sink(&self, _sink: Arc<dyn PlatformWindowInputSink>) {}
     fn close(&self) -> Result<(), PlatformOperationError>;
     fn submit_frame(
         &self,
@@ -71,6 +74,77 @@ pub trait PlatformWindowClientAreaSink: Send + Sync {
 /// Enqueues a native Window close intent for processing on the Runtime UI thread.
 pub trait PlatformWindowCloseRequestSink: Send + Sync {
     fn close_requested(&self, generation: u64) -> Result<(), PlatformOperationError>;
+}
+
+/// Owned, platform-neutral input values posted by one Window peer generation.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PlatformWindowInputEvent {
+    KeyDown { identity: u32, modifiers: u32 },
+    KeyUp { identity: u32, modifiers: u32 },
+    TextCommit(Arc<str>),
+    PrimaryPointerDown { x_dip: f64, y_dip: f64 },
+    PrimaryPointerUp { x_dip: f64, y_dip: f64 },
+    ActivationChanged { active: bool },
+}
+
+impl PlatformWindowInputEvent {
+    pub(crate) fn validate(&self) -> Result<(), PlatformOperationError> {
+        match self {
+            Self::PrimaryPointerDown { x_dip, y_dip } | Self::PrimaryPointerUp { x_dip, y_dip }
+                if !x_dip.is_finite() || !y_dip.is_finite() =>
+            {
+                Err(PlatformOperationError)
+            }
+            _ => Ok(()),
+        }
+    }
+
+    pub(crate) fn into_input_event(self) -> Option<InputEvent> {
+        Some(match self {
+            Self::KeyDown {
+                identity,
+                modifiers,
+            } => InputEvent {
+                kind: InputEventKind::KeyDown,
+                payload: InputEventPayload::Key {
+                    identity,
+                    modifiers,
+                },
+            },
+            Self::KeyUp {
+                identity,
+                modifiers,
+            } => InputEvent {
+                kind: InputEventKind::KeyUp,
+                payload: InputEventPayload::Key {
+                    identity,
+                    modifiers,
+                },
+            },
+            Self::TextCommit(text) => InputEvent {
+                kind: InputEventKind::TextCommit,
+                payload: InputEventPayload::TextCommit(text),
+            },
+            Self::PrimaryPointerDown { x_dip, y_dip } => InputEvent {
+                kind: InputEventKind::PrimaryPointerDown,
+                payload: InputEventPayload::PrimaryPointer { x_dip, y_dip },
+            },
+            Self::PrimaryPointerUp { x_dip, y_dip } => InputEvent {
+                kind: InputEventKind::PrimaryPointerUp,
+                payload: InputEventPayload::PrimaryPointer { x_dip, y_dip },
+            },
+            Self::ActivationChanged { .. } => return None,
+        })
+    }
+}
+
+/// Enqueues an owned platform input event for UI-thread processing.
+pub trait PlatformWindowInputSink: Send + Sync {
+    fn post(
+        &self,
+        generation: u64,
+        event: PlatformWindowInputEvent,
+    ) -> Result<(), PlatformOperationError>;
 }
 
 /// Creates lightweight Window peers for one Runtime's selected platform profile.

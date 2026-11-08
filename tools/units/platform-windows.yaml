@@ -345,11 +345,12 @@
     },
     {
       "unit_name": "UNIT-PLATFORM-WINDOWS-007",
-      "state": "planned",
+      "state": "complete",
       "scope": "windows-native-key-text-pointer-and-focus-input-message-mapping-to-core-sink",
       "path": {
         "source": [
           "crates/platform-windows/src/lib.rs",
+          "crates/platform-windows/src/input.rs",
           "crates/platform-windows/src/peer.rs",
           "crates/platform-windows/src/win32.rs",
           "crates/platform-windows/tests/**/*.rs"
@@ -364,8 +365,7 @@
         "test_design": ".docs/32_unit_test/ui.md"
       },
       "depends_on": [
-        "UNIT-CORE-091",
-        "UNIT-ABI-022",
+        "UNIT-CORE-093",
         "UNIT-PLATFORM-WINDOWS-006"
       ],
       "requirements": [
@@ -378,7 +378,7 @@
       "design": [
         {
           "path": ".docs/13_detail_design/platform/internal-layers.md",
-          "version": "2.4 approved",
+          "version": "2.4 and 2.5 approved",
           "section": "Windows native input mapping and generation-aware Core bridge"
         },
         {
