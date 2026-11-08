@@ -1,6 +1,7 @@
 - ブランチは層の依存順を親子関係として表す。基本形は `main -> core APIs (Rust/C ABI) -> wrapper language -> feature -> test` とする。
 - バージョン/リリースまたは横断的な変更案件ブランチが必要な場合は、Core APIsより前に挟む：`main -> <version/change> -> core APIs -> wrapper language -> feature -> test`。
 - Core APIsはRust Core/C ABIの変更をまとめる。言語wrapperは対象言語を切り替えるたびに、対象変更に必要な最新Core APIsブランチから新しく切る。別言語のwrapperブランチを親にしない。
+- wrapper実装中にCore/C ABI変更が必要と判明したら、その言語wrapperの作業を止めて状態を保存し、最新のversion/change branchへ戻る。そこからCore APIs branchを作り、Core/C ABIの変更を実装・検証する。Rust/C ABIの単体・workspace検証に加え、既存の全wrapperのbuild・consumer試験を実行し、他言語への影響を確認してからCore APIs branchをpushする。その更新済みCore APIs branchから必要なwrapper言語の兄弟branchを切り直し、既存の各言語実装を適用・再検証する。詳細は[wrapper作業中のCore変更と他言語影響確認](../01_memory/git-core-change-from-wrapper.md)に従う。
 - 同一の大きな実装計画は機能ブランチ1本で管理してよい。独立して検証・レビューする必要がある場合に限り、さらにfeature/testブランチへ分ける。
 - 機能は最小の実装単位までユニット化し、該当する層の実装ブランチで管理する。
 - バージョンは vX.Y.Z-*** で管理する。X はメジャーバージョン（前方互換がなくなる大きな変更）、Yはサブバージョン（機能など）、Zはパスバージョン（セキュリティ, テスト, レビュ修正リリース）、*** は Git ハッシュ（タグ名にはつけない）
