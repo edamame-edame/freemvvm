@@ -83,6 +83,12 @@ internal interface INativeApi
 
     uint WindowCreate(ulong runtime, out ulong window, out ulong error);
 
+    uint WindowBackgroundRgb(ulong window, out float red, out float green, out float blue, out ulong error);
+
+    uint WindowSetBackgroundRgb(ulong window, float red, float green, float blue, out ulong error);
+
+    uint WindowResetBackgroundRgb(ulong window, out ulong error);
+
     uint StackPanelCreate(ulong runtime, out ulong panel, out ulong error);
 
     uint TextCreate(ulong runtime, byte[] initial, out ulong text, out ulong error);
@@ -305,6 +311,14 @@ internal sealed class NativeRuntimeApi : INativeApi
     public uint CommandCompleteCancelled(ulong command, ulong operationId) => NativeMethods.CommandCompleteCancelled(command, operationId);
 
     public uint WindowCreate(ulong runtime, out ulong window, out ulong error) => NativeMethods.WindowCreate(runtime, out window, out error);
+
+    public uint WindowBackgroundRgb(ulong window, out float red, out float green, out float blue, out ulong error) =>
+        NativeMethods.WindowBackgroundRgb(window, out red, out green, out blue, out error);
+
+    public uint WindowSetBackgroundRgb(ulong window, float red, float green, float blue, out ulong error) =>
+        NativeMethods.WindowSetBackgroundRgb(window, red, green, blue, out error);
+
+    public uint WindowResetBackgroundRgb(ulong window, out ulong error) => NativeMethods.WindowResetBackgroundRgb(window, out error);
 
     public uint StackPanelCreate(ulong runtime, out ulong panel, out ulong error) => NativeMethods.StackPanelCreate(runtime, out panel, out error);
 
@@ -620,6 +634,18 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_create")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint WindowCreate(ulong runtime, out ulong window, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_background_rgb")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WindowBackgroundRgb(ulong window, out float red, out float green, out float blue, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_set_background_rgb")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WindowSetBackgroundRgb(ulong window, float red, float green, float blue, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_reset_background_rgb")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial uint WindowResetBackgroundRgb(ulong window, out ulong error);
 
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_stack_panel_create")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

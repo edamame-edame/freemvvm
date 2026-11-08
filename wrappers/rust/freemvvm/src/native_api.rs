@@ -102,6 +102,18 @@ pub(crate) trait NativeApi: Send + Sync {
         (UNSUPPORTED, 0)
     }
 
+    fn window_background_rgb(&self, _window: u64) -> (u32, [f32; 3], u64) {
+        (UNSUPPORTED, [0.0; 3], 0)
+    }
+
+    fn window_set_background_rgb(&self, _window: u64, _color: [f32; 3]) -> (u32, u64) {
+        (UNSUPPORTED, 0)
+    }
+
+    fn window_reset_background_rgb(&self, _window: u64) -> (u32, u64) {
+        (UNSUPPORTED, 0)
+    }
+
     fn ui_tree(
         &self,
         _action: UiTreeAction,
@@ -391,6 +403,39 @@ impl NativeApi for LinkedApi {
                 unsafe { freemvvm_sys::ui_abi_1_window_close(control, &mut error) }
             }
         };
+        (status, error)
+    }
+
+    fn window_background_rgb(&self, window: u64) -> (u32, [f32; 3], u64) {
+        let mut red = 0.0;
+        let mut green = 0.0;
+        let mut blue = 0.0;
+        let mut error = 0;
+        // SAFETY: all output pointers refer to local writable storage and `window` is borrowed.
+        let status = unsafe {
+            freemvvm_sys::ui_abi_1_window_background_rgb(
+                window, &mut red, &mut green, &mut blue, &mut error,
+            )
+        };
+        (status, [red, green, blue], error)
+    }
+
+    fn window_set_background_rgb(&self, window: u64, color: [f32; 3]) -> (u32, u64) {
+        let mut error = 0;
+        // SAFETY: `window` is borrowed and `error` is valid output storage.
+        let status = unsafe {
+            freemvvm_sys::ui_abi_1_window_set_background_rgb(
+                window, color[0], color[1], color[2], &mut error,
+            )
+        };
+        (status, error)
+    }
+
+    fn window_reset_background_rgb(&self, window: u64) -> (u32, u64) {
+        let mut error = 0;
+        // SAFETY: `window` is borrowed and `error` is valid output storage.
+        let status =
+            unsafe { freemvvm_sys::ui_abi_1_window_reset_background_rgb(window, &mut error) };
         (status, error)
     }
 

@@ -539,6 +539,8 @@ mod tests {
         release_calls: HashMap<u64, usize>,
         ui_child_count: u64,
         ui_orientation: u32,
+        window_background_rgb: [f32; 3],
+        window_background_status: u32,
         close_subscribe_status: u32,
         close_subscribe_error: u64,
         close_subscription_token: u64,
@@ -702,13 +704,41 @@ mod tests {
 
         fn ui_create(
             &self,
-            _kind: crate::native_api::UiControlKind,
+            kind: crate::native_api::UiControlKind,
             _runtime: u64,
             _bytes: &[u8],
         ) -> (u32, u64, u64) {
             let mut state = self.state.lock().unwrap();
+            if matches!(kind, crate::native_api::UiControlKind::Window) {
+                state.window_background_rgb = [1.0; 3];
+            }
             state.next_handle += 1;
             (native_api::OK, state.next_handle, 0)
+        }
+
+        fn window_background_rgb(&self, _window: u64) -> (u32, [f32; 3], u64) {
+            let state = self.state.lock().unwrap();
+            (
+                state.window_background_status,
+                state.window_background_rgb,
+                0,
+            )
+        }
+
+        fn window_set_background_rgb(&self, _window: u64, color: [f32; 3]) -> (u32, u64) {
+            let mut state = self.state.lock().unwrap();
+            if state.window_background_status == native_api::OK {
+                state.window_background_rgb = color;
+            }
+            (state.window_background_status, 0)
+        }
+
+        fn window_reset_background_rgb(&self, _window: u64) -> (u32, u64) {
+            let mut state = self.state.lock().unwrap();
+            if state.window_background_status == native_api::OK {
+                state.window_background_rgb = [1.0; 3];
+            }
+            (state.window_background_status, 0)
         }
 
         fn ui_property(
@@ -1583,6 +1613,80 @@ mod tests {
             content.close().unwrap();
             text.close().unwrap();
             panel.close().unwrap();
+            window.close().unwrap();
+        }
+        other_runtime.close().unwrap();
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn window_background_rgb_uses_existing_window_and_preserves_failed_set() {
+        let _guard = serialize_registry_test();
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        let other_api = Arc::new(FakeApi::default());
+        other_api.set_ui_thread(true);
+        let mut other_runtime = UiRuntime::try_create_with_api(other_api).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let other_ui = other_runtime.ui_context().unwrap();
+            let mut window = crate::ui::Window::create(&ui).unwrap();
+            assert_eq!(
+                window.background_rgb(&ui).unwrap(),
+                crate::ui::RgbColor {
+                    red: 1.0,
+                    green: 1.0,
+                    blue: 1.0,
+                }
+            );
+            assert_eq!(
+                window.background_rgb(&other_ui).unwrap_err().raw_status(),
+                native_api::WRONG_RUNTIME
+            );
+
+            let assigned = crate::ui::RgbColor {
+                red: 0.2,
+                green: 0.4,
+                blue: 0.8,
+            };
+            window.set_background_rgb(&ui, assigned).unwrap();
+            assert_eq!(window.background_rgb(&ui).unwrap(), assigned);
+
+            api.state.lock().unwrap().window_background_status = native_api::WRONG_THREAD;
+            assert_eq!(
+                window
+                    .set_background_rgb(
+                        &ui,
+                        crate::ui::RgbColor {
+                            red: 1.0,
+                            green: 0.0,
+                            blue: 0.0,
+                        },
+                    )
+                    .unwrap_err()
+                    .raw_status(),
+                native_api::WRONG_THREAD
+            );
+            assert_eq!(
+                window.background_rgb(&ui).unwrap_err().raw_status(),
+                native_api::WRONG_THREAD
+            );
+            assert_eq!(
+                api.state.lock().unwrap().window_background_rgb,
+                [0.2, 0.4, 0.8]
+            );
+
+            api.state.lock().unwrap().window_background_status = native_api::OK;
+            window.reset_background_rgb(&ui).unwrap();
+            assert_eq!(
+                window.background_rgb(&ui).unwrap(),
+                crate::ui::RgbColor {
+                    red: 1.0,
+                    green: 1.0,
+                    blue: 1.0,
+                }
+            );
             window.close().unwrap();
         }
         other_runtime.close().unwrap();

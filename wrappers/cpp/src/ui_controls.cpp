@@ -661,6 +661,58 @@ Result<void> Window::clear_content() {
   return Result<void>::success();
 }
 
+Result<RgbColor> Window::background_rgb() const {
+  if (token() == 0 || state() == nullptr) {
+    return Result<RgbColor>::failure(UiError(UI_INVALID_HANDLE));
+  }
+  auto error_node = std::unique_ptr<detail::PendingNode>(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node) return Result<RgbColor>::failure(UiError(UI_OUT_OF_MEMORY));
+  RgbColor color{};
+  ui_handle error = 0;
+  const ui_status status = state()->api->window_background_rgb(
+      token(), &color.red, &color.green, &color.blue, &error);
+  if (status != UI_OK || error != 0) {
+    return failure<RgbColor>(normalize_status(status), error, state(),
+                             std::move(error_node));
+  }
+  return Result<RgbColor>::success(color);
+}
+
+Result<void> Window::set_background_rgb(RgbColor color) {
+  if (token() == 0 || state() == nullptr) {
+    return Result<void>::failure(UiError(UI_INVALID_HANDLE));
+  }
+  auto error_node = std::unique_ptr<detail::PendingNode>(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node) return Result<void>::failure(UiError(UI_OUT_OF_MEMORY));
+  ui_handle error = 0;
+  const ui_status status = state()->api->window_set_background_rgb(
+      token(), color.red, color.green, color.blue, &error);
+  if (status != UI_OK || error != 0) {
+    return failure<void>(normalize_status(status), error, state(),
+                         std::move(error_node));
+  }
+  return Result<void>::success();
+}
+
+Result<void> Window::reset_background_rgb() {
+  if (token() == 0 || state() == nullptr) {
+    return Result<void>::failure(UiError(UI_INVALID_HANDLE));
+  }
+  auto error_node = std::unique_ptr<detail::PendingNode>(
+      new (std::nothrow) detail::PendingNode());
+  if (!error_node) return Result<void>::failure(UiError(UI_OUT_OF_MEMORY));
+  ui_handle error = 0;
+  const ui_status status =
+      state()->api->window_reset_background_rgb(token(), &error);
+  if (status != UI_OK || error != 0) {
+    return failure<void>(normalize_status(status), error, state(),
+                         std::move(error_node));
+  }
+  return Result<void>::success();
+}
+
 Result<Property<std::string>> Window::title_property() const {
   if (token() == 0 || state() == nullptr) {
     return Result<Property<std::string>>::failure(UiError(UI_INVALID_HANDLE));

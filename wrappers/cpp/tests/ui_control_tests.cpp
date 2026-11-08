@@ -24,6 +24,10 @@ struct FakeAbi final {
   std::vector<ui_handle> children;
   std::vector<std::string> initial_texts;
   std::uint32_t orientation = 1;
+  float background_red = 1.0F;
+  float background_green = 1.0F;
+  float background_blue = 1.0F;
+  ui_status background_status = UI_OK;
   std::uint32_t last_decision = 0;
   std::uint32_t alignment = 0;
   int peer_closes = 0;
@@ -84,6 +88,29 @@ ui_status WindowContent(ui_handle, ui_handle* out, ui_handle*) {
 }
 ui_status SetContent(ui_handle, ui_handle child, ui_handle*) {
   active->content = child;
+  return UI_OK;
+}
+ui_status WindowBackground(ui_handle, float* red, float* green, float* blue,
+                           ui_handle*) {
+  if (active->background_status != UI_OK) return active->background_status;
+  *red = active->background_red;
+  *green = active->background_green;
+  *blue = active->background_blue;
+  return UI_OK;
+}
+ui_status SetWindowBackground(ui_handle, float red, float green, float blue,
+                              ui_handle*) {
+  if (active->background_status != UI_OK) return active->background_status;
+  active->background_red = red;
+  active->background_green = green;
+  active->background_blue = blue;
+  return UI_OK;
+}
+ui_status ResetWindowBackground(ui_handle, ui_handle*) {
+  if (active->background_status != UI_OK) return active->background_status;
+  active->background_red = 1.0F;
+  active->background_green = 1.0F;
+  active->background_blue = 1.0F;
   return UI_OK;
 }
 ui_status ClearContent(ui_handle, ui_handle*) {
@@ -172,6 +199,9 @@ std::shared_ptr<const freemvvm::detail::AbiApi> MakeApi() {
   api->runtime_shutdown = &Shutdown;
   api->handle_release = &Release;
   api->window_create = &Create;
+  api->window_background_rgb = &WindowBackground;
+  api->window_set_background_rgb = &SetWindowBackground;
+  api->window_reset_background_rgb = &ResetWindowBackground;
   api->stack_panel_create = &Create;
   api->text_create = &CreateText;
   api->text_box_create = &CreateText;
@@ -242,6 +272,46 @@ bool TestControlsAndCloseRequest() {
   auto text = std::move(*text_result.value());
   auto textbox = std::move(*textbox_result.value());
   auto button = std::move(*button_result.value());
+  auto background = window.background_rgb();
+  if (!Check(background.has_value() &&
+                 background.value()->red == 1.0F &&
+                 background.value()->green == 1.0F &&
+                 background.value()->blue == 1.0F,
+             "read the default Window background RGB")) {
+    return false;
+  }
+  const freemvvm::RgbColor custom_background{0.2F, 0.4F, 0.8F};
+  if (!Check(window.set_background_rgb(custom_background).has_value(),
+             "set the Window background RGB")) {
+    return false;
+  }
+  background = window.background_rgb();
+  if (!Check(background.has_value() &&
+                 background.value()->red == custom_background.red &&
+                 background.value()->green == custom_background.green &&
+                 background.value()->blue == custom_background.blue,
+             "read back the Window background RGB")) {
+    return false;
+  }
+  if (!Check(window.reset_background_rgb().has_value(),
+             "reset the Window background RGB")) {
+    return false;
+  }
+  background = window.background_rgb();
+  if (!Check(background.has_value() &&
+                 background.value()->red == 1.0F &&
+                 background.value()->green == 1.0F &&
+                 background.value()->blue == 1.0F,
+             "read the default Window background RGB after reset")) {
+    return false;
+  }
+  fake.background_status = UI_WRONG_THREAD;
+  background = window.background_rgb();
+  fake.background_status = UI_OK;
+  if (!Check(!background.has_value(),
+             "preserve status from a failed Window background getter")) {
+    return false;
+  }
   fake.property_status = UI_WRONG_THREAD;
   auto failed_property = text.is_enabled_property();
   fake.property_status = UI_OK;
