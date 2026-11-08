@@ -1025,6 +1025,75 @@
           }
         ]
       }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CS-WINDOW-BG-001",
+      "state": "complete",
+      "scope": "csharp-window-background-rgb-get-set-reset-wrapper",
+      "path": {
+        "source": [
+          "wrappers/csharp/FreeMvvm/Controls.cs",
+          "wrappers/csharp/FreeMvvm/NativeApi.cs",
+          "wrappers/csharp/tests/RuntimeTests/Program.cs",
+          "wrappers/csharp/tests/Consumer/Program.cs"
+        ],
+        "config": [
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/tests/RuntimeTests/RuntimeTests.csproj",
+          "wrappers/csharp/tests/Consumer/Consumer.csproj",
+          "tools/dev.py",
+          "tools/units.yaml",
+          "tools/units/wrappers-csharp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-079",
+        "UNIT-WRAP-CS-CONTROLS-001",
+        "UNIT-PKG-CS-001"
+      ],
+      "requirements": [
+        "RQ-09-001",
+        "RQ-09-074"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.5 approved",
+          "section": "Window background RGB wrapper API"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.4 approved",
+          "section": "Window background RGB API"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-WINDOW-BG-01",
+          "TC-ERROR-01",
+          "TC-LIFE-01",
+          "TC-WRAP-CS-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CS-WINDOW-BG-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-controls-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CS-WINDOW-BG-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-controls-consumer-test"
+            ]
+          }
+        ]
+      }
     }
   ]
 }

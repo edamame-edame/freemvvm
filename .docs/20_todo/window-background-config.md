@@ -59,11 +59,12 @@ Window背景色について、利用者が値を指定でき、未指定なら�
 
 ### 2026-11-08 wrapper統合の進捗
 
-- Core APIsの変更は`version/0.0.1`へ統合済み。wrapper実装中にCore/C ABI変更が必要になった場合のbranch切替・他言語影響確認手順は[Git運用メモ](../01_memory/git-core-change-from-wrapper.md)と[Git管理ルール](../02_git/rule.md)に記録済み。
-- Python: 既存Window APIへget/set/resetを統合済み。実装・fake ABI試験・別process consumer・Windows/Linux CIが成功。
-- C++: `RgbColor`とget/set/resetを既存`Window`へ統合。fake ABIのdefault/set/reset/error試験と、再配置したインストールpackageの別process consumerがlocalで成功。unit recordを`UNIT-WRAP-CPP-WINDOW-BG-001`として登録済み。
-- C#、Rust: 旧実装は現行Window型へ統合されておらず、これから既存型へ移植・検証する。旧wrapper branchを丸ごと取り込まない。
-- 次: C++ unitを日本語commit/pushした後、C#とRustをCore APIs branchからの兄弟wrapper branchとして順次仕上げる。全wrapperの実装・consumer検証・CI確認後にまとめて`version/0.0.1`向けPRを作る。
+- Core変更時のbranch切替と他言語影響確認は[Git運用メモ](../01_memory/git-core-change-from-wrapper.md)と[Git管理ルール](../02_git/rule.md)に記録済み。今回Core/C ABI変更はなく、Python/C++/C#/Rustはそれぞれ既存Window型へget/set/resetを統合。
+- Python: fake ABI、別process consumer、Windows/Linux CIが成功（既存実行記録を維持）。
+- C++: `UNIT-WRAP-CPP-WINDOW-BG-001` local fake ABIと再配置package consumerが成功。commit `4cb2a32`をpush済み。
+- C#: `UNIT-WRAP-CS-WINDOW-BG-001` RuntimeTestsと実C ABI consumerが成功。commit `8939ff6`をpush済み。
+- Rust: `UNIT-WRAP-RS-WINDOW-BG-001` package unit tests、consumer、Clippy、fmtが成功。commit `9e83bcd`をpush済み。
+- 統合PRを作成してWindows/Linux CIを確認後、全wrapperのCI結果を記録して本TODOを完了にする。Window peer open/描画の実機確認はこのunitの合格範囲外。
 
 ## レビュー履歴
 

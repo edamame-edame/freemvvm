@@ -38,6 +38,7 @@ internal static class Program
         Run(TestCommandStartExceptionStaysInsideAbiBoundary);
         Run(TestCommandCreateFailureKeepsStartRootLocallyOwned);
         Run(TestUiControlsCreateTreePropertiesAndCommandAssociation);
+        Run(TestWindowBackgroundRgbGetSetResetAndFailures);
         Run(TestWindowCloseRequestBorrowDeferResolveAndCallbackLifetime);
         Run(TestInputEventCallbackViewsRootsAndFailures);
         return _failures == 0 ? 0 : 1;
@@ -1095,6 +1096,45 @@ internal static class Program
         runtime.Dispose();
     }
 
+    private static void TestWindowBackgroundRgbGetSetResetAndFailures()
+    {
+        var native = new FakeNativeApi();
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiWindow window = UiWindow.TryCreate(runtime).Value;
+
+        UiResult<RgbColor> initial = window.TryGetBackgroundRgb();
+        Check(initial.IsSuccess && initial.Value.Red == 1.0f &&
+            initial.Value.Green == 1.0f && initial.Value.Blue == 1.0f,
+            "Unspecified Window background should be opaque white");
+
+        var expected = new RgbColor(0.2f, 0.4f, 0.8f);
+        Check(window.TrySetBackgroundRgb(expected).IsSuccess,
+            "Window background setter should succeed");
+        UiResult<RgbColor> assigned = window.TryGetBackgroundRgb();
+        Check(assigned.IsSuccess && assigned.Value.Red == expected.Red &&
+            assigned.Value.Green == expected.Green && assigned.Value.Blue == expected.Blue,
+            "Window background should round trip all RGB components");
+
+        native.WindowBackgroundStatus = UiStatus.WrongThread;
+        UiResult<bool> failedSet = window.TrySetBackgroundRgb(new RgbColor(1.0f, 0.0f, 0.0f));
+        Check(failedSet.IsFailure && failedSet.Error?.RawStatus == UiStatus.WrongThread &&
+            native.WindowBackgroundRed == expected.Red &&
+            native.WindowBackgroundGreen == expected.Green &&
+            native.WindowBackgroundBlue == expected.Blue,
+            "Failed Window background set should preserve status and current value");
+        native.WindowBackgroundStatus = UiStatus.Ok;
+
+        Check(window.TryResetBackgroundRgb().IsSuccess,
+            "Window background reset should succeed");
+        UiResult<RgbColor> reset = window.TryGetBackgroundRgb();
+        Check(reset.IsSuccess && reset.Value.Red == 1.0f &&
+            reset.Value.Green == 1.0f && reset.Value.Blue == 1.0f,
+            "Reset Window background should restore opaque white");
+
+        window.Dispose();
+        runtime.Dispose();
+    }
+
     private static void TestWindowCloseRequestBorrowDeferResolveAndCallbackLifetime()
     {
         var native = new FakeNativeApi
@@ -1332,6 +1372,10 @@ internal static class Program
         internal uint CommandCloseStatus { get; set; } = UiStatus.Ok;
         internal uint WindowOpenStatus { get; set; } = UiStatus.Ok;
         internal uint WindowCloseStatus { get; set; } = UiStatus.Ok;
+        internal uint WindowBackgroundStatus { get; set; } = UiStatus.Ok;
+        internal float WindowBackgroundRed { get; private set; } = 1.0f;
+        internal float WindowBackgroundGreen { get; private set; } = 1.0f;
+        internal float WindowBackgroundBlue { get; private set; } = 1.0f;
         internal ulong LastControlParent { get; private set; }
         internal ulong LastControlChild { get; private set; }
         internal ulong LastControlIndex { get; private set; }
@@ -1421,6 +1465,36 @@ internal static class Program
         internal ulong LastPostId => unchecked((ulong)Volatile.Read(ref _nextPost));
 
         public uint WindowCreate(ulong runtime, out ulong window, out ulong error) => CreateControl(runtime, out window, out error);
+        public uint WindowBackgroundRgb(ulong window, out float red, out float green, out float blue, out ulong error)
+        {
+            red = WindowBackgroundRed;
+            green = WindowBackgroundGreen;
+            blue = WindowBackgroundBlue;
+            error = 0;
+            return WindowBackgroundStatus;
+        }
+        public uint WindowSetBackgroundRgb(ulong window, float red, float green, float blue, out ulong error)
+        {
+            error = 0;
+            if (WindowBackgroundStatus == UiStatus.Ok)
+            {
+                WindowBackgroundRed = red;
+                WindowBackgroundGreen = green;
+                WindowBackgroundBlue = blue;
+            }
+            return WindowBackgroundStatus;
+        }
+        public uint WindowResetBackgroundRgb(ulong window, out ulong error)
+        {
+            error = 0;
+            if (WindowBackgroundStatus == UiStatus.Ok)
+            {
+                WindowBackgroundRed = 1.0f;
+                WindowBackgroundGreen = 1.0f;
+                WindowBackgroundBlue = 1.0f;
+            }
+            return WindowBackgroundStatus;
+        }
         public uint StackPanelCreate(ulong runtime, out ulong panel, out ulong error) => CreateControl(runtime, out panel, out error);
 
         public uint TextCreate(ulong runtime, byte[] initial, out ulong text, out ulong error)
