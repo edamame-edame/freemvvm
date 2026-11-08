@@ -259,6 +259,21 @@ unsafe extern "C" {
         out_window: *mut Handle,
         out_error: *mut Handle,
     ) -> Status;
+    pub fn ui_abi_1_window_background_rgb(
+        window: Handle,
+        out_red: *mut f32,
+        out_green: *mut f32,
+        out_blue: *mut f32,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_window_set_background_rgb(
+        window: Handle,
+        red: f32,
+        green: f32,
+        blue: f32,
+        out_error: *mut Handle,
+    ) -> Status;
+    pub fn ui_abi_1_window_reset_background_rgb(window: Handle, out_error: *mut Handle) -> Status;
     pub fn ui_abi_1_stack_panel_create(
         runtime: Handle,
         out_panel: *mut Handle,

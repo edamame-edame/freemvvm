@@ -87,6 +87,24 @@ pub struct Window {
     identity: Arc<()>,
 }
 
+/// A normalized RGB color passed to the Core-owned Window background setting.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RgbColor {
+    pub red: f32,
+    pub green: f32,
+    pub blue: f32,
+}
+
+impl RgbColor {
+    fn channels(self) -> [f32; 3] {
+        [self.red, self.green, self.blue]
+    }
+
+    fn from_channels([red, green, blue]: [f32; 3]) -> Self {
+        Self { red, green, blue }
+    }
+}
+
 pub struct StackPanel {
     owner: Owned<StackPanelTag>,
     identity: Arc<()>,
@@ -436,6 +454,65 @@ impl Window {
 
     pub fn title_property(&self, ui: &UiContext<'_>) -> Result<Property<String>, UiError> {
         widget_property(self, ui, UiPropertyKind::WindowTitle)
+    }
+
+    pub fn background_rgb(&self, ui: &UiContext<'_>) -> Result<RgbColor, UiError> {
+        check_context(&self.identity, ui)?;
+        ui.check_ui_thread()?;
+        let token = self.owner.borrow()?.token();
+        let error_ticket = TicketReservation::reserve()
+            .map_err(|()| UiError::from_status(native_api::OUT_OF_MEMORY))?;
+        let (status, color, error) = ui.api().window_background_rgb(token);
+        if status != native_api::OK || error != 0 {
+            return Err(UiError::capture(
+                ui.api(),
+                if status == native_api::OK {
+                    native_api::INTERNAL_ERROR
+                } else {
+                    status
+                },
+                error,
+                error_ticket,
+                ui.runtime_token(),
+                self.owner.anchor(),
+            ));
+        }
+        error_ticket.release();
+        Ok(RgbColor::from_channels(color))
+    }
+
+    pub fn set_background_rgb(&self, ui: &UiContext<'_>, color: RgbColor) -> Result<(), UiError> {
+        check_context(&self.identity, ui)?;
+        ui.check_ui_thread()?;
+        let token = self.owner.borrow()?.token();
+        let error_ticket = TicketReservation::reserve()
+            .map_err(|()| UiError::from_status(native_api::OUT_OF_MEMORY))?;
+        let (status, error) = ui.api().window_set_background_rgb(token, color.channels());
+        finish_status_call(
+            ui.api(),
+            status,
+            error,
+            error_ticket,
+            ui.runtime_token(),
+            self.owner.anchor(),
+        )
+    }
+
+    pub fn reset_background_rgb(&self, ui: &UiContext<'_>) -> Result<(), UiError> {
+        check_context(&self.identity, ui)?;
+        ui.check_ui_thread()?;
+        let token = self.owner.borrow()?.token();
+        let error_ticket = TicketReservation::reserve()
+            .map_err(|()| UiError::from_status(native_api::OUT_OF_MEMORY))?;
+        let (status, error) = ui.api().window_reset_background_rgb(token);
+        finish_status_call(
+            ui.api(),
+            status,
+            error,
+            error_ticket,
+            ui.runtime_token(),
+            self.owner.anchor(),
+        )
     }
 
     pub fn content(&self, ui: &UiContext<'_>) -> Result<Option<Widget>, UiError> {
