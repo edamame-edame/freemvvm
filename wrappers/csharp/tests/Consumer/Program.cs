@@ -795,6 +795,29 @@ internal static class Program
         }
 
         using UiWindow window = windowCreate.Value;
+        RgbColor defaultBackground = window.BackgroundRgb;
+        if (defaultBackground.Red != 1.0f || defaultBackground.Green != 1.0f || defaultBackground.Blue != 1.0f)
+        {
+            Console.Error.WriteLine("Window background default was not opaque white.");
+            return 86;
+        }
+
+        window.BackgroundRgb = new RgbColor(0.2f, 0.4f, 0.8f);
+        RgbColor assignedBackground = window.BackgroundRgb;
+        if (assignedBackground.Red != 0.2f || assignedBackground.Green != 0.4f || assignedBackground.Blue != 0.8f)
+        {
+            Console.Error.WriteLine("Window background RGB did not round trip.");
+            return 87;
+        }
+
+        window.ResetBackgroundRgb();
+        RgbColor resetBackground = window.BackgroundRgb;
+        if (resetBackground.Red != 1.0f || resetBackground.Green != 1.0f || resetBackground.Blue != 1.0f)
+        {
+            Console.Error.WriteLine("Window background reset did not restore opaque white.");
+            return 88;
+        }
+
         UiResult<UiSubscription> subscriptionCreate = window.TrySubscribeInput(
             InputEventMask.All,
             static view =>

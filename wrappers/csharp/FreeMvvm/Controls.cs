@@ -432,6 +432,22 @@ public abstract class UiContainer : UiWidget
         INativeApi api, ulong parent, ulong child, ulong index, out ulong error);
 }
 
+public readonly struct RgbColor
+{
+    public RgbColor(float red, float green, float blue)
+    {
+        Red = red;
+        Green = green;
+        Blue = blue;
+    }
+
+    public float Red { get; }
+
+    public float Green { get; }
+
+    public float Blue { get; }
+}
+
 public sealed class UiWindow : UiContainer
 {
     private UiWindow(TokenOwner owner, TokenOwner runtimeAnchor, CallbackHandlerState callbackHandlers)
@@ -447,6 +463,85 @@ public sealed class UiWindow : UiContainer
     public UiResult<UiProperty<string>> TryGetTitleProperty() => GetProperty<string>(
         static (INativeApi api, ulong window, out ulong property) => api.WindowTitleProperty(window, out property),
         owner => UiProperty<string>.FromOwned(owner, CallbackHandlers));
+
+    public UiResult<RgbColor> TryGetBackgroundRgb()
+    {
+        UiResult<CallLease> leaseResult = Owner.AcquireLease();
+        if (leaseResult.IsFailure)
+        {
+            return UiResult<RgbColor>.Failure(leaseResult.Error!);
+        }
+
+        using CallLease lease = leaseResult.Value;
+        var preparedError = new PreparedError(Api);
+        try
+        {
+            uint status = Api.WindowBackgroundRgb(
+                lease.Token, out float red, out float green, out float blue, out ulong error);
+            return status == UiStatus.Ok
+                ? UiResult<RgbColor>.Success(new RgbColor(red, green, blue))
+                : UiResult<RgbColor>.Failure(preparedError.Capture(status, error));
+        }
+        catch
+        {
+            return UiResult<RgbColor>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        }
+    }
+
+    public UiResult<bool> TrySetBackgroundRgb(RgbColor color)
+    {
+        UiResult<CallLease> leaseResult = Owner.AcquireLease();
+        if (leaseResult.IsFailure)
+        {
+            return UiResult<bool>.Failure(leaseResult.Error!);
+        }
+
+        using CallLease lease = leaseResult.Value;
+        var preparedError = new PreparedError(Api);
+        try
+        {
+            uint status = Api.WindowSetBackgroundRgb(
+                lease.Token, color.Red, color.Green, color.Blue, out ulong error);
+            return status == UiStatus.Ok
+                ? UiResult<bool>.Success(true)
+                : UiResult<bool>.Failure(preparedError.Capture(status, error));
+        }
+        catch
+        {
+            return UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        }
+    }
+
+    public UiResult<bool> TryResetBackgroundRgb()
+    {
+        UiResult<CallLease> leaseResult = Owner.AcquireLease();
+        if (leaseResult.IsFailure)
+        {
+            return UiResult<bool>.Failure(leaseResult.Error!);
+        }
+
+        using CallLease lease = leaseResult.Value;
+        var preparedError = new PreparedError(Api);
+        try
+        {
+            uint status = Api.WindowResetBackgroundRgb(lease.Token, out ulong error);
+            return status == UiStatus.Ok
+                ? UiResult<bool>.Success(true)
+                : UiResult<bool>.Failure(preparedError.Capture(status, error));
+        }
+        catch
+        {
+            return UiResult<bool>.Failure(new UiErrorSnapshot(UiStatus.InternalError));
+        }
+    }
+
+    public RgbColor BackgroundRgb
+    {
+        get => TryGetBackgroundRgb().GetValueOrThrow();
+        set => TrySetBackgroundRgb(value).GetValueOrThrow();
+    }
+
+    public void ResetBackgroundRgb() => TryResetBackgroundRgb().GetValueOrThrow();
 
     public UiResult<bool> TryOpen() => CallWindowPeer(Api.WindowOpen);
 

@@ -57,6 +57,12 @@ Window背景色について、利用者が値を指定でき、未指定なら�
 - dependency integration: `impl-rust/core-scene-producer` を親へmerge commit `5cb737d` で統合。別エージェントの `impl-rust/ui-webview-plugin` は統合対象外で、変更も含めていない。
 - wrapper branch: Core API unitの全検証・commit完了後、各対象言語ごとにこのCore branchから独立して作成する。
 
+### 2026-11-08 C# wrapper unit
+
+- 既存`UiWindow`へ`RgbColor`、`BackgroundRgb` get/set/resetを追加し、fake `INativeApi`試験と別process実C ABI consumerを更新した。
+- `dotnet run`によるRuntimeTestsとconsumerはlocalで成功。consumerはCore ABIへ実接続し、default/set/resetを確認した。Windows/Linux CIはpush後に確認する。
+- unit台帳: `UNIT-WRAP-CS-WINDOW-BG-001` complete。
+
 ## レビュー履歴
 
 | 日付 | 対象 | 状態 | 備考 |
