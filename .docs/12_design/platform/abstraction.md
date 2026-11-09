@@ -1,9 +1,9 @@
 # プラットフォーム：抽象化・描画・text・OS接続
 
-- 文書版: 1.1
+- 文書版: 1.2
 - 文書ロール: basic-design
-- 更新日: 2026-10-30
-- 状態: 1.1全文承認済み（利用者、2026-10-30）。実装・試験状態は別管理
+- 更新日: 2026-11-09
+- 状態: 1.2全文承認済み（利用者、2026-11-09）。実装・試験状態は別管理
 
 ## 目的と責務境界
 
@@ -51,9 +51,23 @@ flowchart TD
 
 ## Renderer・surface・Platform接続
 
+### 0.6 profile範囲（承認済み）
+
+本節は承認済み[RQ-11 0.6](../../11_requirements/RQ-11_platform.md)を実現する設計である。0.6は要求・設計文書単位で承認済み。
+
+| profile区分 | 層の責務案 | 境界 |
+|---|---|---|
+| Windows 11 x64 | Windows peer/rendererとCore snapshotを接続し、可視frameを表示する | 他Windows architectureへの一般化はしない |
+| Ubuntu 24.04 x64 | Linux Platform Adapterをprofile単位で構成し、OS/session・surface・present条件を記録する | Ubuntu通常desktopと直接DRM/KMSを同一視せず、実際の接続方式はDD reviewで確定する |
+| Debian 12 x64 VM | 仮想GPU/driverを含む特定VM profileでLinux Adapterを動作させる | device/surface openからvisible presentまで確認できた組合せだけをprofile evidenceとする |
+| Linux ARMv7/AArch64 | Core snapshotからframebuffer描画に限定した実験的経路を提供する候補 | cross-build/fake testとboard runtimeを別statusにし、board未確認中はformal hardware supportとしない |
+| その他Linux framebuffer限定 | Core snapshotから限定描画出力までを分離可能にする | fbdev、DRM/KMS dumb buffer、software memory bufferを区別する。input/IME/Accessibility/window managementを暗黙に含めない |
+
+0.0.1ではARM board hardware profileをrelease runtime gateから分離する。Linux x64とARMがsourceを共有しても、実機動作・support範囲は同一とみなさない。対象profileとbackendの正本はRQ改訂の承認後に確定する。
+
 ### 層の責務と主要flow
 
-Core Visual/Layout snapshotを共通Rendererへ渡し、RendererがPlatform backendのsurfaceへ描画する。AdapterはWindow/surface、input、IME、AccessibilityとOSとの接点を所有する。Linux x64とARMで共通source/build logicを共有し、target別linker/sysroot/dependencyから別native artifactを作る。開発順は計画へ、公開support範囲はRQへ分ける。
+Core Visual/Layout snapshotを共通Rendererへ渡し、RendererがPlatform backendのsurfaceへ描画する。AdapterはWindow/surface、input、IME、AccessibilityとOSとの接点を所有する。Linux targetは共通Coreを利用し、target/profile別のbackend・build条件・runtime support evidenceを分けて記録する。開発順は計画へ、公開support範囲はRQへ分ける。
 
 ```mermaid
 flowchart TD
@@ -125,6 +139,7 @@ flowchart TD
 | 2026-10-17 | 本書1.0全文 | 利用者 | 「OK、承認します。」により再編集版全文を承認。実装・試験合格を意味しない |
 | 2026-10-30 | 本書1.1改訂案 | — | Core-owned Window background RGBのscene伝達とrenderer failure境界を追加提案。1.0承認範囲を維持し全文レビュー待ち |
 | 2026-10-30 | 本書1.1全文 | 利用者 | 「ok」によりCore解決色のbackend伝達とfailure境界を含む全文を承認。実装・試験合格を意味しない |
+| 2026-11-09 | 本書1.2全文 | 利用者 | 「ok」によりRQ-11/12のprofile変更に伴うWindows/Ubuntu/Debian VM profileと限定framebuffer責務を含む全文を承認。実装・試験合格は別管理 |
 
 ## 改訂履歴
 
@@ -132,3 +147,4 @@ flowchart TD
 | --- | --- | --- | --- | --- |
 | 1.0 | 2026-10-17 | 利用者のBD再編集指示に基づき責務別に再構成。旧設計ID追跡を廃止 | Codex | 既承認内容の継承と再編集版全文の承認を区別 |
 | 1.1 | 2026-10-30 | Window背景色のCore解決とbackendへの明示伝達を追加 | Codex | 全文承認済み。実装・試験は別管理 |
+| 1.2 | 2026-11-09 | Windows/Ubuntu/Debian VM profileと限定framebuffer責務 | Codex | 全文承認済み。実装・試験は別管理 |

@@ -1,0 +1,8 @@
+# Category: freemvvm 0.0.1 platform support profile scope and evidence
+
+- On 2026-11-09, the user approved the whole-document revisions for RQ-11/12, the requirements index, Platform BD/DD, the 0.0.1 release plan, system scenarios, requirement-test matrix, and requirement-test assertions.
+- The approved 0.0.1 scope is Windows 11 x64 and Ubuntu 24.04 x64 as formal runtime profiles; Debian 12 x64 is profile-specific and conditional on VM visible-present and package-consumer evidence; other Linux is limited to framebuffer output; ARM physical-board runtime evidence is deferred beyond 0.0.1 while cross-build/fake-buffer evidence remains separate.
+- A Debian VM boot, container/headless render, or pixel readback alone is not visible-present evidence. Record hypervisor/version, guest image, virtual GPU/driver, candidate artifact SHA, device/surface open, visible frame, resize/redraw, and close/reopen for a passing profile.
+- Framebuffer implementation details and unit/test scope require a separate approved implementation plan. Do not present fake-buffer tests as hardware display verification or infer formal support from build evidence.
+- The approval did not establish implementation, CI, VM smoke, release pass, tag, or publication. These remain separate evidence and decision gates.
+- Git note: the approval edits were made in `change/input-focus-event-path`, whose HEAD was older than `version/0.0.1` and which contains unrelated dirty Input/Focus work. Preserve those changes and do not commit/push this scope change from that mixed/stale branch; rebase/isolate it from the version branch first.

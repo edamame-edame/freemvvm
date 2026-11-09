@@ -1,7 +1,7 @@
 # 要求テストの観測・oracle
 
-- 文書版: 1.2
-- 状態: 1.2全文承認済み（利用者、2026-10-30）。未実行
+- 文書版: 1.3
+- 状態: 1.3全文承認済み（利用者、2026-11-09）。更新したassertionは未実行
 - 共通契約: [Requirements Test Manifest](requirements-test-manifest.md)
 
 期待結果はリンク先RQを正本とする。代表使用値は要求で決まらず実施に必要な場合に限って個別test計画に用途・選定理由・適用範囲とともに記載する。API/profile未設計のcaseはblockedとして詳細化する。
@@ -1800,9 +1800,9 @@
 ## RQ-11-001
 
 - 根拠: [RQ-11-001](../11_requirements/RQ-11_platform.md#rq-11-001)
-- case: [TC-TARGET-ARMV7-01](requirement-test-matrix.md#case-tc-target-armv7-01)、[TC-SUPPORT-01](requirement-test-matrix.md#case-tc-support-01)、[TC-TRACE-01](requirement-test-matrix.md#case-tc-trace-01)
+- case: [TC-TARGET-ARMV7-01](requirement-test-matrix.md#case-tc-target-armv7-01)、[TC-ARM-BACKEND-04](requirement-test-matrix.md#case-tc-arm-backend-04)、[TC-SUPPORT-01](requirement-test-matrix.md#case-tc-support-01)、[TC-TRACE-01](requirement-test-matrix.md#case-tc-trace-01)
 - 前提・操作・観測: 対象releaseのsupport matrixにLinux ARMv7のprofileとbuild/runtime/hardware検証状態が明記され、buildだけの結果を実機support済みとして扱っていないことを確認する。
-- 期待結果: 組み込みLinuxを製品の正式対象に含め、Linux ARMv7向けtargetを用意する。正式support範囲はABI majorとtarget profileの組で示す。
+- 期待結果: Linux ARMv7のcross-buildとframebuffer限定経路を区別して記録し、board runtime profile確認前に正式hardware supportと表示しない。
 - 後始末: 登録・接続・所有参照を明示解除/解放し、終了検証では残存参照の解放まで記録する。process監査は使用記録を保存する。
 - 状態: case/assertion割当済・実装/実行未証明。実test ID・command・SHA・target/profile・結果・reportは未登録。
 
@@ -1810,9 +1810,9 @@
 ## RQ-11-002
 
 - 根拠: [RQ-11-002](../11_requirements/RQ-11_platform.md#rq-11-002)
-- case: [TC-TARGET-A64-01](requirement-test-matrix.md#case-tc-target-a64-01)、[TC-SUPPORT-01](requirement-test-matrix.md#case-tc-support-01)、[TC-TRACE-01](requirement-test-matrix.md#case-tc-trace-01)
+- case: [TC-TARGET-A64-01](requirement-test-matrix.md#case-tc-target-a64-01)、[TC-ARM-BACKEND-04](requirement-test-matrix.md#case-tc-arm-backend-04)、[TC-SUPPORT-01](requirement-test-matrix.md#case-tc-support-01)、[TC-TRACE-01](requirement-test-matrix.md#case-tc-trace-01)
 - 前提・操作・観測: RQ-11-001と同じ区分でAArch64のprofileと各検証状態が個別に記録されることを確認する。
-- 期待結果: 組み込みLinuxを製品の正式対象に含め、Linux AArch64向けtargetを用意する。正式support範囲はABI majorとtarget profileの組で示す。
+- 期待結果: Linux AArch64のcross-buildとframebuffer限定経路を区別して記録し、board runtime profile確認前に正式hardware supportと表示しない。
 - 後始末: 登録・接続・所有参照を明示解除/解放し、終了検証では残存参照の解放まで記録する。process監査は使用記録を保存する。
 - 状態: case/assertion割当済・実装/実行未証明。実test ID・command・SHA・target/profile・結果・reportは未登録。
 
@@ -1820,9 +1820,9 @@
 ## RQ-11-003
 
 - 根拠: [RQ-11-003](../11_requirements/RQ-11_platform.md#rq-11-003)
-- case: [TC-TARGET-LNX-01](requirement-test-matrix.md#case-tc-target-lnx-01)、[TC-TARGET-A64-01](requirement-test-matrix.md#case-tc-target-a64-01)、[TC-TARGET-ARMV7-01](requirement-test-matrix.md#case-tc-target-armv7-01)、[TC-TARGET-BOARD-01](requirement-test-matrix.md#case-tc-target-board-01)、[TC-TARGET-LATER-01](requirement-test-matrix.md#case-tc-target-later-01)、[TC-TARGET-WIN-01](requirement-test-matrix.md#case-tc-target-win-01)、[TC-TRACE-01](requirement-test-matrix.md#case-tc-trace-01)
-- 前提・操作・観測: Linux x64 native build/test結果と、そこから生成したARM向けbuild/link結果が別profileの証跡として記録されることを確認する。
-- 期待結果: Linux x64を初期開発・CI targetに含め、native build/testとARM cross-buildのhostとして利用する。
+- case: [TC-TARGET-LNX-01](requirement-test-matrix.md#case-tc-target-lnx-01)、[TC-TARGET-LNX-VM-01](requirement-test-matrix.md#case-tc-target-lnx-vm-01)、[TC-TARGET-A64-01](requirement-test-matrix.md#case-tc-target-a64-01)、[TC-TARGET-ARMV7-01](requirement-test-matrix.md#case-tc-target-armv7-01)、[TC-TRACE-01](requirement-test-matrix.md#case-tc-trace-01)
+- 前提・操作・観測: Linux x64 native build/test、Ubuntu 24.04 runtime、Debian 12 VM runtime、およびARM cross-build/link・framebuffer fake test結果を別profile evidenceとして記録する。
+- 期待結果: Linux x64は開発・CI target。Ubuntu 24.04と、可視描画に合格した特定Debian 12 VM profileだけを0.0.1 formal runtime候補とする。ARMはframebuffer限定経路を対象候補にするが、hardware supportはboard testまで主張しない。
 - 後始末: 登録・接続・所有参照を明示解除/解放し、終了検証では残存参照の解放まで記録する。process監査は使用記録を保存する。
 - 状態: case/assertion割当済・実装/実行未証明。実test ID・command・SHA・target/profile・結果・reportは未登録。
 
@@ -1832,7 +1832,7 @@
 - 根拠: [RQ-11-004](../11_requirements/RQ-11_platform.md#rq-11-004)
 - case: [TC-TARGET-WIN-01](requirement-test-matrix.md#case-tc-target-win-01)、[TC-TARGET-A64-01](requirement-test-matrix.md#case-tc-target-a64-01)、[TC-TARGET-ARMV7-01](requirement-test-matrix.md#case-tc-target-armv7-01)、[TC-TARGET-BOARD-01](requirement-test-matrix.md#case-tc-target-board-01)、[TC-TARGET-LATER-01](requirement-test-matrix.md#case-tc-target-later-01)、[TC-TARGET-LNX-01](requirement-test-matrix.md#case-tc-target-lnx-01)、[TC-TRACE-01](requirement-test-matrix.md#case-tc-trace-01)
 - 前提・操作・観測: Windows x64 native buildと定められたsmoke確認の結果がtarget profileに紐付いて記録されることを確認する。
-- 期待結果: Windows x64を初期開発・CI targetに含め、native buildと初期UI縦断確認を行えるようにする。
+- 期待結果: Windows 11 x64のnative build、package consumer、初期UI縦断と可視描画を行い、実行profileを記録する。
 - 後始末: 登録・接続・所有参照を明示解除/解放し、終了検証では残存参照の解放まで記録する。process監査は使用記録を保存する。
 - 状態: case/assertion割当済・実装/実行未証明。実test ID・command・SHA・target/profile・結果・reportは未登録。
 
@@ -1930,9 +1930,9 @@
 ## RQ-11-014
 
 - 根拠: [RQ-11-014](../11_requirements/RQ-11_platform.md#rq-11-014)
-- case: [TC-ARM-BACKEND-01](requirement-test-matrix.md#case-tc-arm-backend-01)
-- 前提・操作・観測: 対象profileで利用可否・検証結果を記録し、次候補へ進む際に未実施理由または結果が残っていることを確認する。
-- 期待結果: DRM/KMS + EGL/OpenGL ESを最初に検証する。
+- case: [TC-TARGET-WIN-01](requirement-test-matrix.md#case-tc-target-win-01)、[TC-TARGET-LNX-01](requirement-test-matrix.md#case-tc-target-lnx-01)
+- 前提・操作・観測: Windows 11 x64、Ubuntu 24.04 x64、および条件を満たす場合はDebian 12 VM profileのbackendと実表示証拠をprofileごとに確認する。
+- 期待結果: 0.0.1 runtime profileごとのbackendと依存条件が識別され、対象profile上で描画が確認される。
 - 後始末: 登録・接続・所有参照を明示解除/解放し、終了検証では残存参照の解放まで記録する。process監査は使用記録を保存する。
 - 状態: case/assertion割当済・実装/実行未証明。実test ID・command・SHA・target/profile・結果・reportは未登録。
 
@@ -1940,9 +1940,9 @@
 ## RQ-11-015
 
 - 根拠: [RQ-11-015](../11_requirements/RQ-11_platform.md#rq-11-015)
-- case: [TC-ARM-BACKEND-02](requirement-test-matrix.md#case-tc-arm-backend-02)
-- 前提・操作・観測: 順序と対象profileに沿った採否・検証結果を記録する。
-- 期待結果: Waylandを第2候補として検証する。
+- case: [TC-TARGET-LATER-01](requirement-test-matrix.md#case-tc-target-later-01)
+- 前提・操作・観測: Waylandを後続desktop Linux backend候補として扱い、runtime support表に未検証profileを含めていないか確認する。
+- 期待結果: Waylandを0.0.1正式profileとして表示する場合は独立したprofile evidenceを持つ。
 - 後始末: 登録・接続・所有参照を明示解除/解放し、終了検証では残存参照の解放まで記録する。process監査は使用記録を保存する。
 - 状態: case/assertion割当済・実装/実行未証明。実test ID・command・SHA・target/profile・結果・reportは未登録。
 
@@ -1950,9 +1950,9 @@
 ## RQ-11-016
 
 - 根拠: [RQ-11-016](../11_requirements/RQ-11_platform.md#rq-11-016)
-- case: [TC-ARM-BACKEND-03](requirement-test-matrix.md#case-tc-arm-backend-03)
-- 前提・操作・観測: 順序と対象profileに沿った採否・検証結果を記録する。
-- 期待結果: X11を第3候補として検証する。
+- case: [TC-TARGET-LATER-01](requirement-test-matrix.md#case-tc-target-later-01)
+- 前提・操作・観測: X11を後続desktop Linux backend候補として扱い、runtime support表に未検証profileを含めていないか確認する。
+- 期待結果: X11を0.0.1正式profileとして表示する場合は独立したprofile evidenceを持つ。
 - 後始末: 登録・接続・所有参照を明示解除/解放し、終了検証では残存参照の解放まで記録する。process監査は使用記録を保存する。
 - 状態: case/assertion割当済・実装/実行未証明。実test ID・command・SHA・target/profile・結果・reportは未登録。
 
@@ -1961,8 +1961,8 @@
 
 - 根拠: [RQ-11-017](../11_requirements/RQ-11_platform.md#rq-11-017)
 - case: [TC-ARM-BACKEND-04](requirement-test-matrix.md#case-tc-arm-backend-04)
-- 前提・操作・観測: 順序と対象profileに沿った採否・検証結果を記録する。
-- 期待結果: framebufferを第4候補として検証する。
+- 前提・操作・観測: 限定framebuffer profileの定義、画素形式、stride、可視化境界、失敗状態を確認し、対象外機能をsupport表示に混ぜない。
+- 期待結果: その他Linux向けframebuffer描画範囲が限定され、実機未確認profileをruntime passと表示しない。
 - 後始末: 登録・接続・所有参照を明示解除/解放し、終了検証では残存参照の解放まで記録する。process監査は使用記録を保存する。
 - 状態: case/assertion割当済・実装/実行未証明。実test ID・command・SHA・target/profile・結果・reportは未登録。
 
@@ -1972,7 +1972,7 @@
 - 根拠: [RQ-11-018](../11_requirements/RQ-11_platform.md#rq-11-018)
 - case: [TC-ARM-BACKEND-05](requirement-test-matrix.md#case-tc-arm-backend-05)
 - 前提・操作・観測: 順序と対象profileに沿った採否・検証結果を記録する。
-- 期待結果: software rendererを第5候補として検証する。
+- 期待結果: software rendererは明示profileでのみ検証し、他backendからの暗黙fallbackに使わない。
 - 後始末: 登録・接続・所有参照を明示解除/解放し、終了検証では残存参照の解放まで記録する。process監査は使用記録を保存する。
 - 状態: case/assertion割当済・実装/実行未証明。実test ID・command・SHA・target/profile・結果・reportは未登録。
 
@@ -1980,9 +1980,9 @@
 ## RQ-11-021
 
 - 根拠: [RQ-11-021](../11_requirements/RQ-11_platform.md#rq-11-021)
-- case: [TC-TARGET-ARMV7-01](requirement-test-matrix.md#case-tc-target-armv7-01)、[TC-TARGET-A64-01](requirement-test-matrix.md#case-tc-target-a64-01)、[TC-TARGET-BOARD-01](requirement-test-matrix.md#case-tc-target-board-01)
-- 前提・操作・観測: ARMv7/AArch64 cross-build結果と実機profile結果を別集計し、他profileへhardware合格が転記されないことを確認する。
-- 期待結果: build成功、Runtime動作確認、hardware profile確認の範囲を区別して公表すること。未検証profileや他architectureへ実機supportを拡大表示しないこと。
+- case: [TC-TARGET-ARMV7-01](requirement-test-matrix.md#case-tc-target-armv7-01)、[TC-TARGET-A64-01](requirement-test-matrix.md#case-tc-target-a64-01)、[TC-TARGET-BOARD-01](requirement-test-matrix.md#case-tc-target-board-01)、[TC-TARGET-LNX-VM-01](requirement-test-matrix.md#case-tc-target-lnx-vm-01)
+- 前提・操作・観測: build、VM/OS runtime、physical hardware結果を別集計し、VM合格が物理GPU/boardへ転記されないことを確認する。
+- 期待結果: build、VM/OS runtime、hardware profileのstatusが区別され、未検証profileをruntime supportedと表示しない。
 - 後始末: 登録・接続・所有参照を明示解除/解放し、終了検証では残存参照の解放まで記録する。process監査は使用記録を保存する。
 - 状態: case/assertion割当済・実装/実行未証明。実test ID・command・SHA・target/profile・結果・reportは未登録。
 
@@ -2100,9 +2100,9 @@
 ## RQ-12-010
 
 - 根拠: [RQ-12-010](../11_requirements/RQ-12_build-distribution.md#rq-12-010)
-- case: [TC-TARGET-A64-01](requirement-test-matrix.md#case-tc-target-a64-01)、[TC-TARGET-ARMV7-01](requirement-test-matrix.md#case-tc-target-armv7-01)、[TC-TARGET-BOARD-01](requirement-test-matrix.md#case-tc-target-board-01)、[TC-TARGET-LATER-01](requirement-test-matrix.md#case-tc-target-later-01)、[TC-TARGET-LNX-01](requirement-test-matrix.md#case-tc-target-lnx-01)、[TC-TARGET-WIN-01](requirement-test-matrix.md#case-tc-target-win-01)、[TC-TRACE-01](requirement-test-matrix.md#case-tc-trace-01)
-- 前提・操作・観測: targetの追加順と各stageの完了記録を確認する。ARMではbuild/link結果のみをRuntime verifiedと表示せず、実機確認は対象board/profileに限定して記録する。
-- 期待結果: 初期CI targetをWindows x64、Linux x64、組み込みLinux ARMv7/AArch64の順で追加する。Linux x64 hostからARM向けをcross-compileする。ARM cross-build/link gateと代表実機上のRuntime/hardware profile gateを区別する。exact compiler/sysrootはbuild profileに記録し、初期profileと代表boardはRQ-11-024に従う。
+- case: [TC-TARGET-A64-01](requirement-test-matrix.md#case-tc-target-a64-01)、[TC-TARGET-ARMV7-01](requirement-test-matrix.md#case-tc-target-armv7-01)、[TC-TARGET-BOARD-01](requirement-test-matrix.md#case-tc-target-board-01)、[TC-TARGET-LATER-01](requirement-test-matrix.md#case-tc-target-later-01)、[TC-TARGET-LNX-01](requirement-test-matrix.md#case-tc-target-lnx-01)、[TC-TARGET-LNX-VM-01](requirement-test-matrix.md#case-tc-target-lnx-vm-01)、[TC-ARM-BACKEND-04](requirement-test-matrix.md#case-tc-arm-backend-04)、[TC-TARGET-WIN-01](requirement-test-matrix.md#case-tc-target-win-01)、[TC-TRACE-01](requirement-test-matrix.md#case-tc-trace-01)
+- 前提・操作・観測: Windows/Linux CI、Ubuntu runtime、条件を満たすDebian VM runtime、ARM cross-build/framebuffer fake test、board runtimeを別stageとして記録する。
+- 期待結果: Windows x64/Linux x64 CI、Ubuntu 24.04 runtime profile、条件を満たすDebian 12 VM profile、ARM cross-build/framebuffer fake testを別々に記録する。ARM本番機器runtime gateは0.0.1から分離し、exact compiler/sysroot/hypervisor/virtual GPU条件を該当profileへ結び付ける。
 - 後始末: 登録・接続・所有参照を明示解除/解放し、終了検証では残存参照の解放まで記録する。process監査は使用記録を保存する。
 - 状態: case/assertion割当済・実装/実行未証明。実test ID・command・SHA・target/profile・結果・reportは未登録。
 
@@ -2662,7 +2662,7 @@
 - 根拠: [RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022)
 - case: [TC-PLAT-01](requirement-test-matrix.md#case-tc-plat-01)
 - 前提・操作・観測: profile公開条件を照合し、device lossからの明示復旧と失敗を観測する。software backendへ暗黙切替がないことを確認する。
-- 期待結果: 初期profileの描画backendと依存条件を公表すること。device喪失後の復旧可否を識別でき、software rendererへの暗黙切替を行わないこと。
+- 期待結果: runtime profileごとの描画backendと依存条件を公表する。device/surface喪失後の状態を識別でき、未指定のsoftware/framebuffer backendへ暗黙切替しない。
 - 後始末: 作成したowner・登録・host・stagingを各契約で解放し、fault fixture/仮想時計/設定を復元する。保証外の永久停止は隔離processの終了を管理する。
 - 状態: 観測設計済・初期共通基盤・未実装/未実行。実test ID・command・SHA・profile・reportは未登録。
 
@@ -2681,8 +2681,8 @@
 
 - 根拠: [RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)
 - case: [TC-ACC-PLAT-01](requirement-test-matrix.md#case-tc-acc-plat-01)、[TC-IME-01](requirement-test-matrix.md#case-tc-ime-01)
-- 前提・操作・観測: 各profileのfont/IME/provider能力表と実行環境を照合する。desktop bus欠落とDRM IME broker欠落を未対応として識別し、実機未実施を成功扱いにしない。
-- 期待結果: 各profileのfont/文字対応、日本語IMEの導入条件、Accessibility bus/provider有無を識別できること。desktop LinuxのAT-SPI profileはbusを必要とし、DRM profileはIME brokerを明示すること。
+- 前提・操作・観測: Windows、Ubuntu、Debian VM、framebuffer限定profile別のfont/IME/provider能力表と実行環境を照合する。desktop busや必要brokerがないprofile、実機未実施profileを成功扱いにしない。
+- 期待結果: 各profileのfont/文字対応、日本語IMEの条件、Accessibility provider有無を識別できる。framebuffer描画のみのprofileはIME/Accessibility対応済みと表示しない。
 - 後始末: 作成したowner・登録・host・stagingを各契約で解放し、fault fixture/仮想時計/設定を復元する。保証外の永久停止は隔離processの終了を管理する。
 - 状態: 観測設計済・初期共通基盤・未実装/未実行。実test ID・command・SHA・profile・reportは未登録。
 
@@ -2760,9 +2760,9 @@
 ## RQ-11-024
 
 - 根拠: [RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024)
-- case: [TC-TARGET-WIN-01](requirement-test-matrix.md#case-tc-target-win-01)、[TC-TARGET-LNX-01](requirement-test-matrix.md#case-tc-target-lnx-01)、[TC-TARGET-ARMV7-01](requirement-test-matrix.md#case-tc-target-armv7-01)、[TC-TARGET-A64-01](requirement-test-matrix.md#case-tc-target-a64-01)、[TC-TARGET-BOARD-01](requirement-test-matrix.md#case-tc-target-board-01)
-- 前提・操作・観測: 4つの初期profileと代表boardのmetadataを照合する。ARMv7 build証拠とAArch64実機証拠を別記録とし、同一結果の転記や未実施support表示を拒否する。
-- 期待結果: 初期profileをWindows11 x64、Debian12 x64、ARMv7/AArch64 cross-buildと代表RPi4 AArch64とすること。初期ARMv7はbuild検証表示に限定し、実機未確認を明示すること。
+- case: [TC-TARGET-WIN-01](requirement-test-matrix.md#case-tc-target-win-01)、[TC-TARGET-LNX-01](requirement-test-matrix.md#case-tc-target-lnx-01)、[TC-TARGET-LNX-VM-01](requirement-test-matrix.md#case-tc-target-lnx-vm-01)、[TC-TARGET-ARMV7-01](requirement-test-matrix.md#case-tc-target-armv7-01)、[TC-TARGET-A64-01](requirement-test-matrix.md#case-tc-target-a64-01)、[TC-TARGET-BOARD-01](requirement-test-matrix.md#case-tc-target-board-01)
+- 前提・操作・観測: Windows 11 x64、Ubuntu 24.04 x64、描画確認に合格したDebian 12 VMのprofile metadataを照合する。ARM cross-buildとboard runtime evidenceは分ける。
+- 期待結果: 正式runtime profileをWindows 11 x64/Ubuntu 24.04 x64と、条件を満たしたDebian 12 VMに限定する。ARMはframebuffer限定実験経路とcross-buildを記録し、board hardware runtime確認は後続gateとして明示する。
 - 後始末: 作成したowner・登録・host・stagingを各契約で解放し、fault fixture/仮想時計/設定を復元する。保証外の永久停止は隔離processの終了を管理する。
 - 状態: 観測設計済・初期共通基盤・未実装/未実行。実test ID・command・SHA・profile・reportは未登録。
 
@@ -2821,6 +2821,7 @@
 | 日付 | 対象版 | 承認者 | 結果 |
 | --- | --- | --- | --- |
 | 2026-10-30 | 1.2 / RQ-09-074 assertion | 利用者 | 「ok」によりWindow背景色のassertionを含む全文を承認。実装・実行は別管理 |
+| 2026-11-09 | 1.3全文 / Platform profile・ARM build/runtime gate | 利用者 | 「ok」によりprofile・backend・support status assertion全体を承認。assertion実行は別管理 |
 
 ## 適用前の受入確認文の移管記録
 
@@ -3019,6 +3020,7 @@
 | --- | --- | --- | --- |
 | 1.0 | 2026-10-17 | 受入確認のRQからの分離と要求別assertion | Codex |
 | 1.2 | 2026-10-30 | RQ-09-074 Window背景色assertionを追加 | Codex |
+| 1.3 | 2026-11-09 | RQ-11/12 profile変更に合わせてprofile・backend・support status assertionを改訂 | Codex |
 
 ## 承認履歴（具体化適用）
 

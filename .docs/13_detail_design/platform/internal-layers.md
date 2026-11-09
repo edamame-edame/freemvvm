@@ -1,15 +1,31 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 2.5
+- 文書版: 2.6
 - 文書ロール: detailed-design
-- 更新日: 2026-11-08
-- 状態: 1.6全文承認済み（利用者、2026-10-30）。Linux/Core 1.7～1.9全文承認済み（利用者、2026-10-31）。Windows GlyphRun 1.7全文承認済み（利用者、2026-11-01）。Window単位TextServiceとWindows worker所有2.1全文承認済み（利用者、2026-11-01）。2.2全文承認済み（利用者、2026-11-01）。Windows native input bridge 2.3全文承認済み（利用者、2026-11-01）。2.4全文承認済み（利用者、2026-11-02）。Core Platform input sink/dispatcher接続2.5全文承認済み（利用者、2026-11-08）。実装・試験状態は別管理
+- 更新日: 2026-11-09
+- 状態: 2.6全文承認済み（利用者、2026-11-09）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
 本書を要求から実装へ具体化する詳細設計の正本とする。型・API・所有・呼出し手順・状態遷移を実装へ反映する。要求の外部保証はリンク先RQ、層の責務と主要flowは上位BDを根拠とする。設計宣言の記載は、配布済みheader・実装済みAPI・試験合格を意味しない。
 
 基本設計: [プラットフォーム：抽象化・描画・text・OS接続](../../12_design/platform/abstraction.md)、[UIクラス：Tree・Layout・Focus・Control](../../12_design/ui/tree-layout-controls.md)、[UIクラス：TextBox・編集・Validation](../../12_design/ui/text-editing-validation.md)
+
+## v2.6: 0.0.1 support profile境界（承認済み）
+
+本節は承認済み[RQ-11 0.6](../../11_requirements/RQ-11_platform.md)と[Platform BD 1.2](../../12_design/platform/abstraction.md)に対応する実現仕様である。既存2.5承認設計のprofile採用範囲を変更する。
+
+| profile | 詳細設計上の接続・証拠案 | 境界 |
+|---|---|---|
+| Windows 11 x64 | 既存Win32 peer/Direct2D/DirectWrite経路で候補SHAのWindow openからvisible frameまで確認 | Windows ARM64や未検証Windows版へ一般化しない |
+| Ubuntu 24.04 x64 | Linux factory/backendを固定したUbuntu profileでdevice/surface open、frame present、input/close sourceを確認 | 現行DRM/KMS direct profileと通常desktop window sessionを混同しない。backend選択はprofile feasibility evidence後に確定 |
+| Debian 12 x64 VM | hypervisor、virtual GPU、guest driver、device node、GBM/EGL/GLES、present結果を一つのprofileとして記録 | VM起動・container headless renderingだけではWindow/display runtime passにしない |
+| Linux ARMv7/AArch64 | cross-buildとframebuffer限定実験経路をhardware runtimeから別statusで記録 | board固有device/surface/runtime gateは後続version。build/fake testでhardware passにしない |
+| その他Linux framebuffer限定 | SceneSnapshotから限定pixel outputまでの別Adapter契約を提案 | fbdev、DRM/KMS dumb buffer、software memory bufferは同じAPI/挙動と仮定しない。input/IME/Accessibility/window-manager eventを保証しない |
+
+現行のLinux backend実装はDRM/KMS+GBM/EGL/GLESであり、名前にKMS framebuffer objectがあることは汎用framebuffer adapterの実装を意味しない。Debian VM feasibility smokeでvisible presentが成立しない場合、この実装をUbuntu/Debian正式runtime profileに適合済みとは扱わず、通常desktop adapterまたは別profile案を再レビューする。
+
+この範囲変更が承認された場合、後続節のDRM/KMS選択・ARM board evidenceは実装/保守候補として保持しつつ、0.0.1正式profileの確定根拠から区別する。実際のframebuffer方式とpixel format/stride/orientation/flush/failure/ownershipは、要求承認後の個別DD改訂・実装計画で具体化する。
 
 ## 要求と設計項目の対応
 
@@ -499,3 +515,4 @@ sequenceDiagram
 | 2026-11-01 | 2.3全文 | 利用者の「ok」によりWindows native input bridge、event順序、DIP変換、Core focus/route境界を含む全文を承認。具体native API・実装・試験は別管理 |
 | 2026-11-02 | 2.4全文 | 利用者の「ok」によりWindows key/text/IME、mouseとprimary touch/pen、DIP/order bridgeを含む全文を承認。native実機試験は別管理 |
 | 2026-11-08 | 2.5全文 | 利用者の「ok」によりCore private input sink、owned event handoff、dispatcher FIFO、generation/shutdown validationを含む文書全体を承認。公開契約は変更せず、実装・試験は別管理 |
+| 2026-11-09 | 2.6全文 | 利用者の「ok」により全文承認。VM実証・実装・試験は別管理 |

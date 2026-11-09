@@ -1,8 +1,8 @@
 # RQ-12: ビルドと配布
 
-- 文書版: 0.5
-- 状態: 承認済み（利用者、2026-10-17）
-- 更新日: 2026-10-17
+- 文書版: 0.6
+- 状態: 0.6全文承認済み（利用者、2026-11-09）。実装・試験状態は別管理
+- 更新日: 2026-11-09
 - 入口: [要求仕様索引](reqirements-specification.md)
 
 ## 概要
@@ -16,15 +16,15 @@
 | 要求ID | 項目 | 要求詳細 | 対象段階 |
 | --- | --- | --- | --- |
 | <a id="rq-12-001"></a>RQ-12-001 | target triple別native artifact | target tripleごとにRust Coreを含むnative C ABI runtime artifactを生成する。cross-compile artifactは生成対象のtargetを明示し、別targetのartifactを流用・誤表示しない。 | 現行 |
-| <a id="rq-12-002"></a>RQ-12-002 | OS・CPU architecture別ライブラリ | OSおよびCPU architectureごとに対応するnative libraryを提供する。ABI majorとtarget profileごとの正式support範囲を識別可能にする。 | 現行 |
+| <a id="rq-12-002"></a>RQ-12-002 | OS・CPU architecture別ライブラリ | OSおよびCPU architectureごとに対応するnative libraryを提供する。artifact生成/build確認、VMまたはOS上のruntime確認、hardware profile確認を別statusで記録し、ABI majorと具体的なtarget profileごとの正式support範囲を識別可能にする。 | 現行 |
 | <a id="rq-12-003"></a>RQ-12-003 | 4言語共通のC ABI artifact | 同一target向けのC ABI native runtimeをC++、C#、Rust、Python wrapperから共有する。各wrapperが独自にCoreを複製したり、異なるABI runtimeを暗黙に使ったりしない。 | 現行 |
-| <a id="rq-12-004"></a>RQ-12-004 | C++ CMake integration | C++の標準integrationをCMake install/export packageとする。public C++ wrapperと対応targetの共通C ABI native libraryを含み、downstream projectは`find_package(... CONFIG)`で利用する。初期targetはWindows x64とLinux x64。vcpkg/Conan registryは本要求で指定しない。 | 現行 |
+| <a id="rq-12-004"></a>RQ-12-004 | C++ CMake integration | C++の標準integrationをCMake install/export packageとする。public C++ wrapperと対応targetの共通C ABI native libraryを含み、downstream projectは`find_package(... CONFIG)`で利用する。0.0.1対象candidateはWindows x64と、RQ-11が定める検証済みLinux x64 profileとする。vcpkg/Conan registryは本要求で指定しない。 | 現行 |
 | <a id="rq-12-005"></a>RQ-12-005 | Rust crateとnative runtime | Rust配布をraw FFIの`-sys` crateとsafe API crateに分け、Rust Coreはwrapper crateへ含めず共通C ABI runtimeを別artifactとして使う。別環境生成artifactの取得・取込経路をfeatureで有効にし、Cargo `--target`でtarget triple、named artifact profileでboard/toolchain差を選択する。featureをtarget指定の代替にしない。registry、fetch command、cache、signature運用は本要求で指定しない。 | 現行 |
-| <a id="rq-12-006"></a>RQ-12-006 | C# NuGet・RID assets | C# managed wrapperとRID別native C ABI libraryを同一NuGet packageの`runtimes/{rid}/native/`に含める。初期RIDは`win-x64`と`linux-x64`。組み込みARM RID packageはprofile互換性確認後に判断する。feed/package IDの実配置と、RQ-03-014に定めるTFM基準を区別する。 | 現行 |
+| <a id="rq-12-006"></a>RQ-12-006 | C# NuGet・RID assets | C# managed wrapperとRID別native C ABI libraryを同一NuGet packageの`runtimes/{rid}/native/`に含める。初期RIDは`win-x64`と`linux-x64`。Linux x64のdistro/runtime profileはsupport matrixで識別する。組み込みARM RID packageはbuild/profile互換性確認後に判断する。feed/package IDの実配置と、RQ-03-014に定めるTFM基準を区別する。 | 現行 |
 | <a id="rq-12-007"></a>RQ-12-007 | Python ctypes wrapper | 初期Python wrapperはPython標準ライブラリ`ctypes`でC ABIを呼び出し、compiled extensionを必須としない。 | 現行 |
-| <a id="rq-12-008"></a>RQ-12-008 | Python wrapper/native runtime distribution | Python wrapper distributionとtarget別native runtime distributionを分ける。初期native wheel対象はWindows x64とLinux x64。組み込みLinux ARMはprofile互換性が確認されるまでmanylinux/musllinux wheelと表示しない。package名、index、exact wheel tagは本要求で指定しない。 | 現行 |
+| <a id="rq-12-008"></a>RQ-12-008 | Python wrapper/native runtime distribution | Python wrapper distributionとtarget別native runtime distributionを分ける。初期native wheel対象はWindows x64と、RQ-11が定める検証済みLinux x64 profileとする。組み込みLinux ARMはprofile互換性が確認されるまでmanylinux/musllinux wheelと表示しない。package名、index、exact wheel tagは本要求で指定しない。 | 現行 |
 | <a id="rq-12-009"></a>RQ-12-009 | CI toolchainの固定 | CIで使用するYocto SDK、sysroot、linker、C library設定を固定し、target build条件を記録する。 | 現行 |
-| <a id="rq-12-010"></a>RQ-12-010 | CI target追加順と実機検証gate | 初期CI targetをWindows x64、Linux x64、組み込みLinux ARMv7/AArch64の順で追加する。Linux x64 hostからARM向けをcross-compileする。ARM cross-build/link gateと代表実機上のRuntime/hardware profile gateを区別する。exact compiler/sysrootはbuild profileに記録し、初期profileと代表boardはRQ-11-024に従う。 | 現行 |
+| <a id="rq-12-010"></a>RQ-12-010 | CI targetとprofile検証gate | CIでWindows x64とLinux x64をbuild/testする。0.0.1のLinux runtime profileはUbuntu 24.04 x64とし、Debian 12 x64は対象VM/virtual GPU構成で描画確認に合格した場合のみprofile evidenceへ加える。ARMv7/AArch64はcross-build/linkと限定framebuffer経路のbuild/fake testを記録し、本番board runtime/hardware gateと分ける。本番機器未確認のruntime supportは表示しない。exact compiler/sysrootとhypervisor/virtual GPU条件をprofile recordへ残す。 | 0.0.1候補 |
 | <a id="rq-12-011"></a>RQ-12-011 | artifact適合 | target/profile/ABI/featureに適合するnative artifactを選べ、不適合を利用前に拒否すること。 | 初期共通基盤 |
 | <a id="rq-12-012"></a>RQ-12-012 | native identity共有 | 同じnative binaryは言語package間で同じidentityを保つこと。 | 初期共通基盤 |
 | <a id="rq-12-013"></a>RQ-12-013 | 明示取得とoffline利用 | 通常導入で固定版を暗黙更新せず、取得・更新を明示でき、[期限・失効条件](RQ-12_build-distribution.md#rq-12-023)を満たす検証済みartifactをoffline利用できること。 | 初期共通基盤 |
@@ -32,7 +32,7 @@
 | <a id="rq-12-015"></a>RQ-12-015 | manifestの互換・曖昧性 | 未知schema major、未知必須項目、重複・曖昧で一意に解釈できないmanifestを拒否すること。未知optional項目は署名検証後に無視できるが、target・ABI・信頼判定に必要な情報をoptionalとして扱わないこと。 | 初期共通基盤 |
 | <a id="rq-12-016"></a>RQ-12-016 | license/noticeの継承 | first-party source、header、wrapper、source package、binary SDKへ既承認のApache-2.0方針を適用し、再配布で必要なlicense/noticeと変更表示を保持すること。third-partyのlicense条件を独立して維持すること。 | 初期共通基盤 |
 | <a id="rq-12-017"></a>RQ-12-017 | major保守期間 | 最新安定ABI majorを通常保守し、直前majorは新安定major後24か月、security/重大障害修正に限って保守すること。 | 初期共通基盤 |
-| <a id="rq-12-018"></a>RQ-12-018 | 保守状態公表 | ABI majorとtarget profileごとに保守状態を公表すること。 | 初期共通基盤 |
+| <a id="rq-12-018"></a>RQ-12-018 | 保守状態公表 | ABI majorとtarget profileごとに保守状態を公表し、build-only、VM/OS runtime確認済み、physical hardware profile確認済みを区別すること。 | 初期共通基盤 |
 | <a id="rq-12-019"></a>RQ-12-019 | 非推奨とsecurity例外 | profile非推奨は原則12か月前に通知し、security上の短縮時は理由と影響を示すこと。 | 初期共通基盤 |
 | <a id="rq-12-020"></a>RQ-12-020 | EOL後の参照 | EOL後も最終公開物・support表・告知を参照できること。 | 初期共通基盤 |
 | <a id="rq-12-021"></a>RQ-12-021 | 再配布許諾範囲 | first-party source、改変source、改変binary、app binaryの再配布を許可すること。third-partyの個別license条件は独立して維持すること。repository公開、CLA/DCO、docs/assetsのlicense、SBOM運用の追加を含めないこと。 | 初期共通基盤 |
@@ -86,3 +86,15 @@
 | 版 | 日付 | 変更内容 | 作成者 |
 | --- | --- | --- | --- |
 | 0.5 | 2026-10-17 | 要求変更 RQ-12-022, RQ-12-023, RQ-12-024, RQ-12-025を正本へ適用し、旧判断との対応を保持 | Codex |
+
+## 0.6 承認履歴
+
+| 日付 | 対象版・範囲 | 状態 | 備考 |
+|---|---|---|---|
+| 2026-11-09 | 0.6全文 / RQ-12-002、004、006、008〜010、018 | 利用者 | 「ok」によりPlatform profile別artifact・CI・support evidenceとARM build/runtime gate分離を含む本文全体を承認。実装・CI実行・release合格は別管理 |
+
+## 改訂履歴（0.6）
+
+| 版 | 日付 | 変更内容 | 作成者 | 状態 |
+|---|---|---|---|---|
+| 0.6 | 2026-11-09 | Platform profile別のartifact・CI・support evidence見直し | Codex | 本文全体を利用者承認済み。実装・試験は別管理 |

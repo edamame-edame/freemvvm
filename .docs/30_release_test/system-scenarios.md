@@ -1,8 +1,8 @@
 # Release試験：共通UI縦断・profile・配布物
 
-- 文書版: 0.1
-- 状態: 0.1全文承認済み（利用者、2026-10-17）。製品testは未実装・未実行。接続gapは別管理
-- 更新日: 2026-10-17
+- 文書版: 0.2
+- 状態: 0.2全文承認済み（利用者、2026-11-09）。製品testは未実装・未実行
+- 更新日: 2026-11-09
 
 上位規約は[release-test](release-test.md)、[共通manifest](requirements-test-manifest.md)、[要求対応表](requirement-test-matrix.md)。実現根拠は[BD全体構成](../12_design/architecture.md) 1.0、[DD入口](../13_detail_design/README.md)と各分野の1.1。単体のfake成功を実OS・配布物の成功へ読み替えない。下記IDは予定実test識別子であり、既存TCを置き換えない。
 
@@ -26,7 +26,7 @@
 | <a id="rel-life-001"></a>REL-LIFE-001 / [TC-VERT-08](requirement-test-matrix.md#case-tc-vert-08)、[TC-LIFE-01](requirement-test-matrix.md#case-tc-life-01) | owner releaseと明示cancel/closeを区別し、Window close後再open、callback中Runtime終了、残owner解放を順に観測 | Window closeだけではRuntime終了せずCore値保持。callback完了後に終了優先、後始末一回。未完了を完了表示しない。[RQ-05-002](../11_requirements/RQ-05_ownership-callbacks.md#rq-05-002)、[RQ-06-005](../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-09-071](../11_requirements/RQ-09_ui-scope.md#rq-09-071) |
 | <a id="rel-package-001"></a>REL-PACKAGE-001 / [TC-PKG-CPP-01](requirement-test-matrix.md#case-tc-pkg-cpp-01)、[TC-PKG-CS-01](requirement-test-matrix.md#case-tc-pkg-cs-01)、[TC-PKG-RS-01](requirement-test-matrix.md#case-tc-pkg-rs-01)、[TC-PKG-PY-01](requirement-test-matrix.md#case-tc-pkg-py-01) | 開発treeの探索pathを外したconsumer環境で各packageを導入し、共通UIを起動。network遮断下でもimport/load | CMake/NuGet/Cargo/Pythonの配布境界に従って同identity/digestをload。import時に暗黙fetchや更新なし。未検証ARM wheelを適合表示しない。[RQ-12-003](../11_requirements/RQ-12_build-distribution.md#rq-12-003)、[RQ-12-013](../11_requirements/RQ-12_build-distribution.md#rq-12-013)、[RQ-12-025](../11_requirements/RQ-12_build-distribution.md#rq-12-025) |
 | <a id="rel-artifact-001"></a>REL-ARTIFACT-001 / [TC-ARTIFACT-01](requirement-test-matrix.md#case-tc-artifact-01) | テスト署名artifactの実FS上取込、offline再利用、改ざん、失効/期限切れ、依存binary差替えを別環境で試す | 検証した同一bytesのみ利用し、未信頼/失効/不適合を拒否。固定版を勝手に更新しない。[RQ-12-014](../11_requirements/RQ-12_build-distribution.md#rq-12-014)、[RQ-12-023](../11_requirements/RQ-12_build-distribution.md#rq-12-023)、[SD staging](../14_secure_design/07-trust-key-staging.md) 1.0 |
-| <a id="rel-profile-001"></a>REL-PROFILE-001 / [TC-TARGET-WIN-01](requirement-test-matrix.md#case-tc-target-win-01)、[TC-TARGET-LNX-01](requirement-test-matrix.md#case-tc-target-lnx-01)、[TC-TARGET-BOARD-01](requirement-test-matrix.md#case-tc-target-board-01) | 候補releaseのprofileごとに上記適用scenarioを実行。代表boardでdevice/surface喪失と再開も観測 | Windows11 x64、Debian12 x64、代表RPi4 AArch64の対象範囲を個別記録。ARMv7は初期build検証と実機動作を区別。[RQ-11-021](../11_requirements/RQ-11_platform.md#rq-11-021)、[RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024) |
+| <a id="rel-profile-001"></a>REL-PROFILE-001 / [TC-TARGET-WIN-01](requirement-test-matrix.md#case-tc-target-win-01)、[TC-TARGET-LNX-01](requirement-test-matrix.md#case-tc-target-lnx-01)、[TC-TARGET-LNX-VM-01](requirement-test-matrix.md#case-tc-target-lnx-vm-01) | 候補releaseのWindows/Ubuntu profileでUI/package scenarioを実行する。Debian VMはvirtual GPU pathからvisible presentまでを個別確認する。ARM board hardware scenarioは0.0.1対象外として後続gateへ記録する | Windows 11 x64、Ubuntu 24.04 x64、条件に合格した特定Debian 12 x64 VMを個別profileとして記録。ARMv7/AArch64 cross-buildはhardware runtimeと分け、RPi 4 board runtimeは後続版へ送る。[RQ-11-021](../11_requirements/RQ-11_platform.md#rq-11-021)、[RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024) |
 
 ## 後始末と判定
 
@@ -42,9 +42,11 @@ reportは予定test ID、TC/RQ別assertion、SHA、profile、wrapper/ABI/feature
 | --- | --- | --- | --- |
 | 2026-10-17 | 0.1全文 | — | レビュー案・未承認。作成指示を試験設計の承認や試験合格とは扱わない |
 | 2026-10-17 | 0.1全文 | 利用者 | 「OK そろそろスクラッチを開始しましょうか。環境整備から始めてください。」により既存試験案を承認し環境整備を開始。製品test実装・合格を意味しない |
+| 2026-11-09 | 0.2全文 / REL-PROFILE-001 profile scope | 利用者 | 「ok」によりRQ-11/12 profile範囲変更に対応するscenario全文を承認。製品試験の実行・合格は別管理 |
 
 ## 改訂履歴
 
 | 版 | 日付 | 内容・理由 | 作成者 | 承認との対応 |
 | --- | --- | --- | --- | --- |
 | 0.1 | 2026-10-17 | テスト文書作成指示に基づき前提・操作・観測・期待値・後始末を具体化 | Codex | 本版全文のレビュー待ち。未実装・未実行 |
+| 0.2 | 2026-11-09 | Windows/Ubuntu、条件付きDebian VM、ARM hardware gate分離へprofile scenarioを改訂 | Codex | 全文承認済み。試験実行・合格は別管理 |
