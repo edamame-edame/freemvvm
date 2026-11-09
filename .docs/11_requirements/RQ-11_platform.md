@@ -1,7 +1,7 @@
 # RQ-11: Platformと組み込みLinux
 
-- 文書版: 0.6
-- 状態: 0.6全文承認済み（利用者、2026-11-09）。実装・試験状態は別管理
+- 文書版: 0.7
+- 状態: 0.7全文承認済み（利用者、2026-11-09）。実装・試験状態は別管理
 - 更新日: 2026-11-09
 - 入口: [要求仕様索引](reqirements-specification.md)
 
@@ -39,6 +39,7 @@
 | <a id="rq-11-022"></a>RQ-11-022 | 描画backendとfallback | 各runtime profileの描画backendと依存条件を公表すること。device/surface喪失後の復旧状態を識別でき、未指定のsoftware/framebuffer backendへ暗黙に切り替えないこと。 | 初期共通基盤 |
 | <a id="rq-11-023"></a>RQ-11-023 | font・IME・Accessibility profile | Windows 11、Ubuntu 24.04、Debian 12 VM、framebuffer限定の各profileについてfont/文字対応、日本語IME条件、Accessibility provider有無を識別すること。framebuffer描画のみのprofileをIME/Accessibility対応済みと表示しないこと。 | 初期共通基盤 |
 | <a id="rq-11-024"></a>RQ-11-024 | 0.0.1 support profile | 正式runtime profile候補をWindows 11 x64とUbuntu 24.04 x64とする。Debian 12 x64は特定VM/virtual GPU構成で実描画まで確認したprofileに限り追加できる。Linux ARMv7/AArch64はframebuffer描画限定の実験的経路・cross-buildを対象候補とし、代表boardでruntime確認されるまでは正式hardware supportと表示しない。 | 0.0.1候補 |
+| <a id="rq-11-025"></a>RQ-11-025 | 描画backend選択 | 利用者が対象runtime profileで提供されている描画backendを明示選択できること。未指定時は、そのprofileで公表された規定backendを使うこと。指定backendが未登録、profile/surfaceと非互換、または初期化できない場合は失敗を明示し、別backendへ暗黙に置き換えないこと。 | 初期共通基盤 |
 
 
 ## 適用境界
@@ -97,3 +98,15 @@
 | 版 | 日付 | 変更内容 | 作成者 | 状態 |
 |---|---|---|---|---|
 | 0.6 | 2026-11-09 | 0.0.1 profileとframebuffer限定Linux範囲の見直し | Codex | 本文全体を利用者承認済み。実装・試験は別管理 |
+
+## 0.7 承認履歴
+
+| 日付 | 対象版・範囲 | 状態 | 備考 |
+|---|---|---|---|
+| 2026-11-09 | 0.7全文 / RQ-11-025 | 利用者 | 「ok」によりprofileごとの規定backend、利用者による明示選択、非互換・初期化失敗時の明示failureと暗黙fallback禁止を含む本文全体を承認。API具体化・実装・試験は別管理 |
+
+## 改訂履歴（0.7）
+
+| 版 | 日付 | 変更内容 | 作成者 | 状態 |
+|---|---|---|---|---|
+| 0.7 | 2026-11-09 | profileごとの描画backend既定値と利用者選択の要求を追加 | Codex | 本文全体を利用者承認済み。API・実装・試験は別管理 |

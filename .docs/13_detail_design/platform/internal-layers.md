@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 2.6
+- 文書版: 2.7
 - 文書ロール: detailed-design
 - 更新日: 2026-11-09
-- 状態: 2.6全文承認済み（利用者、2026-11-09）。実装・試験状態は別管理
+- 状態: 2.7全文承認済み（利用者、2026-11-09）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -27,11 +27,49 @@
 
 この範囲変更が承認された場合、後続節のDRM/KMS選択・ARM board evidenceは実装/保守候補として保持しつつ、0.0.1正式profileの確定根拠から区別する。実際のframebuffer方式とpixel format/stride/orientation/flush/failure/ownershipは、要求承認後の個別DD改訂・実装計画で具体化する。
 
+## v2.7: Platform別PresentationBackend defaultと明示選択（承認済み）
+
+- 根拠: 承認済みRQ-11 0.7の[描画backend選択](../../11_requirements/RQ-11_platform.md#rq-11-025)とRQ-11-008/009/020/021/022/024
+- 本節のprofileごとの既定値、選択境界、failure条件は詳細設計として承認済み。公開API・実装・試験の状態は別管理
+
+### 方針
+
+1. 全Platformに共通する一種類のrendererへ既存Adapterを置き換えない。既存の承認済み・実装済みAdapterは、そのAdapterを検証したruntime profileで維持する。
+2. 未指定のときは、Runtime artifactに結び付けたruntime profileが公表する既定`PresentationBackend`を決定的に選ぶ。「最適」は実行時のGPU性能heuristicで毎回選ぶ意味ではなく、OS/session/device profileで事前に選び検証した組を指す。
+3. 利用者指定を将来公開する場合はWindow open前に`PresentationBackend`を選択する案とする。選択はWindow generation内で固定し、open中のhot-swapは行わない。変更にはclose後の再openを必要とする案とする。
+4. 指定backendが未登録、profile/NativeSurface/Scene capabilityと非互換、deviceや依存を初期化できない場合はopen failureとして返す。暗黙に別のbackendへ置き換えず、Core Window状態と既存内容は保持する。device loss後も同じ非fallback規則に従う。
+5. 利用者へ出す選択肢は、renderer単体でなくNativeSurface/WindowPeerとrendererの互換性を満たす`PresentationBackendDescriptor`の組とする。たとえばOpenGL/Vulkanを使うsurface候補が同一とは仮定しない。
+
+### profileごとのdefault案
+
+| runtime profile | default `PresentationBackend`案 | 適用境界・状態 |
+|---|---|---|
+| Windows 11 x64 | Win32 peer + Direct2D/DirectWrite | 既存Windows Adapterをdefaultとして維持する。別rendererはsurface compatibilityとprofile testを満たす候補として追加する |
+| Ubuntu 24.04 x64 direct-display artifact | DRM/KMS + GBM/EGL/GLES | 現行Linux artifactのdefault候補。通常のWayland/X11 desktop sessionをこのprofileの実行 evidenceとして扱わない |
+| Debian 12.15 x64 / VirtualBox 7.1.10 VMSVGA profile | DRM/KMS + GBM/EGL/GLES | 同profileで赤系・青系frameのvisible presentとclose/reopenを確認。guest root + GDM停止によるsmokeのため、配布consumer・一般ユーザー権限・inputを含むprofile全体のpassではない |
+| Linux ARMv7/AArch64 framebuffer限定artifact | 承認済みsinkを使うframebuffer限定backend | 当該experimental profileのdefaultとしてのみ選ぶ。既存Linux DRM/GLES artifactのfallbackや置換にしない。実機runtime確認前はhardware supportと表示しない |
+| 他OS/session/device profile | 未決 | profileと適合surfaceを確認してから独立にdefaultを定める。別OSの選択を推定しない |
+
+Ubuntu desktop session用Wayland/X11 adapter、Windows上のOpenGL/Vulkan候補などを登録する場合、Surfaceとrendererの組・依存・DrawOp capability・device loss・visible-present evidenceをそれぞれ比較し、profile matrixを更新する。候補があるだけでは選択可能・既定・support済みとしない。
+
+### 選択・診断・試験案
+
+| 条件 | selection結果案 | 検証観測案 |
+|---|---|---|
+| 利用者未指定 | Runtime profileに記録した既定identityを選び、そのidentityとselection reasonを診断情報に残す | profileごとに既定identityが固定で選ばれ、未登録factoryを探索しない |
+| 利用者が互換backendを指定 | そのbackend identityを選ぶ | 要求identity・surface kind・必要DrawOp capabilityの一致を確認 |
+| 未登録/非互換backendを指定 | Window open時に明示failure | 別backendへ切り替わらず、Core Window/contentが維持され、適合候補が診断される |
+| 既定/明示backendのdevice openまたはpresentが失敗 | 既存Platform failure契約を返す。別backendへfallbackしない | device loss/open failureとCore状態保持をprofile/fake testで確認 |
+| backend変更 | close後の次generation open時に新しい選択を解決 | 旧generationの完了を破棄し、旧backend resourceをreleaseしてから再作成 |
+
+公開設定を全wrapperへ渡すC ABI表現・安定identityの命名・feature query/error mappingは別unitで具体化する。本書の承認だけではC ABIやwrapper APIの実装済み状態を意味しない。
+
 ## 要求と設計項目の対応
 
 | 設計項目 | 要求根拠 |
 | --- | --- |
 | Control接続・Window peer・描画backend | [RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-006](../../11_requirements/RQ-09_ui-scope.md#rq-09-006)、[RQ-09-048](../../11_requirements/RQ-09_ui-scope.md#rq-09-048)、[RQ-09-058](../../11_requirements/RQ-09_ui-scope.md#rq-09-058)、[RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-09-072](../../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-11-008](../../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-009](../../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022) |
+| profile別既定backend・利用者選択 | [RQ-11-021](../../11_requirements/RQ-11_platform.md#rq-11-021)、[RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-024](../../11_requirements/RQ-11_platform.md#rq-11-024)、[RQ-11-025](../../11_requirements/RQ-11_platform.md#rq-11-025) |
 | Text engine・IME・OS Accessibility | [RQ-09-053](../../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-054](../../11_requirements/RQ-09_ui-scope.md#rq-09-054)、[RQ-10-001](../../11_requirements/RQ-10_accessibility.md#rq-10-001)、[RQ-10-005](../../11_requirements/RQ-10_accessibility.md#rq-10-005)、[RQ-10-007](../../11_requirements/RQ-10_accessibility.md#rq-10-007)、[RQ-10-011](../../11_requirements/RQ-10_accessibility.md#rq-10-011)、[RQ-10-013](../../11_requirements/RQ-10_accessibility.md#rq-10-013)、[RQ-10-014](../../11_requirements/RQ-10_accessibility.md#rq-10-014)、[RQ-11-023](../../11_requirements/RQ-11_platform.md#rq-11-023) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
@@ -516,3 +554,4 @@ sequenceDiagram
 | 2026-11-02 | 2.4全文 | 利用者の「ok」によりWindows key/text/IME、mouseとprimary touch/pen、DIP/order bridgeを含む全文を承認。native実機試験は別管理 |
 | 2026-11-08 | 2.5全文 | 利用者の「ok」によりCore private input sink、owned event handoff、dispatcher FIFO、generation/shutdown validationを含む文書全体を承認。公開契約は変更せず、実装・試験は別管理 |
 | 2026-11-09 | 2.6全文 | 利用者の「ok」により全文承認。VM実証・実装・試験は別管理 |
+| 2026-11-09 | 2.7全文 | 利用者の「ok」によりprofileごとのdefault、Window単位の明示選択、surface/renderer互換性、non-fallback境界を含む文書全体を承認。公開API・実装・試験は別管理 |
