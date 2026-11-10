@@ -143,6 +143,10 @@ class NativeApi(Protocol):
 
     def window_create(self, runtime: int) -> tuple[int, int, int]: ...
 
+    def window_create_with_presentation_backend(
+        self, runtime: int, backend_id_utf8: bytes
+    ) -> tuple[int, int, int]: ...
+
     def window_background_rgb(
         self, window: int
     ) -> tuple[int, float, float, float, int]: ...
@@ -489,6 +493,16 @@ class CtypesNativeApi:
         self._bind(
             "ui_abi_1_window_create",
             [Handle, ctypes.POINTER(Handle), ctypes.POINTER(Handle)],
+        )
+        self._bind(
+            "ui_abi_1_window_create_with_presentation_backend",
+            [
+                Handle,
+                ctypes.POINTER(ctypes.c_uint8),
+                ctypes.c_uint64,
+                ctypes.POINTER(Handle),
+                ctypes.POINTER(Handle),
+            ],
         )
         self._bind(
             "ui_abi_1_window_background_rgb",
@@ -1058,6 +1072,23 @@ class CtypesNativeApi:
         error = Handle()
         status = self._library.ui_abi_1_window_create(
             runtime, ctypes.byref(token), ctypes.byref(error)
+        )
+        return status, token.value, error.value
+
+    def window_create_with_presentation_backend(
+        self, runtime: int, backend_id_utf8: bytes
+    ) -> tuple[int, int, int]:
+        _storage, pointer, length = self._utf8_arguments(backend_id_utf8)
+        token = Handle()
+        error = Handle()
+        status = (
+            self._library.ui_abi_1_window_create_with_presentation_backend(
+                runtime,
+                pointer,
+                length,
+                ctypes.byref(token),
+                ctypes.byref(error),
+            )
         )
         return status, token.value, error.value
 

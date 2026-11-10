@@ -91,7 +91,7 @@ Do not implement Python multi-library plugins in this gate. The plugin ABI, vers
 - Gate passed on `89cf3c5d6fe02bbae7796561d68adb853c3e79be`. C ABI default and Windows-only feature tests passed (42 each); no-backend Windows build rejected with a clear profile error; target-specific Cargo dependency trees and differing artifact identities were checked. Rust workspace tests, Clippy, format, Rust 1.85 workspace check, C++ 15 CTests and relocated package consumer, C# runtime/consumer, Python Window consumer, unit catalog and document/link validation passed locally. Windows and Ubuntu bootstrap CI passed in [run 42814890666](https://github.com/edamame-edame/freemvvm/actions/runs/42814890666). Windows x64 default vs Windows-only feature artifact size was 2,772,992 bytes in both builds (0-byte delta); no performance claim is made.
 - Debian 12 VM profile is intentionally not reported as verified by the Ubuntu job. This environment had no reachable Docker daemon or confirmed Debian VM; its explicit profile build/runtime evidence remains under the release profile gate.
 
-### Unit 4 — Rust wrapper (`UNIT-WRAP-RS-WINDOW-BACKEND-001` proposed)
+### Unit 4 — Rust wrapper (`UNIT-WRAP-RS-WINDOW-BACKEND-001`, complete)
 
 - Paths: `wrappers/rust/freemvvm-sys/src/lib.rs`, `wrappers/rust/freemvvm/src/native_api.rs`, `ui.rs`, tests and consumer example if needed.
 - Work: expose optional backend identity on Window creation with Rust `Option<&str>`-style API (final method shape must match existing wrapper conventions); retain the existing default convenience call. No mutable selector method.
@@ -112,11 +112,12 @@ Do not implement Python multi-library plugins in this gate. The plugin ABI, vers
 - Tests: .NET build, runtime tests, package/consumer tests and wrapper parity against the shared native artifact.
 - Gate passed on `wrapper-csharp/presentation-backend-selector` commit `bdb3aca6da1f11a550d3b98e3fe98af1f49680d3`: added `UiWindow.TryCreateWithPresentationBackend(runtime, string)` and an unsafe synchronous byte-array-to-UTF-8 pointer/length C ABI bridge, retaining `TryCreate(runtime)`. Runtime tests cover UTF-8 encoding, native status preservation and invalid UTF-16 rejection before FFI; the native consumer accepts the registered Windows/Linux ID and rejects an unknown ID. .NET library/test/consumer builds passed with zero warnings, RuntimeTests and consumer passed locally, and Windows/Ubuntu bootstrap CI passed in [run 42820761894](https://github.com/edamame-edame/freemvvm/actions/runs/42820761894).
 
-### Unit 7 — Python wrapper (`UNIT-WRAP-PY-WINDOW-BACKEND-001` proposed)
+### Unit 7 — Python wrapper (`UNIT-WRAP-PY-WINDOW-BACKEND-001`, complete)
 
 - Paths: `wrappers/python/src/freemvvm/_native.py`, `__init__.py`, tests, pyproject/package tests.
 - Work: add keyword-only `presentation_backend: str | None = None`, encode UTF-8 and pass the bytes for the duration of the C ABI call. Keep the current native runtime loader and pure-Python wrapper wheel. Do not add mutable backend properties.
 - Tests: Python unit tests for bytes and error mapping, runtime consumer parity, wheel build/install/import. If the plugin design gate is later approved for the same release, add a separate Python package unit covering a backend-specific platform wheel and a PyInstaller `_MEIPASS` load smoke with actual runtime dependencies.
+- Gate passed: fake API tests, Python Window C ABI consumer, wheel build/install/import, formatting/lint and shared bootstrap checks passed on Windows and Ubuntu in [run 42823301385](https://github.com/edamame-edame/freemvvm/actions/runs/42823301385). Local Windows syntax, document/link and catalog checks plus direct DLL consumer passed; local pytest was unavailable because the configured local Python 3.15 environment lacks pytest. Implementation `41fff6e65b4899d3d39650413e7565110169e688` and Ruff fix `02b83cfa3dc3b8282ecfc3ade747486ee21b2d23` were pushed to `wrapper-python/presentation-backend-selector`.
 
 ## 6. Shared verification and completion criteria
 
@@ -145,3 +146,5 @@ The currently approved package design shares the same canonical native C ABI art
 | 2026-11-10 | 0.1 | UNIT-WRAP-RS-WINDOW-BACKEND-001 passed local Rust wrapper and consumer gates plus Windows/Ubuntu CI; implementation commit `618cb378ceeb7d4c1a0ad14b5256aa936ead5339` on `wrapper-rust/presentation-backend-selector`. |
 | 2026-11-10 | 0.1 | UNIT-WRAP-CPP-WINDOW-BACKEND-001 passed local C++ UI-control/runtime and relocated package consumer gates plus Windows/Ubuntu CI; implementation commit `d80aeb8b19cc6583ea4b679f50f34a4860d49498` on `wrapper-cpp/presentation-backend-selector`. |
 | 2026-11-10 | 0.1 | UNIT-WRAP-CS-WINDOW-BACKEND-001 passed local .NET RuntimeTests/consumer/build gates and Windows/Ubuntu CI; implementation commit `bdb3aca6da1f11a550d3b98e3fe98af1f49680d3` on `wrapper-csharp/presentation-backend-selector`. |
+| 2026-11-10 | 0.1 | UNIT-WRAP-PY-WINDOW-BACKEND-001 passed Windows/Ubuntu bootstrap CI; commits `41fff6e65b4899d3d39650413e7565110169e688` and `02b83cfa3dc3b8282ecfc3ade747486ee21b2d23` on `wrapper-python/presentation-backend-selector`. |
+| 2026-11-10 | 0.1 | All plan units completed; wrapper siblings are being combined on `integration/presentation-backend-selector` for the grouped review PR. |
