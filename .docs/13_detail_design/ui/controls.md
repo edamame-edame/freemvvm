@@ -1,9 +1,9 @@
 # UIクラス：Window・基本Control・次段階Control
 
-- 文書版: 1.6
+- 文書版: 1.7
 - 文書ロール: detailed-design
-- 更新日: 2026-11-01
-- 状態: 1.2全文承認済み（利用者、2026-10-29）。1.3 / 1.4全文承認済み（利用者、2026-10-30～2026-10-31）。Window単位TextServiceの関連付け1.5全文承認済み（利用者、2026-11-01）。Widget Input subscription 1.6全文承認済み（利用者、2026-11-01）。実装・試験状態は別管理
+- 更新日: 2026-11-10
+- 状態: 1.2～1.7全文承認済み（各履歴記録日）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -21,6 +21,16 @@
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
 ## 基本Controlの型と責務
+
+### 1.7: WindowのPresentationBackend設定（全文承認済み）
+
+Window生成時のoptional `presentation_backend`設定を提案する。未指定時はRuntime profile defaultを使う。指定値は生成時にCoreへcopyされ、Window objectの寿命中は変更できない。`open`はその選択のsurface/renderer適合確認とnative資源初期化を行い、失敗時に別backendを選び直さない。`close`/再openでは同じ選択を使い続ける。別backendを使う場合は旧Windowを破棄して新しいWindowを生成する。
+
+```text
+Window.create(runtime, presentation_backend=None)
+```
+
+この署名はレビュー用API案であり、各wrapperの引数形式・例外/Result mappingやC ABI宣言の採用を意味しない。生成後のmutable property、set/reset操作、実行中backend swapは追加しない。詳細なselector ownership/failure flowは[Platform internal layers 2.8案](../platform/internal-layers.md)を参照する。
 
 ### 実現のcall/data/ownership flow
 
@@ -319,3 +329,4 @@ Text/TextBox/Buttonの初期Controlはfont未指定で作成され、CoreはOS�
 | 2026-11-01 | 1.5全文 | 利用者承認。TextServiceをWindow peerへ関連付け、Windows worker内でresolve/shape/face登録/render/releaseを行う。Linux等のRuntime共通serviceは維持。Platform DD 2.1と一体承認。実装・試験合格は別管理 |
 | 2026-11-01 | 1.6改訂案 | RQ-09-068のWidget Input subscription、Button/TextBox default action、handled順序、Focus getterを提案。1.5承認baselineを維持 |
 | 2026-11-01 | 1.6全文 | 利用者の「ok」によりWidgetごとのInput subscription、Button/TextBox default action、handled順序、Focus getterを含む全文を承認。実装・試験状態は別管理 |
+| 2026-11-10 | 1.7全文 | 利用者の「ok」によりWindow生成時のoptional backend設定・選択固定・差し替え不可を含む全文を承認。実装・試験は別管理 |

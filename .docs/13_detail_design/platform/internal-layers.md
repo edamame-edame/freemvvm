@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 2.7
+- 文書版: 2.8
 - 文書ロール: detailed-design
-- 更新日: 2026-11-09
-- 状態: 2.7全文承認済み（利用者、2026-11-09）。実装・試験状態は別管理
+- 更新日: 2026-11-10
+- 状態: 2.7全文承認済み（利用者、2026-11-09）。2.8全文承認済み（利用者、2026-11-10）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -86,6 +86,20 @@ Control APIとWindow close requestのCore処理は[UIクラス設計](../ui/cont
 | WindowsはWin32 peer+Direct2D/DirectWrite、LinuxはDRM/KMS+GBM/EGL/OpenGL ES3を第1profile。Wayland/X11は同Sceneの別surface adapter。 | [RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022) |
 | GPU/device lossはSurfaceLost→Recreating。自動software fallbackは初期しない。明示software profile選択時だけCPU rasterを使う候補。 | [RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022) |
 | FrameStateはIdle→Preparing→Rendering→Presented。submitだけでPresentedにせず、backend completionでframe revisionを公開する。 | 上記の根拠RQ |
+
+### 2.8: Window構築時backend選択（全文承認済み）
+
+本節は[RQ-11-025](../../11_requirements/RQ-11_platform.md#rq-11-025)と[Platform BD 1.3案](../../12_design/platform/abstraction.md)を、Core/Platformの選択・所有flowへ具体化する提案である。2.7のprofile default、surface/renderer互換性、no-fallback境界を維持し、選択時期をWindow構築時に固定する。2.7にあるclose後の選択変更を可能とする記述は、本案では採用せず、同一Window objectではbackend identityを変更しない。
+
+| 境界 | 提案する責務 |
+| --- | --- |
+| Window生成 | optional backend identityを検査してCore-owned immutable selectorへcopyする。未指定値はprofile default selectorとして保持する。未知・profile未登録値は生成時failureとし、Windowを部分生成しない |
+| Platform factory | Runtime profileが公開するdescriptor registryからdefaultまたは同一identityのdescriptorを一つ解決する。surface種別とrenderer capabilityを適合条件に含める。探索順やhost heuristicで別descriptorを選ばない |
+| Window open | 選択済みdescriptorを使ってsurface/renderer資源を初期化する。surface/scene非互換または初期化failureではCore Window/contentを保持し、resource ownerが途中資源を解放する。別backendへfallbackしない |
+| close/reopen | peer/native resourceを解放・再生成し、同じWindowに保持したidentityを再利用する。別identityへの変更はWindow objectを破棄して新規作成した場合だけ可能 |
+| 描画 | resolveはWindow生成/open準備時に完了し、frameごとにregistry走査・plugin load・backend再選択を行わない |
+
+backend identity文字列とC ABI symbol、wrapper idiom、backend registry API、plugin ABI/loader lifecycleは本案だけで確定しない。Python pluginを採るか、完全なbackend別runtime artifactを採るかは[package DD](../build/toolchain-packages.md)の同版レビュー範囲に含める。選択可能identityはprofileが実際に収録・登録したdescriptorだけをpackage/profile資料で公表する。
 
 ### 実現設計
 
@@ -555,3 +569,5 @@ sequenceDiagram
 | 2026-11-08 | 2.5全文 | 利用者の「ok」によりCore private input sink、owned event handoff、dispatcher FIFO、generation/shutdown validationを含む文書全体を承認。公開契約は変更せず、実装・試験は別管理 |
 | 2026-11-09 | 2.6全文 | 利用者の「ok」により全文承認。VM実証・実装・試験は別管理 |
 | 2026-11-09 | 2.7全文 | 利用者の「ok」によりprofileごとのdefault、Window単位の明示選択、surface/renderer互換性、non-fallback境界を含む文書全体を承認。公開API・実装・試験は別管理 |
+| 2026-11-10 | 2.8改訂案 | Window構築時の選択、Window object寿命中の固定、close/reopen後の同一選択再利用を提案。2.7のprofile/default・非互換/failure/no-fallback契約は維持し、選択時期に関する差分を明示。文書全体レビュー待ち |
+| 2026-11-10 | 2.8全文 | 利用者の「ok」によりWindow構築時のbackend選択・固定、open時適合確認、close/reopen同一選択を含む全文を承認。実装・試験は別管理 |

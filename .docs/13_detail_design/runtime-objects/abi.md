@@ -1,9 +1,9 @@
 # 共通C ABI：宣言・検査・互換性
 
-- 文書版: 1.6
+- 文書版: 1.7
 - 文書ロール: detailed-design
-- 更新日: 2026-11-02
-- 状態: 1.2全文承認済み（利用者、2026-10-19）。1.3初期UI Control API全文承認済み（利用者、2026-10-24）。1.4全文承認済み（利用者、2026-10-30）。Input event subscription 1.5全文承認済み（利用者、2026-11-01）。1.6全文承認済み（利用者、2026-11-02）。実装・試験状態は別管理
+- 更新日: 2026-11-10
+- 状態: 1.2～1.7全文承認済み（各履歴記録日）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -604,6 +604,10 @@ enum {
 
 ui_status ui_abi_1_window_create(ui_handle runtime, ui_handle *out_window,
                                  ui_handle *out_error);
+ui_status ui_abi_1_window_create_with_presentation_backend(
+    ui_handle runtime, const uint8_t *backend_id_utf8,
+    uint64_t backend_id_byte_length, ui_handle *out_window,
+    ui_handle *out_error);
 ui_status ui_abi_1_stack_panel_create(ui_handle runtime,
                                       ui_handle *out_panel,
                                       ui_handle *out_error);
@@ -688,6 +692,12 @@ feature ID `8`（`core.ui.controls.v1`）は本書1.3全文（2026-10-24）の�
 - OrientationとAlignは上記enum定数を使う。StackPanelはVerticalで開始し、child Alignの既定値はStretchとする。`set_child_align`が受け付けるのはそのpanelに現在所属しているchildだけである。不正値はLayoutをdirtyにせず、状態を一部変更しない。Layout結果/boundsは書き換え可能なC ABI値として公開せず、Core/Renderer内部で一貫したsnapshotを消費する。
 - `Text.Content`、`TextBox.Value`、`Button.Label`、Window title、`Widget.IsEnabled`、`Widget.AccessibleName`は既存の型付きProperty/Binding APIを再利用し、Control側に値を重複保持しない。Button Command設定は入力をborrowし、同一Runtimeを検査し、commit時に型付き参照を保持する。handle 0で解除できる。Command設定済みならgetterは新しいowned tokenを返し、未設定なら成功とhandle 0を返す。CommandなしのButtonも有効で、activationはno-opとする。
 - `widget_request_focus`はFocusManagerへ委譲する。WidgetがDetached、active Window外、disabled、またはfocusableでない場合は状態を変更しない。既存Focus順序とUI thread規則を適用し、新たなkey bindingやfocus traversalは追加しない。
+
+#### PresentationBackend選択（1.7全文承認済み）
+
+既存`ui_abi_1_window_create`は互換を保ち、profile defaultを使う。明示選択用に`ui_abi_1_window_create_with_presentation_backend`を追加する案とする。backend IDはUTF-8 pointer/lengthで受け取り、検証後にCore-owned Window設定へ同期copyし、呼出元bufferを保持しない。Window objectの寿命中はidentityを変更できず、close/reopenも同じ値を使う。別backendへの切替はWindowを破棄・再生成して行う。
+
+この宣言は設計レビュー用であり、配布header・実装済みsymbolではない。profileに登録されていないidentityはcreate時に拒否する。登録済みでもsurface/sceneと非互換、または初期化できない場合は`window_open`で明示failureとする。status/error domainの割当とwrapper別APIは既存ABI規則、Platform/UI DDの合意後に確定する。いずれもfallbackしない。詳細は[Platform internal layers 2.8案](../platform/internal-layers.md)を参照する。
 
 #### Window peerとclose requestの境界
 
@@ -1064,3 +1074,4 @@ ApiInventoryEntryの所管は文書path/版/項目で示す案とし、既存sch
 | 2026-11-01 | 1.5改訂案 | RQ-09-068向けWidget Input subscription、borrowed event view、handled setter、Focus getter、feature ID 9を提案。1.4承認baselineを維持 |
 | 2026-11-01 | 1.5全文 | 利用者の「ok」によりInput callback ABI、borrowed event lifetime、handled setter、Focus getter、feature ID 9を含む全文を承認。宣言の実装・配布状態は別管理 |
 | 2026-11-02 | 1.6全文 | 利用者の「ok」によりHID key identity、modifier bit、primary pointer button数値とText getter結果を含む全文を承認。実装・配布状態は別管理 |
+| 2026-11-10 | 1.7全文 | 利用者の「ok」によりWindow生成時backend設定と明示選択C ABI宣言、既存default create互換、文字列所有・選択固定・open時適合確認を含む全文を承認。実装・配布は別管理 |

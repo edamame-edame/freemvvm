@@ -1,9 +1,9 @@
 # ビルド・配布：toolchain・profile・package
 
-- 文書版: 1.1
+- 文書版: 1.2
 - 文書ロール: detailed-design
-- 更新日: 2026-10-17
-- 状態: 1.1全文承認済み（利用者、2026-10-17）。実装・試験状態は別管理
+- 更新日: 2026-11-10
+- 状態: 1.1～1.2全文承認済み（利用者、各履歴記録日）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -91,6 +91,16 @@ CIはbuild hostとtargetの両方を各job結果に記録する。Cross-build re
 | C# | managed wrapperとtarget native runtimeを一つのNuGet packageへ収録。native assetは`runtimes/{rid}/native/`。初期RIDは`win-x64`/`linux-x64`。 | NuGet assetは正しいRIDの同一canonical native artifactを運び、publish結果でABI/profile identityを照合する。 |
 | C++ | C ABIを呼ぶthin wrapperをCMake install/exportでrelocatable package化し、config/exported targetsから利用。 | install tree内native runtimeは同じtarget artifactを参照し、relocation後も依存を解決する条件を持つ。vcpkg/Conanを必須にしない。 |
 | Rust | raw FFI `-sys` crateとsafe wrapper crateを分け、Core native artifactを別配布。`--target`でtargetを明示し、named profile/artifact import featureを利用可能にする。 | featureは取得方式の指定でありtarget tripleの代用でない。build scriptはhost/targetを区別し、artifact metadata不一致を拒否する。 |
+
+### 1.2: PresentationBackend収録とPython配布
+
+`PresentationBackend`をcompile-timeで選別する場合の単位は言語wrapperではなくNative runtime artifactである。build profileのfeature setに収録backendを明示し、異なるbackend集合は異なるartifact identity/digestとする。C++/C#/Rust/Pythonのwrapperが同じcanonical C ABI artifactを使う現行境界を保つ場合、各wrapper向けに別々のbackend集合を選ばず、そのartifactで有効化された候補集合を共有する。特定言語だけのfeature集合が必要なら、artifact sharing/package設計の変更として別途レビューする。
+
+非Python artifactでは未選択backend implementationとそのRust dependencyをbuild feature/profileから除外できる案とする。OS target固有の依存分離は既存のtarget-specific dependency方針を保ち、Windows/Linux用実装を一つの通常artifactへ同梱しない。静的link時は選択したbackend codeをartifactへ含め、OS依存dynamic libraryの同梱要否は各profileのnative dependency contractで別に扱う。
+
+Pythonの通常wrapper/runtime loadは現行方式を維持する。複数backendを一つのPython processからWindow単位で選ぶ要件に対し、共有Core/C ABI artifactとbackend別shared libraryを使うplugin案を優先候補とする。pluginはRust trait objectをDLL/SO境界へ出さずversioned C ABI function tableで接続する。plugin ABI、登録・load時期、依存path/RPATH、信頼・署名、error mapping、handle寿命は未決であり、本書のreview draftから採用確定とはしない。簡素な代替としてbackendごとの完全なC ABI runtime artifactも比較対象とするが、Core codeの重複とRuntime生成前のvariant選択を伴う。
+
+Python pluginの配布候補は、sourceをsdistへ収録しPEP 517 build backendからplatform-specific wheelを生成する経路と、CIで検証したplatform wheelの利用を通常経路にする構成である。Rust/C compiler、target SDK、開発headers/import libraryはsource build時のbuild dependencyとして分離し、runtime shared libraryはOSへ導入するか選択されたplugin/package/PyInstaller bundleに収録する。PyInstallerへ複数候補を同梱すれば同梱binary bytesの分だけbundle総量が増える。選択済みbackend一つだけの同梱、backend packageの別install、明示path解決も検討可能である。これらはPython専用artifact/pluginを認めるかを含むpackage契約のレビュー待ちで、既存Python wrapper loaderが`_MEIPASS`を探索するとは扱わない。
 
 Python wheel compatibility tagsはinterpreter/ABI/platform条件を表し、NuGetはRID native assets、CMakeはConfig/exported targets、Cargoはtarget/feature機構を提供する。ここでのpackage shapeはMVVM UIライブラリ Python package/native distributionが決定しており、exact versions・paths・resolver APIsを本書で追加確定しない。
 
@@ -296,3 +306,4 @@ VerifiedArtifactは暗号検証とpath束縛を表す内部型で、単なるフ
 | 2026-10-17 | 1.0全文 | 利用者の「全部承認します」により文書全体を承認。旧IDによる項目承認ではなく、現行文書版を対象とする。実装・試験合格を意味しない |
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
+| 2026-11-10 | 1.2全文 | 利用者の「ok」によりbackend feature setと共通native artifact、Python plugin/source distribution/PyInstaller候補と未決境界を含む全文を承認。plugin ABI・Python専用artifactの採否は未決のまま。実装・試験は別管理 |

@@ -1,9 +1,9 @@
 # プラットフォーム：抽象化・描画・text・OS接続
 
-- 文書版: 1.2
+- 文書版: 1.3
 - 文書ロール: basic-design
-- 更新日: 2026-11-09
-- 状態: 1.2全文承認済み（利用者、2026-11-09）。実装・試験状態は別管理
+- 更新日: 2026-11-10
+- 状態: 1.2全文承認済み（利用者、2026-11-09）。1.3全文承認済み（利用者、2026-11-10）。実装・試験状態は別管理
 
 ## 目的と責務境界
 
@@ -15,7 +15,7 @@
 
 | 設計項目 | 要求根拠 |
 | --- | --- |
-| Control API・Window close・描画backend | [RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-09-072](../../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-09-074](../../11_requirements/RQ-09_ui-scope.md#rq-09-074)（改訂案）、[RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022) |
+| Control API・Window close・描画backend | [RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-09-072](../../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-09-074](../../11_requirements/RQ-09_ui-scope.md#rq-09-074)（改訂案）、[RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-025](../../11_requirements/RQ-11_platform.md#rq-11-025) |
 | Text engine・IME OS接続・Accessibility | [RQ-10-014](../../11_requirements/RQ-10_accessibility.md#rq-10-014)、[RQ-11-023](../../11_requirements/RQ-11_platform.md#rq-11-023) |
 | IMEのCore/OS責務境界 | [RQ-02-011](../../11_requirements/RQ-02_core-features.md#rq-02-011)、[RQ-09-005](../../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-038](../../11_requirements/RQ-09_ui-scope.md#rq-09-038)、[RQ-09-040](../../11_requirements/RQ-09_ui-scope.md#rq-09-040)、[RQ-09-042](../../11_requirements/RQ-09_ui-scope.md#rq-09-042)、[RQ-09-055](../../11_requirements/RQ-09_ui-scope.md#rq-09-055)、[RQ-09-056](../../11_requirements/RQ-09_ui-scope.md#rq-09-056) |
 | Renderer・surface・Platform接続 | [RQ-01-002](../../11_requirements/RQ-01_purpose-architecture.md#rq-01-002)、[RQ-09-005](../../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-053](../../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-054](../../11_requirements/RQ-09_ui-scope.md#rq-09-054)、[RQ-11-001](../../11_requirements/RQ-11_platform.md#rq-11-001)、[RQ-11-002](../../11_requirements/RQ-11_platform.md#rq-11-002)、[RQ-11-003](../../11_requirements/RQ-11_platform.md#rq-11-003)、[RQ-11-004](../../11_requirements/RQ-11_platform.md#rq-11-004)、[RQ-11-008](../../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-009](../../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-021](../../11_requirements/RQ-11_platform.md#rq-11-021)、[RQ-12-010](../../11_requirements/RQ-12_build-distribution.md#rq-12-010)、[RQ-13-001](../../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011) |
@@ -50,6 +50,12 @@ flowchart TD
 ```
 
 ## Renderer・surface・Platform接続
+
+### 1.3 review draft: Window単位backend選択
+
+RQ-11-025の選択要件を、UI構築時にWindowへ渡す設定として実現する案。`Window`生成時に任意のbackend identityを指定し、未指定時はtarget profileの公表defaultを使う。選択値はWindow objectの寿命中固定し、実行中またはclose/reopen間にbackendを差し替えるAPIは設けない。surface/scene capabilityとの最終適合確認とnative資源初期化はopen時に行い、未知・非互換・初期化失敗は明示failureとして扱い、別backendを試さない。
+
+BDの責務は、UI構築設定からCoreのWindow選択状態、profileに結び付いたPlatform backend registry、surface/rendererへの接続を示すことに留める。identityの書式、C ABI/wrapper API、registry登録、package収録方式、詳細な失敗型は下流DDでレビューする。現時点で各profileに複数backendが登録済みとは扱わない。
 
 ### 0.6 profile範囲（承認済み）
 
@@ -140,6 +146,7 @@ flowchart TD
 | 2026-10-30 | 本書1.1改訂案 | — | Core-owned Window background RGBのscene伝達とrenderer failure境界を追加提案。1.0承認範囲を維持し全文レビュー待ち |
 | 2026-10-30 | 本書1.1全文 | 利用者 | 「ok」によりCore解決色のbackend伝達とfailure境界を含む全文を承認。実装・試験合格を意味しない |
 | 2026-11-09 | 本書1.2全文 | 利用者 | 「ok」によりRQ-11/12のprofile変更に伴うWindows/Ubuntu/Debian VM profileと限定framebuffer責務を含む全文を承認。実装・試験合格は別管理 |
+| 2026-11-10 | 本書1.3全文 | 利用者 | 「ok」によりRQ-11-025のWindow構築時選択とWindow寿命中固定を含む全文を承認。実装・試験は別管理 |
 
 ## 改訂履歴
 
@@ -148,3 +155,4 @@ flowchart TD
 | 1.0 | 2026-10-17 | 利用者のBD再編集指示に基づき責務別に再構成。旧設計ID追跡を廃止 | Codex | 既承認内容の継承と再編集版全文の承認を区別 |
 | 1.1 | 2026-10-30 | Window背景色のCore解決とbackendへの明示伝達を追加 | Codex | 全文承認済み。実装・試験は別管理 |
 | 1.2 | 2026-11-09 | Windows/Ubuntu/Debian VM profileと限定framebuffer責務 | Codex | 全文承認済み。実装・試験は別管理 |
+| 1.3 | 2026-11-10 | RQ-11-025のbackend選択をWindow構築設定として追加 | Codex | 全文承認済み。実装・試験は別管理 |

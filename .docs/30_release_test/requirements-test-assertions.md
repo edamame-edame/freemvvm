@@ -1,7 +1,7 @@
 # 要求テストの観測・oracle
 
-- 文書版: 1.3
-- 状態: 1.3全文承認済み（利用者、2026-11-09）。更新したassertionは未実行
+- 文書版: 1.4
+- 状態: 1.4全文承認済み（利用者、2026-11-10）。追加assertionは未実行
 - 共通契約: [Requirements Test Manifest](requirements-test-manifest.md)
 
 期待結果はリンク先RQを正本とする。代表使用値は要求で決まらず実施に必要な場合に限って個別test計画に用途・選定理由・適用範囲とともに記載する。API/profile未設計のcaseはblockedとして詳細化する。
@@ -2766,6 +2766,16 @@
 - 後始末: 作成したowner・登録・host・stagingを各契約で解放し、fault fixture/仮想時計/設定を復元する。保証外の永久停止は隔離processの終了を管理する。
 - 状態: 観測設計済・初期共通基盤・未実装/未実行。実test ID・command・SHA・profile・reportは未登録。
 
+<a id="assert-rq-11-025"></a>
+## RQ-11-025
+
+- 根拠: [RQ-11-025](../11_requirements/RQ-11_platform.md#rq-11-025)
+- case: [TC-BACKEND-SELECT-01](requirement-test-matrix.md#case-tc-backend-select-01)
+- 前提・操作・観測: profile default descriptor、明示指定した登録済み互換descriptor、profile registryにないunknown identity、surface/scene非互換、初期化failureをfake registry・surface・rendererで個別に実行する。Window生成結果、open結果、descriptor/factory呼出記録、Window/content/generation、selected identityとerrorを観測する。close/reopenも同じWindow objectで実行する。
+- 期待結果: 未指定時はprofileに結び付いたdefaultを使うこと。指定時は同じidentityのdescriptorだけを使うこと。unknown identityはWindow createで拒否し、登録済みIDの非互換・初期化failureはopen時に明示failureとする。どのfailureでも別backend factoryを呼ばず、Core Window/contentを保持し、close/reopen後も同じWindowは同じ選択を使うこと。profile別visible presentはunit assertionで代替しない。
+- 後始末: 部分生成surface/rendererを各ownerが一度だけ解放し、fake registry・diagnostic capture・Window/Runtimeを破棄する。
+- 状態: case/assertion割当済。未実装・未実行。実test ID・command・SHA・profile・reportは未登録。
+
 <a id="assert-rq-04-030"></a>
 ## RQ-04-030
 
@@ -3013,6 +3023,7 @@
 | 日付 | 版・対象 | 承認者 | 結果 |
 | --- | --- | --- | --- |
 | 2026-10-17 | 1.0 / 受入確認のRQからの分離と要求別assertion | 利用者 | 全案反映指示により承認。実装・実行証跡のない項目は未実装・未実行を維持 |
+| 2026-11-10 | 1.4全文 / RQ-11-025 assertion | 利用者 | 「ok」によりbackend選択・default・failure/no-fallback assertionを含む文書全体を承認。実装・実行は別管理 |
 
 ## 改訂履歴（今回）
 
@@ -3021,6 +3032,7 @@
 | 1.0 | 2026-10-17 | 受入確認のRQからの分離と要求別assertion | Codex |
 | 1.2 | 2026-10-30 | RQ-09-074 Window背景色assertionを追加 | Codex |
 | 1.3 | 2026-11-09 | RQ-11/12 profile変更に合わせてprofile・backend・support status assertionを改訂 | Codex |
+| 1.4 | 2026-11-10 | RQ-11-025のWindow backend選択・default・failure/no-fallback assertionを追加 | Codex |
 
 ## 承認履歴（具体化適用）
 

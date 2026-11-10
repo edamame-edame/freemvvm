@@ -1,7 +1,7 @@
 # 要求-テストケース対応表
 
-- 文書版: 0.9
-- 状態: 0.9全文承認済み（利用者、2026-11-09）。実装・試験実行は未証明
+- 文書版: 1.0
+- 状態: 1.0全文承認済み（利用者、2026-11-10）。実装・試験実行は未証明
 - 共通契約: [Requirements Test Manifest](requirements-test-manifest.md)
 - 上位根拠: [要求仕様索引](../11_requirements/reqirements-specification.md)
 
@@ -11,8 +11,8 @@
 
 | 監査 | 今回の状態 |
 | --- | --- |
-| 現行RQ | 281件承認済み（分離後249 IDを維持、具体化承認で32 ID追加） |
-| case catalog | 93論理case承認済み。TC-WINDOW-BG-01を追加 |
+| 現行RQ | 283件承認済み（RQ索引の件数。個別対応を本表で確認） |
+| case catalog | 94論理case承認済み。TC-BACKEND-SELECT-01を含む |
 | 要求→case未割当 | 0件 |
 | case→RQ孤立 | 0件。実test重複の判定はinventory待ち |
 | 実行coverage | 未証明。文書coverageと区別する |
@@ -69,6 +69,7 @@ IDは論理caseであり、実test function・framework・jobの確定ではな�
 | <a id="case-tc-acc-08"></a>TC-ACC-08 | 各Controlのdisabled状態を共通Accessibility意味情報として観測する | Core semantic snapshotのassertion群 |
 | <a id="case-tc-acc-plat-01"></a>TC-ACC-PLAT-01 | Accessibility semantic treeをOS accessibility APIへ写像し、対応action/通知を検査 | OS/provider/profileごとにcase evidenceを分ける |
 | <a id="case-tc-plat-01"></a>TC-PLAT-01 | Coreとrenderer/backend/text/image/input/accessibility backendの責務分離・adapter contract | static architecture checkとintegration testを分ける |
+| <a id="case-tc-backend-select-01"></a>TC-BACKEND-SELECT-01 | Window生成時の描画backend指定、profile default、互換性・初期化failure、Window再open時の選択固定 | fake descriptor/surface/rendererで選択とno-fallbackを検証。target profileのvisible presentはTC-TARGET-*の実行証拠と分ける |
 | <a id="case-tc-target-win-01"></a>TC-TARGET-WIN-01 | Windows 11 x64 build、ABI、package consumer、runtime、vertical/UI visible smoke | Windows x64 profileの結果だけを記録する |
 | <a id="case-tc-target-lnx-01"></a>TC-TARGET-LNX-01 | Ubuntu 24.04 x64 native build/runtime、backend、language parity | Windows TCと共通assertionを共有し、Linux backend assertionはprofileごとに個別記録 |
 | <a id="case-tc-target-lnx-vm-01"></a>TC-TARGET-LNX-VM-01 | Debian 12 x64 VMでのartifact load、backend/surface open、visible present、resize/redraw、close/reopen | hypervisor/virtual GPU/driverが明記され、実画面出力を確認した組合せだけprofile pass |
@@ -398,6 +399,7 @@ IDは論理caseであり、実test function・framework・jobの確定ではな�
 | [RQ-12-022](../11_requirements/RQ-12_build-distribution.md#rq-12-022) | [TC-ARTIFACT-01](requirement-test-matrix.md#case-tc-artifact-01) | [RQ-12-022のassertion](requirements-test-assertions.md#assert-rq-12-022) | 観測設計済 / 初期共通基盤 | 未実装/未実行・SHA/path未登録 |
 | [RQ-12-023](../11_requirements/RQ-12_build-distribution.md#rq-12-023) | [TC-ARTIFACT-01](requirement-test-matrix.md#case-tc-artifact-01) | [RQ-12-023のassertion](requirements-test-assertions.md#assert-rq-12-023) | 観測設計済 / 初期共通基盤 | 未実装/未実行・SHA/path未登録 |
 | [RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024) | [TC-TARGET-WIN-01](requirement-test-matrix.md#case-tc-target-win-01)、[TC-TARGET-LNX-01](requirement-test-matrix.md#case-tc-target-lnx-01)、[TC-TARGET-LNX-VM-01](requirement-test-matrix.md#case-tc-target-lnx-vm-01)、[TC-TARGET-ARMV7-01](requirement-test-matrix.md#case-tc-target-armv7-01)、[TC-TARGET-A64-01](requirement-test-matrix.md#case-tc-target-a64-01)、[TC-TARGET-BOARD-01](requirement-test-matrix.md#case-tc-target-board-01) | [RQ-11-024のassertion](requirements-test-assertions.md#assert-rq-11-024) | 観測設計済 / 初期共通基盤 | 未実装/未実行・SHA/path未登録 |
+| [RQ-11-025](../11_requirements/RQ-11_platform.md#rq-11-025) | [TC-BACKEND-SELECT-01](requirement-test-matrix.md#case-tc-backend-select-01) | [RQ-11-025のassertion](requirements-test-assertions.md#assert-rq-11-025) | 1.0案でcase/assertion対応を提案。詳細承認・実装/実行未証明 | 未実装/未実行・SHA/path未登録 |
 | [RQ-04-030](../11_requirements/RQ-04_abi-boundary.md#rq-04-030) | [TC-ABI-COMP-01](requirement-test-matrix.md#case-tc-abi-comp-01) | [RQ-04-030のassertion](requirements-test-assertions.md#assert-rq-04-030) | 観測設計済 / 初期共通基盤 | 未実装/未実行・SHA/path未登録 |
 | [RQ-12-024](../11_requirements/RQ-12_build-distribution.md#rq-12-024) | [TC-SUPPORT-01](requirement-test-matrix.md#case-tc-support-01) | [RQ-12-024のassertion](requirements-test-assertions.md#assert-rq-12-024) | 観測設計済 / 初期共通基盤 | 未実装/未実行・SHA/path未登録 |
 | [RQ-12-025](../11_requirements/RQ-12_build-distribution.md#rq-12-025) | [TC-ARCH-01](requirement-test-matrix.md#case-tc-arch-01) | [RQ-12-025のassertion](requirements-test-assertions.md#assert-rq-12-025) | 観測設計済 / 初期共通基盤 | 未実装/未実行・SHA/path未登録 |
@@ -454,6 +456,7 @@ IDは論理caseであり、実test function・framework・jobの確定ではな�
 | [TC-ACC-08](requirement-test-matrix.md#case-tc-acc-08) | [RQ-10-001](../11_requirements/RQ-10_accessibility.md#rq-10-001)、[RQ-10-002](../11_requirements/RQ-10_accessibility.md#rq-10-002)、[RQ-10-003](../11_requirements/RQ-10_accessibility.md#rq-10-003)、[RQ-10-004](../11_requirements/RQ-10_accessibility.md#rq-10-004)、[RQ-10-005](../11_requirements/RQ-10_accessibility.md#rq-10-005)、[RQ-10-006](../11_requirements/RQ-10_accessibility.md#rq-10-006)、[RQ-10-007](../11_requirements/RQ-10_accessibility.md#rq-10-007)、[RQ-10-008](../11_requirements/RQ-10_accessibility.md#rq-10-008)、[RQ-10-009](../11_requirements/RQ-10_accessibility.md#rq-10-009)、[RQ-10-011](../11_requirements/RQ-10_accessibility.md#rq-10-011)、[RQ-10-012](../11_requirements/RQ-10_accessibility.md#rq-10-012)、[RQ-10-013](../11_requirements/RQ-10_accessibility.md#rq-10-013)、[RQ-14-007](../11_requirements/RQ-14_delivery-sequence.md#rq-14-007)、[RQ-14-008](../11_requirements/RQ-14_delivery-sequence.md#rq-14-008) | catalogの境界とassertionを照合。共有fixtureを同一oracleの重複と数えない |
 | [TC-ACC-PLAT-01](requirement-test-matrix.md#case-tc-acc-plat-01) | [RQ-09-011](../11_requirements/RQ-09_ui-scope.md#rq-09-011)、[RQ-10-001](../11_requirements/RQ-10_accessibility.md#rq-10-001)、[RQ-10-002](../11_requirements/RQ-10_accessibility.md#rq-10-002)、[RQ-10-003](../11_requirements/RQ-10_accessibility.md#rq-10-003)、[RQ-10-004](../11_requirements/RQ-10_accessibility.md#rq-10-004)、[RQ-10-005](../11_requirements/RQ-10_accessibility.md#rq-10-005)、[RQ-10-006](../11_requirements/RQ-10_accessibility.md#rq-10-006)、[RQ-10-007](../11_requirements/RQ-10_accessibility.md#rq-10-007)、[RQ-10-008](../11_requirements/RQ-10_accessibility.md#rq-10-008)、[RQ-10-009](../11_requirements/RQ-10_accessibility.md#rq-10-009)、[RQ-10-010](../11_requirements/RQ-10_accessibility.md#rq-10-010)、[RQ-10-011](../11_requirements/RQ-10_accessibility.md#rq-10-011)、[RQ-10-012](../11_requirements/RQ-10_accessibility.md#rq-10-012)、[RQ-10-013](../11_requirements/RQ-10_accessibility.md#rq-10-013)、[RQ-11-013](../11_requirements/RQ-11_platform.md#rq-11-013)、[RQ-14-007](../11_requirements/RQ-14_delivery-sequence.md#rq-14-007)、[RQ-14-008](../11_requirements/RQ-14_delivery-sequence.md#rq-14-008)、[RQ-11-023](../11_requirements/RQ-11_platform.md#rq-11-023)、[RQ-10-014](../11_requirements/RQ-10_accessibility.md#rq-10-014) | catalogの境界とassertionを照合。共有fixtureを同一oracleの重複と数えない |
 | [TC-PLAT-01](requirement-test-matrix.md#case-tc-plat-01) | [RQ-01-002](../11_requirements/RQ-01_purpose-architecture.md#rq-01-002)、[RQ-09-053](../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-11-008](../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-009](../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-010](../11_requirements/RQ-11_platform.md#rq-11-010)、[RQ-11-011](../11_requirements/RQ-11_platform.md#rq-11-011)、[RQ-11-012](../11_requirements/RQ-11_platform.md#rq-11-012)、[RQ-11-013](../11_requirements/RQ-11_platform.md#rq-11-013)、[RQ-11-020](../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-019](../11_requirements/RQ-11_platform.md#rq-11-019)、[RQ-14-010](../11_requirements/RQ-14_delivery-sequence.md#rq-14-010)、[RQ-14-012](../11_requirements/RQ-14_delivery-sequence.md#rq-14-012)、[RQ-09-071](../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-11-022](../11_requirements/RQ-11_platform.md#rq-11-022) | catalogの境界とassertionを照合。共有fixtureを同一oracleの重複と数えない |
+| [TC-BACKEND-SELECT-01](requirement-test-matrix.md#case-tc-backend-select-01) | [RQ-11-025](../11_requirements/RQ-11_platform.md#rq-11-025) | catalogの境界とassertionを照合。Window選択・default・failure・no-fallbackのoracleを確認 |
 | [TC-TARGET-WIN-01](requirement-test-matrix.md#case-tc-target-win-01) | [RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-11-003](../11_requirements/RQ-11_platform.md#rq-11-003)、[RQ-11-004](../11_requirements/RQ-11_platform.md#rq-11-004)、[RQ-12-001](../11_requirements/RQ-12_build-distribution.md#rq-12-001)、[RQ-12-002](../11_requirements/RQ-12_build-distribution.md#rq-12-002)、[RQ-12-010](../11_requirements/RQ-12_build-distribution.md#rq-12-010)、[RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024) | catalogの境界とassertionを照合。共有fixtureを同一oracleの重複と数えない |
 | [TC-TARGET-LNX-01](requirement-test-matrix.md#case-tc-target-lnx-01) | [RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-11-003](../11_requirements/RQ-11_platform.md#rq-11-003)、[RQ-11-004](../11_requirements/RQ-11_platform.md#rq-11-004)、[RQ-12-001](../11_requirements/RQ-12_build-distribution.md#rq-12-001)、[RQ-12-002](../11_requirements/RQ-12_build-distribution.md#rq-12-002)、[RQ-12-010](../11_requirements/RQ-12_build-distribution.md#rq-12-010)、[RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024) | catalogの境界とassertionを照合。共有fixtureを同一oracleの重複と数えない |
 | [TC-TARGET-ARMV7-01](requirement-test-matrix.md#case-tc-target-armv7-01) | [RQ-09-001](../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-11-001](../11_requirements/RQ-11_platform.md#rq-11-001)、[RQ-11-003](../11_requirements/RQ-11_platform.md#rq-11-003)、[RQ-11-004](../11_requirements/RQ-11_platform.md#rq-11-004)、[RQ-11-021](../11_requirements/RQ-11_platform.md#rq-11-021)、[RQ-12-001](../11_requirements/RQ-12_build-distribution.md#rq-12-001)、[RQ-12-002](../11_requirements/RQ-12_build-distribution.md#rq-12-002)、[RQ-12-009](../11_requirements/RQ-12_build-distribution.md#rq-12-009)、[RQ-12-010](../11_requirements/RQ-12_build-distribution.md#rq-12-010)、[RQ-11-024](../11_requirements/RQ-11_platform.md#rq-11-024) | catalogの境界とassertionを照合。共有fixtureを同一oracleの重複と数えない |
@@ -514,6 +517,7 @@ IDは論理caseであり、実test function・framework・jobの確定ではな�
 | 2026-10-17 | 0.6 / 249 RQと90 logical caseの対応改訂 | 利用者 | 全案反映指示により承認。実装・実行証跡のない項目は未実装・未実行を維持 |
 | 2026-10-30 | 0.8全文 / RQ-09-074・TC-WINDOW-BG-01 | 利用者 | 「ok」によりWindow背景色要求caseとreverse mappingを含む文書全体を承認。実装・試験合格は別管理 |
 | 2026-11-09 | 0.9全文 / Platform profile・ARM build/runtime gate | 利用者 | 「ok」によりUbuntu/Debian VM profile evidenceとARM build/runtime分離、RQ reverse mappingを含む文書全体を承認。実装・試験実行は別管理 |
+| 2026-11-10 | 1.0全文 / RQ-11-025・TC-BACKEND-SELECT-01 | 利用者 | 「ok」によりbackend selector case、要求対応・reverse mappingを含む文書全体を承認。実装・試験実行は別管理 |
 
 ## 改訂履歴（今回）
 
@@ -534,3 +538,4 @@ IDは論理caseであり、実test function・framework・jobの確定ではな�
 | --- | --- | --- | --- |
 | 0.7 | 2026-10-17 | 追加31要求のcase/assertion・逆引き対応、純粋変換/解析器2caseを正本へ適用し、旧判断との対応を保持 | Codex |
 | 0.9 | 2026-11-09 | Ubuntu/Debian VM profile evidenceとARM build/runtime分離をRQ-11/12改訂へ対応付け | Codex |
+| 1.0 | 2026-11-10 | RQ-11-025 backend選択論理caseと対応・逆引きを追加 | Codex |
