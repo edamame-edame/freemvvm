@@ -446,8 +446,27 @@ impl_widget_ref!(Widget, WidgetTag);
 
 impl Window {
     pub fn create(ui: &UiContext<'_>) -> Result<Self, UiError> {
+        Self::create_with_presentation_backend(ui, None)
+    }
+
+    /// Creates a Window with the profile default or a backend selected at creation time.
+    ///
+    /// The selected backend remains fixed for the lifetime of this Window. Pass `None` to use
+    /// the existing profile-default behavior; an unknown or unavailable identity returns an
+    /// error from the shared Core/C ABI runtime.
+    pub fn create_with_presentation_backend(
+        ui: &UiContext<'_>,
+        presentation_backend: Option<&str>,
+    ) -> Result<Self, UiError> {
+        let (kind, backend_bytes) = match presentation_backend {
+            Some(identity) => (
+                UiControlKind::WindowWithPresentationBackend,
+                identity.as_bytes(),
+            ),
+            None => (UiControlKind::Window, &[] as &[u8]),
+        };
         Ok(Self {
-            owner: create_owner(ui, UiControlKind::Window, &[])?,
+            owner: create_owner(ui, kind, backend_bytes)?,
             identity: ui.identity(),
         })
     }

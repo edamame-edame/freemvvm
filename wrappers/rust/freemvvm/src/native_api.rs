@@ -29,6 +29,7 @@ pub(crate) const INPUT_POINTER_PRIMARY: u32 = freemvvm_sys::UI_POINTER_BUTTON_PR
 #[derive(Clone, Copy)]
 pub(crate) enum UiControlKind {
     Window,
+    WindowWithPresentationBackend,
     StackPanel,
     TextBox,
     Text,
@@ -307,6 +308,19 @@ impl NativeApi for LinkedApi {
             UiControlKind::Window => {
                 // SAFETY: both outputs are valid for this call; runtime is borrowed.
                 unsafe { freemvvm_sys::ui_abi_1_window_create(runtime, &mut control, &mut error) }
+            }
+            UiControlKind::WindowWithPresentationBackend => {
+                // SAFETY: the byte slice remains valid for the synchronous ABI call, which
+                // validates UTF-8 and copies the selected identity before returning.
+                unsafe {
+                    freemvvm_sys::ui_abi_1_window_create_with_presentation_backend(
+                        runtime,
+                        bytes.as_ptr(),
+                        bytes.len() as u64,
+                        &mut control,
+                        &mut error,
+                    )
+                }
             }
             UiControlKind::StackPanel => {
                 // SAFETY: both outputs are valid for this call; runtime is borrowed.

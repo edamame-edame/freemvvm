@@ -1002,6 +1002,87 @@
           }
         ]
       }
+    },
+    {
+      "unit_name": "UNIT-WRAP-RS-WINDOW-BACKEND-001",
+      "state": "ready",
+      "scope": "rust-window-presentation-backend-create-option",
+      "path": {
+        "source": [
+          "wrappers/rust/freemvvm-sys/src/lib.rs",
+          "wrappers/rust/freemvvm/src/native_api.rs",
+          "wrappers/rust/freemvvm/src/runtime.rs",
+          "wrappers/rust/freemvvm/src/ui.rs",
+          "wrappers/rust/freemvvm/tests/window_backend_consumer.rs"
+        ],
+        "config": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "wrappers/rust/freemvvm-sys/Cargo.toml",
+          "wrappers/rust/freemvvm/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/wrappers-rust.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-023",
+        "UNIT-BUILD-BACKEND-001",
+        "UNIT-WRAP-RS-UI-CTRL-001"
+      ],
+      "requirements": [
+        "RQ-11-025"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/rust.md",
+          "version": "1.8 approved",
+          "section": "Window safe API and C ABI mapping"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.7 approved",
+          "section": "Window PresentationBackend setting"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.7 approved",
+          "section": "Window creation with PresentationBackend"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BACKEND-SELECT-01",
+          "TC-WRAP-RS-01",
+          "TC-ERROR-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-RS-WINDOW-BACKEND-001",
+            "command": [
+              "cargo",
+              "test",
+              "--locked",
+              "-p",
+              "freemvvm",
+              "window_create_with_optional_presentation_backend"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-RS-WINDOW-BACKEND-001",
+            "command": [
+              "cargo",
+              "test",
+              "--locked",
+              "-p",
+              "freemvvm",
+              "--test",
+              "window_backend_consumer"
+            ]
+          }
+        ]
+      }
     }
   ]
 }
