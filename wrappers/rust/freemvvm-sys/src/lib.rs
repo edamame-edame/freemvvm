@@ -259,6 +259,13 @@ unsafe extern "C" {
         out_window: *mut Handle,
         out_error: *mut Handle,
     ) -> Status;
+    pub fn ui_abi_1_window_create_with_presentation_backend(
+        runtime: Handle,
+        backend_id_utf8: *const u8,
+        backend_id_byte_length: u64,
+        out_window: *mut Handle,
+        out_error: *mut Handle,
+    ) -> Status;
     pub fn ui_abi_1_window_background_rgb(
         window: Handle,
         out_red: *mut f32,

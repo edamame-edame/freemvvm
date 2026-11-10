@@ -539,6 +539,8 @@ mod tests {
         release_calls: HashMap<u64, usize>,
         ui_child_count: u64,
         ui_orientation: u32,
+        window_create_status: u32,
+        window_backend_requests: Vec<Option<String>>,
         window_background_rgb: [f32; 3],
         window_background_status: u32,
         close_subscribe_status: u32,
@@ -706,11 +708,29 @@ mod tests {
             &self,
             kind: crate::native_api::UiControlKind,
             _runtime: u64,
-            _bytes: &[u8],
+            bytes: &[u8],
         ) -> (u32, u64, u64) {
             let mut state = self.state.lock().unwrap();
-            if matches!(kind, crate::native_api::UiControlKind::Window) {
+            match kind {
+                crate::native_api::UiControlKind::Window => {
+                    state.window_backend_requests.push(None);
+                }
+                crate::native_api::UiControlKind::WindowWithPresentationBackend => {
+                    state.window_backend_requests.push(Some(
+                        String::from_utf8(bytes.to_vec()).expect("selector is valid UTF-8"),
+                    ));
+                }
+                _ => {}
+            }
+            if matches!(
+                kind,
+                crate::native_api::UiControlKind::Window
+                    | crate::native_api::UiControlKind::WindowWithPresentationBackend
+            ) {
                 state.window_background_rgb = [1.0; 3];
+                if state.window_create_status != native_api::OK {
+                    return (state.window_create_status, 0, 0);
+                }
             }
             state.next_handle += 1;
             (native_api::OK, state.next_handle, 0)
@@ -1690,6 +1710,44 @@ mod tests {
             window.close().unwrap();
         }
         other_runtime.close().unwrap();
+        runtime.close().unwrap();
+    }
+
+    #[test]
+    fn window_create_with_optional_presentation_backend() {
+        let _guard = serialize_registry_test();
+        let api = Arc::new(FakeApi::default());
+        api.set_ui_thread(true);
+        let mut runtime = UiRuntime::try_create_with_api(api.clone()).unwrap();
+        {
+            let ui = runtime.ui_context().unwrap();
+            let mut default_window = crate::ui::Window::create(&ui).unwrap();
+            let mut selected_window =
+                crate::ui::Window::create_with_presentation_backend(&ui, Some("test.描画"))
+                    .unwrap();
+            assert_eq!(
+                api.state.lock().unwrap().window_backend_requests,
+                [None, Some("test.描画".to_owned())]
+            );
+
+            api.state.lock().unwrap().window_create_status = native_api::INVALID_ARGUMENT;
+            assert_eq!(
+                match crate::ui::Window::create_with_presentation_backend(&ui, Some("")) {
+                    Ok(mut unexpected_window) => {
+                        unexpected_window.close().unwrap();
+                        panic!("configured Window creation failure must be returned")
+                    }
+                    Err(error) => error.raw_status(),
+                },
+                native_api::INVALID_ARGUMENT
+            );
+            assert_eq!(
+                api.state.lock().unwrap().window_backend_requests.last(),
+                Some(&Some(String::new()))
+            );
+            selected_window.close().unwrap();
+            default_window.close().unwrap();
+        }
         runtime.close().unwrap();
     }
 
