@@ -549,7 +549,7 @@
     },
     {
       "unit_name": "UNIT-CORE-094",
-      "state": "planned",
+      "state": "complete",
       "scope": "core-window-presentation-backend-selection-and-profile-registry-resolution",
       "path": {
         "source": [

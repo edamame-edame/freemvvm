@@ -68,12 +68,12 @@ Build features belong to the shared `freemvvm-c-abi` artifact, not language wrap
 
 Do not implement Python multi-library plugins in this gate. The plugin ABI, version negotiation, load location, dependency resolution, signing/trust, error translation, and handle lifetime require a dedicated design document and approval.
 
-### Unit 1 — Core Window selector (`UNIT-CORE-094` proposed)
+### Unit 1 — Core Window selector (`UNIT-CORE-094`, complete)
 
 - Paths: `crates/core-runtime/src/ui_controls.rs`, `runtime.rs`, `ui_window.rs`, `crates/platform-linux/src/lib.rs`, `crates/platform-windows/src/lib.rs`, and Core tests.
 - Work: add optional selector input to Core Window creation; preserve `create_window(runtime)` as the profile-default behavior for internal callers/tests. Store a Core-owned immutable identity/default selector on the Window. Resolve only against the Runtime profile's registered descriptor(s); reject an unregistered identity at create. At open, validate descriptor/surface/scene compatibility and initialize only that descriptor. Preserve Core Window/content when open fails. Reopen the same Window with the same identity; only destroying/recreating a Window allows a different choice.
 - Tests: `UT-CORE-BACKEND-SELECTION-001` for default, explicit registered identity, unknown identity, incompatible surface/capability, init failure, no fallback, failure atomicity, close/reopen, and independent new Window. Assert factory-call records so a second backend cannot be attempted silently.
-- Gate: focused Core test, Core test suite, Clippy, formatting, and Rust 1.85 minimum check.
+- Gate passed on `bbacaca4fd916d9ed3f3c554a8c3f3a45e88c752`: focused selector test, Core suite (204 tests), workspace Clippy, formatting, Rust 1.85 minimum check, and document/link validation.
 
 ### Unit 2 — C ABI selector and native header (`UNIT-ABI-023` proposed)
 
@@ -132,3 +132,4 @@ The currently approved package design shares the same canonical native C ABI art
 | 2026-11-10 | 0.1 | Created from the approved backend selector/API/test documents. Awaiting user review before implementation and before committing this plan. |
 | 2026-11-10 | 0.1 | User's "ok" approved the implementation plan. Start with Core Window selector; confirm unit IDs against catalog before registration. |
 | 2026-11-10 | 0.1 | Gate A resolved from the currently registered profile adapters. Began UNIT-CORE-094 on `core-apis/presentation-backend-selector`. |
+| 2026-11-10 | 0.1 | UNIT-CORE-094 passed local gates and was committed/pushed as `bbacaca4fd916d9ed3f3c554a8c3f3a45e88c752` on `core-apis/presentation-backend-selector`. |

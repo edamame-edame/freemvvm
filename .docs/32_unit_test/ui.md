@@ -148,8 +148,11 @@ fake registryとfake surface/rendererを使い、backend選択とlifecycleのora
 | 予定test ID | 前提からの入力・操作 | 観測・期待結果 | 要求根拠 / 論理case |
 | --- | --- | --- | --- |
 | <a id="ut-core-backend-selection-001"></a>UT-CORE-BACKEND-SELECTION-001 | fake profile registryにdefaultと複数descriptorを登録し、Window生成時に未指定・compatible ID・unknown IDを与える。open時にsurface mismatch、scene capability不足、factory initialization failureを個別注入し、close/reopenと別Window再生成も行う | 未指定はprofile defaultだけを解決。明示指定はidentity一致descriptorだけを解決。unknown/non-compatible/init failureで別factoryを呼ばずCore Window/contentを保持。close/reopenでは同一Windowの選択値が固定され、異なる選択は新規Windowだけに適用される | [RQ-11-025](../11_requirements/RQ-11_platform.md#rq-11-025)<br/>[TC-BACKEND-SELECT-01](../30_release_test/requirement-test-matrix.md#case-tc-backend-select-01) |
+
 | <a id="ut-abi-window-backend-001"></a>UT-ABI-WINDOW-BACKEND-001 | default createと明示backend createをC ABIから呼び、valid/invalid UTF-8、null/length組合せ、buffer返却後の変更、wrong Runtime/threadを投入する | 既存default createのABI contractを維持。明示値は同期copy後に呼出元bufferから独立し、invalid inputやthread/runtime違反ではout handle=0かつpartial objectなし。errorは既存owned error/status規則を使う | [RQ-04-003](../11_requirements/RQ-04_abi-boundary.md#rq-04-003)、[RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-11-025](../11_requirements/RQ-11_platform.md#rq-11-025)<br/>[TC-BACKEND-SELECT-01](../30_release_test/requirement-test-matrix.md#case-tc-backend-select-01) |
 | wrapper parity subtests（IDは各language inventoryで採番） | C++/C#/Rust/Pythonからdefaultと明示設定のWindow生成を行い、各wrapperのerror/result表現・引数の公開形式を確認する | 全wrapperが同じnative descriptor選択結果を観測し、生成後mutable selectorを提供しない。Python keyword-only引数案はwrapper DDレビュー後に確定する | [RQ-11-025](../11_requirements/RQ-11_platform.md#rq-11-025)<br/>[TC-BACKEND-SELECT-01](../30_release_test/requirement-test-matrix.md#case-tc-backend-select-01) |
+
+実行記録（UNIT-CORE-094、`bbacaca4fd916d9ed3f3c554a8c3f3a45e88c752`）: focused selector testとCore suite 204 tests、workspace Clippy、Rust 1.85 check、fmt、document/link checkがlocal pass。profileの実機描画確認はこのunitの結果に含めない。
 
 ## Window単位TextService関連付け試験設計
 
