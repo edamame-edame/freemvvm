@@ -38,6 +38,7 @@ internal static class Program
         Run(TestCommandStartExceptionStaysInsideAbiBoundary);
         Run(TestCommandCreateFailureKeepsStartRootLocallyOwned);
         Run(TestUiControlsCreateTreePropertiesAndCommandAssociation);
+        Run(TestWindowPresentationBackendSelection);
         Run(TestWindowBackgroundRgbGetSetResetAndFailures);
         Run(TestWindowCloseRequestBorrowDeferResolveAndCallbackLifetime);
         Run(TestInputEventCallbackViewsRootsAndFailures);
@@ -1135,6 +1136,39 @@ internal static class Program
         runtime.Dispose();
     }
 
+    private static void TestWindowPresentationBackendSelection()
+    {
+        var native = new FakeNativeApi();
+        UiRuntime runtime = UiRuntime.TryCreate(native).Value;
+        UiWindow defaultWindow = UiWindow.TryCreate(runtime).Value;
+        UiResult<UiWindow> selectedResult = UiWindow.TryCreateWithPresentationBackend(
+            runtime, "test.描画");
+
+        Check(selectedResult.IsSuccess &&
+            native.LastPresentationBackendUtf8.SequenceEqual(Encoding.UTF8.GetBytes("test.描画")),
+            "Explicit Window backend identity should be passed as UTF-8 bytes");
+
+        native.WindowBackendStatus = UiStatus.InvalidArgument;
+        UiResult<UiWindow> failedResult = UiWindow.TryCreateWithPresentationBackend(
+            runtime, "unknown.backend");
+        Check(failedResult.IsFailure && failedResult.Error?.RawStatus == UiStatus.InvalidArgument,
+            "Explicit Window backend failure should preserve the native status");
+
+        int backendCalls = native.WindowBackendCreateCount;
+        UiResult<UiWindow> malformedResult = UiWindow.TryCreateWithPresentationBackend(
+            runtime, new string((char)0xD800, 1));
+        Check(malformedResult.IsFailure && malformedResult.Error?.RawStatus == UiStatus.InvalidArgument &&
+            native.WindowBackendCreateCount == backendCalls,
+            "Malformed UTF-16 backend identity should fail before calling native code");
+
+        if (selectedResult.IsSuccess)
+        {
+            selectedResult.Value.Dispose();
+        }
+        defaultWindow.Dispose();
+        runtime.Dispose();
+    }
+
     private static void TestWindowCloseRequestBorrowDeferResolveAndCallbackLifetime()
     {
         var native = new FakeNativeApi
@@ -1372,6 +1406,7 @@ internal static class Program
         internal uint CommandCloseStatus { get; set; } = UiStatus.Ok;
         internal uint WindowOpenStatus { get; set; } = UiStatus.Ok;
         internal uint WindowCloseStatus { get; set; } = UiStatus.Ok;
+        internal uint WindowBackendStatus { get; set; } = UiStatus.Ok;
         internal uint WindowBackgroundStatus { get; set; } = UiStatus.Ok;
         internal float WindowBackgroundRed { get; private set; } = 1.0f;
         internal float WindowBackgroundGreen { get; private set; } = 1.0f;
@@ -1388,6 +1423,8 @@ internal static class Program
         internal uint LastCloseDecision { get; private set; }
         internal int WindowCloseCallbackDestroyCount { get; private set; }
         internal ulong LastControlHandle { get; private set; }
+        internal byte[] LastPresentationBackendUtf8 { get; private set; } = [];
+        internal int WindowBackendCreateCount { get; private set; }
         private ulong _nextControl = 2000;
         private const ulong CloseSubscriptionToken = 2200;
         private IntPtr _windowCloseCallback;
@@ -1465,6 +1502,23 @@ internal static class Program
         internal ulong LastPostId => unchecked((ulong)Volatile.Read(ref _nextPost));
 
         public uint WindowCreate(ulong runtime, out ulong window, out ulong error) => CreateControl(runtime, out window, out error);
+        public uint WindowCreateWithPresentationBackend(
+            ulong runtime, byte[] backendIdUtf8, out ulong window, out ulong error)
+        {
+            LastRuntime = runtime;
+            LastPresentationBackendUtf8 = backendIdUtf8.ToArray();
+            WindowBackendCreateCount++;
+            error = 0;
+            if (WindowBackendStatus != UiStatus.Ok)
+            {
+                window = 0;
+                return WindowBackendStatus;
+            }
+
+            window = ++_nextControl;
+            LastControlHandle = window;
+            return UiStatus.Ok;
+        }
         public uint WindowBackgroundRgb(ulong window, out float red, out float green, out float blue, out ulong error)
         {
             red = WindowBackgroundRed;

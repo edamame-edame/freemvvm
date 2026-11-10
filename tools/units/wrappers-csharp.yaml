@@ -1093,6 +1093,81 @@
           }
         ]
       }
+    },
+    {
+      "unit_name": "UNIT-WRAP-CS-WINDOW-BACKEND-001",
+      "state": "ready",
+      "scope": "csharp-window-presentation-backend-create-option",
+      "path": {
+        "source": [
+          "wrappers/csharp/FreeMvvm/NativeApi.cs",
+          "wrappers/csharp/FreeMvvm/Controls.cs",
+          "wrappers/csharp/tests/RuntimeTests/Program.cs",
+          "wrappers/csharp/tests/Consumer/Program.cs"
+        ],
+        "config": [
+          "wrappers/csharp/FreeMvvm/FreeMvvm.csproj",
+          "wrappers/csharp/FreeMvvm/packages.lock.json",
+          "wrappers/csharp/tests/RuntimeTests/RuntimeTests.csproj",
+          "wrappers/csharp/tests/RuntimeTests/packages.lock.json",
+          "wrappers/csharp/tests/Consumer/Consumer.csproj",
+          "wrappers/csharp/tests/Consumer/packages.lock.json",
+          "tools/units.yaml",
+          "tools/units/wrappers-csharp.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-023",
+        "UNIT-BUILD-BACKEND-001",
+        "UNIT-WRAP-CS-WINDOW-001"
+      ],
+      "requirements": [
+        "RQ-11-025"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/csharp.md",
+          "version": "1.6 approved",
+          "section": "UiWindow creation and UiResult error mapping"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.7 approved",
+          "section": "Window PresentationBackend setting"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.7 approved",
+          "section": "Window creation with PresentationBackend"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BACKEND-SELECT-01",
+          "TC-WRAP-CS-01",
+          "TC-ERROR-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-CS-WINDOW-BACKEND-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-window-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-CS-WINDOW-BACKEND-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "csharp-window-consumer-test"
+            ]
+          }
+        ]
+      }
     }
   ]
 }

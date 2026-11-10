@@ -83,6 +83,8 @@ internal interface INativeApi
 
     uint WindowCreate(ulong runtime, out ulong window, out ulong error);
 
+    uint WindowCreateWithPresentationBackend(ulong runtime, byte[] backendIdUtf8, out ulong window, out ulong error);
+
     uint WindowBackgroundRgb(ulong window, out float red, out float green, out float blue, out ulong error);
 
     uint WindowSetBackgroundRgb(ulong window, float red, float green, float blue, out ulong error);
@@ -311,6 +313,15 @@ internal sealed class NativeRuntimeApi : INativeApi
     public uint CommandCompleteCancelled(ulong command, ulong operationId) => NativeMethods.CommandCompleteCancelled(command, operationId);
 
     public uint WindowCreate(ulong runtime, out ulong window, out ulong error) => NativeMethods.WindowCreate(runtime, out window, out error);
+
+    public unsafe uint WindowCreateWithPresentationBackend(ulong runtime, byte[] backendIdUtf8, out ulong window, out ulong error)
+    {
+        fixed (byte* bytes = backendIdUtf8)
+        {
+            return NativeMethods.WindowCreateWithPresentationBackend(
+                runtime, bytes, (ulong)backendIdUtf8.Length, out window, out error);
+        }
+    }
 
     public uint WindowBackgroundRgb(ulong window, out float red, out float green, out float blue, out ulong error) =>
         NativeMethods.WindowBackgroundRgb(window, out red, out green, out blue, out error);
@@ -634,6 +645,12 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_create")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint WindowCreate(ulong runtime, out ulong window, out ulong error);
+
+    [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_create_with_presentation_backend")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static unsafe partial uint WindowCreateWithPresentationBackend(
+        ulong runtime, byte* backendIdUtf8, ulong backendIdByteLength,
+        out ulong window, out ulong error);
 
     [LibraryImport(LibraryName, EntryPoint = "ui_abi_1_window_background_rgb")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
