@@ -1081,12 +1081,14 @@ class CtypesNativeApi:
         _storage, pointer, length = self._utf8_arguments(backend_id_utf8)
         token = Handle()
         error = Handle()
-        status = self._library.ui_abi_1_window_create_with_presentation_backend(
-            runtime,
-            pointer,
-            length,
-            ctypes.byref(token),
-            ctypes.byref(error),
+        status = (
+            self._library.ui_abi_1_window_create_with_presentation_backend(
+                runtime,
+                pointer,
+                length,
+                ctypes.byref(token),
+                ctypes.byref(error),
+            )
         )
         return status, token.value, error.value
 
