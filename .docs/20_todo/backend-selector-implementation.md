@@ -82,12 +82,14 @@ Do not implement Python multi-library plugins in this gate. The plugin ABI, vers
 - Tests: `UT-ABI-WINDOW-BACKEND-001`; header C/C++ compilation; runtime C consumer for default and explicit create; all existing ABI symbols/features remain compatible.
 - Gate passed locally: C ABI suite (41 tests), workspace Clippy, format check, C and C++ header probes, and C/C++ ABI runtime consumer smoke. Core tests were already green on the parent Core unit revision.
 
-### Unit 3 — target artifact backend features and identity (`UNIT-BUILD-BACKEND-001`, in progress)
+### Unit 3 — target artifact backend features and identity (`UNIT-BUILD-BACKEND-001`, complete)
 
 - Paths: `crates/c-abi/Cargo.toml`, `crates/c-abi/build.rs`, `crates/c-abi/src/lib.rs`, target profile metadata, build tests and unit catalog.
 - Work: expose build-time inclusion of backend candidates at the shared native artifact boundary; keep target OS dependency constraints; define the default feature/profile for Windows 11 x64, Ubuntu 24.04 x64, and Debian 12 x64 VM. Generate build metadata containing profile, target triple, requested/active backend feature sets, registered backend IDs and artifact identity. Reject a target/profile with no usable default descriptor. Keep release target support declarations unchanged.
 - Tests: build each existing official profile with its default feature set; build/check a deliberately reduced feature set; inspect Cargo dependency tree and linked symbols/artifact contents to verify excluded backend code is absent where the design permits; verify artifact identities differ when feature sets differ. Ensure `cargo build --workspace --locked` and package consumers still use one matching shared artifact.
 - Gate: Rust workspace gates plus C/C++/C#/Rust/Python build/import/consumer checks against the same artifact. Do not infer a frame-rate gain from static linking; record binary-size deltas, and benchmark only if a real alternative implementation exists.
+- Gate passed on `89cf3c5d6fe02bbae7796561d68adb853c3e79be`. C ABI default and Windows-only feature tests passed (42 each); no-backend Windows build rejected with a clear profile error; target-specific Cargo dependency trees and differing artifact identities were checked. Rust workspace tests, Clippy, format, Rust 1.85 workspace check, C++ 15 CTests and relocated package consumer, C# runtime/consumer, Python Window consumer, unit catalog and document/link validation passed locally. Windows and Ubuntu bootstrap CI passed in [run 42814890666](https://github.com/edamame-edame/freemvvm/actions/runs/42814890666). Windows x64 default vs Windows-only feature artifact size was 2,772,992 bytes in both builds (0-byte delta); no performance claim is made.
+- Debian 12 VM profile is intentionally not reported as verified by the Ubuntu job. This environment had no reachable Docker daemon or confirmed Debian VM; its explicit profile build/runtime evidence remains under the release profile gate.
 
 ### Unit 4 — Rust wrapper (`UNIT-WRAP-RS-WINDOW-BACKEND-001` proposed)
 
@@ -136,3 +138,4 @@ The currently approved package design shares the same canonical native C ABI art
 | 2026-11-10 | 0.1 | UNIT-CORE-094 passed local gates and was committed/pushed as `bbacaca4fd916d9ed3f3c554a8c3f3a45e88c752` on `core-apis/presentation-backend-selector`. |
 | 2026-11-10 | 0.1 | UNIT-ABI-023 passed C ABI, C/C++ header, and runtime consumer gates on the current Core APIs branch. |
 | 2026-11-10 | 0.1 | UNIT-ABI-023 was committed/pushed as `d035b5caf0dcaadd6b33e1e824f58f2652035597`. Local Windows gates passed; Linux CI remains part of the branch integration gate. |
+| 2026-11-10 | 0.1 | UNIT-BUILD-BACKEND-001 passed local feature/profile/artifact checks and Windows/Ubuntu CI; implementation commit `89cf3c5d6fe02bbae7796561d68adb853c3e79be`. |
