@@ -134,3 +134,4 @@ The currently approved package design shares the same canonical native C ABI art
 | 2026-11-10 | 0.1 | Gate A resolved from the currently registered profile adapters. Began UNIT-CORE-094 on `core-apis/presentation-backend-selector`. |
 | 2026-11-10 | 0.1 | UNIT-CORE-094 passed local gates and was committed/pushed as `bbacaca4fd916d9ed3f3c554a8c3f3a45e88c752` on `core-apis/presentation-backend-selector`. |
 | 2026-11-10 | 0.1 | UNIT-ABI-023 passed C ABI, C/C++ header, and runtime consumer gates on the current Core APIs branch. |
+| 2026-11-10 | 0.1 | UNIT-ABI-023 was committed/pushed as `d035b5caf0dcaadd6b33e1e824f58f2652035597`. Local Windows gates passed; Linux CI remains part of the branch integration gate. |
