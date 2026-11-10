@@ -60,15 +60,17 @@ If implementation exposes a Core/C ABI change while on a wrapper branch, stop th
 
 The IDs below are proposed unit IDs; reserve/confirm them against `tools/units/` when registering the planned entries. Assign the next available numbers if a collision exists.
 
-### Gate A — confirm build feature contract
+### Gate A — build feature contract (resolved 2026-11-10)
 
-Before code, verify the selected profile-to-backend identity table and exact Cargo feature names. Build features belong to the shared `freemvvm-c-abi` artifact, not language wrappers. An artifact's feature set controls which backend descriptors and adapter dependencies are compiled; changing that set produces a distinct artifact identity/digest. Official target defaults must select the existing target adapter. A profile may include several compatible descriptors only when each is actually linked and registered. Reject a configuration that has no usable default for a UI profile.
+The initial registered identities follow the existing adapter/profile pairs: `windows.win32-d2d` for Windows 11 x64 and `linux.drm-gbm-egl-gles` for Ubuntu 24.04 x64 / the verified Debian 12 VM profile. Each currently has one registered descriptor; the selector adds no claim that another backend exists. The matching shared-native-artifact Cargo features are `presentation-backend-windows-win32-d2d` and `presentation-backend-linux-drm-gbm-egl-gles`. They will be optional target-specific platform dependencies and both will be enabled in the default feature set; target-specific dependency resolution includes only the adapter for the artifact target. The target triple plus enabled feature set will be recorded as artifact identity. Other target/profile feature sets must not advertise an unsupported default.
+
+Build features belong to the shared `freemvvm-c-abi` artifact, not language wrappers. An artifact's feature set controls which backend descriptors and adapter dependencies are compiled; changing that set produces a distinct artifact identity/digest. A profile may include several compatible descriptors only when each is actually linked and registered. Reject a configuration that has no usable default for a UI profile.
 
 Do not implement Python multi-library plugins in this gate. The plugin ABI, version negotiation, load location, dependency resolution, signing/trust, error translation, and handle lifetime require a dedicated design document and approval.
 
 ### Unit 1 — Core Window selector (`UNIT-CORE-094` proposed)
 
-- Paths: `crates/core-runtime/src/ui_controls.rs`, `runtime.rs`, `ui_window.rs`, related platform factory/descriptor code, and Core tests.
+- Paths: `crates/core-runtime/src/ui_controls.rs`, `runtime.rs`, `ui_window.rs`, `crates/platform-linux/src/lib.rs`, `crates/platform-windows/src/lib.rs`, and Core tests.
 - Work: add optional selector input to Core Window creation; preserve `create_window(runtime)` as the profile-default behavior for internal callers/tests. Store a Core-owned immutable identity/default selector on the Window. Resolve only against the Runtime profile's registered descriptor(s); reject an unregistered identity at create. At open, validate descriptor/surface/scene compatibility and initialize only that descriptor. Preserve Core Window/content when open fails. Reopen the same Window with the same identity; only destroying/recreating a Window allows a different choice.
 - Tests: `UT-CORE-BACKEND-SELECTION-001` for default, explicit registered identity, unknown identity, incompatible surface/capability, init failure, no fallback, failure atomicity, close/reopen, and independent new Window. Assert factory-call records so a second backend cannot be attempted silently.
 - Gate: focused Core test, Core test suite, Clippy, formatting, and Rust 1.85 minimum check.
@@ -129,3 +131,4 @@ The currently approved package design shares the same canonical native C ABI art
 | --- | --- | --- |
 | 2026-11-10 | 0.1 | Created from the approved backend selector/API/test documents. Awaiting user review before implementation and before committing this plan. |
 | 2026-11-10 | 0.1 | User's "ok" approved the implementation plan. Start with Core Window selector; confirm unit IDs against catalog before registration. |
+| 2026-11-10 | 0.1 | Gate A resolved from the currently registered profile adapters. Began UNIT-CORE-094 on `core-apis/presentation-backend-selector`. |

@@ -64,6 +64,8 @@ use freemvvm_core::abi_support::{
 };
 use std::sync::Arc;
 
+pub const PRESENTATION_BACKEND_ID: &str = "windows.win32-d2d";
+
 /// Creates a lazy Windows factory. No native Window is created before `Window.open()`.
 pub fn factory() -> Arc<dyn PlatformRuntimeFactory> {
     Arc::new(WindowsFactory)
@@ -79,5 +81,13 @@ impl PlatformRuntimeFactory for WindowsFactory {
         let peer = peer::WindowsPeer::new(win32::Backend::new());
         peer.set_completion_sink(completion_sink);
         Ok(Arc::new(peer))
+    }
+
+    fn default_presentation_backend(&self) -> Option<&'static str> {
+        Some(PRESENTATION_BACKEND_ID)
+    }
+
+    fn has_presentation_backend(&self, identity: &str) -> bool {
+        identity == PRESENTATION_BACKEND_ID
     }
 }

@@ -1841,11 +1841,21 @@ pub mod abi_support {
         runtime_handle: u64,
         kind: UiControlKind,
         initial_text: Option<&[u8]>,
+        requested_presentation_backend: Option<&str>,
     ) -> Result<u64, UiControlApiError> {
         let runtime = resolve_runtime(runtime_handle).map_err(map_ui_control_runtime_error)?;
         if !runtime.is_ui_thread() {
             return Err(UiControlApiError::WrongThread);
         }
+        let presentation_backend = if kind == UiControlKind::Window {
+            runtime
+                .resolve_window_presentation_backend(requested_presentation_backend)
+                .map_err(|_| UiControlApiError::InvalidArgument)?
+        } else if requested_presentation_backend.is_some() {
+            return Err(UiControlApiError::InvalidArgument);
+        } else {
+            None
+        };
         let initial_text = match kind {
             UiControlKind::Text | UiControlKind::TextBox | UiControlKind::Button => {
                 Some(input_utf8_value(initial_text.unwrap_or_default())?)
@@ -1861,7 +1871,6 @@ pub mod abi_support {
             }
             _ => None,
         };
-
         let controls = ui_control_handles();
         let mut entries = controls
             .owners
@@ -1916,7 +1925,14 @@ pub mod abi_support {
                 &controls.registry,
                 kind,
                 kind.is_container(),
-                move || UiControlState::new(kind, properties, text_box_initial.as_deref()),
+                move || {
+                    UiControlState::new_with_presentation_backend(
+                        kind,
+                        properties,
+                        text_box_initial.as_deref(),
+                        presentation_backend,
+                    )
+                },
             )
             .map_err(map_ui_control_tree_error)?;
         let identity = controls
@@ -3275,26 +3291,33 @@ pub mod abi_support {
     }
 
     pub fn ui_control_create_window(runtime: u64) -> Result<u64, UiControlApiError> {
-        create_ui_control(runtime, UiControlKind::Window, None)
+        create_ui_control(runtime, UiControlKind::Window, None, None)
+    }
+
+    pub fn ui_control_create_window_with_presentation_backend(
+        runtime: u64,
+        backend_identity: &str,
+    ) -> Result<u64, UiControlApiError> {
+        create_ui_control(runtime, UiControlKind::Window, None, Some(backend_identity))
     }
 
     pub fn ui_control_create_stack_panel(runtime: u64) -> Result<u64, UiControlApiError> {
-        create_ui_control(runtime, UiControlKind::StackPanel, None)
+        create_ui_control(runtime, UiControlKind::StackPanel, None, None)
     }
 
     pub fn ui_control_create_text(runtime: u64, content: &[u8]) -> Result<u64, UiControlApiError> {
-        create_ui_control(runtime, UiControlKind::Text, Some(content))
+        create_ui_control(runtime, UiControlKind::Text, Some(content), None)
     }
 
     pub fn ui_control_create_text_box(
         runtime: u64,
         value: &[u8],
     ) -> Result<u64, UiControlApiError> {
-        create_ui_control(runtime, UiControlKind::TextBox, Some(value))
+        create_ui_control(runtime, UiControlKind::TextBox, Some(value), None)
     }
 
     pub fn ui_control_create_button(runtime: u64, label: &[u8]) -> Result<u64, UiControlApiError> {
-        create_ui_control(runtime, UiControlKind::Button, Some(label))
+        create_ui_control(runtime, UiControlKind::Button, Some(label), None)
     }
 
     pub fn ui_control_is_enabled_property(control: u64) -> Result<u64, UiControlApiError> {

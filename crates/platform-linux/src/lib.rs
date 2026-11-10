@@ -7,6 +7,8 @@ use freemvvm_core::abi_support::{
 };
 use std::sync::{Arc, Mutex, mpsc};
 
+pub const PRESENTATION_BACKEND_ID: &str = "linux.drm-gbm-egl-gles";
+
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 mod renderer;
 
@@ -59,6 +61,14 @@ impl PlatformRuntimeFactory for LinuxFactory {
         Ok(Arc::new(
             LinuxPeer::new(opener, completion_sink).map_err(|_| PlatformOperationError)?,
         ))
+    }
+
+    fn default_presentation_backend(&self) -> Option<&'static str> {
+        Some(PRESENTATION_BACKEND_ID)
+    }
+
+    fn has_presentation_backend(&self, identity: &str) -> bool {
+        identity == PRESENTATION_BACKEND_ID
     }
 
     #[cfg(target_os = "linux")]

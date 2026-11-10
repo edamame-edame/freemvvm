@@ -2641,31 +2641,37 @@ impl RuntimeCore {
                 RuntimePropertyError::Closed => WindowLifecycleError::InvalidState,
                 _ => WindowLifecycleError::InvalidState,
             })?;
-        let has_peer = {
+        let (has_peer, presentation_backend) = {
             let store = self
                 .ui_objects
                 .lock()
                 .map_err(|_| WindowLifecycleError::InvalidState)?;
-            store
+            let state = store
                 .resolve(identity)
                 .map_err(|_| WindowLifecycleError::InvalidState)?
                 .downcast_ref::<UiControlState>()
                 .filter(|state| state.kind == UiControlKind::Window)
-                .and_then(|state| state.window.as_ref())
-                .ok_or(WindowLifecycleError::InvalidState)?
-                .has_peer()
+                .ok_or(WindowLifecycleError::InvalidState)?;
+            let window = state
+                .window
+                .as_ref()
+                .ok_or(WindowLifecycleError::InvalidState)?;
+            (window.has_peer(), state.presentation_backend())
         };
         if !has_peer {
             let factory = self
                 .platform_factory
                 .as_ref()
                 .ok_or(WindowLifecycleError::Unsupported)?;
-            let peer = factory
-                .create_window_peer(Arc::new(RuntimeFrameCompletionSink {
-                    runtime: Arc::downgrade(self),
-                    window: identity,
-                }))
-                .map_err(|_| WindowLifecycleError::PeerFailure)?;
+            let completion_sink = Arc::new(RuntimeFrameCompletionSink {
+                runtime: Arc::downgrade(self),
+                window: identity,
+            });
+            let peer = match presentation_backend.as_deref() {
+                Some(backend) => factory.create_window_peer_for_backend(backend, completion_sink),
+                None => factory.create_window_peer(completion_sink),
+            }
+            .map_err(|_| WindowLifecycleError::PeerFailure)?;
             peer.set_client_area_sink(Arc::new(RuntimeWindowClientAreaSink {
                 runtime: Arc::downgrade(self),
                 window: identity,
@@ -2726,6 +2732,30 @@ impl RuntimeCore {
             self.mark_layout_subtree_dirty(identity);
         }
         Ok(generation)
+    }
+
+    pub(crate) fn resolve_window_presentation_backend(
+        &self,
+        requested: Option<&str>,
+    ) -> Result<Option<Arc<str>>, ()> {
+        let Some(factory) = self.platform_factory.as_ref() else {
+            return if requested.is_none() {
+                Ok(None)
+            } else {
+                Err(())
+            };
+        };
+
+        let identity = match requested {
+            Some(identity) if factory.has_presentation_backend(identity) => identity,
+            Some(_) => return Err(()),
+            None => match factory.default_presentation_backend() {
+                Some(identity) if factory.has_presentation_backend(identity) => identity,
+                Some(_) => return Err(()),
+                None => return Ok(None),
+            },
+        };
+        Ok(Some(Arc::from(identity)))
     }
 
     fn window_client_area_changed(
@@ -6815,13 +6845,14 @@ mod tests {
                 UiControlKind::TextBox,
                 false,
                 move || {
-                    UiControlState::new(
+                    UiControlState::new_with_presentation_backend(
                         UiControlKind::TextBox,
                         vec![UiControlPropertyOwner {
                             property: UiControlProperty::TextBoxValue,
                             owner,
                         }],
                         Some(initial),
+                        None,
                     )
                 },
             )
