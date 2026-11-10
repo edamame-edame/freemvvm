@@ -595,6 +595,26 @@ Result<Window> Window::create(Runtime& runtime) {
       Window(handle.token, std::move(handle.state), handle.cleanup_node));
 }
 
+Result<Window> Window::create(Runtime& runtime,
+                              std::string_view presentation_backend) {
+  auto created = create_control(
+      runtime.token_, runtime.state_,
+      [&runtime, presentation_backend](ui_handle token, ui_handle* out,
+                                       ui_handle* error) {
+        return runtime.state_->api->window_create_with_presentation_backend(
+            token,
+            reinterpret_cast<const std::uint8_t*>(presentation_backend.data()),
+            static_cast<std::uint64_t>(presentation_backend.size()), out,
+            error);
+      });
+  if (!created.has_value()) {
+    return Result<Window>::failure(std::move(*created.error()));
+  }
+  auto handle = std::move(*created.value());
+  return Result<Window>::success(
+      Window(handle.token, std::move(handle.state), handle.cleanup_node));
+}
+
 Result<std::optional<Widget>> Window::content() const {
   if (token() == 0 || state() == nullptr) {
     return Result<std::optional<Widget>>::failure(UiError(UI_INVALID_HANDLE));

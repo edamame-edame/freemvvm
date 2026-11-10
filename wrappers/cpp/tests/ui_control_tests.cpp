@@ -18,6 +18,7 @@ struct FakeAbi final {
   ui_handle next_handle = 100;
   ui_handle content = 0;
   ui_status create_status = UI_OK;
+  std::vector<std::string> presentation_backend_ids;
   ui_status property_status = UI_OK;
   ui_status release_status = UI_OK;
   bool partial_create = false;
@@ -65,6 +66,13 @@ ui_status Create(ui_handle, ui_handle* out, ui_handle*) {
   }
   *out = NewHandle();
   return active->create_status;
+}
+ui_status CreateWindowWithPresentationBackend(
+    ui_handle runtime, const std::uint8_t* bytes, std::uint64_t size,
+    ui_handle* out, ui_handle* error) {
+  active->presentation_backend_ids.emplace_back(
+      reinterpret_cast<const char*>(bytes), static_cast<std::size_t>(size));
+  return Create(runtime, out, error);
 }
 ui_status CreateText(ui_handle, const std::uint8_t* bytes, std::uint64_t size,
                      ui_handle* out, ui_handle*) {
@@ -199,6 +207,8 @@ std::shared_ptr<const freemvvm::detail::AbiApi> MakeApi() {
   api->runtime_shutdown = &Shutdown;
   api->handle_release = &Release;
   api->window_create = &Create;
+  api->window_create_with_presentation_backend =
+      &CreateWindowWithPresentationBackend;
   api->window_background_rgb = &WindowBackground;
   api->window_set_background_rgb = &SetWindowBackground;
   api->window_reset_background_rgb = &ResetWindowBackground;
@@ -254,6 +264,26 @@ bool TestControlsAndCloseRequest() {
   }
   fake.create_status = UI_OK;
   fake.partial_create = false;
+
+  const std::string selected_backend = "test.描画";
+  auto selected_window_result =
+      freemvvm::Window::create(runtime, selected_backend);
+  if (!Check(selected_window_result.has_value() &&
+                 fake.presentation_backend_ids ==
+                     std::vector<std::string>{selected_backend},
+             "forward the selected Window presentation backend as UTF-8")) {
+    return false;
+  }
+  fake.create_status = UI_INVALID_ARGUMENT;
+  auto failed_backend_result =
+      freemvvm::Window::create(runtime, "unknown.backend");
+  fake.create_status = UI_OK;
+  if (!Check(!failed_backend_result.has_value() &&
+                 failed_backend_result.error()->raw_status() ==
+                     UI_INVALID_ARGUMENT,
+             "preserve failure status from selected Window creation")) {
+    return false;
+  }
 
   auto window_result = freemvvm::Window::create(runtime);
   auto panel_result = freemvvm::StackPanel::create(runtime);

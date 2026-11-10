@@ -603,6 +603,7 @@ std::shared_ptr<const AbiApi> linked_api() {
       &api_command_complete_cancelled,
       &api_runtime_post,
       &ui_abi_1_window_create,
+      &ui_abi_1_window_create_with_presentation_backend,
       &api_window_background_rgb,
       &api_window_set_background_rgb,
       &api_window_reset_background_rgb,
