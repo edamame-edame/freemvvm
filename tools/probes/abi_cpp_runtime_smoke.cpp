@@ -40,6 +40,22 @@ int main() {
     return 3;
   }
 
+#if defined(__linux__)
+  constexpr char backend_id[] = "linux.drm-gbm-egl-gles";
+#else
+  constexpr char backend_id[] = "windows.win32-d2d";
+#endif
+  ui_handle selected_window = 0;
+  if (ui_abi_1_window_create_with_presentation_backend(
+          runtime, reinterpret_cast<const uint8_t *>(backend_id),
+          sizeof(backend_id) - 1, &selected_window, nullptr) != UI_OK ||
+      selected_window == 0 ||
+      ui_abi_1_handle_release(selected_window) != UI_OK) {
+    std::fputs("explicit presentation backend Window creation failed\n", stderr);
+    (void)ui_abi_1_handle_release(runtime);
+    return 11;
+  }
+
   ui_handle window = 0;
   ui_bool controls_supported = 0;
 #if defined(__linux__)

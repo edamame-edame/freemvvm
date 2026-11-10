@@ -2517,9 +2517,25 @@ class Window(Widget):
     __slots__ = ()
 
     @classmethod
-    def create(cls, runtime: Runtime) -> Window:
+    def create(
+        cls,
+        runtime: Runtime,
+        *,
+        presentation_backend: str | None = None,
+    ) -> Window:
+        if presentation_backend is None:
+            return cls._create(
+                runtime, lambda api, token: api.window_create(token)
+            )
+
+        backend_id_utf8 = _encode_control_text(
+            presentation_backend, "presentation_backend"
+        )
         return cls._create(
-            runtime, lambda api, token: api.window_create(token)
+            runtime,
+            lambda api, token: api.window_create_with_presentation_backend(
+                token, backend_id_utf8
+            ),
         )
 
     @property

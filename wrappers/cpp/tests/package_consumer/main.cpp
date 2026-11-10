@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace {
@@ -214,14 +215,29 @@ int main() {
       !decimal_target.close().has_value()) return 22;
 
   auto window_result = freemvvm::Window::create(runtime);
+#ifdef _WIN32
+  constexpr std::string_view presentation_backend = "windows.win32-d2d";
+#elif defined(__linux__)
+  constexpr std::string_view presentation_backend =
+      "linux.drm-gbm-egl-gles";
+#else
+  constexpr std::string_view presentation_backend = "unknown.backend";
+#endif
+  auto selected_window_result =
+      freemvvm::Window::create(runtime, presentation_backend);
+  auto unknown_window_result =
+      freemvvm::Window::create(runtime, "unknown.backend");
   auto panel_result = freemvvm::StackPanel::create(runtime);
   auto label_result = freemvvm::Text::create(runtime, "label");
   auto input_result = freemvvm::TextBox::create(runtime, "value");
   auto button_result = freemvvm::Button::create(runtime, "submit");
-  if (!window_result.has_value() || !panel_result.has_value() ||
+  if (!window_result.has_value() || !selected_window_result.has_value() ||
+      unknown_window_result.has_value() ||
+      !panel_result.has_value() ||
       !label_result.has_value() || !input_result.has_value() ||
       !button_result.has_value()) return 54;
   auto window = std::move(*window_result.value());
+  auto selected_window = std::move(*selected_window_result.value());
   auto panel = std::move(*panel_result.value());
   auto label = std::move(*label_result.value());
   auto input = std::move(*input_result.value());
@@ -297,7 +313,8 @@ int main() {
   if (!label_property.close().has_value() ||
       !value_property.close().has_value() || !button_label.close().has_value() ||
       !action.close().has_value() ||
-      !window.close().has_value() || !panel.close().has_value() ||
+      !window.close().has_value() || !selected_window.close().has_value() ||
+      !panel.close().has_value() ||
       !label.close().has_value() || !input.close().has_value() ||
       !button.close().has_value()) return 57;
 

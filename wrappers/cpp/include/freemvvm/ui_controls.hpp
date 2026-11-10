@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 namespace freemvvm {
@@ -208,6 +209,10 @@ class Window final : public Container {
   Window& operator=(Window&& other) noexcept = default;
 
   static Result<Window> create(Runtime& runtime);
+  // Selects a registered backend during creation; the choice is fixed for the
+  // Window lifetime. The profile default remains available through create(runtime).
+  static Result<Window> create(Runtime& runtime,
+                               std::string_view presentation_backend);
   Result<std::optional<Widget>> content() const;
   Result<void> set_content(Widget& child);
   Result<void> clear_content();

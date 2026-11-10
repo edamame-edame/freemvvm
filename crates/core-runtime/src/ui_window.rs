@@ -157,6 +157,31 @@ pub trait PlatformRuntimeFactory: Send + Sync {
         completion_sink: Arc<dyn PlatformFrameCompletionSink>,
     ) -> Result<Arc<dyn PlatformWindowPeer>, PlatformOperationError>;
 
+    /// Returns the profile's default presentation backend identity, when the profile exposes one.
+    fn default_presentation_backend(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// Reports whether this profile has a registered presentation backend identity.
+    fn has_presentation_backend(&self, _identity: &str) -> bool {
+        false
+    }
+
+    /// Creates a peer for one already registered backend identity.
+    ///
+    /// Factories with multiple backends should override this method and dispatch by identity.
+    fn create_window_peer_for_backend(
+        &self,
+        identity: &str,
+        completion_sink: Arc<dyn PlatformFrameCompletionSink>,
+    ) -> Result<Arc<dyn PlatformWindowPeer>, PlatformOperationError> {
+        if self.has_presentation_backend(identity) {
+            self.create_window_peer(completion_sink)
+        } else {
+            Err(PlatformOperationError)
+        }
+    }
+
     /// Returns the profile-owned service used to resolve and shape Control text.
     fn text_service(&self) -> Option<Arc<dyn TextService>> {
         None

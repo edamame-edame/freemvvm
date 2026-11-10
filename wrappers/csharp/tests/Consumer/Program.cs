@@ -662,6 +662,21 @@ internal static class Program
         }
 
         UiWindow window = UiWindow.TryCreate(runtime).Value;
+        string activeBackend = OperatingSystem.IsWindows()
+            ? "windows.win32-d2d"
+            : OperatingSystem.IsLinux()
+                ? "linux.drm-gbm-egl-gles"
+                : "unknown.backend";
+        UiResult<UiWindow> selectedWindowResult =
+            UiWindow.TryCreateWithPresentationBackend(runtime, activeBackend);
+        UiResult<UiWindow> unknownWindowResult =
+            UiWindow.TryCreateWithPresentationBackend(runtime, "unknown.backend");
+        if (selectedWindowResult.IsFailure || unknownWindowResult.IsSuccess)
+        {
+            Console.Error.WriteLine("C# Window backend selection did not accept only the registered backend.");
+            return 89;
+        }
+        using UiWindow selectedWindow = selectedWindowResult.Value;
         UiStackPanel panel = UiStackPanel.TryCreate(runtime).Value;
         UiTextBox input = UiTextBox.TryCreate(runtime, "初期値").Value;
         UiText label = UiText.TryCreate(runtime, "表示").Value;

@@ -51,6 +51,7 @@ pub(crate) struct UiControlPropertyOwner {
 /// Control state is stored separately from its shared Property objects and Logical Tree node.
 pub(crate) struct UiControlState {
     pub(crate) kind: UiControlKind,
+    presentation_backend: Option<Arc<str>>,
     pub(crate) properties: Vec<UiControlPropertyOwner>,
     pub(crate) orientation: u32,
     pub(crate) child_align: HashMap<ObjectIdentity, u32>,
@@ -64,13 +65,15 @@ pub(crate) struct UiControlState {
 }
 
 impl UiControlState {
-    pub(crate) fn new(
+    pub(crate) fn new_with_presentation_backend(
         kind: UiControlKind,
         properties: Vec<UiControlPropertyOwner>,
         text_box_initial: Option<&str>,
+        presentation_backend: Option<Arc<str>>,
     ) -> Self {
         Self {
             kind,
+            presentation_backend,
             properties,
             orientation: 1,
             child_align: HashMap::new(),
@@ -95,6 +98,10 @@ impl UiControlState {
             .iter()
             .find(|entry| entry.property == property)
             .map(|entry| &entry.owner)
+    }
+
+    pub(crate) fn presentation_backend(&self) -> Option<Arc<str>> {
+        self.presentation_backend.clone()
     }
 
     pub(crate) fn is_focusable_by_default(&self) -> bool {
@@ -162,11 +169,11 @@ mod tests {
         stack_panel_set_orientation, subscription_cancel, ui_control_accessible_name_property,
         ui_control_button_label_property, ui_control_create_button, ui_control_create_stack_panel,
         ui_control_create_text, ui_control_create_text_box, ui_control_create_window,
-        ui_control_is_enabled_property, ui_control_layout_clean, ui_control_layout_dirty,
-        ui_control_text_box_value_property, ui_control_text_content_property,
-        ui_control_window_title_property, widget_has_focus, widget_input_subscribe,
-        widget_request_focus, window_background_rgb, window_calculate_layout_for_test,
-        window_calculate_layout_with_orientation_change_for_test,
+        ui_control_create_window_with_presentation_backend, ui_control_is_enabled_property,
+        ui_control_layout_clean, ui_control_layout_dirty, ui_control_text_box_value_property,
+        ui_control_text_content_property, ui_control_window_title_property, widget_has_focus,
+        widget_input_subscribe, widget_request_focus, window_background_rgb,
+        window_calculate_layout_for_test, window_calculate_layout_with_orientation_change_for_test,
         window_calculate_layout_with_platform_text_for_test, window_clear_content,
         window_client_area_for_test, window_close, window_close_intent,
         window_close_intent_subscribed, window_close_request_current, window_close_request_defer,
@@ -240,6 +247,7 @@ mod tests {
         client_area_sink: std::sync::Mutex<Option<Arc<dyn PlatformWindowClientAreaSink>>>,
         close_request_sink: std::sync::Mutex<Option<Arc<dyn PlatformWindowCloseRequestSink>>>,
         input_sink: std::sync::Mutex<Option<Arc<dyn PlatformWindowInputSink>>>,
+        fail_next_open: std::sync::atomic::AtomicBool,
         submitted: std::sync::Mutex<Vec<(FrameTicket, Arc<SceneSnapshot>)>>,
         fail_next_submit: std::sync::atomic::AtomicBool,
         text_service: std::sync::Mutex<Option<Arc<dyn crate::abi_support::TextService>>>,
@@ -282,6 +290,143 @@ mod tests {
                 .expect("text service lock")
                 .clone()
         }
+    }
+
+    struct SelectorTestPlatformFactory {
+        probe: Arc<PlatformProbe>,
+        selected: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl SelectorTestPlatformFactory {
+        const DEFAULT: &'static str = "test.default";
+        const ALTERNATE: &'static str = "test.alternate";
+        const INCOMPATIBLE: &'static str = "test.incompatible";
+        const FAILING: &'static str = "test.failing";
+    }
+
+    impl crate::abi_support::PlatformRuntimeFactory for SelectorTestPlatformFactory {
+        fn create_window_peer(
+            &self,
+            completion_sink: Arc<dyn crate::abi_support::PlatformFrameCompletionSink>,
+        ) -> Result<
+            Arc<dyn crate::abi_support::PlatformWindowPeer>,
+            crate::abi_support::PlatformOperationError,
+        > {
+            TestPlatformFactory(Arc::clone(&self.probe)).create_window_peer(completion_sink)
+        }
+
+        fn default_presentation_backend(&self) -> Option<&'static str> {
+            Some(Self::DEFAULT)
+        }
+
+        fn has_presentation_backend(&self, identity: &str) -> bool {
+            matches!(
+                identity,
+                Self::DEFAULT | Self::ALTERNATE | Self::INCOMPATIBLE | Self::FAILING
+            )
+        }
+
+        fn create_window_peer_for_backend(
+            &self,
+            identity: &str,
+            completion_sink: Arc<dyn crate::abi_support::PlatformFrameCompletionSink>,
+        ) -> Result<
+            Arc<dyn crate::abi_support::PlatformWindowPeer>,
+            crate::abi_support::PlatformOperationError,
+        > {
+            self.selected
+                .lock()
+                .expect("selected backend lock")
+                .push(identity.to_owned());
+            if identity == Self::FAILING {
+                return Err(crate::abi_support::PlatformOperationError);
+            }
+            if identity == Self::INCOMPATIBLE {
+                self.probe.fail_next_open.store(true, Ordering::SeqCst);
+            }
+            self.create_window_peer(completion_sink)
+        }
+    }
+
+    #[test]
+    fn window_presentation_backend_is_resolved_at_creation_and_remains_fixed() {
+        let probe = Arc::new(PlatformProbe::default());
+        let factory = Arc::new(SelectorTestPlatformFactory {
+            probe,
+            selected: std::sync::Mutex::new(Vec::new()),
+        });
+        let runtime = runtime_create_handle_with_platform_factory(factory.clone())
+            .expect("create Runtime with selector factory");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+
+        let default_window = ui_control_create_window(runtime).expect("create default Window");
+        let alternate_window = ui_control_create_window_with_presentation_backend(
+            runtime,
+            SelectorTestPlatformFactory::ALTERNATE,
+        )
+        .expect("create explicitly selected Window");
+        assert_eq!(
+            ui_control_create_window_with_presentation_backend(runtime, "test.unknown"),
+            Err(UiControlApiError::InvalidArgument)
+        );
+        let failing_window = ui_control_create_window_with_presentation_backend(
+            runtime,
+            SelectorTestPlatformFactory::FAILING,
+        )
+        .expect("registered backend selection succeeds before native initialization");
+        let incompatible_window = ui_control_create_window_with_presentation_backend(
+            runtime,
+            SelectorTestPlatformFactory::INCOMPATIBLE,
+        )
+        .expect("registered backend selection succeeds before surface validation");
+        let retained_content = ui_control_create_stack_panel(runtime).expect("create content");
+        window_set_content(incompatible_window, retained_content).expect("attach content");
+
+        assert_eq!(window_open(default_window), Ok(1));
+        assert_eq!(window_open(alternate_window), Ok(1));
+        assert!(window_open(failing_window).is_err());
+        assert!(window_open(incompatible_window).is_err());
+        let retained_after_failure = window_content(incompatible_window)
+            .expect("query content after backend failure")
+            .expect("failed open must preserve attached content");
+        assert_eq!(stack_panel_child_count(retained_after_failure), Ok(0));
+        handle_release(retained_after_failure).expect("release content query handle");
+        assert_eq!(
+            *factory.selected.lock().expect("selected backend lock"),
+            [
+                SelectorTestPlatformFactory::DEFAULT,
+                SelectorTestPlatformFactory::ALTERNATE,
+                SelectorTestPlatformFactory::FAILING,
+                SelectorTestPlatformFactory::INCOMPATIBLE,
+            ]
+        );
+
+        window_close(default_window).expect("close default Window");
+        assert_eq!(window_open(default_window), Ok(2));
+        assert_eq!(
+            *factory.selected.lock().expect("selected backend lock"),
+            [
+                SelectorTestPlatformFactory::DEFAULT,
+                SelectorTestPlatformFactory::ALTERNATE,
+                SelectorTestPlatformFactory::FAILING,
+                SelectorTestPlatformFactory::INCOMPATIBLE,
+            ],
+            "reopen must reuse the Window's already selected peer"
+        );
+        let replacement = ui_control_create_window_with_presentation_backend(
+            runtime,
+            SelectorTestPlatformFactory::ALTERNATE,
+        )
+        .expect("a new Window can choose a different backend");
+        assert_eq!(window_open(replacement), Ok(1));
+        assert_eq!(
+            factory
+                .selected
+                .lock()
+                .expect("selected backend lock")
+                .last(),
+            Some(&SelectorTestPlatformFactory::ALTERNATE.to_owned())
+        );
     }
 
     #[derive(Default)]
@@ -339,6 +484,9 @@ mod tests {
             _: u64,
         ) -> Result<WindowOpenInfo, crate::abi_support::PlatformOperationError> {
             self.probe.opened.fetch_add(1, Ordering::SeqCst);
+            if self.probe.fail_next_open.swap(false, Ordering::SeqCst) {
+                return Err(crate::abi_support::PlatformOperationError);
+            }
             Ok(WindowOpenInfo {
                 client_area: WindowClientArea {
                     width_dip: 640.0,

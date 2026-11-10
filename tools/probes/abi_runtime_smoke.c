@@ -44,6 +44,23 @@ int main(void) {
     return 3;
   }
 
+#if defined(__linux__)
+  const uint8_t *backend_id = (const uint8_t *)"linux.drm-gbm-egl-gles";
+  const uint64_t backend_id_length = 22;
+#else
+  const uint8_t *backend_id = (const uint8_t *)"windows.win32-d2d";
+  const uint64_t backend_id_length = 17;
+#endif
+  ui_handle selected_window = 0;
+  if (ui_abi_1_window_create_with_presentation_backend(
+          runtime, backend_id, backend_id_length, &selected_window, 0) != UI_OK ||
+      selected_window == 0 ||
+      ui_abi_1_handle_release(selected_window) != UI_OK) {
+    fputs("explicit presentation backend Window creation failed\n", stderr);
+    (void)ui_abi_1_handle_release(runtime);
+    return 16;
+  }
+
   ui_handle window = 0;
   ui_handle panel = 0;
   ui_handle text = 0;

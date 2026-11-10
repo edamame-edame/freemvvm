@@ -47,6 +47,20 @@ def main() -> None:
         raise RuntimeError("UI loop bridge registration returned an error")
 
     window = Window.create(runtime)
+    backend_id = (
+        "windows.win32-d2d"
+        if sys.platform == "win32"
+        else "linux.drm-gbm-egl-gles"
+    )
+    selected_window = Window.create(
+        runtime, presentation_backend=backend_id
+    )
+    try:
+        Window.create(runtime, presentation_backend="unknown.backend")
+    except freemvvm.UiError as error:
+        assert error.raw_status == _native.INVALID_ARGUMENT
+    else:
+        raise AssertionError("unknown presentation backend was accepted")
     content = Text.create(runtime, "preserve after unsupported peer open")
     window.set_content(content)
     assert window.background_rgb == (1.0, 1.0, 1.0)
@@ -104,7 +118,7 @@ def main() -> None:
             window.clear_content()
         except freemvvm.UiError:
             pass
-        for owner in (content, window):
+        for owner in (content, selected_window, window):
             try:
                 owner.close()
             except freemvvm.UiError:

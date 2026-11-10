@@ -238,6 +238,10 @@ ui_status ui_abi_1_runtime_shutdown(ui_handle runtime, ui_handle *out_error);
 
 ui_status ui_abi_1_window_create(ui_handle runtime, ui_handle *out_window,
                                  ui_handle *out_error);
+ui_status ui_abi_1_window_create_with_presentation_backend(
+    ui_handle runtime, const uint8_t *backend_id_utf8,
+    uint64_t backend_id_byte_length, ui_handle *out_window,
+    ui_handle *out_error);
 ui_status ui_abi_1_stack_panel_create(ui_handle runtime,
                                       ui_handle *out_panel,
                                       ui_handle *out_error);

@@ -549,14 +549,15 @@
     },
     {
       "unit_name": "UNIT-CORE-094",
-      "state": "planned",
+      "state": "complete",
       "scope": "core-window-presentation-backend-selection-and-profile-registry-resolution",
       "path": {
         "source": [
           "crates/core-runtime/src/ui_controls.rs",
           "crates/core-runtime/src/runtime.rs",
           "crates/core-runtime/src/ui_window.rs",
-          "crates/core-runtime/src/abi_support.rs"
+          "crates/platform-linux/src/lib.rs",
+          "crates/platform-windows/src/lib.rs"
         ],
         "config": [
           "tools/units.yaml",
@@ -604,7 +605,7 @@
               "test",
               "-p",
               "freemvvm-core",
-              "backend_selection",
+              "window_presentation_backend_is_resolved_at_creation_and_remains_fixed",
               "--locked"
             ]
           }

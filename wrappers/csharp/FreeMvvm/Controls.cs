@@ -460,6 +460,30 @@ public sealed class UiWindow : UiContainer
             api.WindowCreate(handle, out control, out error),
             static (owner, anchor, handlers) => new UiWindow(owner, anchor, handlers));
 
+    public static UiResult<UiWindow> TryCreateWithPresentationBackend(
+        UiRuntime runtime, string presentationBackend)
+    {
+        byte[] backendIdUtf8;
+        try
+        {
+            backendIdUtf8 = EncodeUtf8(presentationBackend);
+        }
+        catch (ArgumentNullException)
+        {
+            return UiResult<UiWindow>.Failure(new UiErrorSnapshot(UiStatus.InvalidArgument));
+        }
+        catch (EncoderFallbackException)
+        {
+            return UiResult<UiWindow>.Failure(new UiErrorSnapshot(UiStatus.InvalidArgument));
+        }
+
+        return Create(runtime,
+            (INativeApi api, ulong handle, byte[]? _, out ulong control, out ulong error) =>
+                api.WindowCreateWithPresentationBackend(
+                    handle, backendIdUtf8, out control, out error),
+            static (owner, anchor, handlers) => new UiWindow(owner, anchor, handlers));
+    }
+
     public UiResult<UiProperty<string>> TryGetTitleProperty() => GetProperty<string>(
         static (INativeApi api, ulong window, out ulong property) => api.WindowTitleProperty(window, out property),
         owner => UiProperty<string>.FromOwned(owner, CallbackHandlers));
