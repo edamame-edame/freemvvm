@@ -60,6 +60,7 @@ use freemvvm_core::abi_support::{
     ui_control_create_text as core_ui_control_create_text,
     ui_control_create_text_box as core_ui_control_create_text_box,
     ui_control_create_window as core_ui_control_create_window,
+    ui_control_create_window_with_presentation_backend as core_ui_control_create_window_with_presentation_backend,
     ui_control_is_enabled_property as core_ui_control_is_enabled_property,
     ui_control_text_box_value_property as core_ui_control_text_box_value_property,
     ui_control_text_content_property as core_ui_control_text_content_property,
@@ -2122,6 +2123,47 @@ pub unsafe extern "C" fn ui_abi_1_window_create(
     }
 }
 
+/// Create an empty Window Control with an explicitly selected presentation backend.
+///
+/// # Safety
+/// Positive `backend_id_byte_length` requires readable UTF-8 storage at `backend_id_utf8`.
+/// `out_window` must be non-null writable storage; non-null `out_error` must also be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_create_with_presentation_backend(
+    runtime: u64,
+    backend_id_utf8: *const u8,
+    backend_id_byte_length: u64,
+    out_window: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_window.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_window.write(0) };
+    // SAFETY: input pointer/length requirements are part of this function's contract.
+    let bytes = match unsafe { read_utf8_input(backend_id_utf8, backend_id_byte_length) } {
+        Ok(bytes) => bytes,
+        Err(status) => return status,
+    };
+    let backend_id = match std::str::from_utf8(bytes) {
+        Ok(backend_id) => backend_id,
+        Err(_) => return UI_INVALID_ARGUMENT,
+    };
+    match catch_ui_control(|| {
+        core_ui_control_create_window_with_presentation_backend(runtime, backend_id)
+    }) {
+        Ok(handle) => {
+            // SAFETY: required output pointer was checked non-null.
+            unsafe { out_window.write(handle) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
 /// Create an empty StackPanel Control.
 ///
 /// # Safety
@@ -3058,9 +3100,9 @@ mod tests {
         ui_abi_1_window_background_rgb, ui_abi_1_window_clear_content, ui_abi_1_window_close,
         ui_abi_1_window_close_request_defer, ui_abi_1_window_close_request_resolve,
         ui_abi_1_window_close_request_subscribe, ui_abi_1_window_content, ui_abi_1_window_create,
-        ui_abi_1_window_open, ui_abi_1_window_reset_background_rgb,
-        ui_abi_1_window_set_background_rgb, ui_abi_1_window_set_content,
-        ui_abi_1_window_title_property,
+        ui_abi_1_window_create_with_presentation_backend, ui_abi_1_window_open,
+        ui_abi_1_window_reset_background_rgb, ui_abi_1_window_set_background_rgb,
+        ui_abi_1_window_set_content, ui_abi_1_window_title_property,
     };
     use std::ffi::c_void;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -3118,6 +3160,45 @@ mod tests {
     }
 
     struct AbiInputTestFactory;
+
+    struct AbiSelectorTestFactory(std::sync::Arc<Mutex<Vec<String>>>);
+
+    impl freemvvm_core::abi_support::PlatformRuntimeFactory for AbiSelectorTestFactory {
+        fn create_window_peer(
+            &self,
+            _: std::sync::Arc<dyn freemvvm_core::abi_support::PlatformFrameCompletionSink>,
+        ) -> Result<
+            std::sync::Arc<dyn freemvvm_core::abi_support::PlatformWindowPeer>,
+            freemvvm_core::abi_support::PlatformOperationError,
+        > {
+            Ok(std::sync::Arc::new(AbiInputTestPeer))
+        }
+
+        fn default_presentation_backend(&self) -> Option<&'static str> {
+            Some("test.default")
+        }
+
+        fn has_presentation_backend(&self, identity: &str) -> bool {
+            matches!(identity, "test.default" | "test.alpha" | "test.bravo")
+        }
+
+        fn create_window_peer_for_backend(
+            &self,
+            identity: &str,
+            completion_sink: std::sync::Arc<
+                dyn freemvvm_core::abi_support::PlatformFrameCompletionSink,
+            >,
+        ) -> Result<
+            std::sync::Arc<dyn freemvvm_core::abi_support::PlatformWindowPeer>,
+            freemvvm_core::abi_support::PlatformOperationError,
+        > {
+            self.0
+                .lock()
+                .expect("selected backend lock")
+                .push(identity.to_owned());
+            self.create_window_peer(completion_sink)
+        }
+    }
 
     impl freemvvm_core::abi_support::PlatformRuntimeFactory for AbiInputTestFactory {
         fn create_window_peer(
@@ -3551,6 +3632,105 @@ mod tests {
         assert_eq!(second_status, UI_OK);
         assert_ne!(second, 0);
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn window_create_with_presentation_backend_validates_and_copies_utf8_identity() {
+        let selected = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let runtime = freemvvm_core::abi_support::runtime_create_handle_with_platform_factory(
+            std::sync::Arc::new(AbiSelectorTestFactory(std::sync::Arc::clone(&selected))),
+        )
+        .expect("create Runtime with selector factory");
+
+        let mut backend_id = *b"test.alpha";
+        let mut explicit_window = u64::MAX;
+        let mut error = u64::MAX;
+        assert_eq!(
+            // SAFETY: input bytes are readable for the declared length; outputs are writable.
+            unsafe {
+                ui_abi_1_window_create_with_presentation_backend(
+                    runtime,
+                    backend_id.as_ptr(),
+                    backend_id.len() as u64,
+                    &mut explicit_window,
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+        assert_ne!(explicit_window, 0);
+        assert_eq!(error, 0);
+        backend_id.copy_from_slice(b"test.bravo");
+        assert_eq!(
+            // SAFETY: the Window handle is valid and the optional error output is writable.
+            unsafe { ui_abi_1_window_open(explicit_window, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            *selected.lock().expect("selected backend lock"),
+            ["test.alpha"]
+        );
+
+        let mut default_window = 0;
+        assert_eq!(
+            // SAFETY: outputs are writable; null optional error is allowed.
+            unsafe { ui_abi_1_window_create(runtime, &mut default_window, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: the Window handle is valid and null optional error is allowed.
+            unsafe { ui_abi_1_window_open(default_window, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            *selected.lock().expect("selected backend lock"),
+            ["test.alpha", "test.default"]
+        );
+
+        let invalid_utf8 = [0xff_u8];
+        for (identity, length) in [
+            (std::ptr::null(), 1),
+            (std::ptr::null(), 0),
+            (invalid_utf8.as_ptr(), 1),
+            (b"test.unknown".as_ptr(), b"test.unknown".len() as u64),
+        ] {
+            let mut rejected_window = u64::MAX;
+            error = u64::MAX;
+            assert_eq!(
+                // SAFETY: each non-null test input is readable for its declared length; outputs are writable.
+                unsafe {
+                    ui_abi_1_window_create_with_presentation_backend(
+                        runtime,
+                        identity,
+                        length,
+                        &mut rejected_window,
+                        &mut error,
+                    )
+                },
+                UI_INVALID_ARGUMENT
+            );
+            assert_eq!(rejected_window, 0);
+            assert_eq!(error, 0);
+        }
+
+        let mut null_output_error = u64::MAX;
+        assert_eq!(
+            // SAFETY: backend bytes and optional error are valid; null required output is rejected.
+            unsafe {
+                ui_abi_1_window_create_with_presentation_backend(
+                    runtime,
+                    b"test.alpha".as_ptr(),
+                    b"test.alpha".len() as u64,
+                    std::ptr::null_mut(),
+                    &mut null_output_error,
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(null_output_error, 0);
+
+        assert_eq!(ui_abi_1_handle_release(explicit_window), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(default_window), UI_OK);
     }
 
     #[test]

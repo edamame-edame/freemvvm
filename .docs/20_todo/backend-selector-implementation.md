@@ -75,12 +75,12 @@ Do not implement Python multi-library plugins in this gate. The plugin ABI, vers
 - Tests: `UT-CORE-BACKEND-SELECTION-001` for default, explicit registered identity, unknown identity, incompatible surface/capability, init failure, no fallback, failure atomicity, close/reopen, and independent new Window. Assert factory-call records so a second backend cannot be attempted silently.
 - Gate passed on `bbacaca4fd916d9ed3f3c554a8c3f3a45e88c752`: focused selector test, Core suite (204 tests), workspace Clippy, formatting, Rust 1.85 minimum check, and document/link validation.
 
-### Unit 2 — C ABI selector and native header (`UNIT-ABI-023` proposed)
+### Unit 2 — C ABI selector and native header (`UNIT-ABI-023`, complete)
 
 - Paths: `crates/c-abi/src/lib.rs`, `crates/c-abi/include/freemvvm/abi.h`, C/C++ ABI probes and consumer tests, ABI unit catalog.
 - Work: add `ui_abi_1_window_create_with_presentation_backend(runtime, backend_id_utf8, backend_id_byte_length, out_window, out_error)`. Keep `ui_abi_1_window_create` unchanged and default-only. Validate pointer/length and UTF-8; synchronously copy the selector into Core; return zero output and no partial Window on failure; use existing status/error conventions.
 - Tests: `UT-ABI-WINDOW-BACKEND-001`; header C/C++ compilation; runtime C consumer for default and explicit create; all existing ABI symbols/features remain compatible.
-- Gate: C ABI crate tests, header probes, C and C++ consumer smoke, and all Core tests on the same revision.
+- Gate passed locally: C ABI suite (41 tests), workspace Clippy, format check, C and C++ header probes, and C/C++ ABI runtime consumer smoke. Core tests were already green on the parent Core unit revision.
 
 ### Unit 3 — target artifact backend features and identity (`UNIT-BUILD-BACKEND-001` proposed)
 
@@ -133,3 +133,4 @@ The currently approved package design shares the same canonical native C ABI art
 | 2026-11-10 | 0.1 | User's "ok" approved the implementation plan. Start with Core Window selector; confirm unit IDs against catalog before registration. |
 | 2026-11-10 | 0.1 | Gate A resolved from the currently registered profile adapters. Began UNIT-CORE-094 on `core-apis/presentation-backend-selector`. |
 | 2026-11-10 | 0.1 | UNIT-CORE-094 passed local gates and was committed/pushed as `bbacaca4fd916d9ed3f3c554a8c3f3a45e88c752` on `core-apis/presentation-backend-selector`. |
+| 2026-11-10 | 0.1 | UNIT-ABI-023 passed C ABI, C/C++ header, and runtime consumer gates on the current Core APIs branch. |

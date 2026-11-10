@@ -1583,6 +1583,73 @@
           }
         ]
       }
+    },
+    {
+      "unit_name": "UNIT-ABI-023",
+      "state": "complete",
+      "scope": "additive-c-abi-window-create-with-explicit-presentation-backend-identity",
+      "path": {
+        "source": [
+          "crates/c-abi/src/lib.rs",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "crates/core-runtime/src/lib.rs",
+          "tools/probes/abi_header_c.c",
+          "tools/probes/abi_header_cpp.cpp",
+          "tools/probes/abi_runtime_smoke.c",
+          "tools/probes/abi_cpp_runtime_smoke.cpp"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-094"
+      ],
+      "requirements": [
+        "RQ-04-003",
+        "RQ-04-006",
+        "RQ-11-025"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.7 approved",
+          "section": "PresentationBackend選択"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BACKEND-SELECT-01",
+          "TC-ABI-EXPOSE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-WINDOW-BACKEND-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "window_create_with_presentation_backend",
+              "--locked"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-ABI-WINDOW-BACKEND-001",
+            "command": [
+              "ctest",
+              "--preset",
+              "dev",
+              "-R",
+              "abi.runtime-smoke"
+            ]
+          }
+        ]
+      }
     }
   ]
 }
