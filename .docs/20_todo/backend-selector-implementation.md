@@ -103,11 +103,12 @@ Do not implement Python multi-library plugins in this gate. The plugin ABI, vers
 - Work: add an optional creation argument compatible with the existing C++ standard and exceptions-disabled result/error pattern; preserve source compatibility for default create. No post-create mutation.
 - Tests: wrapper runtime tests, package relocation/consumer test, CMake build and lint/format gates.
 
-### Unit 6 — C# wrapper (`UNIT-WRAP-CS-WINDOW-BACKEND-001` proposed)
+### Unit 6 — C# wrapper (`UNIT-WRAP-CS-WINDOW-BACKEND-001`, complete)
 
 - Paths: `wrappers/csharp/FreeMvvm/NativeApi.cs`, Window facade, tests and consumer.
 - Work: add a generated/import declaration for the additive C ABI symbol and a creation overload/options input following existing `TryCreate`/`UiResult` patterns; preserve default create and error mapping.
 - Tests: .NET build, runtime tests, package/consumer tests and wrapper parity against the shared native artifact.
+- Gate passed on `wrapper-csharp/presentation-backend-selector` commit `bdb3aca6da1f11a550d3b98e3fe98af1f49680d3`: added `UiWindow.TryCreateWithPresentationBackend(runtime, string)` and an unsafe synchronous byte-array-to-UTF-8 pointer/length C ABI bridge, retaining `TryCreate(runtime)`. Runtime tests cover UTF-8 encoding, native status preservation and invalid UTF-16 rejection before FFI; the native consumer accepts the registered Windows/Linux ID and rejects an unknown ID. .NET library/test/consumer builds passed with zero warnings, RuntimeTests and consumer passed locally, and Windows/Ubuntu bootstrap CI passed in [run 42820761894](https://github.com/edamame-edame/freemvvm/actions/runs/42820761894).
 
 ### Unit 7 — Python wrapper (`UNIT-WRAP-PY-WINDOW-BACKEND-001` proposed)
 
@@ -139,3 +140,4 @@ The currently approved package design shares the same canonical native C ABI art
 | 2026-11-10 | 0.1 | UNIT-ABI-023 passed C ABI, C/C++ header, and runtime consumer gates on the current Core APIs branch. |
 | 2026-11-10 | 0.1 | UNIT-ABI-023 was committed/pushed as `d035b5caf0dcaadd6b33e1e824f58f2652035597`. Local Windows gates passed; Linux CI remains part of the branch integration gate. |
 | 2026-11-10 | 0.1 | UNIT-BUILD-BACKEND-001 passed local feature/profile/artifact checks and Windows/Ubuntu CI; implementation commit `89cf3c5d6fe02bbae7796561d68adb853c3e79be`. |
+| 2026-11-10 | 0.1 | UNIT-WRAP-CS-WINDOW-BACKEND-001 passed local .NET RuntimeTests/consumer/build gates and Windows/Ubuntu CI; implementation commit `bdb3aca6da1f11a550d3b98e3fe98af1f49680d3` on `wrapper-csharp/presentation-backend-selector`. |
