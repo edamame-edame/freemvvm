@@ -981,6 +981,77 @@
           }
         ]
       }
+    },
+    {
+      "unit_name": "UNIT-WRAP-PY-WINDOW-BACKEND-001",
+      "state": "ready",
+      "scope": "python-window-explicit-presentation-backend-selection",
+      "path": {
+        "source": [
+          "wrappers/python/src/freemvvm/_native.py",
+          "wrappers/python/src/freemvvm/__init__.py",
+          "wrappers/python/tests/test_controls.py",
+          "wrappers/python/examples/window_consumer.py"
+        ],
+        "config": [
+          "wrappers/python/pyproject.toml",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "tools/dev.py",
+          "tools/units/wrappers-python.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/wrappers.md"
+      },
+      "depends_on": [
+        "UNIT-ABI-023",
+        "UNIT-BUILD-BACKEND-001",
+        "UNIT-WRAP-PY-WINDOW-001",
+        "UNIT-WRAP-PY-WINDOW-BG-001"
+      ],
+      "requirements": [
+        "RQ-11-025"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/wrappers/python.md",
+          "version": "2.2",
+          "section": "Window.create(runtime, presentation_backend=None)の既存公開API案"
+        },
+        {
+          "path": ".docs/13_detail_design/ui/controls.md",
+          "version": "1.7",
+          "section": "WindowのPresentationBackend設定"
+        },
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.7",
+          "section": "PresentationBackend選択"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BACKEND-SELECT-01",
+          "TC-ERROR-01",
+          "TC-LIFE-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-WRAP-PY-WINDOW-BACKEND-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "python-window-test"
+            ]
+          },
+          {
+            "id": "UT-CONSUMER-PY-WINDOW-BACKEND-001",
+            "command": [
+              ".venv/Scripts/python.exe",
+              "tools/dev.py",
+              "python-window-consumer-test"
+            ]
+          }
+        ]
+      }
     }
   ]
 }

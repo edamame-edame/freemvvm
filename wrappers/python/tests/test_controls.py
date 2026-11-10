@@ -61,6 +61,17 @@ class FakeControlsApi(FakeCommandApi):
         self.calls.append(("window_create", (runtime,)))
         return self._control("window")
 
+    def window_create_with_presentation_backend(
+        self, runtime: int, backend_id_utf8: bytes
+    ) -> tuple[int, int, int]:
+        self.calls.append(
+            (
+                "window_create_with_presentation_backend",
+                (runtime, backend_id_utf8),
+            )
+        )
+        return self._control("window")
+
     def stack_panel_create(self, runtime: int) -> tuple[int, int, int]:
         self.calls.append(("stack_panel_create", (runtime,)))
         return self._control("stack_panel")
@@ -229,6 +240,47 @@ def test_control_factories_and_properties_map_to_typed_native_owners() -> None:
         prop.close()
     for owner in (button, text_box, text, panel, window):
         owner.close()
+    runtime.close()
+
+
+def test_window_factory_forwards_optional_presentation_backend_as_utf8() -> None:
+    api = FakeControlsApi()
+    runtime, _ = make_runtime(api)
+    window = Window.create(runtime, presentation_backend="test.描画")
+
+    assert api.calls[-1] == (
+        "window_create_with_presentation_backend",
+        (runtime._cell.token, "test.描画".encode("utf-8")),
+    )
+    window.close()
+    runtime.close()
+
+
+@pytest.mark.parametrize("backend", [123, "bad\ud800backend"])
+def test_window_factory_rejects_invalid_backend_text_before_native_call(
+    backend: object,
+) -> None:
+    api = FakeControlsApi()
+    runtime, _ = make_runtime(api)
+    before = len(api.calls)
+
+    with pytest.raises((TypeError, UnicodeEncodeError)):
+        Window.create(runtime, presentation_backend=backend)  # type: ignore[arg-type]
+
+    assert len(api.calls) == before
+    runtime.close()
+
+
+def test_window_factory_preserves_native_backend_selection_failure() -> None:
+    api = FakeControlsApi()
+    runtime, _ = make_runtime(api)
+    api.control_create_results["window"] = (_native.INVALID_ARGUMENT, 0, 0)
+
+    with pytest.raises(UiError) as raised:
+        Window.create(runtime, presentation_backend="unknown.backend")
+
+    assert raised.value.raw_status == _native.INVALID_ARGUMENT
+    assert api.calls[-1][0] == "window_create_with_presentation_backend"
     runtime.close()
 
 
