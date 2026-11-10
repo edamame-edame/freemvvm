@@ -96,6 +96,7 @@ Do not implement Python multi-library plugins in this gate. The plugin ABI, vers
 - Paths: `wrappers/rust/freemvvm-sys/src/lib.rs`, `wrappers/rust/freemvvm/src/native_api.rs`, `ui.rs`, tests and consumer example if needed.
 - Work: expose optional backend identity on Window creation with Rust `Option<&str>`-style API (final method shape must match existing wrapper conventions); retain the existing default convenience call. No mutable selector method.
 - Tests: wrapper unit and consumer tests for default/explicit/error lifetime, plus `cargo test`/Clippy/fmt/minimum toolchain.
+- Gate passed on `wrapper-rust/presentation-backend-selector` commit `618cb378ceeb7d4c1a0ad14b5256aa936ead5339`: the Rust wrapper exposes `Window::create_with_presentation_backend(ui, Option<&str>)`, keeps `Window::create(ui)` as the profile-default convenience, and forwards UTF-8 identity bytes only for the synchronous additive C ABI call. Fake-API tests cover default/explicit forwarding and returned errors; the linked consumer verifies the active Windows backend succeeds and an unknown identity fails. Full Rust workspace tests, Clippy, formatting, Rust 1.85 check, document/link checks, and unit catalog validation passed. Windows and Ubuntu bootstrap CI passed in [run 42817185615](https://github.com/edamame-edame/freemvvm/actions/runs/42817185615).
 
 ### Unit 5 — C++ wrapper (`UNIT-WRAP-CPP-WINDOW-BACKEND-001` proposed)
 
@@ -139,3 +140,4 @@ The currently approved package design shares the same canonical native C ABI art
 | 2026-11-10 | 0.1 | UNIT-ABI-023 passed C ABI, C/C++ header, and runtime consumer gates on the current Core APIs branch. |
 | 2026-11-10 | 0.1 | UNIT-ABI-023 was committed/pushed as `d035b5caf0dcaadd6b33e1e824f58f2652035597`. Local Windows gates passed; Linux CI remains part of the branch integration gate. |
 | 2026-11-10 | 0.1 | UNIT-BUILD-BACKEND-001 passed local feature/profile/artifact checks and Windows/Ubuntu CI; implementation commit `89cf3c5d6fe02bbae7796561d68adb853c3e79be`. |
+| 2026-11-10 | 0.1 | UNIT-WRAP-RS-WINDOW-BACKEND-001 passed local Rust wrapper and consumer gates plus Windows/Ubuntu CI; implementation commit `618cb378ceeb7d4c1a0ad14b5256aa936ead5339` on `wrapper-rust/presentation-backend-selector`. |
