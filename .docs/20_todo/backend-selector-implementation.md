@@ -98,11 +98,12 @@ Do not implement Python multi-library plugins in this gate. The plugin ABI, vers
 - Tests: wrapper unit and consumer tests for default/explicit/error lifetime, plus `cargo test`/Clippy/fmt/minimum toolchain.
 - Gate passed on `wrapper-rust/presentation-backend-selector` commit `618cb378ceeb7d4c1a0ad14b5256aa936ead5339`: the Rust wrapper exposes `Window::create_with_presentation_backend(ui, Option<&str>)`, keeps `Window::create(ui)` as the profile-default convenience, and forwards UTF-8 identity bytes only for the synchronous additive C ABI call. Fake-API tests cover default/explicit forwarding and returned errors; the linked consumer verifies the active Windows backend succeeds and an unknown identity fails. Full Rust workspace tests, Clippy, formatting, Rust 1.85 check, document/link checks, and unit catalog validation passed. Windows and Ubuntu bootstrap CI passed in [run 42817185615](https://github.com/edamame-edame/freemvvm/actions/runs/42817185615).
 
-### Unit 5 — C++ wrapper (`UNIT-WRAP-CPP-WINDOW-BACKEND-001` proposed)
+### Unit 5 — C++ wrapper (`UNIT-WRAP-CPP-WINDOW-BACKEND-001`, complete)
 
 - Paths: `wrappers/cpp/include/freemvvm/ui_controls.hpp`, `src/ui_controls.cpp`, runtime dispatch table, tests and package consumer.
 - Work: add an optional creation argument compatible with the existing C++ standard and exceptions-disabled result/error pattern; preserve source compatibility for default create. No post-create mutation.
 - Tests: wrapper runtime tests, package relocation/consumer test, CMake build and lint/format gates.
+- Gate passed on `wrapper-cpp/presentation-backend-selector` commit `d80aeb8b19cc6583ea4b679f50f34a4860d49498`: retained `Window::create(runtime)` and added a `std::string_view` creation overload, forwarding UTF-8 bytes through the additive C ABI. Fake ABI tests cover selected identity forwarding and status preservation; the relocated package consumer selects the active Windows backend and rejects an unknown identity. Windows CMake UI-control/runtime tests and relocated package consumer passed. Windows and Ubuntu bootstrap CI passed in [run 42818851612](https://github.com/edamame-edame/freemvvm/actions/runs/42818851612).
 
 ### Unit 6 — C# wrapper (`UNIT-WRAP-CS-WINDOW-BACKEND-001` proposed)
 
@@ -141,3 +142,4 @@ The currently approved package design shares the same canonical native C ABI art
 | 2026-11-10 | 0.1 | UNIT-ABI-023 was committed/pushed as `d035b5caf0dcaadd6b33e1e824f58f2652035597`. Local Windows gates passed; Linux CI remains part of the branch integration gate. |
 | 2026-11-10 | 0.1 | UNIT-BUILD-BACKEND-001 passed local feature/profile/artifact checks and Windows/Ubuntu CI; implementation commit `89cf3c5d6fe02bbae7796561d68adb853c3e79be`. |
 | 2026-11-10 | 0.1 | UNIT-WRAP-RS-WINDOW-BACKEND-001 passed local Rust wrapper and consumer gates plus Windows/Ubuntu CI; implementation commit `618cb378ceeb7d4c1a0ad14b5256aa936ead5339` on `wrapper-rust/presentation-backend-selector`. |
+| 2026-11-10 | 0.1 | UNIT-WRAP-CPP-WINDOW-BACKEND-001 passed local C++ UI-control/runtime and relocated package consumer gates plus Windows/Ubuntu CI; implementation commit `d80aeb8b19cc6583ea4b679f50f34a4860d49498` on `wrapper-cpp/presentation-backend-selector`. |
