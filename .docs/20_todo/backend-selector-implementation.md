@@ -1,7 +1,7 @@
 # PresentationBackend selector and artifact implementation plan
 
 - Plan version: 0.1
-- State: plan approved by user (2026-11-10); implementation in progress
+- State: implementation complete; grouped review PR #9 open
 - Target release: `0.0.1`
 - Parent branch: `change/platform-support-scope`
 - Requirements: [RQ-11-025](../11_requirements/RQ-11_platform.md#rq-11-025)
@@ -147,4 +147,4 @@ The currently approved package design shares the same canonical native C ABI art
 | 2026-11-10 | 0.1 | UNIT-WRAP-CPP-WINDOW-BACKEND-001 passed local C++ UI-control/runtime and relocated package consumer gates plus Windows/Ubuntu CI; implementation commit `d80aeb8b19cc6583ea4b679f50f34a4860d49498` on `wrapper-cpp/presentation-backend-selector`. |
 | 2026-11-10 | 0.1 | UNIT-WRAP-CS-WINDOW-BACKEND-001 passed local .NET RuntimeTests/consumer/build gates and Windows/Ubuntu CI; implementation commit `bdb3aca6da1f11a550d3b98e3fe98af1f49680d3` on `wrapper-csharp/presentation-backend-selector`. |
 | 2026-11-10 | 0.1 | UNIT-WRAP-PY-WINDOW-BACKEND-001 passed Windows/Ubuntu bootstrap CI; commits `41fff6e65b4899d3d39650413e7565110169e688` and `02b83cfa3dc3b8282ecfc3ade747486ee21b2d23` on `wrapper-python/presentation-backend-selector`. |
-| 2026-11-10 | 0.1 | All plan units completed; wrapper siblings are being combined on `integration/presentation-backend-selector` for the grouped review PR. |
+| 2026-11-10 | 0.1 | All plan units completed and gathered on `integration/presentation-backend-selector`; grouped review PR [#9](https://github.com/edamame-edame/freemvvm/pull/9) is open against `change/platform-support-scope`. |
