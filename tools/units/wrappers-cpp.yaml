@@ -2,7 +2,7 @@
   "units": [
     {
       "unit_name": "UNIT-WRAP-CPP-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "cpp-runtime-result-shutdown-and-failed-release-supervisor",
       "path": {
         "source": [
@@ -932,7 +932,7 @@
     },
     {
       "unit_name": "UNIT-WRAP-CPP-WINDOW-BACKEND-001",
-      "state": "ready",
+      "state": "complete",
       "scope": "cpp-window-presentation-backend-create-option",
       "path": {
         "source": [
