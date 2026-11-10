@@ -80,13 +80,40 @@ use freemvvm_core::abi_support::{
     window_set_content as core_window_set_content,
 };
 
-#[cfg(all(target_os = "linux", not(test)))]
+#[cfg(all(
+    target_os = "linux",
+    feature = "presentation-backend-linux-drm-gbm-egl-gles",
+    not(test)
+))]
 use freemvvm_core::abi_support::runtime_create_handle_with_platform_factory;
-#[cfg(all(target_os = "windows", not(test)))]
+#[cfg(all(
+    target_os = "windows",
+    feature = "presentation-backend-windows-win32-d2d",
+    not(test)
+))]
 use freemvvm_core::abi_support::runtime_create_handle_with_platform_factory;
 use freemvvm_core::numeric::{NarrowMode, expand_f32_to_f64, narrow_f64_to_f32};
 use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+
+#[cfg(all(
+    target_os = "linux",
+    not(feature = "presentation-backend-linux-drm-gbm-egl-gles")
+))]
+compile_error!(
+    "Linux UI artifacts require the linux.drm-gbm-egl-gles presentation backend feature"
+);
+#[cfg(all(
+    target_os = "windows",
+    not(feature = "presentation-backend-windows-win32-d2d")
+))]
+compile_error!("Windows UI artifacts require the windows.win32-d2d presentation backend feature");
+
+#[cfg(test)]
+const PRESENTATION_BACKEND_ARTIFACT_METADATA: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/presentation-backend-artifact.json"
+));
 
 const UI_OK: u32 = 0;
 const UI_INVALID_ARGUMENT: u32 = 1;
@@ -278,9 +305,17 @@ pub unsafe extern "C" fn ui_abi_1_runtime_create(
 
     #[cfg(test)]
     let create = || freemvvm_core::abi_support::runtime_create_handle();
-    #[cfg(all(target_os = "linux", not(test)))]
+    #[cfg(all(
+        target_os = "linux",
+        feature = "presentation-backend-linux-drm-gbm-egl-gles",
+        not(test)
+    ))]
     let create = || runtime_create_handle_with_platform_factory(freemvvm_platform_linux::factory());
-    #[cfg(all(target_os = "windows", not(test)))]
+    #[cfg(all(
+        target_os = "windows",
+        feature = "presentation-backend-windows-win32-d2d",
+        not(test)
+    ))]
     let create =
         || runtime_create_handle_with_platform_factory(freemvvm_platform_windows::factory());
     #[cfg(all(not(test), not(any(target_os = "linux", target_os = "windows"))))]
@@ -3600,6 +3635,42 @@ mod tests {
         // SAFETY: tests pass a live Sender pointer and keep it alive through the worker request.
         let sender = unsafe { &*(userdata.cast::<mpsc::Sender<()>>()) };
         let _ = sender.send(());
+    }
+
+    #[test]
+    fn presentation_backend_artifact_metadata_records_profile_features_and_identity() {
+        let metadata = super::PRESENTATION_BACKEND_ARTIFACT_METADATA;
+        if cfg!(target_os = "windows") {
+            assert!(metadata.contains(concat!(
+                "\"target_profile\":\"",
+                env!("FREEMVVM_TARGET_PROFILE"),
+                "\""
+            )));
+            assert!(metadata.contains("\"windows.win32-d2d\""));
+            if cfg!(feature = "presentation-backend-linux-drm-gbm-egl-gles") {
+                assert!(metadata.contains("\"requested_backend_features\":[\"presentation-backend-windows-win32-d2d\",\"presentation-backend-linux-drm-gbm-egl-gles\"]"));
+            } else {
+                assert!(metadata.contains(
+                    "\"requested_backend_features\":[\"presentation-backend-windows-win32-d2d\"]"
+                ));
+            }
+            assert!(metadata.contains("\"presentation_backends\":[\"windows.win32-d2d\"]"));
+        } else if cfg!(target_os = "linux") {
+            assert!(metadata.contains(concat!(
+                "\"target_profile\":\"",
+                env!("FREEMVVM_TARGET_PROFILE"),
+                "\""
+            )));
+            assert!(metadata.contains("\"linux.drm-gbm-egl-gles\""));
+            if cfg!(feature = "presentation-backend-windows-win32-d2d") {
+                assert!(metadata.contains("\"requested_backend_features\":[\"presentation-backend-windows-win32-d2d\",\"presentation-backend-linux-drm-gbm-egl-gles\"]"));
+            } else {
+                assert!(metadata.contains("\"requested_backend_features\":[\"presentation-backend-linux-drm-gbm-egl-gles\"]"));
+            }
+            assert!(metadata.contains("\"presentation_backends\":[\"linux.drm-gbm-egl-gles\"]"));
+        }
+        assert!(metadata.contains("\"artifact_identity\":\"0.0.0-abi1-"));
+        assert!(metadata.contains("\"target_triple\":"));
     }
 
     #[test]

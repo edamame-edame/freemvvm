@@ -11,6 +11,14 @@ publish.workspace = true
 name = "freemvvm_abi_1"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = [
+    "presentation-backend-windows-win32-d2d",
+    "presentation-backend-linux-drm-gbm-egl-gles",
+]
+presentation-backend-windows-win32-d2d = ["dep:freemvvm-platform-windows"]
+presentation-backend-linux-drm-gbm-egl-gles = ["dep:freemvvm-platform-linux"]
+
 [dependencies]
 freemvvm-core = { path = "../core-runtime" }
 
@@ -18,10 +26,10 @@ freemvvm-core = { path = "../core-runtime" }
 freemvvm-core = { path = "../core-runtime", features = ["test-support"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-freemvvm-platform-linux = { path = "../platform-linux" }
+freemvvm-platform-linux = { path = "../platform-linux", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-freemvvm-platform-windows = { path = "../platform-windows" }
+freemvvm-platform-windows = { path = "../platform-windows", optional = true }
 
 [lints]
 workspace = true

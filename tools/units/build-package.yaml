@@ -220,6 +220,67 @@
           }
         ]
       }
+    },
+    {
+      "unit_name": "UNIT-BUILD-BACKEND-001",
+      "state": "ready",
+      "scope": "native-artifact-presentation-backend-features-and-identity",
+      "path": {
+        "source": [
+          "crates/c-abi/build.rs",
+          "crates/c-abi/src/lib.rs"
+        ],
+        "config": [
+          "crates/c-abi/Cargo.toml",
+          "Cargo.lock",
+          "tools/units.yaml",
+          "tools/units/build-package.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/platform-build.md"
+      },
+      "depends_on": [
+        "UNIT-BUILD-001",
+        "UNIT-ABI-023"
+      ],
+      "requirements": [
+        "RQ-11-025",
+        "RQ-12-005",
+        "RQ-12-011"
+      ],
+      "design": [
+        {
+          "path": ".docs/12_design/platform/abstraction.md",
+          "version": "1.3",
+          "section": "Window単位backend選択"
+        },
+        {
+          "path": ".docs/13_detail_design/platform/internal-layers.md",
+          "version": "2.8",
+          "section": "PresentationBackend registry"
+        },
+        {
+          "path": ".docs/13_detail_design/build/toolchain-packages.md",
+          "version": "1.2",
+          "section": "PresentationBackend収録とPython配布"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-BACKEND-SELECT-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-BUILD-BACKEND-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "--locked"
+            ]
+          }
+        ]
+      }
     }
   ]
 }
