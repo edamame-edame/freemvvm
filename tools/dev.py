@@ -147,7 +147,7 @@ def main():
             )
             if args.command == "python-window-consumer-test"
             else (
-                "Python Window peer open/close smoke executed against "
+                "Python Window visible present/reopen smoke executed against "
                 "the configured host Platform"
             )
             if args.command == "python-window-peer-smoke-test"
