@@ -1,7 +1,7 @@
 # 0.0.1 Linux LTS profile追加・順次検証計画
 
 - 計画版: 0.1
-- 状態: 実行中。Debian 13のvisible-present証跡を記録。Debian 13のVM構成情報とresizeは未確認、Debian 12/Ubuntu profileは未着手
+- 状態: 実行中。Debian 13の環境・visible-present証跡を記録。現行Linux backendにruntime resize経路がなく、resize確認は未解決。Debian 12/Ubuntu profileは未着手
 - 対象version: `0.0.1`
 - 親計画: [0.0.1 Platform対象範囲の変更計画](release-0.0.1-platform-support-scope-change.md)
 - 対象要求: [RQ-11 Platform](../11_requirements/RQ-11_platform.md)、[RQ-12 Build/Distribution](../11_requirements/RQ-12_build-distribution.md)
@@ -16,11 +16,11 @@
 ## 実施順
 
 1. 完了: VirtualBoxのglobal `GUI/Input/AutoCapture` を`true`に設定し、値を再読込確認した。Debian VMの物理キーボード操作はVMウィンドウへフォーカスを移して行い、右Ctrlでホストへ戻す。
-2. 一部完了: Debian 13.7、kernel `6.12.116+deb13-amd64`、x86_64、VMware SVGA II `[15ad:0405]`、`vmwgfx`、DRM device、root/TTY実行を記録した。host VirtualBox版、VM CPU/RAM、VMSVGA VRAM/3D設定の確定値は未記録。
+2. 完了: Debian 13.7、kernel `6.12.116+deb13-amd64`、x86_64、Host VirtualBox `7.1.10r169112`、VM 4 vCPU/4096 MiB、VMSVGA/128 MiB/3D on、VMware SVGA II `[15ad:0405]`、`vmwgfx`、DRM device、root/TTY実行を記録した。
 3. 完了: source HEAD `480d8f2f80ab0b2098eaa90b42f9d9ebf2eda045`のLinux debug artifactを作成・特定。artifact SHA-256とRust/Cargoをprofile recordへ記録した。
-4. 一部完了: artifact load、peer open、red/blue redraw、close/reopen後のgreen visible presentを確認。画面上の色変化を利用者が確認した。resizeは未試験。kernelに`vmwgfx` host message channel errorが出たため診断として記録した。
-5. 完了: [Debian 13 VirtualBox visible-present profile record](../01_memory/platform-debian13-vbox-visible-smoke.md)へ環境・artifact・結果・診断・再現コマンドを保存した。未取得のVM構成値と未試験resizeも明記。
-6. 未実施: Debian 13の残りの環境・resize項目を閉じ、profile evidenceを確認してから、Debian 12 x64用VM `freemvvm-debian12-validation` を1台作成する。Debian 13 VMは維持し、同じ版の重複VMは作成しない。
+4. 一部完了: artifact load、peer open、red/blue redraw、close/reopen後のgreen visible presentを確認。画面上の色変化を利用者が確認した。resizeは未確認。現行Linux backendはopen時にmode/surface sizeを固定し、runtime mode/client-area changeを扱わないため、profile testのresize項目は未解決の実装gapとして扱う。kernelに`vmwgfx` host message channel errorが出たため診断として記録した。
+5. 完了: [Debian 13 VirtualBox visible-present profile record](../01_memory/platform-debian13-vbox-visible-smoke.md)へ環境・artifact・結果・診断・再現コマンドを保存した。runtime resize未対応の実装gapも明記。
+6. 未実施: Debian 13のresize gapを0.0.1で実装するか、固定modeのDRM/KMS profileとして試験対象外にするかを設計・試験範囲としてレビューする。その後Debian 12 x64用VM `freemvvm-debian12-validation` を1台作成する。Debian 13 VMは維持し、同じ版の重複VMは作成しない。
 7. 未実施: Debian 12 VMで同じ確認手順を実行し、Debian 13と独立したprofile reportを保存する。
 8. 未実施: Ubuntu 24.04 LTS x64用の新規VM `freemvvm-ubuntu24-validation` を作成し、候補SHAで配布artifact、UI縦断、runtime、visible presentを確認する。既存の`ubuntu` VMは使用しない。
 9. 未実施: Ubuntu 26.04 LTS x64用VM `freemvvm-ubuntu26-validation` を作成し、同じrelease scenarioを実行する。使用した26.04 point-release imageとdigestを記録し、Ubuntu 24.04と独立したprofile reportを保存する。
