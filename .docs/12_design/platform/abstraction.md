@@ -1,9 +1,9 @@
 # プラットフォーム：抽象化・描画・text・OS接続
 
-- 文書版: 1.3
+- 文書版: 1.4
 - 文書ロール: basic-design
-- 更新日: 2026-11-10
-- 状態: 1.2全文承認済み（利用者、2026-11-09）。1.3全文承認済み（利用者、2026-11-10）。実装・試験状態は別管理
+- 更新日: 2026-11-14
+- 状態: 1.2全文承認済み（利用者、2026-11-09）。1.3全文承認済み（利用者、2026-11-10）。1.4全文承認済み（利用者、2026-11-14）。実装・試験状態は別管理
 
 ## 目的と責務境界
 
@@ -21,6 +21,7 @@
 | Renderer・surface・Platform接続 | [RQ-01-002](../../11_requirements/RQ-01_purpose-architecture.md#rq-01-002)、[RQ-09-005](../../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-053](../../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-054](../../11_requirements/RQ-09_ui-scope.md#rq-09-054)、[RQ-11-001](../../11_requirements/RQ-11_platform.md#rq-11-001)、[RQ-11-002](../../11_requirements/RQ-11_platform.md#rq-11-002)、[RQ-11-003](../../11_requirements/RQ-11_platform.md#rq-11-003)、[RQ-11-004](../../11_requirements/RQ-11_platform.md#rq-11-004)、[RQ-11-008](../../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-009](../../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-021](../../11_requirements/RQ-11_platform.md#rq-11-021)、[RQ-12-010](../../11_requirements/RQ-12_build-distribution.md#rq-12-010)、[RQ-13-001](../../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011) |
 | Accessibility意味情報とOS provider | [RQ-09-011](../../11_requirements/RQ-09_ui-scope.md#rq-09-011)、[RQ-10-001](../../11_requirements/RQ-10_accessibility.md#rq-10-001)、[RQ-10-002](../../11_requirements/RQ-10_accessibility.md#rq-10-002)、[RQ-10-003](../../11_requirements/RQ-10_accessibility.md#rq-10-003)、[RQ-10-004](../../11_requirements/RQ-10_accessibility.md#rq-10-004)、[RQ-10-005](../../11_requirements/RQ-10_accessibility.md#rq-10-005)、[RQ-10-006](../../11_requirements/RQ-10_accessibility.md#rq-10-006)、[RQ-10-007](../../11_requirements/RQ-10_accessibility.md#rq-10-007)、[RQ-10-008](../../11_requirements/RQ-10_accessibility.md#rq-10-008)、[RQ-10-009](../../11_requirements/RQ-10_accessibility.md#rq-10-009)、[RQ-10-011](../../11_requirements/RQ-10_accessibility.md#rq-10-011)、[RQ-10-012](../../11_requirements/RQ-10_accessibility.md#rq-10-012)、[RQ-10-013](../../11_requirements/RQ-10_accessibility.md#rq-10-013) |
 | text engineとglyph snapshot | [RQ-04-003](../../11_requirements/RQ-04_abi-boundary.md#rq-04-003)、[RQ-04-020](../../11_requirements/RQ-04_abi-boundary.md#rq-04-020)、[RQ-09-005](../../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-053](../../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-054](../../11_requirements/RQ-09_ui-scope.md#rq-09-054) |
+| Linux desktop/console profileとWayland resize | [RQ-09-067](../../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-11-003](../../11_requirements/RQ-11_platform.md#rq-11-003)、[RQ-11-014](../../11_requirements/RQ-11_platform.md#rq-11-014)、[RQ-11-015](../../11_requirements/RQ-11_platform.md#rq-11-015)、[RQ-11-020](../../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-021](../../11_requirements/RQ-11_platform.md#rq-11-021)、[RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-025](../../11_requirements/RQ-11_platform.md#rq-11-025)、[RQ-12-010](../../11_requirements/RQ-12_build-distribution.md#rq-12-010) |
 
 ## Control API・Window close・描画backend
 
@@ -136,6 +137,43 @@ flowchart TD
     N3 --> N4
 ```
 
+### 1.4改訂案: Linux Wayland desktop profileとdirect-display profile
+
+RQ-11-003/014/015/024とRQ-12-010で承認されたLinux profile候補を、通常desktop sessionで動作するcompositor-managed Window経路と、DRM/KMS direct-display console経路に分ける。Debian 13を先に検証し、Debian 12は後続で独立検証する。Ubuntu 24.04/26.04もOS版・session/backendごとに独立した候補profileとして扱う。profile候補の列挙やVM test passは、別profileのformal runtime supportを意味しない。
+
+| 項目 | Linux Wayland desktop profile案 | DRM/KMS direct-display console profile境界 |
+|---|---|---|
+| 表示責務 | Wayland compositorがWindowの表示位置とoutput modeを管理する。AdapterはWindow surfaceへの描画・presentを担当し、物理display modeを直接設定しない | AdapterがDRM connector/CRTCを直接扱うconsole向けprofile。通常desktop windowやcompositor管理下のWindowとして扱わない |
+| backend選択 | RQ-11-025に従い、選択済みprofileのWayland backendをWindow構築時に固定する。Wayland sessionまたは必要surfaceを利用できない場合は明示failureとし、KMS/X11/別backendへfallbackしない | profileで明示選択された時だけ開く。Wayland desktop sessionから自動選択・fallbackしない |
+| client areaとLayout | AdapterがWayland surfaceの論理client areaとDeviceScaleをCoreへ別々に通知する。Coreが値をWindow世代に結び付けて保持し、client area変更でroot Layoutと次frameを更新する。DeviceScaleは論理寸法と混同しない | connector mode由来のextentをprofile値として返す。desktop Windowのresize通知源と共通化しない |
+| sceneと描画 | Core owns logical tree/layout/scene/background. 共通RendererがSceneSnapshotを選択backendへ渡し、Wayland surfaceへ可視frameを提出する | 現行Linux GLES rendererとDRM/GBM/EGL直接表示を別profileで利用する。Wayland clientのsurface ownershipを共有しない |
+| frame状態 | backendはgeneration付きframe結果をCoreへ返し、Coreが現行scene/frameと照合してPresentedまたはfailureを確定する。submit受付だけでPresentedとしない | 同じCore completion契約を利用するが、DRM page-flip/console側のcompletion根拠はprofile別に保つ |
+| close/reopen | compositor由来のWindow close intentを既存Core close-decisionへ渡す。明示close後はnative surface資源を解放し、Core Window/contentを保って新generationで再openする | native window-manager close intentは前提にしない。明示Window.close/Runtime shutdownは既存契約に従う |
+| profile evidence | Ubuntu 24.04/26.04、Debian 13/12を個別に記録し、Debian 13のpassをDebian 12へ一般化しない。build・VM起動・TTY表示をWayland visible-present passとしない | VM/実機・GPU/driver・device accessを個別記録し、desktop profileの証拠に流用しない |
+
+```mermaid
+flowchart LR
+    A["Window backend choice<br/>profile default or explicit"] --> B["Wayland Adapter<br/>connection / window surface"]
+    B -->|"initial/change client area; DeviceScale separately"| C["Core Window environment"]
+    C --> D["Core Layout / SceneSnapshot"]
+    D --> E["Shared Renderer"]
+    E --> F["Wayland surface present"]
+    F -->|"generation/frame result"| G["Core Dispatcher and FrameTracker"]
+    H["Compositor close intent"] --> B
+    B -->|"copy intent"| I["Core close decision"]
+    I -->|"accepted close"| B
+```
+
+Core remains the source of UI state, layout, DeviceScale, background color and immutable scene. Adapter owns the Wayland connection/window resources and translates compositor state into Core-owned environment updates. Each Renderer instance owns GPU objects for its selected backend context. A close/reopen or surface recreation creates a new generation; stale area/frame results cannot replace current Core state. DeviceScale reporting does not add a guarantee for dynamic output-scale transitions; the existing requirements govern that behavior and DD must specify the realization.
+
+This section does not add X11, multi-output, hot migration between outputs/backends, or undocumented IME/Accessibility guarantees. Rendering pass does not imply input, Japanese IME, or Accessibility pass; each remains tied to its own approved requirement and profile evidence. Backend library, protocol object sequence, event polling, configure serial handling, EGL display/surface construction, frame callback interpretation, dependency/link/package layout, and exact failure/status mapping are DD responsibilities and remain undecided here.
+
+### 1.4改訂履歴
+
+| 日付 | 状態 | 範囲 |
+|---|---|---|
+| 2026-11-14 | 文書全体承認済み | RQ-11 v0.8/RQ-12 v0.7に合わせ、Linux Wayland desktopとDRM/KMS direct-display profileの責務・環境値・scene/present flowを分離。既承認1.3範囲は保持 |
+
 ## 承認履歴
 
 | 日付 | 対象文書・版 | 承認者 | 結論・根拠 |
@@ -147,6 +185,7 @@ flowchart TD
 | 2026-10-30 | 本書1.1全文 | 利用者 | 「ok」によりCore解決色のbackend伝達とfailure境界を含む全文を承認。実装・試験合格を意味しない |
 | 2026-11-09 | 本書1.2全文 | 利用者 | 「ok」によりRQ-11/12のprofile変更に伴うWindows/Ubuntu/Debian VM profileと限定framebuffer責務を含む全文を承認。実装・試験合格は別管理 |
 | 2026-11-10 | 本書1.3全文 | 利用者 | 「ok」によりRQ-11-025のWindow構築時選択とWindow寿命中固定を含む全文を承認。実装・試験は別管理 |
+| 2026-11-14 | 本書1.4全文 | 利用者 | 「ok」によりLinux Wayland desktopとDRM/KMS direct-display profileの責務・client area/DeviceScale・frame・close境界を含む全文を承認。DeviceScaleの動的遷移保証、DD・実装・試験は別管理 |
 
 ## 改訂履歴
 
@@ -156,3 +195,4 @@ flowchart TD
 | 1.1 | 2026-10-30 | Window背景色のCore解決とbackendへの明示伝達を追加 | Codex | 全文承認済み。実装・試験は別管理 |
 | 1.2 | 2026-11-09 | Windows/Ubuntu/Debian VM profileと限定framebuffer責務 | Codex | 全文承認済み。実装・試験は別管理 |
 | 1.3 | 2026-11-10 | RQ-11-025のbackend選択をWindow構築設定として追加 | Codex | 全文承認済み。実装・試験は別管理 |
+| 1.4 | 2026-11-14 | Linux Wayland desktopとDRM/KMS direct-display profileを分離 | Codex | 全文承認済み。DD・実装・試験は別管理 |
