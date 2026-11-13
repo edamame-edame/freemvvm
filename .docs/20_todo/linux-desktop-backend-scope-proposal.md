@@ -1,7 +1,7 @@
 # 0.0.1 Linux Wayland desktop backend 先行計画案
 
-- 計画版: 0.2
-- 状態: 利用者がWayland先行の経路を選択済み。計画本文はレビュー待ち。要求・設計本文は未変更、実装未着手
+- 計画版: 0.3
+- 状態: 計画0.2は利用者承認済み（2026-11-14）。Wayland session確認済み、実装方式はfeasibility調査中。要求・設計本文は未変更、実装未着手
 - 対象version: 0.0.1
 - 対象branch: change/platform-support-scope
 - 関連計画: [Linux DRM/KMS runtime resize](linux-drm-runtime-resize.md)、[Linux LTS profile検証](release-0.0.1-linux-lts-profile-verification.md)、[0.0.1 platform support scope revision](release-0.0.1-platform-support-scope-change.md)
@@ -16,6 +16,14 @@
 VirtualBox VMSVGA調査では、1920x1080がDRM mode候補に存在し、VBoxDRMClientとvboxadd-serviceは起動していた。一方、host menuで1920x1080を選んでもactive DRM modeは1280x800のままだった。DRM hotplug ueventは通知であり、active modeを設定する利用者空間処理が別に必要となる。これは直接KMS経路の課題であり、desktop windowのsurface resizeとは別責務である。
 
 Waylandではcompositorがxdg-shell configureを通知し、clientはconfigure serialをacknowledgeして新しいsurface bufferをcommitする。アプリは物理displayのKMS modeを直接設定しない。[xdg-shell protocol](https://wayland.app/protocols/xdg-shell)、[Linux DRM/KMS](https://docs.kernel.org/gpu/drm-kms.html)
+
+2026-11-14のDebian 13 graphical terminal確認では`XDG_SESSION_TYPE=wayland`、`WAYLAND_DISPLAY=wayland-0`、`DISPLAY=:0`だった。`pkg-config`でEGL 1.5/GLES 3.2を確認し、`libegl-dev`、`libgles-dev`、`libwayland-egl1`、`pkgconf`は導入済みだが、`libwayland-dev`は未導入で`wayland-client`/`wayland-egl` metadataが見つからなかった。`libwayland-dev`はWayland library development headersのDebian packageである。[Debian libwayland-dev](https://packages.debian.org/trixie/libwayland-dev)
+
+現workspaceのminimum Rustは1.85で、現在の`wayland-client` 0.31.14/0.31.15はRust 1.86を要求するため、dependency version selectionはMSRV gateに含める。Smithay Client Toolkit 0.20.0はRust 1.65を宣言しているが、semver依存で解決されるwayland-client版もlockで確認する。[wayland-client package metadata](https://docs.rs/crate/wayland-client/latest/source/Cargo.toml)、[Smithay Client Toolkit 0.20.0 metadata](https://docs.rs/crate/smithay-client-toolkit/0.20.0/source/Cargo.toml)
+
+初期feasibilityではnative Wayland client + EGL Wayland surfaceを有力候補とする。既存`GlesRenderer`はGLES loaderを注入でき、Linux peerはnative surfaceごとのworkerを持つため、Core/C ABIとrendererを保った構成が見込める。Wayland clientを作成しxdg-shell configure/ackを処理し、`wayland-egl` surfaceと既存EGL/GLES rendererを接続する一方、DRM/GBMの直接表示経路とは分ける案である。[wayland-egl surface API](https://docs.rs/wayland-egl/latest/wayland_egl/struct.WlEglSurface.html)
+
+SDL3はwindow/event abstraction候補として比較対象に残す。ただし既存backendが直接EGL context/surfaceとGLES loaderを管理しているため、SDL GL contextとのresource ownership、Wayland native handle interop、native library packagingを比較してから採否を決める。[SDL3 Wayland notes](https://wiki.libsdl.org/SDL3/README-wayland)
 
 利用者は2026-11-14に「Waylandを先に進める」方針を選択した。本計画は実装順をWayland desktopへ変更する。これはWaylandの正式support、RQ-11-015の採用状態、対象profileの拡張、あるいは実装方式の承認を意味しない。
 
@@ -81,4 +89,5 @@ Waylandではcompositorがxdg-shell configureを通知し、clientはconfigure s
 | 日付 | 対象 | 状態 | 備考 |
 |---|---|---|---|
 | 2026-11-13 | 計画0.1 | Waylandを後続候補とする案 | RQ/BD/DDは未変更。KMS resizeは別profile計画 |
-| 2026-11-14 | 計画0.2 | 利用者レビュー待ち | 利用者がWayland先行を選択。Wayland正式support、実装方式、要求対象範囲は未決。実装未着手 |
+| 2026-11-14 | 計画0.2 | 利用者承認 | Wayland先行を選択。Wayland正式support、実装方式、要求対象範囲は未決。実装未着手 |
+| 2026-11-14 | 計画0.3 | 更新案・レビュー待ち | Debian 13 Wayland sessionとEGL/GLES runtime/dev、Wayland EGL runtimeを確認。`libwayland-dev`未導入。native Wayland + EGL案をfeasibility有力候補として記録。RQ/BD/DDは未変更、実装未着手 |

@@ -1,0 +1,17 @@
+# Scope: Linux Platform Adapter / Wayland desktop feasibility
+
+## 2026-11-14 findings
+
+- User verified a Debian 13 graphical terminal with `XDG_SESSION_TYPE=wayland`, `WAYLAND_DISPLAY=wayland-0`, and `DISPLAY=:0`. `pkg-config` reports EGL 1.5 and GLES 3.2. `libegl-dev`, `libgles-dev`, `libwayland-egl1`, and `pkgconf` are installed; `libwayland-dev` is absent, and `wayland-client`/`wayland-egl` pkg-config metadata was not found. This proves the compositor/runtime path exists while Wayland development files need setup before native linking.
+- Current `freemvvm-platform-linux` is a direct DRM/KMS profile. `device.rs` enumerates `/dev/dri/card*`, chooses a connector/CRTC, creates a GBM surface, and requests `EGL_PLATFORM_GBM_KHR`. This path owns physical output modes and cannot be reused as a normal compositor-managed desktop window by changing only the EGL surface type.
+- A Wayland desktop path can likely preserve `GlesRenderer`: create a Wayland `wl_surface`/xdg-toplevel, wrap the surface with `wayland-egl::WlEglSurface`, obtain an EGL display from the Wayland display, and use the Wayland EGL window pointer as the EGL native window. The Wayland path must separately handle configure/ack, surface commits, frame callbacks, compositor close, and scale; it must not select or modeset a DRM CRTC.
+- The existing `GlesRenderer::new` accepts a GLES procedure loader and the Linux peer already gives each native surface a dedicated worker thread. This gives the adapter a plausible reuse seam for a Wayland-owned EGL context and dispatch loop without changing Core or C ABI, subject to review of thread affinity and frame-completion semantics.
+- Candidate Rust APIs include Smithay `wayland-client` plus `wayland-protocols` or Smithay Client Toolkit for xdg-shell/event dispatch, and `wayland-egl` for EGL surface interop. SDL3 is a higher-level alternative with a Wayland window/event loop and OpenGL context, but integrating its GL context with the existing direct EGL/GLES renderer and its native-library packaging must be compared before choosing it.
+- Workspace minimum Rust is 1.85. The currently published `wayland-client` 0.31.14/0.31.15 metadata advertises Rust 1.86, while `wayland-egl` 0.32.11 advertises Rust 1.71. Therefore dependency versions/features must be checked against the 1.85 CI lane; do not add a floating latest dependency without resolving this compatibility.
+- Current RQ-11-015 still classifies Wayland as a later Linux desktop candidate. Selecting Wayland as the 0.0.1 implementation order does not amend that requirement or establish formal support. After feasibility is recorded, propose the RQ change separately for review before editing requirements, BD, or DD.
+
+## References
+
+- Repository: `.docs/20_todo/linux-desktop-backend-scope-proposal.md` (approved implementation order; method and requirement status still open).
+- Repository: `crates/platform-linux/src/device.rs`, `crates/platform-linux/Cargo.toml`, workspace `Cargo.toml`.
+- External primary references checked 2026-11-14: [wayland-client](https://docs.rs/wayland-client/latest/wayland_client/), [wayland-egl WlEglSurface](https://docs.rs/wayland-egl/latest/wayland_egl/struct.WlEglSurface.html), [Smithay Client Toolkit xdg-shell](https://docs.rs/smithay-client-toolkit/latest/smithay_client_toolkit/shell/), [SDL3 Wayland notes](https://wiki.libsdl.org/SDL3/README-wayland), [Debian trixie Wayland packages](https://packages.debian.org/search?arch=hppa&keywords=wayland&searchon=sourcenames&suite=trixie).
