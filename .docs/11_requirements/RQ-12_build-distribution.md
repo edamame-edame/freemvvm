@@ -1,8 +1,8 @@
 # RQ-12: ビルドと配布
 
-- 文書版: 0.6
-- 状態: 0.6全文承認済み（利用者、2026-11-09）。実装・試験状態は別管理
-- 更新日: 2026-11-09
+- 文書版: 0.7
+- 状態: 0.7全文承認済み（利用者、2026-11-14）。実装・試験状態は別管理
+- 更新日: 2026-11-14
 - 入口: [要求仕様索引](reqirements-specification.md)
 
 ## 概要
@@ -24,7 +24,7 @@
 | <a id="rq-12-007"></a>RQ-12-007 | Python ctypes wrapper | 初期Python wrapperはPython標準ライブラリ`ctypes`でC ABIを呼び出し、compiled extensionを必須としない。 | 現行 |
 | <a id="rq-12-008"></a>RQ-12-008 | Python wrapper/native runtime distribution | Python wrapper distributionとtarget別native runtime distributionを分ける。初期native wheel対象はWindows x64と、RQ-11が定める検証済みLinux x64 profileとする。組み込みLinux ARMはprofile互換性が確認されるまでmanylinux/musllinux wheelと表示しない。package名、index、exact wheel tagは本要求で指定しない。 | 現行 |
 | <a id="rq-12-009"></a>RQ-12-009 | CI toolchainの固定 | CIで使用するYocto SDK、sysroot、linker、C library設定を固定し、target build条件を記録する。 | 現行 |
-| <a id="rq-12-010"></a>RQ-12-010 | CI targetとprofile検証gate | CIでWindows x64とLinux x64をbuild/testする。0.0.1のLinux runtime profileはUbuntu 24.04 x64とし、Debian 12 x64は対象VM/virtual GPU構成で描画確認に合格した場合のみprofile evidenceへ加える。ARMv7/AArch64はcross-build/linkと限定framebuffer経路のbuild/fake testを記録し、本番board runtime/hardware gateと分ける。本番機器未確認のruntime supportは表示しない。exact compiler/sysrootとhypervisor/virtual GPU条件をprofile recordへ残す。 | 0.0.1候補 |
+| <a id="rq-12-010"></a>RQ-12-010 | CI targetとprofile検証gate | CIでWindows x64とLinux x64をbuild/testする。0.0.1 Linux runtime candidateはUbuntu 24.04/26.04およびDebian 13/12の版別profileとし、Wayland sessionでartifact loadから可視描画・resize/redraw・close/reopenまで確認する。Debian 13を先に、Debian 12を次に実施する。profile evidenceにはexact OS/kernel、compiler、Wayland session/compositor、hypervisor/virtual GPU、driver、backend、artifact digestを記録する。ARM build/fake testとboard runtime gateは従来どおり分離する。 | 0.0.1候補 |
 | <a id="rq-12-011"></a>RQ-12-011 | artifact適合 | target/profile/ABI/featureに適合するnative artifactを選べ、不適合を利用前に拒否すること。 | 初期共通基盤 |
 | <a id="rq-12-012"></a>RQ-12-012 | native identity共有 | 同じnative binaryは言語package間で同じidentityを保つこと。 | 初期共通基盤 |
 | <a id="rq-12-013"></a>RQ-12-013 | 明示取得とoffline利用 | 通常導入で固定版を暗黙更新せず、取得・更新を明示でき、[期限・失効条件](RQ-12_build-distribution.md#rq-12-023)を満たす検証済みartifactをoffline利用できること。 | 初期共通基盤 |
@@ -93,8 +93,15 @@
 |---|---|---|---|
 | 2026-11-09 | 0.6全文 / RQ-12-002、004、006、008〜010、018 | 利用者 | 「ok」によりPlatform profile別artifact・CI・support evidenceとARM build/runtime gate分離を含む本文全体を承認。実装・CI実行・release合格は別管理 |
 
+## 0.7 承認履歴
+
+| 日付 | 対象版・範囲 | 状態 | 備考 |
+|---|---|---|---|
+| 2026-11-14 | 0.7全文 / RQ-12-010 | 利用者 | 「ok」によりUbuntu 24.04/26.04、Debian 13/12版別Wayland runtime profile、Debian 13先行・12後続、profile証拠条件を含む本文全体を承認。test文書変更・CI実行・release合格は別管理 |
+
 ## 改訂履歴（0.6）
 
 | 版 | 日付 | 変更内容 | 作成者 | 状態 |
 |---|---|---|---|---|
 | 0.6 | 2026-11-09 | Platform profile別のartifact・CI・support evidence見直し | Codex | 本文全体を利用者承認済み。実装・試験は別管理 |
+| 0.7 | 2026-11-14 | Debian 13/12・Ubuntu 24.04/26.04のWayland runtime profile gateを追加 | Codex | 本文全体を利用者承認済み。test文書・CI実行は別管理 |
