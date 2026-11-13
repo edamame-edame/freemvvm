@@ -1,60 +1,84 @@
-# 0.0.1 Linux Wayland backend 後続候補の対象化提案
+# 0.0.1 Linux Wayland desktop backend 先行計画案
 
-- 提案版: 0.1
-- 状態: 利用者レビュー待ち。要求・設計本文は未変更、実装未着手
-- 対象version: `0.0.1`
-- 関連計画: [Linux DRM/KMS runtime resize 実装計画案](linux-drm-runtime-resize.md)、[Linux profile検証計画](release-0.0.1-linux-lts-profile-verification.md)
-- 対象文書: [RQ-11 Platform](../11_requirements/RQ-11_platform.md)、[Platform BD](../12_design/platform/abstraction.md)、[Platform DD](../13_detail_design/platform/internal-layers.md)、[release test matrix](../30_release_test/requirement-test-matrix.md)、[release scenarios](../30_release_test/system-scenarios.md)
+- 計画版: 0.2
+- 状態: 利用者がWayland先行の経路を選択済み。計画本文はレビュー待ち。要求・設計本文は未変更、実装未着手
+- 対象version: 0.0.1
+- 対象branch: change/platform-support-scope
+- 関連計画: [Linux DRM/KMS runtime resize](linux-drm-runtime-resize.md)、[Linux LTS profile検証](release-0.0.1-linux-lts-profile-verification.md)、[0.0.1 platform support scope revision](release-0.0.1-platform-support-scope-change.md)
+- 対象要求: [RQ-11 Platform](../11_requirements/RQ-11_platform.md)、[RQ-09 UI scope](../11_requirements/RQ-09_ui-scope.md)
+- 設計根拠: [Platform BD](../12_design/platform/abstraction.md)、[Platform DD](../13_detail_design/platform/internal-layers.md)
+- test規約: [unit-test strategy](../32_unit_test/unit-test-strategy.md)、[UI test design](../32_unit_test/ui.md)、[release test matrix](../30_release_test/requirement-test-matrix.md)
 
-## 背景と問題
+## 背景と調査結果
 
-現行Linux backendはDRM/KMS + GBM/EGL/GLESで、選択したconnector/CRTCへ直接modesetする。GNOME/Wayland desktopの通常windowとして表示するadapterではない。利用者のDebian 13 VirtualBox確認では、desktop session上で背景色が変わらず、active TTYへ切り替えた後にだけvisible frameを確認できた。
+現Linux runtime backendはDRM/KMS + GBM/EGL/GLESで、GNOME等のcompositor-managed desktop windowではなく、選択connector/CRTCを直接使用する。Debian 13 VirtualBoxのTTY確認では表示はできるが、desktop sessionから通常windowとして描画できる証拠はない。
 
-このTTY確認はdirect-display/console経路のfeasibilityを示すが、GNOME等のdesktop sessionから通常windowとして起動できるLinux UI library profileの証拠にはならない。KMS mode resizeを加えても、compositorとのsurface共有・window管理は解決しない。sudoやdisplay manager停止をLinux desktop利用の前提にしない。
+VirtualBox VMSVGA調査では、1920x1080がDRM mode候補に存在し、VBoxDRMClientとvboxadd-serviceは起動していた。一方、host menuで1920x1080を選んでもactive DRM modeは1280x800のままだった。DRM hotplug ueventは通知であり、active modeを設定する利用者空間処理が別に必要となる。これは直接KMS経路の課題であり、desktop windowのsurface resizeとは別責務である。
 
-現行RQ-11 0.7はUbuntu 24.04と条件を満たすDebian 12 VMを0.0.1 runtime profile候補に含める一方、Wayland (`RQ-11-015`) とX11 (`RQ-11-016`) を版未指定の後続候補としている。利用者はWaylandが0.0.1内の後続候補に含まれるなら許容した。よって本案はWaylandを直ちに0.0.1正式runtime supportへ昇格するのではなく、0.0.1計画内の後続候補として明記する。
+Waylandではcompositorがxdg-shell configureを通知し、clientはconfigure serialをacknowledgeして新しいsurface bufferをcommitする。アプリは物理displayのKMS modeを直接設定しない。[xdg-shell protocol](https://wayland.app/protocols/xdg-shell)、[Linux DRM/KMS](https://docs.kernel.org/gpu/drm-kms.html)
 
-## 推奨対象範囲
+利用者は2026-11-14に「Waylandを先に進める」方針を選択した。本計画は実装順をWayland desktopへ変更する。これはWaylandの正式support、RQ-11-015の採用状態、対象profileの拡張、あるいは実装方式の承認を意味しない。
 
-1. 現行DRM/KMS backendは0.0.1のdirect-display/console profileとして限定記録する。active TTY上のfullscreen outputは実証済みだが、GNOME等のdesktop window sessionでは表示を保証しない。rootやdisplay manager停止を利用条件にしない。
-2. Wayland desktop backendを0.0.1の後続候補へ明示追加する。候補である間は実装・desktop runtime supportを主張しない。採用する場合はWayland sessionで通常Windowを作成し、TTY切替なしで表示する独立profileを目標にする。
-3. Waylandを実装する段階で、compositor configure/resize通知をCoreの`PlatformWindowClientAreaSink`へ接続し、Core Layout/Sceneを再生成して新surface extentへ再描画する案を設計レビューする。client-areaとDeviceScaleは承認済みDD 1.5/1.7契約を根拠にし、Wayland固有のDPI/scale意味は別途明示する。
-4. X11 (`RQ-11-016`) は0.0.1候補に加えず、後続候補に残す。Wayland候補だけで他のdesktop sessionをサポート済みと表示しない。
-5. KMS runtime resize (`linux-drm-runtime-resize.md`) はdirect-display profile用の別実装課題として維持する。Wayland window resize passとKMS mode resize passを相互に読み替えない。
+## 方針と範囲
 
-## 文書改訂案
+1. 0.0.1のLinux desktop経路はWaylandを最初に調査・設計・実装する。通常のdesktop sessionでWindowを開き、visible present、compositorからのresize、Core再Layout・再描画、close/reopenを検証する。
+2. Linux DRM/KMS direct-displayはconsole profileとして別扱いに保つ。KMS runtime resize実装はWayland desktop backendの方針と必要性が確定するまで保留する。既存TTY証跡はconsole profileに限定し、Wayland desktop passへ流用しない。
+3. 0.0.1 formal runtime profileとWayland support statusはRQ-11およびrelease profile文書の承認後に限って確定する。Waylandの実装順を決めただけで正式supportと表示しない。
+4. Wayland実装方式はまだ選ばない。native Wayland client + EGL surfaceとSDL等の既存platform libraryを、Rust統合、Core renderer接続、dependency/link/package、input/close/IME/scale、CIとVM実証で比較してからDD案で選定する。
+5. C ABIと各language wrapperの公開APIは変更しない案を初期値とする。既存backend選択契約へWayland backendを接続できない場合は、source変更前に設計差分を提示する。
 
-- RQ-11-003 / RQ-11-014: 現行Linux runtime profileはdirect-display/console条件付きであること、Waylandは0.0.1の後続候補であることを分けて明記する。
-- RQ-11-015: Wayland候補の対象版を0.0.1と明記し、候補登録のみではformal runtime supportにならないことを記す。X11は後続候補のまま。
-- RQ-11-022 / RQ-11-025: KMS console profileと将来Wayland desktop profileのbackend/default/failure境界が混ざらないか照合する。要求意味の追加が必要な場合だけ改訂案へ含める。
-- Platform BD: Linux direct-displayとcompositor-managed desktopのsurface責務・profile境界を分ける。Wayland flowの確定はWayland DD案の承認後とする。
-- Platform DD: Waylandを実装候補へ進める場合、`xdg_toplevel` lifecycle、configure/close/input ingress、EGL/Wayland surface、frame callback/presentation、DIP client-area/scale、failure/cleanup、worker/UI dispatcher flowを別のDD proposalとして提示する。公開C ABIは既存surface/backend選択契約内に保つ案を初期値とする。
-- Release tests: 既存Linux VM TCのdirect-KMS TTY evidenceにはdesktop support statusを混在させない。Wayland candidateは別profile scenario案として用意し、実装後のvisible Window/resize/close/reopenを配布artifact・同一candidate SHAに結び付ける。
+## 実施順
 
-## 調査・レビュー工程
+### A. feasibilityとprofile確認
 
-1. Ubuntu 24.04とDebian VMでWayland sessionの有無、Wayland/EGL runtime/dev package、available compositor protocolを読み取り確認する。候補対象OS/VM版はRQ-11承認時に確定する。
-2. Wayland client protocol、`xdg-shell`、EGL/GBM surface候補、native/runtime dependency、Linux CI/container bootstrap条件を調査し、candidate feasibility memoへ記録する。
-3. RQ-11-015を「0.0.1後続候補」とする要求文書改訂案を先に提示し、利用者承認を受ける。要求本文承認後にBD/DD/release-test文書案を順に提示し、各文書単位の承認を受ける。
-4. 文書承認後にWayland implementation planを別途作成・提示する。implementation plan承認までは依存追加・source/test変更をしない。
-5. Wayland実装が後続工程として選択・完了した場合、Wayland session上のvisible present/resize/close/reopenを候補OS別に検証する。候補のまま0.0.1を終える場合は、desktop support未対応として明示する。
+1. Debian 13 VMのgraphical session種類、Wayland socket、compositor、EGL/GLES、必要dev/runtime packageを読み取り確認する。通常desktop sessionから実行できる状態を作り、sudoやdisplay manager停止を利用条件にしない。
+2. Ubuntu profileについて、親support-scope planの対象版・VM準備状況・Wayland sessionを照合する。未準備profile用VMを重複作成しない。
+3. Rust native Wayland client構成とSDL等の既存抽象化libraryを比較する。Window create/present、configure/ack、surface buffer更新、close、input、DPI/scale、既存GLES rendererとの接続、build/link配布条件、license、CI testabilityを記録する。
+4. compositorがconfigureを送るだけで物理mode設定を保証しない境界、Wayland server/desktop integrationの依存と明示failureを記録する。
 
-## 受け入れ境界
+### B. 要求・設計レビュー案
 
-- TTY/KMS smokeはconsole direct-display profileの証拠に限定し、GNOME等のdesktop window supportを満たしたと扱わない。
-- Waylandは0.0.1内の後続候補として計画可能だが、candidate登録だけではruntime profile/formal supportにならない。実装・package・session上のvisible testに合格したprofileだけをsupport表へ載せる。
-- X11、multi-output、HiDPI/DPI migration、異なるGPU間migration、全IME/Accessibility保証は本提案だけでは追加しない。必要なら別のRQ/設計範囲を提示する。
-- 提案・文書承認・CI buildのみでWayland profileを正式support済みと表示しない。配布artifactを使った実sessionのvisible testを必須とする。
+1. 結果を基にRQ-11-015を後続候補のままにするか、0.0.1のLinux desktop implementation/support対象へ進めるか、profile/受入条件を変更する必要があるかを要求改訂案として提示する。RQ本文は利用者承認前に変更しない。
+2. RQ承認後、Platform BDへLinux desktop compositor-managed surfaceとdirect KMS console profileの責務を分ける案を提示する。
+3. BD承認後、Platform DDでWayland event loop/worker、xdg_toplevel configure・serial ack、EGL Wayland surface/buffer ownership、frame callback/present、close-request、input ingress、scale/client-area、failure/cleanupを具体化する。未決のIME/Accessibility範囲を暗黙に完了扱いしない。
+4. 設計文書の承認後、Waylandの実装unit・unit-test・release test matrix・VM visible testをまとめたimplementation planを別途提示する。計画承認前に依存追加・source/test変更をしない。
+
+### C. 実装・検証の候補分割
+
+設計承認後のimplementation planでは、責務を少なくとも次の実装単位へ分け、各unitに同revisionのtestを対応させる。
+
+1. Wayland connection/window lifecycleと明示failure、native EGL surface作成・破棄。
+2. xdg-shell configure状態機械、serial ackとbuffer resize/recreate、Core client-area sink通知。
+3. Core scene render/present/frame completionをWayland surfaceへ接続し、close/reopenを実装。
+4. 承認されたinput/close/scale要件を順に接続し、必要なunit testを追加する。
+5. Debian 13およびRQで承認されたUbuntu profileのWayland session上で、同一artifact SHAのvisible window/present/resize/close/reopenを確認する。build成功やTTY表示はdesktop runtime passとしない。
+
+## 合格境界
+
+- compositorから届くconfigureを最新serial規則に従って処理し、ack前に未設定bufferをcommitしない。
+- active Window generationのclient-areaをCoreへ通知し、Core layout/scene extentとpresent buffer pixel extentを正しく対応させる。
+- resize連続通知は未開始frameへ集約し、old generationや古いconfigureへの遅延responseが新状態を上書きしない。
+- surface/renderer更新中およびfailure後に不正なframeをPresentedとして報告しない。Window close/reopenとRuntime shutdownでnative resourceを一度だけ破棄する。
+- Wayland visible testは指定sessionの配布artifactで実施する。特定VMでの合格を別OS版、別compositor、物理GPUへ一般化しない。
+- formal support表示は承認済みRQの対象profileと対応release caseがすべてpassしたprofileに限る。
+
+## 実施しないこと
+
+- 今回のWayland計画から直接KMS runtime resizeの完了を推定すること。
+- X11 backend、multi-output、runtime backend切替、異なるGPU間移行、未承認のDPI/scale変更保証。
+- Wayland対応だけを根拠にIME、Accessibility、window decorations等の未検証範囲をsupport済みにすること。
+- 利用者が要求・設計・implementation planを承認する前の要求/設計正本変更、実装、依存追加、test登録、commit/push。
 
 ## 承認境界
 
-- 本文は「KMS direct-displayをconsole限定として正確に扱い、Wayland desktop backendを0.0.1の後続候補へ明記する」要求・計画範囲のレビュー提案である。Waylandを0.0.1の正式runtime supportにする確定ではない。
-- 利用者の対象範囲承認前にRQ/BD/DD正本を書き換えない。
-- 文書全体承認前にWayland実装・dependency追加・test登録・commit/pushを開始しない。
-- Linux DRM/KMS resize案は別profileの実装計画として維持し、Wayland作業で代替完了としない。
+- 本文はWaylandを0.0.1 Linux desktopの先行実装経路とし、feasibility、RQ/BD/DD review、実装計画の順に進む作業計画案である。
+- 利用者がこの計画本文を承認するまでは、依存追加、source/test変更、実装unit登録、commit/pushを行わない。
+- RQ、BD、DDは各文書全体の承認を得てから次段へ進む。既存承認範囲と不整合が見つかった場合は差異と改訂対象を先に示す。
+- 実装unitの対応test合格後は日本語commit/pushし、Wayland計画の関連TODO完了後にまとめてmerge PRを出す。
 
 ## レビュー履歴
 
 | 日付 | 対象 | 状態 | 備考 |
 |---|---|---|---|
-| 2026-11-13 | 提案0.1 | 利用者レビュー待ち | 利用者の「後続候補として0.0.1に含まれてるのならいいですよ」を反映。Waylandを0.0.1内の後続候補として明記し、KMS TTY evidenceとdesktop supportを分離する案。RQ/BD/DD/試験文書は未変更 |
+| 2026-11-13 | 計画0.1 | Waylandを後続候補とする案 | RQ/BD/DDは未変更。KMS resizeは別profile計画 |
+| 2026-11-14 | 計画0.2 | 利用者レビュー待ち | 利用者がWayland先行を選択。Wayland正式support、実装方式、要求対象範囲は未決。実装未着手 |

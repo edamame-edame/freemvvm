@@ -1,7 +1,7 @@
 # Linux DRM/KMS runtime resize 実装計画案
 
 - 計画版: 0.1
-- 状態: レビュー案（未承認、実装未着手）
+- 状態: 保留。Wayland desktop経路を先行し、本計画の実施要否・順序はその後に再評価する。未承認、実装未着手
 - 対象version: `0.0.1`
 - 対象branch: `change/platform-support-scope`
 - 親計画: [0.0.1 Linux LTS profile追加・順次検証計画](release-0.0.1-linux-lts-profile-verification.md)
@@ -11,6 +11,8 @@
 - unit-test設計: [unit-test strategy](../32_unit_test/unit-test-strategy.md)、[UI test design](../32_unit_test/ui.md)
 
 ## 背景
+
+2026-11-14に利用者がLinux desktop経路としてWaylandを先行する方針を選択したため、本計画の直接KMS runtime resizeは先行実装対象から外し保留する。Wayland window resizeとKMS console mode resizeは別profile・別責務であり、一方の実装/合格で他方を代替しない。
 
 Debian 13 VirtualBoxでLinux DRM/KMS + GBM/EGL/GLES artifactのvisible present、背景redraw、close/reopen後の再presentを確認した。画面modeがopen時に固定され、runtimeのconnector/mode変更をLinux peerがCoreへ通知する経路は現状ない。承認済みrelease test `TC-TARGET-LNX-VM-01` はresize/redraw確認を含む。
 
@@ -82,3 +84,4 @@ DRM connectorの変更通知を受けて現行選択outputを再probeし、同�
 | 日付 | 対象 | 状態 | 備考 |
 |---|---|---|---|
 | 2026-11-13 | 計画0.1 | 利用者レビュー待ち | 利用者の「0.0.1に含める。DD案を先にレビューし、承認後に実装計画を作成」に対応。DD 1.5 resize契約は既に全文承認済みのため、本書を実装計画案として作成。実装未着手 |
+| 2026-11-14 | 実施順変更 | 保留 | Wayland desktop backendを先行する利用者判断により、直接KMS runtime resizeはWayland経路確定後に再評価する。計画本文の実装・依存追加・test登録は未承認 |
