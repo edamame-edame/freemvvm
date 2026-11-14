@@ -60,6 +60,7 @@ use freemvvm_core::abi_support::{
     ui_control_create_text as core_ui_control_create_text,
     ui_control_create_text_box as core_ui_control_create_text_box,
     ui_control_create_window as core_ui_control_create_window,
+    ui_control_create_window_with_options as core_ui_control_create_window_with_options,
     ui_control_create_window_with_presentation_backend as core_ui_control_create_window_with_presentation_backend,
     ui_control_is_enabled_property as core_ui_control_is_enabled_property,
     ui_control_text_box_value_property as core_ui_control_text_box_value_property,
@@ -139,7 +140,7 @@ const UI_CLOSE_DECLINE: u32 = 2;
 const NUMERIC_NARROW_EXACT: u32 = 0;
 const NUMERIC_NARROW_NEAREST_EVEN: u32 = 1;
 const RUNTIME_VERSION_MAJOR: u32 = 1;
-const RUNTIME_VERSION_MINOR: u32 = 0;
+const RUNTIME_VERSION_MINOR: u32 = 1;
 const RUNTIME_VERSION_PATCH: u32 = 0;
 
 type WindowCloseCallback = unsafe extern "C" fn(*mut c_void, u64);
@@ -2199,6 +2200,64 @@ pub unsafe extern "C" fn ui_abi_1_window_create_with_presentation_backend(
     }
 }
 
+/// Create an empty Window Control with an optional backend and initial client size request.
+///
+/// # Safety
+/// `presentation_backend_byte_length == 0` permits a null pointer and selects the artifact
+/// default. A positive length requires readable UTF-8 storage at `presentation_backend_utf8`.
+/// `out_window` must be non-null writable storage; non-null `out_error` must also be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ui_abi_1_window_create_with_initial_client_size(
+    runtime: u64,
+    presentation_backend_utf8: *const u8,
+    presentation_backend_byte_length: u64,
+    width_dip: f64,
+    height_dip: f64,
+    out_window: *mut u64,
+    out_error: *mut u64,
+) -> u32 {
+    // SAFETY: optional output writability is part of this function's contract.
+    unsafe { clear_error_output(out_error) };
+    if out_window.is_null() {
+        return UI_INVALID_ARGUMENT;
+    }
+    // SAFETY: required output writability is part of this function's contract.
+    unsafe { out_window.write(0) };
+
+    if !width_dip.is_finite() || !height_dip.is_finite() || width_dip <= 0.0 || height_dip <= 0.0 {
+        return UI_INVALID_ARGUMENT;
+    }
+
+    let backend_identity =
+        if presentation_backend_utf8.is_null() && presentation_backend_byte_length == 0 {
+            None
+        } else {
+            // SAFETY: input pointer/length requirements are part of this function's contract.
+            let bytes = match unsafe {
+                read_utf8_input(presentation_backend_utf8, presentation_backend_byte_length)
+            } {
+                Ok(bytes) if !bytes.is_empty() => bytes,
+                Ok(_) => return UI_INVALID_ARGUMENT,
+                Err(status) => return status,
+            };
+            match std::str::from_utf8(bytes) {
+                Ok(identity) => Some(identity),
+                Err(_) => return UI_INVALID_ARGUMENT,
+            }
+        };
+
+    match catch_ui_control(|| {
+        core_ui_control_create_window_with_options(runtime, backend_identity, width_dip, height_dip)
+    }) {
+        Ok(handle) => {
+            // SAFETY: required output pointer was checked non-null above.
+            unsafe { out_window.write(handle) };
+            UI_OK
+        }
+        Err(status) => status,
+    }
+}
+
 /// Create an empty StackPanel Control.
 ///
 /// # Safety
@@ -3082,9 +3141,10 @@ pub unsafe extern "C" fn ui_abi_1_has_feature(feature_id: u32, out_supported: *m
         return UI_INVALID_ARGUMENT;
     }
 
-    if feature_id == 3 || feature_id == 7 || feature_id == 8 || feature_id == 9 {
+    if feature_id == 3 || feature_id == 7 || feature_id == 8 || feature_id == 9 || feature_id == 10
+    {
         // Feature 3 is numeric conversion, 7 is Runtime post/dispatch, 8 is the complete initial
-        // UI Control contract, and 9 is the complete typed UI Input event contract.
+        // UI Control contract, 9 is typed UI Input, and 10 is initial Window client sizing.
         // SAFETY: the caller guarantees that the non-null output points to writable `u8` storage.
         unsafe { out_supported.write(1) };
     }
@@ -3135,6 +3195,7 @@ mod tests {
         ui_abi_1_window_background_rgb, ui_abi_1_window_clear_content, ui_abi_1_window_close,
         ui_abi_1_window_close_request_defer, ui_abi_1_window_close_request_resolve,
         ui_abi_1_window_close_request_subscribe, ui_abi_1_window_content, ui_abi_1_window_create,
+        ui_abi_1_window_create_with_initial_client_size,
         ui_abi_1_window_create_with_presentation_backend, ui_abi_1_window_open,
         ui_abi_1_window_reset_background_rgb, ui_abi_1_window_set_background_rgb,
         ui_abi_1_window_set_content, ui_abi_1_window_title_property,
@@ -3802,6 +3863,182 @@ mod tests {
 
         assert_eq!(ui_abi_1_handle_release(explicit_window), UI_OK);
         assert_eq!(ui_abi_1_handle_release(default_window), UI_OK);
+    }
+
+    #[test]
+    fn window_create_with_initial_client_size_validates_options_and_preserves_legacy_create() {
+        let selected = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let runtime = freemvvm_core::abi_support::runtime_create_handle_with_platform_factory(
+            std::sync::Arc::new(AbiSelectorTestFactory(std::sync::Arc::clone(&selected))),
+        )
+        .expect("create Runtime with selector factory");
+
+        let mut feature_supported = 0;
+        assert_eq!(
+            // SAFETY: output is writable.
+            unsafe { ui_abi_1_has_feature(10, &mut feature_supported) },
+            UI_OK
+        );
+        assert_eq!(feature_supported, 1);
+
+        let mut default_window = u64::MAX;
+        let mut error = u64::MAX;
+        assert_eq!(
+            // SAFETY: null/zero selects the artifact default; output pointers are writable.
+            unsafe {
+                ui_abi_1_window_create_with_initial_client_size(
+                    runtime,
+                    std::ptr::null(),
+                    0,
+                    640.0,
+                    480.0,
+                    &mut default_window,
+                    &mut error,
+                )
+            },
+            UI_OK
+        );
+        assert_ne!(default_window, 0);
+        assert_eq!(error, 0);
+        assert_eq!(
+            // SAFETY: the Window and optional error output are live.
+            unsafe { ui_abi_1_window_open(default_window, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            *selected.lock().expect("selected backend lock"),
+            ["test.default"]
+        );
+
+        let backend = b"test.alpha";
+        let mut explicit_window = 0;
+        assert_eq!(
+            // SAFETY: backend bytes are readable for their length and outputs are writable.
+            unsafe {
+                ui_abi_1_window_create_with_initial_client_size(
+                    runtime,
+                    backend.as_ptr(),
+                    backend.len() as u64,
+                    801.5,
+                    600.25,
+                    &mut explicit_window,
+                    std::ptr::null_mut(),
+                )
+            },
+            UI_OK
+        );
+        assert_ne!(explicit_window, 0);
+        assert_eq!(
+            // SAFETY: the Window is live and the optional error output may be null.
+            unsafe { ui_abi_1_window_open(explicit_window, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_eq!(
+            *selected.lock().expect("selected backend lock"),
+            ["test.default", "test.alpha"]
+        );
+
+        for (width, height) in [
+            (0.0, 1.0),
+            (-1.0, 1.0),
+            (f64::NAN, 1.0),
+            (f64::INFINITY, 1.0),
+            (f64::NEG_INFINITY, 1.0),
+            (1.0, 0.0),
+            (1.0, -1.0),
+            (1.0, f64::NAN),
+            (1.0, f64::INFINITY),
+            (1.0, f64::NEG_INFINITY),
+        ] {
+            let mut rejected_window = u64::MAX;
+            error = u64::MAX;
+            assert_eq!(
+                // SAFETY: default backend and writable output pointers are valid.
+                unsafe {
+                    ui_abi_1_window_create_with_initial_client_size(
+                        runtime,
+                        std::ptr::null(),
+                        0,
+                        width,
+                        height,
+                        &mut rejected_window,
+                        &mut error,
+                    )
+                },
+                UI_INVALID_ARGUMENT
+            );
+            assert_eq!(rejected_window, 0);
+            assert_eq!(error, 0);
+        }
+
+        let invalid_utf8 = [0xff_u8];
+        for (identity, length) in [
+            (std::ptr::null(), 1),
+            (b"".as_ptr(), 0),
+            (invalid_utf8.as_ptr(), 1),
+            (b"missing".as_ptr(), b"missing".len() as u64),
+        ] {
+            let mut rejected_window = u64::MAX;
+            error = u64::MAX;
+            assert_eq!(
+                // SAFETY: each non-null input is readable for the declared length.
+                unsafe {
+                    ui_abi_1_window_create_with_initial_client_size(
+                        runtime,
+                        identity,
+                        length,
+                        640.0,
+                        480.0,
+                        &mut rejected_window,
+                        &mut error,
+                    )
+                },
+                UI_INVALID_ARGUMENT
+            );
+            assert_eq!(rejected_window, 0);
+            assert_eq!(error, 0);
+        }
+
+        let mut null_output_error = u64::MAX;
+        assert_eq!(
+            // SAFETY: null required output is rejected; other pointers are valid.
+            unsafe {
+                ui_abi_1_window_create_with_initial_client_size(
+                    runtime,
+                    std::ptr::null(),
+                    0,
+                    640.0,
+                    480.0,
+                    std::ptr::null_mut(),
+                    &mut null_output_error,
+                )
+            },
+            UI_INVALID_ARGUMENT
+        );
+        assert_eq!(null_output_error, 0);
+
+        assert_eq!(
+            // SAFETY: valid Window and writable error output.
+            unsafe { ui_abi_1_window_close(default_window, &mut error) },
+            UI_OK
+        );
+        assert_eq!(
+            // SAFETY: valid Window and writable error output.
+            unsafe { ui_abi_1_window_close(explicit_window, &mut error) },
+            UI_OK
+        );
+        assert_eq!(ui_abi_1_handle_release(default_window), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(explicit_window), UI_OK);
+
+        let mut legacy_window = 0;
+        assert_eq!(
+            // SAFETY: output is writable; optional error output may be null.
+            unsafe { ui_abi_1_window_create(runtime, &mut legacy_window, std::ptr::null_mut()) },
+            UI_OK
+        );
+        assert_ne!(legacy_window, 0);
+        assert_eq!(ui_abi_1_handle_release(legacy_window), UI_OK);
+        assert_eq!(ui_abi_1_handle_release(runtime), UI_OK);
     }
 
     #[test]
@@ -5013,7 +5250,7 @@ mod tests {
         let status = unsafe { ui_abi_1_get_version(&mut major, &mut minor, &mut patch) };
 
         assert_eq!(status, UI_OK);
-        assert_eq!((major, minor, patch), (1, 0, 0));
+        assert_eq!((major, minor, patch), (1, 1, 0));
     }
 
     #[test]
@@ -7103,6 +7340,12 @@ mod tests {
         let status = unsafe { ui_abi_1_has_feature(9, &mut input_supported) };
         assert_eq!(status, UI_OK);
         assert_eq!(input_supported, 1);
+
+        let mut initial_client_size_supported = 0;
+        // SAFETY: the output points to writable storage.
+        let status = unsafe { ui_abi_1_has_feature(10, &mut initial_client_size_supported) };
+        assert_eq!(status, UI_OK);
+        assert_eq!(initial_client_size_supported, 1);
 
         let mut unknown_supported = 1;
         // SAFETY: `unknown_supported` is valid writable storage for the output value.

@@ -2834,7 +2834,7 @@
 - 前提・操作・観測: Window初期client sizeを省略した場合と、有限かつ正の幅/高さをDIPで指定した場合を確認する。指定後はpeer/compositorが返す実client areaを取得し、Layoutへ使われる値を記録する。zero、負、NaN、±Infinityを入力し、Window生成状態と出力handleを観測する。
 - 期待結果: 省略時の希望寸法は800×600 DIP。明示値は初回表示時の希望値として保持される。OS/window systemが異なる実client areaを返した場合は、その実寸を取得して使用し、希望値との一致を必須にしない。無効寸法はWindow生成を拒否し、部分状態を公開しない。
 - 後始末: Window、Runtime、peer/fake providerを解放し、生成前後のlive handle/store件数が整合することを確認する。
-- 状態: case/assertion承認済み。実test ID/command/SHA/profile/reportは未登録。
+- 状態: case/assertion承認済み。Core/C ABI unitはpass。profile runtimeの実test ID/artifact SHA/profile/reportは未登録。
 
 ## 承認履歴（今回）
 

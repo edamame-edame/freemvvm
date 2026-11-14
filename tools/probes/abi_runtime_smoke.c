@@ -27,7 +27,7 @@ int main(void) {
   uint32_t minor = 0;
   uint32_t patch = 0;
   if (ui_abi_1_get_version(&major, &minor, &patch) != UI_OK || major != 1 ||
-      minor != 0 || patch != 0) {
+      minor != 1 || patch != 0) {
     fputs("unexpected runtime version\n", stderr);
     return 1;
   }
@@ -59,6 +59,18 @@ int main(void) {
     fputs("explicit presentation backend Window creation failed\n", stderr);
     (void)ui_abi_1_handle_release(runtime);
     return 16;
+  }
+
+  ui_bool initial_size_supported = 0;
+  ui_handle sized_window = 0;
+  if (ui_abi_1_has_feature(10, &initial_size_supported) != UI_OK ||
+      initial_size_supported != 1 ||
+      ui_abi_1_window_create_with_initial_client_size(
+          runtime, 0, 0, 640.0, 480.0, &sized_window, 0) != UI_OK ||
+      sized_window == 0 || ui_abi_1_handle_release(sized_window) != UI_OK) {
+    fputs("Window initial client size feature/create failed\n", stderr);
+    (void)ui_abi_1_handle_release(runtime);
+    return 17;
   }
 
   ui_handle window = 0;

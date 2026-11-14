@@ -406,7 +406,7 @@ IDは論理caseであり、実test function・framework・jobの確定ではな�
 | [RQ-12-025](../11_requirements/RQ-12_build-distribution.md#rq-12-025) | [TC-ARCH-01](requirement-test-matrix.md#case-tc-arch-01) | [RQ-12-025のassertion](requirements-test-assertions.md#assert-rq-12-025) | 観測設計済 / 初期共通基盤 | 未実装/未実行・SHA/path未登録 |
 | [RQ-09-073](../11_requirements/RQ-09_ui-scope.md#rq-09-073) | [TC-FEATURE-NEXT-10](requirement-test-matrix.md#case-tc-feature-next-10)、[TC-FEATURE-NEXT-11](requirement-test-matrix.md#case-tc-feature-next-11)、[TC-FEATURE-NEXT-12](requirement-test-matrix.md#case-tc-feature-next-12)、[TC-FEATURE-NEXT-13](requirement-test-matrix.md#case-tc-feature-next-13) | [RQ-09-073のassertion](requirements-test-assertions.md#assert-rq-09-073) | 観測設計済 / 次段階 | 未実装/未実行・SHA/path未登録 |
 | [RQ-09-074](../11_requirements/RQ-09_ui-scope.md#rq-09-074) | [TC-WINDOW-BG-01](requirement-test-matrix.md#case-tc-window-bg-01) | [RQ-09-074のassertion](requirements-test-assertions.md#assert-rq-09-074) | 観測設計済 / 初期共通基盤 | 未実装/未実行・SHA/path未登録 |
-| [RQ-09-076](../11_requirements/RQ-09_ui-scope.md#rq-09-076) | [TC-WINDOW-INITIAL-SIZE-01](requirement-test-matrix.md#case-tc-window-initial-size-01) | [RQ-09-076のassertion](requirements-test-assertions.md#assert-rq-09-076) | 1.1 case/assertion承認済み | 未実装/未実行・SHA/profile/path未登録 |
+| [RQ-09-076](../11_requirements/RQ-09_ui-scope.md#rq-09-076) | [TC-WINDOW-INITIAL-SIZE-01](requirement-test-matrix.md#case-tc-window-initial-size-01) | [RQ-09-076のassertion](requirements-test-assertions.md#assert-rq-09-076) | 1.1 case/assertion承認済み | Core/C ABI unit pass。Wayland/OS profile runtime test未実施 |
 
 ## 4. case→RQ逆引き
 

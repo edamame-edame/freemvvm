@@ -48,7 +48,8 @@ wrapper中にCore/C ABI変更が必要と判明したらwrapper作業を止め�
 ### 進捗（2026-11-14）
 
 - `UNIT-CORE-095` complete: `WindowInitialClientSize`の800×600 DIP defaultと有限・正値検証、Window生成時保持、peer size-aware open受渡し、実client areaでのLayout、close/reopen値保持を実装。Core focused testとCore全206 testsがpass。
-- `UNIT-ABI-024`を次の実装unitとする。ABI API、feature 10、C/C++ header/runtime probesは未実装。
+- `UNIT-ABI-024` complete: additive create symbol、optional backendとDIP希望寸法、feature 10、ABI runtime version 1.1.0、C/C++ header/runtime smokeを実装。C ABI全43 testsとClippy、header compile probes、ABI C/C++ runtime smokeがpass。C++ property subscriptionを含む全CTestではstderr capture testが1件fail（今回変更外）。
+- C ABI実装後もWayland visible present/configure resizeは未実装。各Platform/wrapper unitとDebian/Ubuntu profile試験で確認する。
 - Platform peerの既存`open(generation)`は維持し、default `open_with_initial_client_size`へ追加委譲する。旧peerの互換動作を保ち、Wayland unitでサイズ適用を具体化する。
 
 実装台帳 (`tools/units.yaml` と責務別 `tools/units/*.yaml`) にsource/config/test-design path、依存unit、RQ・承認設計、test command、release caseを追加する。ID重複または現在の最大番号更新があれば仮IDを繰り下げる。test IDは既存命名規則と文書全体整合を見て登録する。

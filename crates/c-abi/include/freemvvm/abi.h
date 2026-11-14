@@ -242,6 +242,10 @@ ui_status ui_abi_1_window_create_with_presentation_backend(
     ui_handle runtime, const uint8_t *backend_id_utf8,
     uint64_t backend_id_byte_length, ui_handle *out_window,
     ui_handle *out_error);
+ui_status ui_abi_1_window_create_with_initial_client_size(
+    ui_handle runtime, const uint8_t *presentation_backend_utf8,
+    uint64_t presentation_backend_byte_length, double width_dip,
+    double height_dip, ui_handle *out_window, ui_handle *out_error);
 ui_status ui_abi_1_stack_panel_create(ui_handle runtime,
                                       ui_handle *out_panel,
                                       ui_handle *out_error);

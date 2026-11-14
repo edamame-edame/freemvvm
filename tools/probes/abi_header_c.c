@@ -15,6 +15,9 @@ static ui_status (*const window_create_signature)(ui_handle, ui_handle *,
 static ui_status (*const window_create_with_backend_signature)(
     ui_handle, const uint8_t *, uint64_t, ui_handle *, ui_handle *) =
     &ui_abi_1_window_create_with_presentation_backend;
+static ui_status (*const window_create_with_initial_size_signature)(
+    ui_handle, const uint8_t *, uint64_t, double, double, ui_handle *,
+    ui_handle *) = &ui_abi_1_window_create_with_initial_client_size;
 static ui_status (*const container_insert_signature)(ui_handle, ui_handle,
                                                      uint64_t, ui_handle *) =
     &ui_abi_1_container_insert;
@@ -40,6 +43,7 @@ int freemvvm_abi_header_c_probe(void) {
   return runtime_create_signature != 0 && property_set_i64_signature != 0 &&
          subscribe_signature != 0 && window_create_signature != 0 &&
          window_create_with_backend_signature != 0 &&
+         window_create_with_initial_size_signature != 0 &&
          container_insert_signature != 0 && button_command_signature != 0 &&
          widget_focus_signature != 0 && window_close_subscribe_signature != 0 &&
          close_request_defer_signature != 0 && input_subscribe_signature != 0 &&
