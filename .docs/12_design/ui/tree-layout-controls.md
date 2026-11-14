@@ -3,7 +3,7 @@
 - 文書版: 1.2
 - 文書ロール: basic-design
 - 更新日: 2026-11-14
-- 状態: 1.1全文承認済み（利用者、2026-10-30）。1.2改訂案レビュー待ち。実装・試験状態は別管理
+- 状態: 1.1全文承認済み（利用者、2026-10-30）。1.2全文承認済み（利用者、2026-11-14）。実装・試験状態は別管理
 
 ## 目的と責務境界
 
@@ -22,7 +22,7 @@
 | Measure/Arrangeと配置責務 | [RQ-02-008](../../11_requirements/RQ-02_core-features.md#rq-02-008)、[RQ-09-007](../../11_requirements/RQ-09_ui-scope.md#rq-09-007)、[RQ-09-008](../../11_requirements/RQ-09_ui-scope.md#rq-09-008)、[RQ-09-045](../../11_requirements/RQ-09_ui-scope.md#rq-09-045)、[RQ-09-057](../../11_requirements/RQ-09_ui-scope.md#rq-09-057)、[RQ-09-058](../../11_requirements/RQ-09_ui-scope.md#rq-09-058)、[RQ-09-059](../../11_requirements/RQ-09_ui-scope.md#rq-09-059)、[RQ-09-060](../../11_requirements/RQ-09_ui-scope.md#rq-09-060)、[RQ-09-061](../../11_requirements/RQ-09_ui-scope.md#rq-09-061) |
 | WindowとFocusの状態管理 | [RQ-02-010](../../11_requirements/RQ-02_core-features.md#rq-02-010)、[RQ-09-009](../../11_requirements/RQ-09_ui-scope.md#rq-09-009)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-046](../../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-049](../../11_requirements/RQ-09_ui-scope.md#rq-09-049)、[RQ-10-008](../../11_requirements/RQ-10_accessibility.md#rq-10-008) |
 | 共通Controlの構成と接続 | [RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-002](../../11_requirements/RQ-09_ui-scope.md#rq-09-002)、[RQ-09-003](../../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-09-004](../../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-005](../../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-006](../../11_requirements/RQ-09_ui-scope.md#rq-09-006)、[RQ-09-007](../../11_requirements/RQ-09_ui-scope.md#rq-09-007)、[RQ-09-009](../../11_requirements/RQ-09_ui-scope.md#rq-09-009)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-011](../../11_requirements/RQ-09_ui-scope.md#rq-09-011)、[RQ-09-045](../../11_requirements/RQ-09_ui-scope.md#rq-09-045)、[RQ-09-046](../../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-047](../../11_requirements/RQ-09_ui-scope.md#rq-09-047)、[RQ-09-048](../../11_requirements/RQ-09_ui-scope.md#rq-09-048)、[RQ-09-074](../../11_requirements/RQ-09_ui-scope.md#rq-09-074)、[RQ-10-003](../../11_requirements/RQ-10_accessibility.md#rq-10-003)、[RQ-10-008](../../11_requirements/RQ-10_accessibility.md#rq-10-008)、[RQ-10-012](../../11_requirements/RQ-10_accessibility.md#rq-10-012) |
-| Window初期client size設定とPlatform実寸の受渡し | [RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)（改訂案） |
+| Window初期client size設定とPlatform実寸の受渡し | [RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076) |
 
 ## Layout・座標・Input route・Tree所属
 
@@ -139,6 +139,7 @@ flowchart TD
 | 2026-10-30 | 本書1.1改訂案 | — | RQ-09-074に対応するWindow単位override、opaque white default、paint-only invalidation、SceneSnapshotへのCore解決値伝達を追加。全文レビュー待ち |
 | 2026-10-30 | 本書1.1全文 | 利用者 | 「ok」によりWindow背景色のCore state・paint/scene flowを含む全文を承認。実装・試験合格を意味しない |
 | 2026-11-14 | 本書1.2改訂案 | — | RQ-09-076案に基づきWindow初期client size希望値（省略時800×600 DIP）をCoreからPlatformへ渡し、実client areaをLayoutに使う責務分離を追加。全文レビュー待ち |
+| 2026-11-14 | 本書1.2全文 | 利用者 | 「ok」によりWindow初期client size希望値、省略時800×600 DIP、実client areaをLayoutへ渡すflowを含む文書全体を承認。実装・試験状態は別管理 |
 
 ## 改訂履歴
 
@@ -146,4 +147,4 @@ flowchart TD
 | --- | --- | --- | --- | --- |
 | 1.0 | 2026-10-17 | 利用者のBD再編集指示に基づき責務別に再構成。旧設計ID追跡を廃止 | Codex | 既承認内容の継承と再編集版全文の承認を区別 |
 | 1.1 | 2026-10-30 | Window背景色のCore ownershipとpaint/scene dirty伝播を追加 | Codex | 全文承認済み。実装・試験は別管理 |
-| 1.2改訂案 | 2026-11-14 | Window初期client size希望値のCore ownershipとPlatform実寸受渡しを追加 | Codex | 全文レビュー待ち |
+| 1.2 | 2026-11-14 | Window初期client size希望値のCore ownershipとPlatform実寸受渡しを追加 | Codex | 全文承認済み |

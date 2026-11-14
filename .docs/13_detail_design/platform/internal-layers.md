@@ -3,7 +3,7 @@
 - 文書版: 2.9
 - 文書ロール: detailed-design
 - 更新日: 2026-11-14
-- 状態: 2.7全文承認済み（利用者、2026-11-09）。2.8全文承認済み（利用者、2026-11-10）。2.9改訂案レビュー待ち。実装・試験状態は別管理
+- 状態: 2.7全文承認済み（利用者、2026-11-09）。2.8全文承認済み（利用者、2026-11-10）。2.9全文承認済み（利用者、2026-11-14）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -70,7 +70,7 @@ Ubuntu desktop session用Wayland/X11 adapter、Windows上のOpenGL/Vulkan候補�
 | --- | --- |
 | Control接続・Window peer・描画backend | [RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-006](../../11_requirements/RQ-09_ui-scope.md#rq-09-006)、[RQ-09-048](../../11_requirements/RQ-09_ui-scope.md#rq-09-048)、[RQ-09-058](../../11_requirements/RQ-09_ui-scope.md#rq-09-058)、[RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-09-072](../../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-11-008](../../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-009](../../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022) |
 | profile別既定backend・利用者選択 | [RQ-11-021](../../11_requirements/RQ-11_platform.md#rq-11-021)、[RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-024](../../11_requirements/RQ-11_platform.md#rq-11-024)、[RQ-11-025](../../11_requirements/RQ-11_platform.md#rq-11-025) |
-| Window初期client size設定とPlatform実寸 | [RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)（改訂案）、[RQ-09-067](../../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-11-015](../../11_requirements/RQ-11_platform.md#rq-11-015) |
+| Window初期client size設定とPlatform実寸 | [RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)、[RQ-09-067](../../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-11-015](../../11_requirements/RQ-11_platform.md#rq-11-015) |
 | Linux Wayland desktop peer・configure・present・close | [RQ-09-067](../../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-11-014](../../11_requirements/RQ-11_platform.md#rq-11-014)、[RQ-11-015](../../11_requirements/RQ-11_platform.md#rq-11-015)、[RQ-11-020](../../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-021](../../11_requirements/RQ-11_platform.md#rq-11-021)、[RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-025](../../11_requirements/RQ-11_platform.md#rq-11-025)、[RQ-12-010](../../11_requirements/RQ-12_build-distribution.md#rq-12-010) |
 | Text engine・IME・OS Accessibility | [RQ-09-053](../../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-054](../../11_requirements/RQ-09_ui-scope.md#rq-09-054)、[RQ-10-001](../../11_requirements/RQ-10_accessibility.md#rq-10-001)、[RQ-10-005](../../11_requirements/RQ-10_accessibility.md#rq-10-005)、[RQ-10-007](../../11_requirements/RQ-10_accessibility.md#rq-10-007)、[RQ-10-011](../../11_requirements/RQ-10_accessibility.md#rq-10-011)、[RQ-10-013](../../11_requirements/RQ-10_accessibility.md#rq-10-013)、[RQ-10-014](../../11_requirements/RQ-10_accessibility.md#rq-10-014)、[RQ-11-023](../../11_requirements/RQ-11_platform.md#rq-11-023) |
 
@@ -103,7 +103,7 @@ Control APIとWindow close requestのCore処理は[UIクラス設計](../ui/cont
 
 backend identity文字列とC ABI symbol、wrapper idiom、backend registry API、plugin ABI/loader lifecycleは本案だけで確定しない。Python pluginを採るか、完全なbackend別runtime artifactを採るかは[package DD](../build/toolchain-packages.md)の同版レビュー範囲に含める。選択可能identityはprofileが実際に収録・登録したdescriptorだけをpackage/profile資料で公表する。
 
-### 2.9改訂案: Linux Wayland desktop peerと既存GLES renderer接続（文書全体レビュー待ち）
+### 2.9: Linux Wayland desktop peerと既存GLES renderer接続（全文承認済み）
 
 本案は承認済み[RQ-11 0.8](../../11_requirements/RQ-11_platform.md)、[RQ-12 0.7](../../11_requirements/RQ-12_build-distribution.md)、[Platform BD 1.4](../../12_design/platform/abstraction.md)を、通常desktop session上のWindow peerへ具体化する。Wayland desktopはcompositor-managed surface、既存DRM/KMSは別console profileであり、同じartifactに含める場合も選択済みWindow backend以外へfallbackしない。Wayland sessionが使えない場合にDRM/KMS direct-displayへ切り替えない。
 
@@ -155,7 +155,7 @@ classDiagram
 4. `xdg_toplevel.configure`が幅または高さに正値を返した軸はcompositor提示値を実寸として使い、0を返した軸はWindowの初期希望値を使う。xdg-shellに初期寸法をcompositorへ強制する要求はないため、希望値どおりの寸法になる保証はしない。serialをackした後、決定したsurface論理client areaと初期DeviceScaleからWayland EGL window、EGL display/context/surface、`GlesRenderer`をworker上で初期化する。surface準備と最初の可視buffer commitは区別し、open成功はvisible present成功を意味しない。
 5. `WindowOpenInfo`相当のinitial client area/DeviceScaleをCoreへ返す。Core UI threadはLayoutを計算しSceneSnapshotを作ってworkerへsubmitし、workerが最初のbufferをrender/swap/commitしてWindowをmapする。
 
-初期client sizeは[RQ-09-076改訂案](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)のWindow設定からCoreが初回peer openへ渡す。未指定時の共通既定値は800×600 DIP。Waylandの初回configureで正値がある軸はcompositor値を使い、0の軸は希望値でsurface bufferを初期化する。したがってこの設定は初回寸法の希望であり、Wayland compositorが提示する実寸を上書きする保証ではない。実寸を`WindowOpenInfo`としてCoreへ返し、その寸法でLayout/Sceneを計算する。[xdg-shell configure](https://wayland.app/protocols/xdg-shell)
+初期client sizeは[RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)のWindow設定からCoreが初回peer openへ渡す。未指定時の共通既定値は800×600 DIP。Waylandの初回configureで正値がある軸はcompositor値を使い、0の軸は希望値でsurface bufferを初期化する。したがってこの設定は初回寸法の希望であり、Wayland compositorが提示する実寸を上書きする保証ではない。実寸を`WindowOpenInfo`としてCoreへ返し、その寸法でLayout/Sceneを計算する。[xdg-shell configure](https://wayland.app/protocols/xdg-shell)
 
 #### configure、resize、DeviceScale
 
@@ -196,13 +196,14 @@ classDiagram
 - Wayland keyboard/pointer event ingress、clipboard/data-device、IME、Accessibilityはこの2.9 window-render unitで実装済みとしない。既存neutral Input sinkへの接続は個別RQ/DD/test scopeを照合して、後続unitの計画に含める。
 - X11、layer-shell/popup/subsurface、複数output移行、fractional scale、色管理/HDR、window placement API、Wayland reconnect、runtime backend hot-swapを追加しない。
 - Debian 13の現在sessionでは`libwayland-dev`がなく、開発package追加は未実施。Debian/Ubuntu package matrix、system linking、Python native artifact収録、ライセンス、Rust 1.85互換crate lockをimplementation planで承認後に決める。
-- Window initial client sizeの公開設定、省略時800×600 DIP、無効値拒否、Platform実寸との差はRQ-09-076/ UI DD 1.8の文書全体承認が実装前gateとなる。
+- Linux Waylandのcrate組合せはRust 1.85 lock/MSRV検証、Debian 13/12およびUbuntu 24.04/26.04のdevelopment package/system link確認を実装前gateとする。
 
-### 2.9改訂履歴案
+### 2.9改訂・承認履歴
 
 | 日付 | 対象版 | 状態 | 範囲 |
 | --- | --- | --- | --- |
 | 2026-11-14 | 2.9改訂案 | 文書全体レビュー待ち | Wayland client + EGL/GLES構成、worker ownership、configure/resize/close/presentを追加。初期client sizeはRQ/UI決定待ち。2.8承認範囲を維持 |
+| 2026-11-14 | 2.9全文 | 利用者承認 | 「ok」によりWayland client + EGL/GLES構成、初期client size希望値、configure/resize/close/present、ownership/failure境界を含む文書全体を承認。実装・試験は別管理 |
 
 ### 実現設計
 
@@ -674,4 +675,4 @@ sequenceDiagram
 | 2026-11-09 | 2.7全文 | 利用者の「ok」によりprofileごとのdefault、Window単位の明示選択、surface/renderer互換性、non-fallback境界を含む文書全体を承認。公開API・実装・試験は別管理 |
 | 2026-11-10 | 2.8改訂案 | Window構築時の選択、Window object寿命中の固定、close/reopen後の同一選択再利用を提案。2.7のprofile/default・非互換/failure/no-fallback契約は維持し、選択時期に関する差分を明示。文書全体レビュー待ち |
 | 2026-11-10 | 2.8全文 | 利用者の「ok」によりWindow構築時のbackend選択・固定、open時適合確認、close/reopen同一選択を含む全文を承認。実装・試験は別管理 |
-| 2026-11-14 | 2.9改訂案 | Wayland client + EGL/GLES接続、xdg-shell configure/resize/close、thread ownership、frame completion、profile failure boundary、Window初期client size希望値の受渡しを提案。RQ-09-076改訂案/UI DD 1.8と合わせて全文レビュー待ち |
+| 2026-11-14 | 2.9全文 | Wayland client + EGL/GLES接続、xdg-shell configure/resize/close、thread ownership、frame completion、profile failure boundary、Window初期client size希望値の受渡し。RQ-09-076/UI DD 1.8と合わせて全文承認済み |

@@ -3,7 +3,7 @@
 - 文書版: 1.8
 - 文書ロール: detailed-design
 - 更新日: 2026-11-14
-- 状態: 1.2～1.7全文承認済み（各履歴記録日）。1.8改訂案レビュー待ち。実装・試験状態は別管理
+- 状態: 1.2～1.8全文承認済み（各履歴記録日）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -17,7 +17,7 @@
 | --- | --- |
 | 基本Controlの型と責務 | [RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-002](../../11_requirements/RQ-09_ui-scope.md#rq-09-002)、[RQ-09-003](../../11_requirements/RQ-09_ui-scope.md#rq-09-003)、[RQ-09-004](../../11_requirements/RQ-09_ui-scope.md#rq-09-004)、[RQ-09-005](../../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-006](../../11_requirements/RQ-09_ui-scope.md#rq-09-006)、[RQ-09-007](../../11_requirements/RQ-09_ui-scope.md#rq-09-007)、[RQ-09-008](../../11_requirements/RQ-09_ui-scope.md#rq-09-008)、[RQ-09-009](../../11_requirements/RQ-09_ui-scope.md#rq-09-009)、[RQ-09-010](../../11_requirements/RQ-09_ui-scope.md#rq-09-010)、[RQ-09-011](../../11_requirements/RQ-09_ui-scope.md#rq-09-011)、[RQ-09-045](../../11_requirements/RQ-09_ui-scope.md#rq-09-045)、[RQ-09-046](../../11_requirements/RQ-09_ui-scope.md#rq-09-046)、[RQ-09-047](../../11_requirements/RQ-09_ui-scope.md#rq-09-047)、[RQ-09-048](../../11_requirements/RQ-09_ui-scope.md#rq-09-048)、[RQ-09-057](../../11_requirements/RQ-09_ui-scope.md#rq-09-057)、[RQ-09-058](../../11_requirements/RQ-09_ui-scope.md#rq-09-058)、[RQ-09-059](../../11_requirements/RQ-09_ui-scope.md#rq-09-059)、[RQ-09-060](../../11_requirements/RQ-09_ui-scope.md#rq-09-060)、[RQ-09-061](../../11_requirements/RQ-09_ui-scope.md#rq-09-061)、[RQ-10-003](../../11_requirements/RQ-10_accessibility.md#rq-10-003)、[RQ-10-008](../../11_requirements/RQ-10_accessibility.md#rq-10-008)、[RQ-10-012](../../11_requirements/RQ-10_accessibility.md#rq-10-012) |
 | 次段階Controlと拡張範囲 | [RQ-09-012](../../11_requirements/RQ-09_ui-scope.md#rq-09-012)、[RQ-09-019](../../11_requirements/RQ-09_ui-scope.md#rq-09-019)、[RQ-09-021](../../11_requirements/RQ-09_ui-scope.md#rq-09-021)、[RQ-09-022](../../11_requirements/RQ-09_ui-scope.md#rq-09-022)、[RQ-09-023](../../11_requirements/RQ-09_ui-scope.md#rq-09-023)、[RQ-09-024](../../11_requirements/RQ-09_ui-scope.md#rq-09-024)、[RQ-09-025](../../11_requirements/RQ-09_ui-scope.md#rq-09-025)、[RQ-09-026](../../11_requirements/RQ-09_ui-scope.md#rq-09-026)、[RQ-09-047](../../11_requirements/RQ-09_ui-scope.md#rq-09-047)、[RQ-09-054](../../11_requirements/RQ-09_ui-scope.md#rq-09-054)、[RQ-09-073](../../11_requirements/RQ-09_ui-scope.md#rq-09-073) |
-| Window初期client size設定 | [RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)（改訂案） |
+| Window初期client size設定 | [RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
 
@@ -334,3 +334,4 @@ Text/TextBox/Buttonの初期Controlはfont未指定で作成され、CoreはOS�
 | 2026-11-01 | 1.6全文 | 利用者の「ok」によりWidgetごとのInput subscription、Button/TextBox default action、handled順序、Focus getterを含む全文を承認。実装・試験状態は別管理 |
 | 2026-11-10 | 1.7全文 | 利用者の「ok」によりWindow生成時のoptional backend設定・選択固定・差し替え不可を含む全文を承認。実装・試験は別管理 |
 | 2026-11-14 | 1.8改訂案 | Window生成時の初期client size指定、省略時800×600 DIP、Platform実寸との分離を提案。全文レビュー待ち |
+| 2026-11-14 | 1.8全文 | 利用者の「ok」によりWindow生成時の初期client size指定、省略時800×600 DIP、実client areaを正とするLayout接続を含む文書全体を承認。実装・試験は別管理 |

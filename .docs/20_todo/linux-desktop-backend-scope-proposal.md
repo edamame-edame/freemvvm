@@ -1,7 +1,7 @@
 # 0.0.1 Linux Wayland desktop backend 先行計画案
 
 - 計画版: 0.6
-- 状態: Wayland先行方針0.2、RQ-11/12改訂、Platform BD 1.4は利用者承認済み（2026-11-14）。RQ-09-076案、UI BD 1.2案、Platform BD 1.5案、UI DD 1.8案、Platform DD 2.9案、計画0.6はレビュー待ち。実装計画・実装は未着手
+- 状態: Wayland先行方針0.2、RQ-11/12改訂、RQ-09-076、UI BD 1.2、Platform BD 1.4/1.5、UI DD 1.8、Platform DD 2.9、計画0.6は利用者承認済み（2026-11-14）。実装計画・実装は未着手
 - 対象version: 0.0.1
 - 対象branch: change/platform-support-scope
 - 関連計画: [Linux DRM/KMS runtime resize](linux-drm-runtime-resize.md)、[Linux LTS profile検証](release-0.0.1-linux-lts-profile-verification.md)、[0.0.1 platform support scope revision](release-0.0.1-platform-support-scope-change.md)
@@ -48,9 +48,9 @@ SDL3はwindow/event abstraction候補として比較対象に残す。ただし�
 
 1. 完了: RQ-11 v0.8/RQ-12 v0.7の改訂案を利用者承認後に正本へ適用し、Wayland desktop candidateとprofile別証拠ゲートを定義した。
 2. 完了: Platform BD 1.4を利用者が文書全体承認。Linux desktop compositor-managed surfaceとdirect KMS console profileの責務を分離した。
-3. 現在: Platform DD 2.9案でWayland connection/event loop、xdg_toplevel configure/ack、EGL Wayland surface/buffer ownership、frame completion、close-request、generation、failure/cleanupを具体化する。input ingressは対象要求に応じて区切り、未決IME/Accessibility範囲を暗黙に完了扱いしない。
-4. 現在の改訂案: RQ-09-076でWindow生成時に論理DIPの初期client sizeを指定可能とし、省略時の共通既定値を800×600 DIPとする。Platformの実client areaは希望値と別に返し、実寸をLayoutに使う。Waylandでconfigure寸法が0の軸には初期希望値を使う。
-5. RQ-09-076、UI BD 1.2、Platform BD 1.5、UI DD 1.8、Platform DD 2.9および計画0.6の文書全体レビュー・承認後、Waylandの実装unit・unit-test・release test matrix・VM visible testをまとめたimplementation planを別途提示する。承認前に依存追加・source/test変更をしない。
+3. 完了: Platform DD 2.9を利用者が文書全体承認。Wayland lifecycle/presentとWindow初期client sizeの希望値・実寸境界を定義した。
+4. 完了: RQ-09-076、UI BD 1.2、Platform BD 1.5、UI DD 1.8を利用者が文書全体承認。Window生成時の初期client size設定と省略時800×600 DIPを確定した。
+5. 現在: 実装unit・unit-test・release test matrix・VM visible testをまとめた実装計画案を作成し、利用者レビューへ提示する。実装計画承認前に依存追加・source/test変更をしない。
 
 ### C. 実装・検証の候補分割
 
@@ -95,4 +95,4 @@ SDL3はwindow/event abstraction候補として比較対象に残す。ただし�
 | 2026-11-14 | 計画0.3 | 適用記録 | Debian 13 Wayland sessionとEGL/GLES runtime/dev、Wayland EGL runtimeを確認。`libwayland-dev`未導入。native Wayland + EGL案をfeasibility有力候補として記録 |
 | 2026-11-14 | 計画0.4 | 利用者承認 | RQ-11 v0.8/RQ-12 v0.7適用済み。Platform BD 1.4を承認 |
 | 2026-11-14 | 計画0.5 | 更新案・レビュー待ち | Platform DD 2.9案と初期寸法sourceの未決gateを反映 |
-| 2026-11-14 | 計画0.6 | 更新案・レビュー待ち | Window初期client size指定と省略時800×600 DIPのRQ/UI/Platform BD/DD改訂案および承認gateを反映。実装計画/実装は未着手 |
+| 2026-11-14 | 計画0.6 | 利用者承認 | Window初期client size設定と省略時800×600 DIP、Platform実寸との境界を含むRQ/UI/Platform BD/DDおよび実装計画前の設計gateを承認。実装計画/実装は未着手 |
