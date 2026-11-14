@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 2.8
+- 文書版: 2.9
 - 文書ロール: detailed-design
-- 更新日: 2026-11-10
-- 状態: 2.7全文承認済み（利用者、2026-11-09）。2.8全文承認済み（利用者、2026-11-10）。実装・試験状態は別管理
+- 更新日: 2026-11-14
+- 状態: 2.7全文承認済み（利用者、2026-11-09）。2.8全文承認済み（利用者、2026-11-10）。2.9改訂案レビュー待ち。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -70,6 +70,8 @@ Ubuntu desktop session用Wayland/X11 adapter、Windows上のOpenGL/Vulkan候補�
 | --- | --- |
 | Control接続・Window peer・描画backend | [RQ-06-001](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-001)、[RQ-06-002](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-002)、[RQ-06-005](../../11_requirements/RQ-06_threading-dispatch.md#rq-06-005)、[RQ-09-001](../../11_requirements/RQ-09_ui-scope.md#rq-09-001)、[RQ-09-006](../../11_requirements/RQ-09_ui-scope.md#rq-09-006)、[RQ-09-048](../../11_requirements/RQ-09_ui-scope.md#rq-09-048)、[RQ-09-058](../../11_requirements/RQ-09_ui-scope.md#rq-09-058)、[RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-09-072](../../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-11-008](../../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-009](../../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022) |
 | profile別既定backend・利用者選択 | [RQ-11-021](../../11_requirements/RQ-11_platform.md#rq-11-021)、[RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-024](../../11_requirements/RQ-11_platform.md#rq-11-024)、[RQ-11-025](../../11_requirements/RQ-11_platform.md#rq-11-025) |
+| Window初期client size設定とPlatform実寸 | [RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)（改訂案）、[RQ-09-067](../../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-11-015](../../11_requirements/RQ-11_platform.md#rq-11-015) |
+| Linux Wayland desktop peer・configure・present・close | [RQ-09-067](../../11_requirements/RQ-09_ui-scope.md#rq-09-067)、[RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-11-014](../../11_requirements/RQ-11_platform.md#rq-11-014)、[RQ-11-015](../../11_requirements/RQ-11_platform.md#rq-11-015)、[RQ-11-020](../../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-021](../../11_requirements/RQ-11_platform.md#rq-11-021)、[RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-025](../../11_requirements/RQ-11_platform.md#rq-11-025)、[RQ-12-010](../../11_requirements/RQ-12_build-distribution.md#rq-12-010) |
 | Text engine・IME・OS Accessibility | [RQ-09-053](../../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-054](../../11_requirements/RQ-09_ui-scope.md#rq-09-054)、[RQ-10-001](../../11_requirements/RQ-10_accessibility.md#rq-10-001)、[RQ-10-005](../../11_requirements/RQ-10_accessibility.md#rq-10-005)、[RQ-10-007](../../11_requirements/RQ-10_accessibility.md#rq-10-007)、[RQ-10-011](../../11_requirements/RQ-10_accessibility.md#rq-10-011)、[RQ-10-013](../../11_requirements/RQ-10_accessibility.md#rq-10-013)、[RQ-10-014](../../11_requirements/RQ-10_accessibility.md#rq-10-014)、[RQ-11-023](../../11_requirements/RQ-11_platform.md#rq-11-023) |
 
 本書内の共通規則は上記の各要求を実現するために適用する。同一項目内で個別要求を参照する場合はその対象範囲を優先する。将来候補・未採用範囲は採用済みの動作と区別する。
@@ -100,6 +102,107 @@ Control APIとWindow close requestのCore処理は[UIクラス設計](../ui/cont
 | 描画 | resolveはWindow生成/open準備時に完了し、frameごとにregistry走査・plugin load・backend再選択を行わない |
 
 backend identity文字列とC ABI symbol、wrapper idiom、backend registry API、plugin ABI/loader lifecycleは本案だけで確定しない。Python pluginを採るか、完全なbackend別runtime artifactを採るかは[package DD](../build/toolchain-packages.md)の同版レビュー範囲に含める。選択可能identityはprofileが実際に収録・登録したdescriptorだけをpackage/profile資料で公表する。
+
+### 2.9改訂案: Linux Wayland desktop peerと既存GLES renderer接続（文書全体レビュー待ち）
+
+本案は承認済み[RQ-11 0.8](../../11_requirements/RQ-11_platform.md)、[RQ-12 0.7](../../11_requirements/RQ-12_build-distribution.md)、[Platform BD 1.4](../../12_design/platform/abstraction.md)を、通常desktop session上のWindow peerへ具体化する。Wayland desktopはcompositor-managed surface、既存DRM/KMSは別console profileであり、同じartifactに含める場合も選択済みWindow backend以外へfallbackしない。Wayland sessionが使えない場合にDRM/KMS direct-displayへ切り替えない。
+
+#### 採用候補と組立て
+
+| 構成 | 役割 | 設計判断案 |
+| --- | --- | --- |
+| Smithay `wayland-client` + `wayland-protocols` client `xdg_shell` | Wayland connection、registry、surface、xdg_surface/xdg_toplevel、event dispatch | SDL3等のWindow abstractionを挟まず、既存peer workerがnative protocol lifecycleを所有する |
+| `wayland-egl` + EGL Wayland display/window | `wl_surface`に対応するEGL window/surface | Wayland native surface上に既存GLES rendererを接続する。DRM/GBM device/connector/CRTCは開かない |
+| 既存`GlesRenderer` | Core `SceneSnapshot`のDrawOpを描画 | GLES loaderとGPU object ownershipをWayland peer worker内に保つ。Core/C ABIのScene契約は変更しない |
+| SDL3候補との比較 | SDLはWindow/event loopとOpenGL integrationをまとめて提供する | 現rendererはEGL context/surfaceを直接所有するためSDL contextとの二重所有・native handle共有が増える。初期Wayland経路にはnative client + wayland-eglを推奨し、SDLは既存rendererをSDL contextへ接続できる根拠が出た場合に再検討する |
+
+依存crateのpatch版はこの案でlockしない。workspace minimum Rust 1.85を維持できるlock解決、Linux system link mode、Debian/Ubuntuの開発packageを実装計画で確定する。現在のlatest `wayland-protocols` 0.32.13はRust 1.86を要求するため、自動的にlatestへ追従せず、Rust 1.85 gateに通る組合せを選ぶ。[wayland-client](https://docs.rs/wayland-client/latest/wayland_client/)、[wayland-protocols metadata](https://docs.rs/crate/wayland-protocols/latest/source/Cargo.toml)、[wayland-egl](https://docs.rs/wayland-egl/latest/wayland_egl/)
+
+Linux desktop artifactはWayland descriptorだけを含むbuild profileとし、未使用backendをcompile/linkしない案とする。DRM/KMS console artifactは別profileで既存descriptorを含む。同一artifactで複数descriptorを提供する場合はWindow生成時に選ばれたidentityで固定し、動作中の差替え・失敗時fallbackをしない。Python bundle内のnative library収録方法はpackage DDで決める。Wayland client、xdg-shell、EGL/GLESの必須global/libraryがないprofileはWindow openをfailureにする。
+
+#### 型・所有・thread境界
+
+| 型 | 責務・操作 | owner / failure境界 |
+| --- | --- | --- |
+| `WaylandPresentationFactory` | `linux-wayland-egl` descriptorのdefault選択・Window peer生成 | Linux desktop artifactが登録する。Wayland sessionを探索して別descriptorへ変更しない |
+| `WaylandWindowPeer` | Core `open/close/submit_frame`とworker command channelを接続し、既存client-area/close/frame sinkを設定 | Coreから呼ばれるsend/reply境界だけを持ち、Wayland/EGL objectを直接触らない |
+| `WaylandSurfaceWorker` | peerごとのWayland event dispatch、scene command、close/shutdownを直列化 | `Connection`、`EventQueue`、Wayland proxies、EGL display/context/surface、`GlesRenderer`をworker threadだけが所有・破棄する。backend callbackからCore/user callbackを呼ばない |
+| `WaylandWindowState` | compositor configureの未適用値、最新configure serial、論理client area、generation、surface readiness、frame pacing状態を保持 | worker専有。Core Window/Layout状態を複製して正本化しない |
+| Core `RuntimeWindowClientAreaSink` | initial/configured client areaをCore Dispatcherへcopy/enqueue | UI threadでgenerationと寸法を検証しWindow root Layoutをinvalidateする。workerは適用完了を同期waitしない |
+| Core `RuntimeWindowCloseRequestSink` | compositor close intentを既存close-decisionへ配送 | Accept後だけpeerをcloseする。Decline/Defer中はnative toplevelを維持し、Runtime shutdownは別途優先する |
+
+`WaylandWindowPeer`は既存Linux peerと同じ一Window一worker modelを採る。Wayland `Connection`をRuntime共通で共有する設計や、window/renderer objectをUI threadへ移す設計は採らない。workerのevent waitはWayland display readinessとpeer commandの両方を処理し、idle中のbusy loopを避ける。
+
+```mermaid
+classDiagram
+    Runtime --> WaylandPresentationFactory
+    WaylandPresentationFactory --> WaylandWindowPeer
+    WaylandWindowPeer --> WaylandSurfaceWorker
+    WaylandSurfaceWorker *-- WaylandWindowState
+    WaylandSurfaceWorker *-- WaylandConnectionObjects
+    WaylandSurfaceWorker *-- EglGlesResources
+    WaylandWindowPeer --> RuntimeWindowClientAreaSink
+    WaylandWindowPeer --> RuntimeWindowCloseRequestSink
+    WaylandWindowPeer --> PlatformFrameCompletionSink
+    WaylandSurfaceWorker --> SceneSnapshot
+```
+
+#### openと初回map
+
+1. `Window.open`はCoreでgenerationを確定し、Windowに保持した初期client size希望値（未指定時800×600 DIP）と共に、選択済み`linux-wayland-egl` peerへworker `Open(generation, requested_initial_client_size)`を送る。workerは現在プロセスのWayland session環境から接続する。root権限、TTY切替、display manager停止、`/dev/dri/card*`の直接openを要求しない。
+2. workerはWayland connectionとregistryを初期化し、`wl_compositor`および`xdg_wm_base`をbindする。必須globalがない、socketに接続できない、protocol errorが起きた場合はopen failureにし、別backendを試さない。
+3. workerは`wl_surface`とxdg toplevel roleを作り、bufferなしのinitial commitを送る。`xdg_toplevel.configure`の状態列と、それを閉じる`xdg_surface.configure(serial)`をまとめ、未処理configureが複数あれば最新serialだけをackする。ack前にbufferをcommitしない。[xdg-shell initial configure/ack](https://wayland.app/protocols/xdg-shell)
+4. `xdg_toplevel.configure`が幅または高さに正値を返した軸はcompositor提示値を実寸として使い、0を返した軸はWindowの初期希望値を使う。xdg-shellに初期寸法をcompositorへ強制する要求はないため、希望値どおりの寸法になる保証はしない。serialをackした後、決定したsurface論理client areaと初期DeviceScaleからWayland EGL window、EGL display/context/surface、`GlesRenderer`をworker上で初期化する。surface準備と最初の可視buffer commitは区別し、open成功はvisible present成功を意味しない。
+5. `WindowOpenInfo`相当のinitial client area/DeviceScaleをCoreへ返す。Core UI threadはLayoutを計算しSceneSnapshotを作ってworkerへsubmitし、workerが最初のbufferをrender/swap/commitしてWindowをmapする。
+
+初期client sizeは[RQ-09-076改訂案](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)のWindow設定からCoreが初回peer openへ渡す。未指定時の共通既定値は800×600 DIP。Waylandの初回configureで正値がある軸はcompositor値を使い、0の軸は希望値でsurface bufferを初期化する。したがってこの設定は初回寸法の希望であり、Wayland compositorが提示する実寸を上書きする保証ではない。実寸を`WindowOpenInfo`としてCoreへ返し、その寸法でLayout/Sceneを計算する。[xdg-shell configure](https://wayland.app/protocols/xdg-shell)
+
+#### configure、resize、DeviceScale
+
+| Event/状態 | worker処理 | Core/renderer接続 |
+| --- | --- | --- |
+| `xdg_toplevel.configure(width,height,states)` | configure suggestionをpending stateへ累積。正値はcompositor提示値を採用し、0の軸は初回ならWindow初期希望値、後続なら直前の有効寸法を維持する | configure sequence末尾の`xdg_surface.configure(serial)`で一つの更新として確定する |
+| `xdg_surface.configure(serial)` | 最新serialをackし、前のserialを破棄。ack後のcommitに対する要求状態として保持 | surface/client-area変更を`RuntimeWindowClientAreaSink`へowned valueでpostし、古いrevisionのframeを新寸法でrenderしない |
+| client-area変更 | EGL Wayland windowを新しいbuffer pixel extentへresizeし、最新のCore layout revisionのSceneSnapshotを待つ | Core既存のUI dispatcherがgenerationを検査してclient areaを更新、root Measure/Arrange・sceneをdirtyにする。未開始frameは最新寸法へ集約可能 |
+| preferred buffer scale | surfaceの初期preferred buffer scaleをDeviceScaleとして取得する。通知がない場合はWayland core default 1.0を使う。DeviceScaleはgeneration内固定とし、SceneSnapshotへそのまま渡す | DIP client areaへscaleを掛けてCore Layoutへ入力しない。rendererは既存契約どおりDIP edgeをbuffer pixelへ一度だけ変換 |
+| fractional/dynamic output scale | fractional-scale/viewport extension、同一generation中のscale変更、複数output migrationはこのunitで有効化しない | 対応を追加する場合はRequirements/Profileの受入境界とtestを先にレビューする。黙って1.0へ戻さない |
+
+同一surfaceへの連続configureは最後の未commit serialへ集約し、ackした最後の状態だけを次frameへ適用する。Coreから戻るSceneSnapshotの`layout_revision`がresize前のrevisionのままならbufferをcommitせず、Coreが新layoutを公開するまで待つ。surface generationが閉じられた後のconfigure/environment callbackはCore generation検証で無視する。
+
+#### scene presentとframe completion
+
+| 順序 | 実現契約 |
+| --- | --- |
+| 1 | workerはmatching generationの`FrameTicket`/SceneSnapshotだけを受け取り、GLES contextをcurrentにして既存GLES rendererでclear・DrawOpを実行する。unsupported DrawOpやGLES errorではsceneを成功扱いしない |
+| 2 | GLES render成功後に`eglSwapBuffers`を行いWayland surface updateをcommitし、connection flushまで成功した場合だけ既存`PlatformFrameCompletionSink.complete_frame(ticket)`を呼ぶ。失敗は`fail_frame(ticket)`とし、別rendererへfallbackしない |
+| 3 | Core `FrameTracker`が同一generation/frame/revisionを照合する。resize後に古いticket、close後に遅れて到着したcompletionは無視する |
+| 4 | `wl_surface.frame` callbackは連続描画を抑えるpacing hintとしてのみ使い、表示済みの証明やcore completionそのものとは扱わない。visible presentはrelease profileの画面確認で別に判定する。[wl_surface.frame semantics](https://wayland.app/protocols/wayland) |
+
+`complete_frame`はEGL/Wayland backendがそのscene updateをsurfaceへ正常に引き渡した境界を示し、物理display scanoutやcompositor上のpixel可視性を保証しない。`wp_presentation`が提供されるprofileではpresentation feedbackを診断へ記録できるが、optional globalがないことでWayland以外へfallbackしたり、frame成功と偽装したりしない。visible rendering判定はRQ-11-015/RQ-12-010の別profile evidenceを使う。[wp_presentation semantics](https://wayland.app/protocols/presentation-time)
+
+#### compositor close、explicit close、shutdown
+
+| 状況 | call flow | 保持・解放 |
+| --- | --- | --- |
+| compositor `xdg_toplevel.close` | workerはgeneration付きclose intentを既存`RuntimeWindowCloseRequestSink`へpostしてprotocol loopへ戻る。Core UI threadがAccept/Decline/Deferを処理する | Decline/Deferはsurfaceを維持。Acceptの後だけCoreがpeer close commandを送る。workerからcallbackを直接実行しない |
+| `Window.close` | Coreがclose commandをworkerへ送り、new submissionを停止する | native EGL/GLES/Wayland objectsだけを破棄し、Core Window/content/Propertyは保持。再openは同じbackend identityの新generation |
+| Runtime shutdown / peer drop | workerへshutdownを送りpending workを失敗確定後にjoinする | `GlesRenderer`をcurrent context上で破棄→EGL surface/contextを破棄→Wayland EGL windowを破棄→xdg_toplevel→xdg_surface→wl_surfaceを破棄→connection flush/disconnect。失敗時も既存CleanupTicket/diagnostic規則で失敗を保持 |
+| Wayland disconnect / EGL context loss | in-flight frameをfailureにしsurfaceをlostとしてsubmissionを停止する | Core状態を維持。自動KMS/software fallbackや無制限自動reopenをしない。明示close/reopenでのみ同profile初期化を再試行 |
+
+`wl_surface.frame`は次frameのpacing signalであり、buffer release/presentation callbackと同じ意味ではない。protocol event dispatchとclose/configure orderingは同じworkerで直列化し、stale generationを新しいWindowへ転送しない。
+
+#### 対象外と実装前gate
+
+- Wayland keyboard/pointer event ingress、clipboard/data-device、IME、Accessibilityはこの2.9 window-render unitで実装済みとしない。既存neutral Input sinkへの接続は個別RQ/DD/test scopeを照合して、後続unitの計画に含める。
+- X11、layer-shell/popup/subsurface、複数output移行、fractional scale、色管理/HDR、window placement API、Wayland reconnect、runtime backend hot-swapを追加しない。
+- Debian 13の現在sessionでは`libwayland-dev`がなく、開発package追加は未実施。Debian/Ubuntu package matrix、system linking、Python native artifact収録、ライセンス、Rust 1.85互換crate lockをimplementation planで承認後に決める。
+- Window initial client sizeの公開設定、省略時800×600 DIP、無効値拒否、Platform実寸との差はRQ-09-076/ UI DD 1.8の文書全体承認が実装前gateとなる。
+
+### 2.9改訂履歴案
+
+| 日付 | 対象版 | 状態 | 範囲 |
+| --- | --- | --- | --- |
+| 2026-11-14 | 2.9改訂案 | 文書全体レビュー待ち | Wayland client + EGL/GLES構成、worker ownership、configure/resize/close/presentを追加。初期client sizeはRQ/UI決定待ち。2.8承認範囲を維持 |
 
 ### 実現設計
 
@@ -571,3 +674,4 @@ sequenceDiagram
 | 2026-11-09 | 2.7全文 | 利用者の「ok」によりprofileごとのdefault、Window単位の明示選択、surface/renderer互換性、non-fallback境界を含む文書全体を承認。公開API・実装・試験は別管理 |
 | 2026-11-10 | 2.8改訂案 | Window構築時の選択、Window object寿命中の固定、close/reopen後の同一選択再利用を提案。2.7のprofile/default・非互換/failure/no-fallback契約は維持し、選択時期に関する差分を明示。文書全体レビュー待ち |
 | 2026-11-10 | 2.8全文 | 利用者の「ok」によりWindow構築時のbackend選択・固定、open時適合確認、close/reopen同一選択を含む全文を承認。実装・試験は別管理 |
+| 2026-11-14 | 2.9改訂案 | Wayland client + EGL/GLES接続、xdg-shell configure/resize/close、thread ownership、frame completion、profile failure boundary、Window初期client size希望値の受渡しを提案。RQ-09-076改訂案/UI DD 1.8と合わせて全文レビュー待ち |

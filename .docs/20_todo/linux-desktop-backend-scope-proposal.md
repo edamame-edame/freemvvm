@@ -1,7 +1,7 @@
 # 0.0.1 Linux Wayland desktop backend 先行計画案
 
-- 計画版: 0.3
-- 状態: 計画0.2は利用者承認済み（2026-11-14）。Wayland session確認済み、実装方式はfeasibility調査中。要求・設計本文は未変更、実装未着手
+- 計画版: 0.6
+- 状態: Wayland先行方針0.2、RQ-11/12改訂、Platform BD 1.4は利用者承認済み（2026-11-14）。RQ-09-076案、UI BD 1.2案、Platform BD 1.5案、UI DD 1.8案、Platform DD 2.9案、計画0.6はレビュー待ち。実装計画・実装は未着手
 - 対象version: 0.0.1
 - 対象branch: change/platform-support-scope
 - 関連計画: [Linux DRM/KMS runtime resize](linux-drm-runtime-resize.md)、[Linux LTS profile検証](release-0.0.1-linux-lts-profile-verification.md)、[0.0.1 platform support scope revision](release-0.0.1-platform-support-scope-change.md)
@@ -25,14 +25,14 @@ Waylandではcompositorがxdg-shell configureを通知し、clientはconfigure s
 
 SDL3はwindow/event abstraction候補として比較対象に残す。ただし既存backendが直接EGL context/surfaceとGLES loaderを管理しているため、SDL GL contextとのresource ownership、Wayland native handle interop、native library packagingを比較してから採否を決める。[SDL3 Wayland notes](https://wiki.libsdl.org/SDL3/README-wayland)
 
-利用者は2026-11-14に「Waylandを先に進める」方針を選択した。本計画は実装順をWayland desktopへ変更する。これはWaylandの正式support、RQ-11-015の採用状態、対象profileの拡張、あるいは実装方式の承認を意味しない。
+利用者は2026-11-14に「Waylandを先に進める」方針を選択し、続いてRQ-11/RQ-12の改訂案を承認した。Waylandは0.0.1 Linux desktop backend候補として要求に反映済みだが、これはprofileのformal runtime support合格や具体的な実装方式の承認を意味しない。
 
 ## 方針と範囲
 
 1. 0.0.1のLinux desktop経路はWaylandを最初に調査・設計・実装する。通常のdesktop sessionでWindowを開き、visible present、compositorからのresize、Core再Layout・再描画、close/reopenを検証する。
 2. Linux DRM/KMS direct-displayはconsole profileとして別扱いに保つ。KMS runtime resize実装はWayland desktop backendの方針と必要性が確定するまで保留する。既存TTY証跡はconsole profileに限定し、Wayland desktop passへ流用しない。
-3. 0.0.1 formal runtime profileとWayland support statusはRQ-11およびrelease profile文書の承認後に限って確定する。Waylandの実装順を決めただけで正式supportと表示しない。
-4. Wayland実装方式はまだ選ばない。native Wayland client + EGL surfaceとSDL等の既存platform libraryを、Rust統合、Core renderer接続、dependency/link/package、input/close/IME/scale、CIとVM実証で比較してからDD案で選定する。
+3. 0.0.1 formal runtime profileとWayland support statusは、承認済みRQ-11/12のprofile別evidence gateに従って確定する。要求上の候補化だけで正式supportと表示しない。
+4. 実装方式はPlatform DD 2.9改訂案でnative Wayland client + EGL surfaceを推奨候補としている。文書全体承認後に採用とし、exact crate versions/system linkingはRust 1.85・Debian/Ubuntu package gateを通した実装計画で確定する。
 5. C ABIと各language wrapperの公開APIは変更しない案を初期値とする。既存backend選択契約へWayland backendを接続できない場合は、source変更前に設計差分を提示する。
 
 ## 実施順
@@ -46,17 +46,18 @@ SDL3はwindow/event abstraction候補として比較対象に残す。ただし�
 
 ### B. 要求・設計レビュー案
 
-1. 結果を基にRQ-11-015を後続候補のままにするか、0.0.1のLinux desktop implementation/support対象へ進めるか、profile/受入条件を変更する必要があるかを要求改訂案として提示する。RQ本文は利用者承認前に変更しない。
-2. RQ承認後、Platform BDへLinux desktop compositor-managed surfaceとdirect KMS console profileの責務を分ける案を提示する。
-3. BD承認後、Platform DDでWayland event loop/worker、xdg_toplevel configure・serial ack、EGL Wayland surface/buffer ownership、frame callback/present、close-request、input ingress、scale/client-area、failure/cleanupを具体化する。未決のIME/Accessibility範囲を暗黙に完了扱いしない。
-4. 設計文書の承認後、Waylandの実装unit・unit-test・release test matrix・VM visible testをまとめたimplementation planを別途提示する。計画承認前に依存追加・source/test変更をしない。
+1. 完了: RQ-11 v0.8/RQ-12 v0.7の改訂案を利用者承認後に正本へ適用し、Wayland desktop candidateとprofile別証拠ゲートを定義した。
+2. 完了: Platform BD 1.4を利用者が文書全体承認。Linux desktop compositor-managed surfaceとdirect KMS console profileの責務を分離した。
+3. 現在: Platform DD 2.9案でWayland connection/event loop、xdg_toplevel configure/ack、EGL Wayland surface/buffer ownership、frame completion、close-request、generation、failure/cleanupを具体化する。input ingressは対象要求に応じて区切り、未決IME/Accessibility範囲を暗黙に完了扱いしない。
+4. 現在の改訂案: RQ-09-076でWindow生成時に論理DIPの初期client sizeを指定可能とし、省略時の共通既定値を800×600 DIPとする。Platformの実client areaは希望値と別に返し、実寸をLayoutに使う。Waylandでconfigure寸法が0の軸には初期希望値を使う。
+5. RQ-09-076、UI BD 1.2、Platform BD 1.5、UI DD 1.8、Platform DD 2.9および計画0.6の文書全体レビュー・承認後、Waylandの実装unit・unit-test・release test matrix・VM visible testをまとめたimplementation planを別途提示する。承認前に依存追加・source/test変更をしない。
 
 ### C. 実装・検証の候補分割
 
 設計承認後のimplementation planでは、責務を少なくとも次の実装単位へ分け、各unitに同revisionのtestを対応させる。
 
 1. Wayland connection/window lifecycleと明示failure、native EGL surface作成・破棄。
-2. xdg-shell configure状態機械、serial ackとbuffer resize/recreate、Core client-area sink通知。
+2. Window初期client size設定のCore保管・wrapper/C ABI設計接続と、xdg-shell configure状態機械、serial ack、0寸法軸での希望値使用、buffer resize/recreate、Core client-area sink通知。
 3. Core scene render/present/frame completionをWayland surfaceへ接続し、close/reopenを実装。
 4. 承認されたinput/close/scale要件を順に接続し、必要なunit testを追加する。
 5. Debian 13およびRQで承認されたUbuntu profileのWayland session上で、同一artifact SHAのvisible window/present/resize/close/reopenを確認する。build成功やTTY表示はdesktop runtime passとしない。
@@ -64,6 +65,7 @@ SDL3はwindow/event abstraction候補として比較対象に残す。ただし�
 ## 合格境界
 
 - compositorから届くconfigureを最新serial規則に従って処理し、ack前に未設定bufferをcommitしない。
+- Window初期client sizeを未指定時800×600 DIPで開始要求し、configureの正値または0寸法時の希望値から決まった実寸をCoreへ通知する。無効値はWindow生成前に拒否する。
 - active Window generationのclient-areaをCoreへ通知し、Core layout/scene extentとpresent buffer pixel extentを正しく対応させる。
 - resize連続通知は未開始frameへ集約し、old generationや古いconfigureへの遅延responseが新状態を上書きしない。
 - surface/renderer更新中およびfailure後に不正なframeをPresentedとして報告しない。Window close/reopenとRuntime shutdownでnative resourceを一度だけ破棄する。
@@ -90,4 +92,7 @@ SDL3はwindow/event abstraction候補として比較対象に残す。ただし�
 |---|---|---|---|
 | 2026-11-13 | 計画0.1 | Waylandを後続候補とする案 | RQ/BD/DDは未変更。KMS resizeは別profile計画 |
 | 2026-11-14 | 計画0.2 | 利用者承認 | Wayland先行を選択。Wayland正式support、実装方式、要求対象範囲は未決。実装未着手 |
-| 2026-11-14 | 計画0.3 | 更新案・レビュー待ち | Debian 13 Wayland sessionとEGL/GLES runtime/dev、Wayland EGL runtimeを確認。`libwayland-dev`未導入。native Wayland + EGL案をfeasibility有力候補として記録。RQ/BD/DDは未変更、実装未着手 |
+| 2026-11-14 | 計画0.3 | 適用記録 | Debian 13 Wayland sessionとEGL/GLES runtime/dev、Wayland EGL runtimeを確認。`libwayland-dev`未導入。native Wayland + EGL案をfeasibility有力候補として記録 |
+| 2026-11-14 | 計画0.4 | 利用者承認 | RQ-11 v0.8/RQ-12 v0.7適用済み。Platform BD 1.4を承認 |
+| 2026-11-14 | 計画0.5 | 更新案・レビュー待ち | Platform DD 2.9案と初期寸法sourceの未決gateを反映 |
+| 2026-11-14 | 計画0.6 | 更新案・レビュー待ち | Window初期client size指定と省略時800×600 DIPのRQ/UI/Platform BD/DD改訂案および承認gateを反映。実装計画/実装は未着手 |

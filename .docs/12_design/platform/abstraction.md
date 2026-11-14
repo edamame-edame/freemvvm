@@ -1,9 +1,9 @@
 # プラットフォーム：抽象化・描画・text・OS接続
 
-- 文書版: 1.4
+- 文書版: 1.5
 - 文書ロール: basic-design
 - 更新日: 2026-11-14
-- 状態: 1.2全文承認済み（利用者、2026-11-09）。1.3全文承認済み（利用者、2026-11-10）。1.4全文承認済み（利用者、2026-11-14）。実装・試験状態は別管理
+- 状態: 1.2全文承認済み（利用者、2026-11-09）。1.3全文承認済み（利用者、2026-11-10）。1.4全文承認済み（利用者、2026-11-14）。1.5改訂案レビュー待ち。実装・試験状態は別管理
 
 ## 目的と責務境界
 
@@ -15,7 +15,7 @@
 
 | 設計項目 | 要求根拠 |
 | --- | --- |
-| Control API・Window close・描画backend | [RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-09-072](../../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-09-074](../../11_requirements/RQ-09_ui-scope.md#rq-09-074)（改訂案）、[RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-025](../../11_requirements/RQ-11_platform.md#rq-11-025) |
+| Control API・Window初期client size・close・描画backend | [RQ-09-071](../../11_requirements/RQ-09_ui-scope.md#rq-09-071)、[RQ-09-072](../../11_requirements/RQ-09_ui-scope.md#rq-09-072)、[RQ-09-074](../../11_requirements/RQ-09_ui-scope.md#rq-09-074)、[RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)（改訂案）、[RQ-11-022](../../11_requirements/RQ-11_platform.md#rq-11-022)、[RQ-11-025](../../11_requirements/RQ-11_platform.md#rq-11-025) |
 | Text engine・IME OS接続・Accessibility | [RQ-10-014](../../11_requirements/RQ-10_accessibility.md#rq-10-014)、[RQ-11-023](../../11_requirements/RQ-11_platform.md#rq-11-023) |
 | IMEのCore/OS責務境界 | [RQ-02-011](../../11_requirements/RQ-02_core-features.md#rq-02-011)、[RQ-09-005](../../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-038](../../11_requirements/RQ-09_ui-scope.md#rq-09-038)、[RQ-09-040](../../11_requirements/RQ-09_ui-scope.md#rq-09-040)、[RQ-09-042](../../11_requirements/RQ-09_ui-scope.md#rq-09-042)、[RQ-09-055](../../11_requirements/RQ-09_ui-scope.md#rq-09-055)、[RQ-09-056](../../11_requirements/RQ-09_ui-scope.md#rq-09-056) |
 | Renderer・surface・Platform接続 | [RQ-01-002](../../11_requirements/RQ-01_purpose-architecture.md#rq-01-002)、[RQ-09-005](../../11_requirements/RQ-09_ui-scope.md#rq-09-005)、[RQ-09-053](../../11_requirements/RQ-09_ui-scope.md#rq-09-053)、[RQ-09-054](../../11_requirements/RQ-09_ui-scope.md#rq-09-054)、[RQ-11-001](../../11_requirements/RQ-11_platform.md#rq-11-001)、[RQ-11-002](../../11_requirements/RQ-11_platform.md#rq-11-002)、[RQ-11-003](../../11_requirements/RQ-11_platform.md#rq-11-003)、[RQ-11-004](../../11_requirements/RQ-11_platform.md#rq-11-004)、[RQ-11-008](../../11_requirements/RQ-11_platform.md#rq-11-008)、[RQ-11-009](../../11_requirements/RQ-11_platform.md#rq-11-009)、[RQ-11-020](../../11_requirements/RQ-11_platform.md#rq-11-020)、[RQ-11-021](../../11_requirements/RQ-11_platform.md#rq-11-021)、[RQ-12-010](../../11_requirements/RQ-12_build-distribution.md#rq-12-010)、[RQ-13-001](../../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-001)、[RQ-13-011](../../11_requirements/RQ-13_nonfunctional-measurement.md#rq-13-011) |
@@ -26,6 +26,8 @@
 ## Control API・Window close・描画backend
 
 WindowはCore状態とnative peerを分け、表示開始・close判断・surface喪失を状態機械で処理する。RendererはControlを保持しないSceneSnapshotとdamageを受け、backendがGPU completionを所有する。
+
+Window生成設定は初期client sizeの希望値（論理DIP）をCoreに保持し、省略時の共通既定値を800×600 DIPとする。Coreはその値を初回peer openへ渡し、PlatformはOS/Window systemへ適用可能な範囲で提示する。実際のclient areaはPlatformからCoreへ戻し、Layoutはその実寸を使う。初期希望値と実寸は別の状態として扱う。
 
 ## Text engine・IME OS接続・Accessibility
 
@@ -196,3 +198,4 @@ This section does not add X11, multi-output, hot migration between outputs/backe
 | 1.2 | 2026-11-09 | Windows/Ubuntu/Debian VM profileと限定framebuffer責務 | Codex | 全文承認済み。実装・試験は別管理 |
 | 1.3 | 2026-11-10 | RQ-11-025のbackend選択をWindow構築設定として追加 | Codex | 全文承認済み。実装・試験は別管理 |
 | 1.4 | 2026-11-14 | Linux Wayland desktopとDRM/KMS direct-display profileを分離 | Codex | 全文承認済み。DD・実装・試験は別管理 |
+| 1.5改訂案 | 2026-11-14 | RQ-09-076案に基づくWindow初期希望寸法のCore→Platform受渡しと実client areaとの分離を追加。全文レビュー待ち | Codex | 全文未承認 |
