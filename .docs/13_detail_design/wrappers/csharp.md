@@ -1,9 +1,9 @@
 # 言語ラッパー：C#
 
-- 文書版: 1.6
+- 文書版: 1.7
 - 文書ロール: detailed-design
-- 更新日: 2026-11-02
-- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-30）。1.6全文承認済み（利用者、2026-11-02）。実装・試験状態は別管理
+- 更新日: 2026-11-14
+- 状態: 1.4全文承認済み（利用者、2026-10-24）。1.5全文承認済み（利用者、2026-10-30）。1.6全文承認済み（利用者、2026-11-02）。1.7全文承認済み（利用者、2026-11-14）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -683,6 +683,32 @@ Text getterはcallback中にUTF-8をmanaged stringへcopyし、pointer位置はc
 
 registration失敗時はGC rootをC#側で解放し、成功時はnative destroyまでrootする。UiSubscription.TryCancel()は新規callback開始を止める。TryClose()/Dispose()はhandleをreleaseするだけでcancelの代わりにしない。delegate例外はunmanaged trampoline内で捕捉し既存callback failure handlerへ渡し、handler未設定時はstderrへ診断を出す。eventをhandledへしてdefault actionを止め、handler自身の例外もunmanaged境界へ出さない。
 
+## Window初期client size wrapper API（1.7全文承認済み）
+
+要求根拠: [RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)。C ABI mappingは[共通C ABI 1.8](../runtime-objects/abi.md)、Core/Platform client area規則は[UI Control DD](../ui/controls.md)と[Platform DD](../platform/internal-layers.md)に従う。
+
+```csharp
+public readonly record struct WindowInitialClientSize(
+    double WidthDip,
+    double HeightDip);
+
+public readonly record struct UiWindowCreateOptions(
+    string? PresentationBackend = null,
+    WindowInitialClientSize? InitialClientSize = null);
+
+public static UiResult<UiWindow> TryCreate(
+    UiRuntime runtime,
+    UiWindowCreateOptions options);
+```
+
+既存`UiWindow.TryCreate(runtime)`と`TryCreateWithPresentationBackend(runtime, backend)`は維持する。追加overloadは4組合せを受け、sizeなしでは既存symbol、sizeありではfeature ID 10を確認して追加C ABI symbolを呼ぶ。P/Invokeのbackend UTF-8 bufferはnative call中rootし、width/heightはC `double`と同じ64-bit値として渡す。
+
+wrapperは独自の800×600値を管理しない。size未指定時の値はCore defaultとする。指定値が有限かつ正かどうか、Windowを部分生成せず拒否することはC ABI/Core契約に委譲し、失敗を既存`UiResult<UiWindow>`へ写す。open後のLayout寸法にはPlatform peer実client areaを使う。close/reopenでは同じ初期希望値を再利用する。
+
+native libraryにfeature 10がない場合、初期size指定を`UI_UNSUPPORTED`相当の`UiResult` failureとして返し、C ABI symbolを呼ばない。既存constructorは引き続き既存P/Invoke entry pointだけを使用する。wrapper/package manifestのminimum native versionとrequired featureは後続のpackage metadataへ記録する。
+
+このC#公開surfaceは文書全体承認済みである。実装・test passは別途管理する。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -700,3 +726,4 @@ registration失敗時はGC rootをC#側で解放し、成功時はnative destroy
 | 2026-10-30 | 1.5改訂案 | RQ-09-074に対応する`RgbColor`・`BackgroundRgb`・reset APIを提案。全文レビュー待ち |
 | 2026-10-30 | 1.5全文 | 利用者の「ok」によりC# Window `RgbColor`・`BackgroundRgb`・reset APIを含む全文を承認。実装・試験合格は別管理 |
 | 2026-11-02 | 1.6全文 | 利用者の「ok」により、Input event callback/view、lifetime、cancelと例外境界を含む全文を承認。実装・試験状態は別管理 |
+| 2026-11-14 | 1.7全文 | 利用者の「ok」により、C# Window options/size値型、feature 10、既存constructor維持と`UiResult` mappingを含む全文を承認。実装・試験状態は別管理 |

@@ -1,13 +1,13 @@
 # 0.0.1 Linux Wayland Window実装計画案
 
-- 計画版: 0.1
-- 状態: レビュー待ち・未承認・未コミット。実装未着手
+- 計画版: 0.2
+- 状態: 実装計画の改訂案。利用者レビュー待ち・未コミット。実装未着手
 - 対象version: `0.0.1`
 - 対象branch: `change/platform-support-scope`
 - 親計画: [Linux desktop backend scope](linux-desktop-backend-scope-proposal.md) 0.6
 - 関連保留計画: [Linux DRM/KMS runtime resize](linux-drm-runtime-resize.md)
 - 要求: [RQ-09 UI scope](../11_requirements/RQ-09_ui-scope.md)、[RQ-11 Platform](../11_requirements/RQ-11_platform.md)、[RQ-12 build/distribution](../11_requirements/RQ-12_build-distribution.md)
-- 設計: [UI controls DD](../13_detail_design/ui/controls.md)、[Platform internal layers DD](../13_detail_design/platform/internal-layers.md)、[ABI DD](../13_detail_design/runtime-objects/abi.md)、[Rust wrapper DD](../13_detail_design/wrappers/rust.md)、[C++ wrapper DD](../13_detail_design/wrappers/cpp.md)、[C# wrapper DD](../13_detail_design/wrappers/csharp.md)、[Python wrapper DD](../13_detail_design/wrappers/python.md)
+- 設計: [UI controls DD 1.8](../13_detail_design/ui/controls.md)、[Platform internal layers DD 3.0](../13_detail_design/platform/internal-layers.md)、[ABI DD 1.8](../13_detail_design/runtime-objects/abi.md)、[build/toolchain DD 1.3](../13_detail_design/build/toolchain-packages.md)、[Rust wrapper DD 1.9](../13_detail_design/wrappers/rust.md)、[C++ wrapper DD 1.6](../13_detail_design/wrappers/cpp.md)、[C# wrapper DD 1.7](../13_detail_design/wrappers/csharp.md)、[Python wrapper DD 2.3](../13_detail_design/wrappers/python.md)、[API/build承認記録](linux-wayland-window-api-proposal.md)
 - 試験: [unit-test strategy](../32_unit_test/unit-test-strategy.md)、[UI test design](../32_unit_test/ui.md)、[release test matrix](../30_release_test/requirement-test-matrix.md)
 - 実装上の引継ぎ知識: [Linux Wayland feasibility](../01_memory/platform-linux-wayland-feasibility.md)
 
@@ -17,12 +17,13 @@
 
 初期サイズはWindowごとの希望値として保持し、open/reopen時にpeerへ渡す。OS/compositorが返す実client areaをCoreへ返し、その実寸でLayout/Sceneを更新する。指定値を満たす保証は追加しない。有限かつ正でない値はWindow作成前に拒否し、部分状態を公開しない。既存create APIは互換維持し、未指定時もCoreの800×600 DIP defaultを使う。
 
-## 設計・実装境界
+## 承認済み設計と実装境界
 
-1. UI DD 1.8、Platform BD 1.5、Platform DD 2.9、RQ-09-076、RQ-11/12は承認済み。本計画はこれらの既決事項を実装する。別途承認されていない公開ABI signature、wrapper各言語の引数形式、Cargo feature名、crate/version、native link方式はまだ確定事項として扱わない。
-2. 最初の実装前gateでABI DDへ後方互換な追加symbol案を記載する。提案する公開面は、既存default create/backend createを維持しつつ、明示backendと初期サイズを同時指定できる追加操作を設ける形とする。引数は固定幅・明示的なpresence規則とし、無効値/不正な組合せ/out handle規則を定義する。実際のsignatureと各wrapperのidiomatic APIは該当設計文書全体をレビュー・承認してから実装へ進む。
-3. Linuxのbackendはbuild/profile選択で固定し、Window実行中のbackend交換や暗黙fallbackを入れない。Wayland desktop artifactとDRM/KMS console artifactの依存・既定値・配布条件を区別する。通常desktopのWayland peerは現在のWayland sessionに接続し、TTY切替、root権限、display manager停止、DRM CRTC直接modesetを要求しない。
-4. `GlesRenderer`再利用、Wayland worker所有、xdg-shell configure/ack、EGL Wayland surface、frame completion、close/reopenの詳細は承認済みPlatform DD 2.9に従う。新しい利用者保証またはDDとの不整合が必要になった場合は、実装を止めて差分を設計レビューへ戻す。
+1. RQ-09-076、RQ-11/12、UI DD 1.8、Platform BD 1.5、Platform DD 3.0、ABI DD 1.8、build DD 1.3、およびRust/C++/C#/Python wrapper DD 1.9/1.6/1.7/2.3は、2026-11-14に文書全体承認済み。本計画はこれらの契約を実装する。
+2. Window初期サイズAPIはABI feature 10 `core.ui.window.initial_client_size.v1`と`ui_abi_1_window_create_with_initial_client_size`を使う。既存create symbolとwrapper生成APIを維持し、サイズ指定時だけfeature 10を使う。C ABIが有限かつ正の寸法を検証し、失敗時にpartial Windowを公開しない。Rust wrapperは対応native artifactと直接linkする。C++/C#/Pythonは追加symbolをoptional resolutionし、旧symbolだけのartifactでも既存constructorを維持する。
+3. Wayland backend identityは`linux-wayland-egl`とする。DRM/KMSとWaylandはCargo feature・artifact profileを分離し、同一artifact内での併用、実行中hot-swap、暗黙fallback/plugin探索は行わない。Wayland desktop peerは現在のWayland sessionに接続し、TTY切替、root権限、display manager停止、DRM CRTC直接modesetを動作条件にしない。
+4. build profileは`debian-13-vm-wayland-x64`、`debian-12-vm-wayland-x64`、`ubuntu-24.04-wayland-x64`、`ubuntu-26.04-wayland-x64`とする。Rust minimum 1.85を維持し、lock-resolved dependency graphとOS提供runtime library条件を検証する。
+5. `GlesRenderer`再利用、Wayland worker ownership、xdg-shell configure/ack、EGL Wayland surface、frame completion、close/reopenは承認済みPlatform DD 3.0に従う。新しい利用者保証またはDDとの不整合が必要になった場合は実装を止め、差分を設計レビューへ戻す。
 
 ## ブランチと実施順
 
@@ -56,12 +57,13 @@ wrapper中にCore/C ABI変更が必要と判明したらwrapper作業を止め�
 
 ## 段階ゲートと順序
 
-1. **API/ABI設計gate**: 既存API・ABI・4 wrapper DD・build/profile DDの差分を調査し、追加symbol、引数表現、error/marshalling、feature selection、library link/配布を設計案にする。文書全体レビュー・承認前にsource、test、dependencyを変更しない。
-2. **Core/ABI実装gate**: `UNIT-CORE-095`と`UNIT-ABI-024`を順に実装し、focused test、header probes、既存API regression、Rust 1.85 checkを同revisionで通す。これを完了してからLinuxと各wrapperの基点とする。
-3. **Wayland backend gate**: Debian 13 graphical Wayland sessionで`libwayland-dev`等の環境を整え、native Wayland client + wayland-egl +既存GLES rendererを実装する。EGL/GLES依存・API thread affinity・frame completionとevent loopを検証し、DRM console profileを壊さない。
-4. **wrapper sibling gates**: Rust → C++ → C# → Pythonの順にCore APIs更新済みbranchから兄弟branchを切る。各言語のdefault/explicit creation、invalid input、既存API互換、公開package consumer testを通す。各wrapper間の意味とdefault値を一致させる。
-5. **profile release gates**: Debian 13 Wayland visible test、Debian 12、Ubuntu 24.04、Ubuntu 26.04の順に各実行環境で同じ検証手順を行う。windowのvisible present、初期サイズ希望と実寸、compositor resize後のLayout/再描画、close/reopen、stderr/logを記録する。各profileのpassは個別に限定し、未実施は未確認のままにする。
-6. **統合完了gate**: 全unitと関連CI、profile evidence、文書・unit catalog・release matrixがそろった時だけ本計画を完了扱いにし、まとめてmerge PRを提示する。マージ後は本流以外の統合済み一時branchをGit規約に従い整理する。
+1. **設計gate（完了）**: API/build方式を含む7つの正本DD全体が2026-11-14に承認済み。詳細は[API/build承認記録](linux-wayland-window-api-proposal.md)。
+2. **unit/test準備gate**: `.docs/32_unit_test/`のCore・ABI・Platform・wrapper試験設計、要求traceability、実装unit inventoryの既存規則と重複を確認し、今回のunit/test path・command・依存を登録する。登録案は実装計画承認後に準備し、sourceと対応testは同じrevisionに含める。
+3. **Core/ABI実装gate**: `UNIT-CORE-095`と`UNIT-ABI-024`を順に実装し、focused test、header probes、既存API regression、Rust 1.85 checkを同revisionで通す。これを完了してからLinuxと各wrapperの基点とする。
+4. **Wayland backend gate**: Debian 13 graphical Wayland sessionで`libwayland-dev`等の環境を整え、承認済みprofile `debian-13-vm-wayland-x64`、feature `presentation-backend-linux-wayland-egl-gles`を使う。native Wayland client + wayland-egl +既存GLES rendererを実装し、EGL/GLES依存・thread affinity・frame completionとevent loopを検証する。DRM console profileを壊さない。
+5. **wrapper sibling gates**: Rust → C++ → C# → Pythonの順に更新済みCore APIs branchから兄弟branchを切る。各言語のdefault/explicit creation、invalid input、既存API互換、公開package consumer testを通す。各wrapper間の意味とdefault値を一致させる。
+6. **profile release gates**: `debian-13-vm-wayland-x64` → `debian-12-vm-wayland-x64` → `ubuntu-24.04-wayland-x64` → `ubuntu-26.04-wayland-x64`の順に、Window visible present、初期希望寸法とcompositor実寸、compositor resize後のLayout/再描画、close/reopen、stderr/logを個別に記録する。各profileのpassは独立した証拠に限定する。
+7. **統合完了gate**: 全unitと関連CI、profile evidence、文書・unit catalog・release matrixがそろった時だけ本計画を完了扱いにし、まとめてmerge PRを提示する。マージ後は本流以外の統合済み一時branchをGit規約に従い整理する。
 
 ## 完了条件
 
@@ -80,9 +82,9 @@ wrapper中にCore/C ABI変更が必要と判明したらwrapper作業を止め�
 
 ## 承認境界
 
-- 本書はWayland desktopとWindow初期サイズ設定を実装するための計画案であり、利用者レビュー待ち。
-- 本計画の承認後も、段階ゲート1のABI/wrapper/build設計案をレビュー・承認してから実装へ進む。
-- 計画承認までは依存追加、source/test変更、unit catalog登録、commit/pushを行わない。本TODOはレビュー用に未コミットで提示する。
+- 0.1計画は`ddaeb94`で承認・push済み。今回は、承認済みAPI/ABI・wrapper/build設計を反映した計画0.2をレビュー案として提示する。
+- 0.2計画の承認後にunit/test準備を始める。source実装はunit test設計・traceability・inventory準備が済んでから着手し、各実装unitは対応testと同revisionで検証する。
+- 0.2計画は未コミット。利用者が計画本文を承認する前にcommit/pushしない。対応unitのテスト完了後は日本語commit/pushし、全unit完了後にchange branchへのmerge PRをまとめて提示する。
 - 実装はunitと同revisionのtest合格後に日本語commit/pushし、全unit完了後にchange branch向けのmerge PRをまとめて出す。
 
 ## レビュー履歴
@@ -90,3 +92,5 @@ wrapper中にCore/C ABI変更が必要と判明したらwrapper作業を止め�
 | 日付 | 計画 | 状態 | 備考 |
 |---|---|---|---|
 | 2026-11-14 | 0.1 | 利用者レビュー待ち | 承認済みRQ-09-076/UI BD/UI DD/Platform BD/Platform DDをCore、C ABI、Linux Wayland、4 wrapper、profile別release testへ展開。API/ABI詳細はimplementation前の別レビューgate。実装・依存追加は未着手 |
+| 2026-11-14 | 0.1 | 承認 | commit `ddaeb94`で承認計画をpush。API/ABI詳細設計承認後に実装を開始するgateを含む |
+| 2026-11-14 | 0.2 | 利用者レビュー待ち | ABI/Platform/build/four wrapperの承認済み改訂を反映し、API設計gate完了、unit/test準備gate、採用済みfeature/profile名を更新。source実装は未着手 |

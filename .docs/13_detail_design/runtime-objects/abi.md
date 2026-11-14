@@ -1,9 +1,9 @@
 # 共通C ABI：宣言・検査・互換性
 
-- 文書版: 1.7
+- 文書版: 1.8
 - 文書ロール: detailed-design
-- 更新日: 2026-11-10
-- 状態: 1.2～1.7全文承認済み（各履歴記録日）。実装・試験状態は別管理
+- 更新日: 2026-11-14
+- 状態: 1.2～1.7全文承認済み（各履歴記録日）。1.8全文承認済み（利用者、2026-11-14）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -749,7 +749,7 @@ ui_status ui_abi_1_window_reset_background_rgb(
 
 Getterはeffective RGB（overrideまたは規定値opaque white `#FFFFFF`）を3出力へ返す。Setterはfiniteかつ0.0～1.0の3成分を事前検証し、全成分が有効な場合だけWindow overrideをatomic commitする。Resetはoverrideを外してdefaultへ戻す。すべてUI thread限定の同期Window操作であり、setter/reset成功時はpaint/scene invalidationのみを起こす。失敗時は既存色・scene stateを保持する。
 
-output pointer null、無効handle/kind、wrong thread、invalid channelは既存status/error契約で拒否する。getterのout値は全validation成功後にまとめて書き、部分出力しない。abi header変更、C++/C#/Rust/Python wrapper形とfeature visibilityは文書全体レビュー待ちの提案であり、配布APIとして扱わない。
+output pointer null、無効handle/kind、wrong thread、invalid channelは既存status/error契約で拒否する。getterのout値は全validation成功後にまとめて書き、部分出力しない。本書で承認されたABI/wrapper/feature設計は、配布headerや実装済みAPIであることまでは意味しない。
 
 ## 共通status・UI loop・終了境界
 
@@ -901,7 +901,7 @@ ui_status ui_abi_1_runtime_dispatch_turn(ui_handle runtime);
 | --- | --- |
 | DD内API表を共通schemaで統合し、入力/出力、owned/borrowed、thread/context、commit、failure ownership、feature/versionを必須fieldにする。 | 上記の根拠RQ |
 | 失敗優先順はrequired output妥当性→token→kind→Runtime→thread/context→lifecycle→値/容量→資源準備。API固有例外は表に列挙する。 | 上記の根拠RQ |
-| feature IDは0 invalid、1 core.mvvm.v1、2 values.f64_decimal.v1、3 numeric.f32_bridge.v1、4 host.shutdown_receipt.v1、5 collection.v1、6 textbox.snapshot.v1、7 runtime.post_dispatch.v1、8 core.ui.controls.v1（1.3承認済み）、9 core.ui.input.v1（1.5承認済み）。 | 上記の根拠RQ |
+| feature IDは0 invalid、1 core.mvvm.v1、2 values.f64_decimal.v1、3 numeric.f32_bridge.v1、4 host.shutdown_receipt.v1、5 collection.v1、6 textbox.snapshot.v1、7 runtime.post_dispatch.v1、8 core.ui.controls.v1（1.3承認済み）、9 core.ui.input.v1（1.5承認済み）。10 `core.ui.window.initial_client_size.v1`は1.8改訂案でレビュー待ち。 | 上記の根拠RQ |
 | has_featureは機能群の全symbolと外部契約が提供されるときだけtrue。build flagの存在だけで有効としない。 | 上記の根拠RQ |
 | global snapshot getterはowned immutable値、UI object getterはUI専用。bufferの2-call readはlive getterなら同snapshot保証なし、snapshot getterなら固定。 | 上記の根拠RQ |
 | borrowed callback引数の保存にはretain/copyが必要。新owned outを受け取るwrapperはticketを先に準備する。 | 上記の根拠RQ |
@@ -1058,6 +1058,42 @@ AbiEntryは出力shape検査→規定out初期化→CallGuardによるhandle/con
 
 ApiInventoryEntryの所管は文書path/版/項目で示す案とし、既存schemaのowner_dd_idをowner_document/owner_sectionへ置き換える内部記録案を1.1で提示する。公開ABIの変更ではない。宣言生成が実装済みであるとは扱わない。
 
+## Window初期client size create ABI（1.8全文承認済み）
+
+要求根拠: [RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)、[RQ-04-006](../../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-030](../../11_requirements/RQ-04_abi-boundary.md#rq-04-030)。UI DD 1.8で承認された省略時800×600 DIP、有限・正の入力条件、OS実寸追従を新しいC ABI symbolへ写す。既存symbolの意味とsignatureは変更しない。
+
+```c
+ui_status ui_abi_1_window_create_with_initial_client_size(
+    ui_handle runtime,
+    const uint8_t *presentation_backend_utf8,
+    uint64_t presentation_backend_byte_length,
+    double width_dip,
+    double height_dip,
+    ui_handle *out_window,
+    ui_handle *out_error);
+```
+
+| 入力 | 契約案 |
+|---|---|
+| `presentation_backend_utf8 == NULL`かつbyte length `0` | Runtime artifactのprofile default descriptorを選ぶ |
+| backend pointer非nullかつbyte length正 | strict UTF-8 identityを検査し、Window設定へcopyする。unknown/profile未登録identityは既存のinvalid/unsupported statusで拒否 |
+| backend pointer/lengthの片側だけ指定、または空identity | `UI_INVALID_ARGUMENT`。Windowを生成しない |
+| `width_dip` / `height_dip` | どちらも有限かつ正の`double`。NaN、±infinity、0、負値は`UI_INVALID_ARGUMENT` |
+| `out_window` | 必須。呼出し開始時に0へ初期化し、成功時だけowned Window tokenを返す |
+| `out_error` | 既存のoptional owned error規則。成功時0、失敗時に生成できたerrorだけを返す |
+
+Coreは初期希望寸法とbackend selectorをWindow objectへcommitする。backend identityのcopyを含む全検証・資源準備が成功するまで部分Windowを公開しない。peerは初回openで希望寸法を使うが、compositor/OSが返す実client areaを`WindowOpenInfo`としてCoreへ返す。close/reopenは同じ希望値を再利用する。
+
+既存`ui_abi_1_window_create`はbackend未指定・初期希望値なしを表し、Coreが800×600 DIPを使う。既存`ui_abi_1_window_create_with_presentation_backend`はbackendを指定して希望値を省略する。明示寸法の場合だけ本symbolを使う。
+
+feature ID 10 `core.ui.window.initial_client_size.v1`を追加する案とする。`has_feature(10)`は本symbolおよび上記の入力、所有、failure、実寸通知契約がruntimeに揃った場合だけtrueとする。ABI minorを互換追加として更新する。feature 8/9の割当・意味は変更しない。wrapperは明示寸法要求でfeature 10がfalseなら`UI_UNSUPPORTED`へ写し、native createを呼ばない。C/C++のAPI inventory、公開header、ctypes、Rust -sys、P/Invoke宣言は本宣言と一致させる。実装・export・試験状態は別管理。
+
+| 操作 | 入力 / 出力 | thread/context | commit / failure |
+|---|---|---|---|
+| `window_create_with_initial_client_size` | Runtime borrow、optional backend byte slice、幅/高さDIP → owned Window | UI thread、Runtime active | validation後にCore Window設定とhandleを公開。失敗時out=0、部分Windowなし |
+
+本設計はfeature 10、関数signature、optional backend表現、値検証、ABI minor追加を定める。配布header・実装・unit inventoryへの反映と試験結果は別途管理する。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -1075,3 +1111,4 @@ ApiInventoryEntryの所管は文書path/版/項目で示す案とし、既存sch
 | 2026-11-01 | 1.5全文 | 利用者の「ok」によりInput callback ABI、borrowed event lifetime、handled setter、Focus getter、feature ID 9を含む全文を承認。宣言の実装・配布状態は別管理 |
 | 2026-11-02 | 1.6全文 | 利用者の「ok」によりHID key identity、modifier bit、primary pointer button数値とText getter結果を含む全文を承認。実装・配布状態は別管理 |
 | 2026-11-10 | 1.7全文 | 利用者の「ok」によりWindow生成時backend設定と明示選択C ABI宣言、既存default create互換、文字列所有・選択固定・open時適合確認を含む全文を承認。実装・配布は別管理 |
+| 2026-11-14 | 1.8全文 | 利用者の「ok」により、初期client size追加symbol、feature ID 10、optional backend表現、validation/out/error/compatibility契約を含む全文を承認。実装・試験状態は別管理 |

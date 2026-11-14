@@ -1,9 +1,9 @@
 # 言語ラッパー：Rust
 
-- 文書版: 1.8
+- 文書版: 1.9
 - 文書ロール: detailed-design
-- 更新日: 2026-11-02
-- 状態: 1.4～1.6全文承認済み（利用者、2026-10-24）。UI Control / Window close-requestを含む1.7～1.8全文承認済み（利用者、2026-10-25）。Window background RGBを含む1.7全文承認済み（利用者、2026-10-30）。Input eventを含む1.8全文承認済み（利用者、2026-11-02）。実装・試験状態は別管理
+- 更新日: 2026-11-14
+- 状態: 1.4～1.6全文承認済み（利用者、2026-10-24）。UI Control / Window close-requestを含む1.7～1.8全文承認済み（利用者、2026-10-25）。Window background RGBを含む1.7全文承認済み（利用者、2026-10-30）。Input eventを含む1.8全文承認済み（利用者、2026-11-02）。1.9全文承認済み（利用者、2026-11-14）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -762,6 +762,44 @@ sequenceDiagram
 - callback panicのControl固有診断表示。既存C ABI/Rust callback契約を越える継続・復旧保証は追加しない。
 - 下位C ABIにまだないControl API、TextBox編集/IME、routed input、native peer実装、非同期Future・自動executor・package配布。
 
+## Window初期client size wrapper API（1.9全文承認済み）
+
+要求根拠: [RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)。C ABI正本は[共通C ABI 1.8](../runtime-objects/abi.md)、WindowのCore設定とPlatform実寸の関係は[UI Control DD](../ui/controls.md)と[Platform DD](../platform/internal-layers.md)に従う。
+
+```rust
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WindowInitialClientSize {
+    pub width_dip: f64,
+    pub height_dip: f64,
+}
+
+pub struct WindowOptions<'a> {
+    pub presentation_backend: Option<&'a str>,
+    pub initial_client_size: Option<WindowInitialClientSize>,
+}
+
+impl Window {
+    pub fn create_with_options(
+        ui: &UiContext<'_>,
+        options: WindowOptions<'_>,
+    ) -> Result<Self, UiError>;
+}
+```
+
+`Window::create(ui)`と`Window::create_with_presentation_backend(ui, backend)`は既存signatureを維持する。`create_with_options`は組合せに応じて既存create symbolか`ui_abi_1_window_create_with_initial_client_size`を使う。`initial_client_size == None`はCore default 800×600 DIP、指定値は希望寸法としてC ABIへ渡す。finite/positive validationとWindow未作成のfailure結果はCore/C ABIに委譲する。wrapper独自に寸法を丸めたりOS実寸を推測したりしない。
+
+Windowの`open`は同じ設定をpeerへ送り、peerから返る実client areaでCore Layout/Sceneが更新される。`close`後の再openも同じ希望寸法を使う。UI thread/Runtime検査、owned handle/Runtime anchor、C ABI errorから`UiError`への変換は既存Control APIと同じにする。
+
+Rust wrapperは対応するnative artifactに含まれるC ABI symbolへ直接linkするため、配布Rust wrapperとnative runtimeのminimum versionを一致させる。明示sizeを使う場合はfeature ID 10を検査し、未対応を`UI_UNSUPPORTED`由来の`UiError`へ変換する。`Window::create`は既存symbolを使い既定寸法の意味を維持するが、新しいRust wrapperと新symbolを含まない旧native libraryの組合せはサポートしない。
+
+| 呼出し | native経路 | 結果 |
+|---|---|---|
+| options省略 /両方None | `window_create` | default backend、800×600 DIP |
+| backendのみ | `window_create_with_presentation_backend` | 指定backend、800×600 DIP |
+| sizeあり | feature 10を確認し、`window_create_with_initial_client_size` | option backendまたはprofile default、指定size |
+
+このRust safe APIは文書全体承認済みである。実装・test passは別途管理する。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -784,3 +822,4 @@ sequenceDiagram
 | 2026-10-30 | 1.7改訂案 | RQ-09-074に対応する`RgbColor`とWindow background get/set/reset APIを提案。全文レビュー待ち |
 | 2026-10-30 | 1.7全文 | 利用者の「ok」によりRust `RgbColor`とWindow background get/set/reset APIを含む全文を承認。実装・試験合格は別管理 |
 | 2026-11-02 | 1.8全文 | 利用者の「ok」により、Input event callback/view、lifetime、cancelと例外境界を含む全文を承認。実装・試験状態は別管理 |
+| 2026-11-14 | 1.9全文 | 利用者の「ok」により、Window options、初期client size値型、C ABI feature 10利用と既存API維持を含む全文を承認。実装・試験状態は別管理 |

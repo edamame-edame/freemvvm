@@ -1,9 +1,9 @@
 # 言語ラッパー：C++
 
-- 文書版: 1.5
+- 文書版: 1.6
 - 文書ロール: detailed-design
-- 更新日: 2026-11-02
-- 状態: 1.2全文・1.3 Binding API補足承認済み。1.4全文承認済み（利用者、2026-10-30）。1.5全文承認済み（利用者、2026-11-02）。実装・試験状態は別管理
+- 更新日: 2026-11-14
+- 状態: 1.2全文・1.3 Binding API補足承認済み。1.4全文承認済み（利用者、2026-10-30）。1.5全文承認済み（利用者、2026-11-02）。1.6全文承認済み（利用者、2026-11-14）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -743,6 +743,41 @@ kindに応じたpayload getterは不一致をUI_WRONG_TYPEで返す。Textはcal
 
 登録時は既存callback root/cleanup規則に従い、成功した場合だけuserdataをCoreへ移す。Subscription::cancel()は以後のcallback開始を止め、close()/destructorはregistration handleをreleaseするだけである。callbackからのC++例外はnoexcept trampolineで捕捉し、既存callback failure handlerへ渡し、handler未設定時はstderrへ診断を出した後eventをhandledへしてdefault actionを止める。
 
+## Window初期client size wrapper API（1.6全文承認済み）
+
+要求根拠: [RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)。C ABI正本は[共通C ABI 1.8](../runtime-objects/abi.md)、Core/Platformの実寸境界は[UI Control DD](../ui/controls.md)と[Platform DD](../platform/internal-layers.md)に従う。
+
+```cpp
+struct WindowInitialClientSize {
+  double width_dip;
+  double height_dip;
+};
+
+struct WindowCreateOptions {
+  std::optional<std::string_view> presentation_backend;
+  std::optional<WindowInitialClientSize> initial_client_size;
+};
+
+class Window {
+ public:
+  static Result<Window> create(Runtime& runtime, WindowCreateOptions options);
+};
+```
+
+既存`Window::create(runtime)`と`Window::create(runtime, presentation_backend)`は維持する。新overloadはbackendとsizeの4組合せを受け、sizeなしなら既存symbol、sizeありならfeature ID 10を確認して`window_create_with_initial_client_size`を呼ぶ。`WindowCreateOptions`の`string_view`はcall中だけborrowし、C ABIへ渡すbyte列をcall中保持する。C ABI/Core以外で寸法を丸めたり、独自のdefault値を保持したりしない。
+
+初期寸法はDIPの希望値で、有限かつ正のvalidationはC ABI/Coreが行う。失敗は既存`Result<Window>`のerrorへstatus/domain/code/messageを保持して返す。成功時のCore Window状態・backend選択は生成後immutable。実client areaはopen peerからCoreへ返される値に従い、close/reopenでは同じ希望寸法を再利用する。
+
+`ApiTable`は新symbolをoptional entryとして解決し、feature 10がないruntimeではサイズ指定呼出しだけをunsupportedとして返す。既存Window constructorのために新symbolの存在を必須化しない。C++ packageが選ぶnative runtime minimum/featureは同一distribution manifestへ記録する。
+
+| options | C ABI mapping |
+|---|---|
+| backendなし、sizeなし | `window_create` |
+| backendあり、sizeなし | `window_create_with_presentation_backend` |
+| sizeあり（backend optional） | feature 10確認後`window_create_with_initial_client_size` |
+
+このC++公開surfaceは文書全体承認済みである。実装・package test passは別途管理する。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -760,3 +795,4 @@ kindに応じたpayload getterは不一致をUI_WRONG_TYPEで返す。Textはcal
 | 2026-10-30 | 1.4改訂案 | RQ-09-074に対応する`RgbColor`とWindow background get/set/reset APIを追加提案。全文レビュー待ち |
 | 2026-10-30 | 1.4全文 | 利用者の「ok」により`Result`ベースのWindow background get/set/reset APIを含む全文を承認。実装・試験合格は別管理 |
 | 2026-11-02 | 1.5全文 | 利用者の「ok」により、Input event callback/view、lifetime、cancelと例外境界を含む全文を承認。実装・試験状態は別管理 |
+| 2026-11-14 | 1.6全文 | 利用者の「ok」により、`WindowCreateOptions`と初期size値型、feature 10 mapping、既存overload維持を含む全文を承認。実装・試験状態は別管理 |

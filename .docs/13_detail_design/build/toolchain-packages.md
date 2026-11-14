@@ -1,9 +1,9 @@
 # ビルド・配布：toolchain・profile・package
 
-- 文書版: 1.2
+- 文書版: 1.3
 - 文書ロール: detailed-design
-- 更新日: 2026-11-10
-- 状態: 1.1～1.2全文承認済み（利用者、各履歴記録日）。実装・試験状態は別管理
+- 更新日: 2026-11-14
+- 状態: 1.1～1.2全文承認済み（利用者、各履歴記録日）。1.3全文承認済み（利用者、2026-11-14）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -298,6 +298,34 @@ fetch/import toolは適合metadata選択→trust/署名→bytes/digest→private
 
 VerifiedArtifactは暗号検証とpath束縛を表す内部型で、単なるファイル存在確認ではない。図のSecurityVerifierの実装詳細はSDを正本とし、ここで新しい暗号方式・公開registry・tool実装を採用済みにしない。
 
+## Linux Wayland desktop target profileとbackend feature分離（1.3全文承認済み）
+
+要求根拠: [RQ-11-003](../../11_requirements/RQ-11_platform.md#rq-11-003)、[RQ-11-014](../../11_requirements/RQ-11_platform.md#rq-11-014)、[RQ-11-015](../../11_requirements/RQ-11_platform.md#rq-11-015)、[RQ-11-024](../../11_requirements/RQ-11_platform.md#rq-11-024)、[RQ-12-010](../../11_requirements/RQ-12_build-distribution.md#rq-12-010)。Linux desktop Wayland artifactと既存DRM/KMS console artifactを異なるbackend/profileとしてlock・build・記録する。
+
+| Profile ID | OS/session | backend identity | release evidence |
+|---|---|---|---|
+| `debian-13-vm-wayland-x64` | Debian 13 x64 Wayland desktop | `linux-wayland-egl` | exact OS/kernel、compositor/session、VirtualBox/virtual GPU/driver、artifact SHA、visible present/resize/close-reopen |
+| `debian-12-vm-wayland-x64` | Debian 12 x64 Wayland desktop | `linux-wayland-egl` | 同一項目を独立記録し、Debian 13結果を流用しない |
+| `ubuntu-24.04-wayland-x64` | Ubuntu 24.04 x64 Wayland desktop | `linux-wayland-egl` | OS/kernel、compositor/session、VM/GPU/driver、artifact SHA、visible present/resize/close-reopen |
+| `ubuntu-26.04-wayland-x64` | Ubuntu 26.04 x64 Wayland desktop | `linux-wayland-egl` | OS/kernel、compositor/session、VM/GPU/driver、artifact SHA、visible present/resize/close-reopen |
+
+既存`debian-12-vm-x64`および`ubuntu-24.04-x64` DRM/KMS identitiesはこのWayland desktop profileへ読み替えない。Linux profile buildでは`FREEMVVM_TARGET_PROFILE`を明示し、build.rsはtarget triple・有効backend feature・profileの組み合わせを照合する。generic Linux x64 buildのmetadataは対象OSでのruntime evidenceにならない。
+
+#### backend featureと選択
+
+| crate / feature | 役割 |
+|---|---|
+| `freemvvm-platform-linux/drm-gbm-egl-gles` | DRM/KMS console実装とDRM/GBM専用依存を有効化 |
+| `freemvvm-platform-linux/wayland-egl-gles` | Wayland client/xdg-shell/wayland-egl実装を有効化 |
+| `freemvvm-c-abi/presentation-backend-linux-drm-gbm-egl-gles` | 既存defaultを維持し、platform crateのDRM featureへ伝播 |
+| `freemvvm-c-abi/presentation-backend-linux-wayland-egl-gles` | Wayland peerを登録し、platform crateのWayland featureへ伝播 |
+
+Linux Wayland artifactは`cargo build -p freemvvm-c-abi --no-default-features --features presentation-backend-linux-wayland-egl-gles`相当の明示profileでbuildする。DRM/KMSとWaylandの同時選択はbuild failureにする。Wayland-only `cargo tree`/package inspectionでDRM専用crateを含まないことを確認する。Rust source/dependency featureのcompile選択とOS system shared libraryは別境界とし、Wayland client/EGL/GLES runtime librariesをpackage metadataに明記する。
+
+`libwayland-dev`、EGL/GLES headersおよびpkg-config providerはbuild prerequisitesとして記録する。runtime dependency packageはDebian/Ubuntuの対象profileで実在・名称・loader解決を確認してからlockへ加える。crate versionは`Cargo.lock`に固定し、wayland-client/protocol/eglを含む解決graph全体をRust 1.85で検査する。未確認のcrate patch版やdistribution package versionを本案で固定しない。
+
+Python wrapperはpure-Python facadeとprofile別native artifactを使う現在の共通package方針を維持する。Python専用backend plugin方式、全Wayland/DRM実装の同時load、PyInstaller専用の別配布契約は本案で追加しない。実装・package test・runtime passは別管理とする。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -307,3 +335,4 @@ VerifiedArtifactは暗号検証とpath束縛を表す内部型で、単なるフ
 | 2026-10-17 | 1.1改訂案 | 利用者の補足指示によりクラス責務・所有・メソッド・関連図を追加。1.0承認を維持し、1.1全文は確認待ち |
 | 2026-10-17 | 1.1全文 | 利用者の「OK,テスト文書作りましょうか」により、クラス設計補足と選択的な図の補強を含む全文を承認。既存履歴を維持し、実装・試験状態は別管理 |
 | 2026-11-10 | 1.2全文 | 利用者の「ok」によりbackend feature setと共通native artifact、Python plugin/source distribution/PyInstaller候補と未決境界を含む全文を承認。plugin ABI・Python専用artifactの採否は未決のまま。実装・試験は別管理 |
+| 2026-11-14 | 1.3全文 | 利用者の「ok」により、Wayland desktop profile IDs、DRM/KMSとのCargo feature分離、runtime library/package境界とPython artifact方針を含む全文を承認。実装・試験状態は別管理 |

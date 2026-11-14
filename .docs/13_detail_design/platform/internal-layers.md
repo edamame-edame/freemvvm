@@ -1,9 +1,9 @@
 # プラットフォーム：OS・描画・text・IME内部レイヤー
 
-- 文書版: 2.9
+- 文書版: 3.0
 - 文書ロール: detailed-design
 - 更新日: 2026-11-14
-- 状態: 2.7全文承認済み（利用者、2026-11-09）。2.8全文承認済み（利用者、2026-11-10）。2.9全文承認済み（利用者、2026-11-14）。実装・試験状態は別管理
+- 状態: 2.7全文承認済み（利用者、2026-11-09）。2.8全文承認済み（利用者、2026-11-10）。2.9全文承認済み（利用者、2026-11-14）。3.0全文承認済み（利用者、2026-11-14）。実装・試験は別管理
 
 ## 目的と上位根拠
 
@@ -638,6 +638,24 @@ sequenceDiagram
 
 この案は`RuntimeWindowCloseRequestSink`/`RuntimeWindowClientAreaSink`と同じWeak Runtime・dispatcher callback patternを使い、workerからControl、Focus state、user callbackを直接操作しない。公開ABIには変更を加えない。Core ingress failureとstale-generationのtest oracleは[UI unit test](../../32_unit_test/ui.md) 1.8改訂案で別途レビューする。
 
+## v3.0: Linux Wayland desktop / DRM console build profile分離（全文承認済み）
+
+要求根拠: [RQ-11-003](../../11_requirements/RQ-11_platform.md#rq-11-003)、[RQ-11-014](../../11_requirements/RQ-11_platform.md#rq-11-014)、[RQ-11-015](../../11_requirements/RQ-11_platform.md#rq-11-015)、[RQ-11-024](../../11_requirements/RQ-11_platform.md#rq-11-024)、[RQ-12-010](../../11_requirements/RQ-12_build-distribution.md#rq-12-010)。承認済みv2.9のnative Wayland peerと`linux-wayland-egl` identity、v2.7/2.8の選択固定・failure/no-fallback規則を維持し、artifact build選択を具体化する。
+
+| 境界 | v3.0設計 |
+|---|---|
+| Linux platform crate | Cargo feature `drm-gbm-egl-gles`と`wayland-egl-gles`を分け、DRM/GBM専用依存とWayland client/protocol/wayland-egl専用依存をoptionalにする。GLES/EGL等の共有依存だけcommon featureへ置く |
+| C ABI artifact | 既存`presentation-backend-linux-drm-gbm-egl-gles` defaultを維持し、新feature `presentation-backend-linux-wayland-egl-gles`からWayland featureを有効にする案。Wayland desktop artifactは`--no-default-features`でWaylandだけを選ぶ |
+| feature競合 | 同一artifactでDRM/KMSとWaylandの双方を選んだ場合はbuild時に失敗させる。Window runtimeでbackend切替や暗黙fallbackをしない |
+| Wayland descriptor | identityは承認済み`linux-wayland-egl`を使用し、Wayland peer factoryだけをWayland desktop artifactへ登録する |
+| profile identity | `debian-13-vm-wayland-x64`、`debian-12-vm-wayland-x64`、`ubuntu-24.04-wayland-x64`、`ubuntu-26.04-wayland-x64`を使い、既存DRM/KMS profile名と区別する。`FREEMVVM_TARGET_PROFILE`で明示する |
+| runtime native libraries | Wayland client/EGL/GLES system shared libraryをtarget OSが提供することをpackage/profile metadataに記録する。build headers/dev packageとruntime libraryを別項目として列挙する |
+| Python配布 | 共通native artifact + pure-Python facadeの現行方針に従い、Wayland artifactをprofile別に配布する。runtime plugin loaderや複数backendのhot-swapは追加しない |
+
+Wayland crateのexact version、lock解決、Rust 1.85 minimum、native linking、各distributionのbuild/runtime packageは[build/toolchain DD 1.3](../build/toolchain-packages.md)で定める。Wayland desktop sessionが要求するnative environmentはPlatform DD 2.9の接続規則に従い、TTY、root権限、display manager停止、DRM CRTC直接操作を前提にしない。
+
+本設計はprofile/buildの実現方式を定める。Wayland visible runtime supportは各OS/session/VM/artifact SHAのrelease evidenceが個別に合格した場合だけ付与する。実装、Cargo変更、profile passは別管理。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -676,3 +694,4 @@ sequenceDiagram
 | 2026-11-10 | 2.8改訂案 | Window構築時の選択、Window object寿命中の固定、close/reopen後の同一選択再利用を提案。2.7のprofile/default・非互換/failure/no-fallback契約は維持し、選択時期に関する差分を明示。文書全体レビュー待ち |
 | 2026-11-10 | 2.8全文 | 利用者の「ok」によりWindow構築時のbackend選択・固定、open時適合確認、close/reopen同一選択を含む全文を承認。実装・試験は別管理 |
 | 2026-11-14 | 2.9全文 | Wayland client + EGL/GLES接続、xdg-shell configure/resize/close、thread ownership、frame completion、profile failure boundary、Window初期client size希望値の受渡し。RQ-09-076/UI DD 1.8と合わせて全文承認済み |
+| 2026-11-14 | 3.0全文 | 利用者の「ok」により、Linux Wayland/DRM feature分離、Wayland profile identity、shared runtime libraryとPython artifact境界を含む全文を承認。実装・試験状態は別管理 |

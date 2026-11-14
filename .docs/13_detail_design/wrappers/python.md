@@ -1,9 +1,9 @@
 # 言語ラッパー：Python
 
-- 文書版: 2.2
+- 文書版: 2.3
 - 文書ロール: detailed-design
-- 更新日: 2026-11-06
-- 状態: 2.2全文承認済み（利用者、「承認」、2026-11-06）。実装・試験状態は別管理
+- 更新日: 2026-11-14
+- 状態: 2.2全文承認済み（利用者、「承認」、2026-11-06）。2.3全文承認済み（利用者、「ok」、2026-11-14）。実装・試験状態は別管理
 
 ## 目的と上位根拠
 
@@ -1059,6 +1059,31 @@ InputEventViewはkind、key/modifiers、text、position_dipをread-onlyで公開
 
 callable rootはnative registration destroyまでstrong rootする。登録失敗ではPython側に所有を残す。UiSubscription.cancel()は新規callbackを止め、close()はhandleをreleaseするだけである。C callback trampolineはGILを取得してuser callableを呼び、全例外を捕捉して既存failure handlerへ渡す。handler未設定時はstderrへ診断を出す。eventをhandledにしてdefault actionを止め、C ABIを越境させない。cancel/close/finalizerでblocking lockを取らない。
 
+## Python Window初期client size API（2.3全文承認済み）
+
+要求根拠: [RQ-09-076](../../11_requirements/RQ-09_ui-scope.md#rq-09-076)。C ABI mappingは[共通C ABI 1.8](../runtime-objects/abi.md)、Window/Core/Platform寸法境界は[UI Control DD](../ui/controls.md)と[Platform DD](../platform/internal-layers.md)に従う。
+
+```python
+Window.create(
+    runtime,
+    presentation_backend=None,
+    *,
+    initial_client_size=None,
+)
+```
+
+`presentation_backend`の既存第2 positional/keyword引数を維持し、新しい`initial_client_size`だけkeyword-onlyで加える。sizeは`(width_dip, height_dip)`の2要素tupleとする。wrapperはtuple長、real numericであること（`bool`は除く）、float変換後のfinite/positive値を検査し、不正な型や値は`UiError`へ変換する。backend identityのUTF-8 validationとCore状態commitはC ABIへ委譲する。
+
+| 引数 | C ABI操作 |
+|---|---|
+| backendなし・sizeなし | `window_create`。Core default 800×600 DIP |
+| backendあり・sizeなし | `window_create_with_presentation_backend` |
+| sizeあり | feature 10を確認後、optional backend bytesと二つのdoubleを`window_create_with_initial_client_size`へ渡す |
+
+`NativeApi`は新symbolをoptional functionとしてresolveし、feature 10がない場合はsize指定時だけunsupported `UiError`とする。新symbolがない旧native artifactでも既存constructorのsymbol bindingを失敗させない。native call中はUTF-8 bytesとbufferを保持し、Window objectは希望寸法・backendを独自にmutable cacheしない。実client areaはCore/peerから取得され、close/reopenは同じ希望値を再利用する。
+
+このPython facadeは文書全体承認済みである。実装・wheel test passは別途管理する。
+
 ## 文書の承認・改訂履歴
 
 | 日付 | 対象版 | 内容・根拠 |
@@ -1092,3 +1117,4 @@ callable rootはnative registration destroyまでstrong rootする。登録失�
 | 2026-11-02 | 1.3全文 | 利用者の「ok」により、Input event callback/view、lifetime、cancelと例外境界を含む全文を承認。実装・試験状態は別管理 |
 | 2026-11-05 | 2.2統合案 | 既承認のInput event API（旧1.3全文）を2.1へ統合 |
 | 2026-11-06 | 2.2全文 | 利用者の「承認」により、Runtime/UI/Window背景色/Input event APIを統合した全文を承認。実装・試験状態は別管理 |
+| 2026-11-14 | 2.3全文 | 利用者の「ok」により、keyword-only初期size引数、2-tuple mapping、feature 10/native loading境界を含む全文を承認。実装・試験状態は別管理 |
