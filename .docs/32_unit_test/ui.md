@@ -1,16 +1,27 @@
 # 単体試験：Tree・Layout・Control・Input・TextBox
 
-- 文書版: 1.9
-- 状態: 1.9全文承認済み（利用者、2026-11-10）。profile oracle・試験実装・実行状態は別管理
-- 更新日: 2026-11-10
+- 文書版: 2.0
+- 状態: 2.0全文承認済み（利用者、2026-11-14）。UNIT-CORE-095は同revisionのtest合格。ABI/Platform/wrapper testの実装・実行状態は別管理
+- 更新日: 2026-11-14
 
 候補単位はTreeCoordinator、LayoutEngine、具象Control、InputRouter/FocusManager、TextBox編集transaction。OS pixel一致や実IME接続はsystem/platform試験へ分離する。
 
 上位根拠: [単体試験方針](unit-test-strategy.md)、[実装unit台帳契約](implementation-test-inventory.md)、[共通fixture・実行記録](README.md)。
 
-新しいcase: [TC-BACKEND-SELECT-01](../30_release_test/requirement-test-matrix.md#case-tc-backend-select-01)。下記unit IDは試験管理用であり、実装unit台帳への登録・実装・実行は別管理。
+新しいcase: [TC-BACKEND-SELECT-01](../30_release_test/requirement-test-matrix.md#case-tc-backend-select-01)、[TC-WINDOW-INITIAL-SIZE-01](../30_release_test/requirement-test-matrix.md#case-tc-window-initial-size-01)。下記unit IDは試験管理用であり、実装unit台帳への登録・実装・実行は別管理。
 
 設計根拠: [ui/tree-layout.md](../13_detail_design/ui/tree-layout.md) 1.3承認baseline（Tree/Layout）および1.4改訂案（ControlViewConnector/SceneSnapshot）、[runtime-objects/objects-values.md](../13_detail_design/runtime-objects/objects-values.md) 1.3「Tree内部ownerとpublic参照の独立管理」、[ui/controls.md](../13_detail_design/ui/controls.md) 1.2改訂案「Control API / Window / Layout委譲」、[ui/input-focus.md](../13_detail_design/ui/input-focus.md) 1.1「Focus状態 / 入力・IME接続」、[ui/text-editing.md](../13_detail_design/ui/text-editing.md) 1.1「入力検証 / IME / 編集候補と確定値」、[runtime-objects/abi.md](../13_detail_design/runtime-objects/abi.md) 1.3改訂案「初期UI ControlのC ABI操作」、[Platform internal layers](../13_detail_design/platform/internal-layers.md) 1.5承認baseline（Window client area）および1.6改訂案（renderer factory/selection）。
+
+## Window初期client size Core/API試験設計（2.0承認済み）
+
+上位根拠は[RQ-09-076](../11_requirements/RQ-09_ui-scope.md#rq-09-076)。承認済み実現契約は[UI controls DD 1.8](../13_detail_design/ui/controls.md)、[共通C ABI DD 1.8](../13_detail_design/runtime-objects/abi.md)、[Platform DD 3.0](../13_detail_design/platform/internal-layers.md)。要求サイズは希望値であり、compositorが返す実client areaと一致することを期待値にしない。
+
+| 予定test ID | 前提・操作・観測 | 期待結果 | 要求case |
+|---|---|---|---|
+| <a id="ut-window-initial-size-001"></a>UT-WINDOW-INITIAL-SIZE-001 | fake peerを持つRuntimeでWindowを未指定生成し、Core設定とopen requestを読む。別fixtureで有限・正の整数/小数DIPを指定して生成し、close/reopen後のrequestを読む。peer configureでは要求値と異なる実client areaを返してLayout/Sceneを進める。0、負数、NaN、±Infinityを個別に渡し、Runtime内のControl handle数を前後比較する | 未指定は800×600 DIP。明示値はDIPの希望寸法として保持し、reopenでも再利用する。peerが返した実寸は希望値と異なってもCoreのclient area/Layout/Sceneに使う。無効値はWindow生成前に拒否し、部分stateやowned tokenを公開しない | [RQ-09-076](../11_requirements/RQ-09_ui-scope.md#rq-09-076)<br/>[TC-WINDOW-INITIAL-SIZE-01](../30_release_test/requirement-test-matrix.md#case-tc-window-initial-size-01)、[TC-LAYOUT-01](../30_release_test/requirement-test-matrix.md#case-tc-layout-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+| <a id="ut-abi-window-options-001"></a>UT-ABI-WINDOW-OPTIONS-001 | C ABI `window_create_with_initial_client_size`をdefault backend（NULL/0）と明示backend byte sliceで呼ぶ。pointer/length片側指定、空文字、不正UTF-8、zero/negative/NaN/±Infinityを個別に入力。required/optional out、feature 10と既存feature 8/9を確認し、公開headerをC/C++ compile probeへ通す | 正常入力だけがowned Windowを返す。失敗時required outputは0、部分Windowなし。feature 10は契約全体の実装時だけtrueで、feature 8/9の意味は変わらない。既存default/backend create symbolは引き続き利用可能。C/C++宣言は承認ABIと一致する | [RQ-09-076](../11_requirements/RQ-09_ui-scope.md#rq-09-076)、[RQ-04-006](../11_requirements/RQ-04_abi-boundary.md#rq-04-006)、[RQ-04-030](../11_requirements/RQ-04_abi-boundary.md#rq-04-030)<br/>[TC-WINDOW-INITIAL-SIZE-01](../30_release_test/requirement-test-matrix.md#case-tc-window-initial-size-01)、[TC-ABI-REP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-rep-01)、[TC-ABI-COMP-01](../30_release_test/requirement-test-matrix.md#case-tc-abi-comp-01)、[TC-ERROR-01](../30_release_test/requirement-test-matrix.md#case-tc-error-01) |
+
+本改訂でCore/C ABIの局所oracleを追加する。OS visible present・configure resizeや言語wrapperのmappingはこの二unitのpassに含めず、Platform/releaseおよびwrapper unitで個別に検証する。UNIT-CORE-095は実装・testともpass。UNIT-ABI-024は承認済み設計・試験に基づく`planned`状態で、次のunitとして実装する。profile evidenceは別管理とする。
 
 ## Tree・Layout・Control
 
@@ -289,6 +300,8 @@ UNIT-PLATFORM-003のDocker Debian 12実行結果: `cargo test -p freemvvm-platfo
 | 2026-11-01 | 1.7改訂案 | — | RQ-09-068向けbubbling/handled/default action、callback lifetime/reentrancy、key/text、primary pointer/Button、Focus getterのcaseを提案 |
 | 2026-11-01 | 1.7全文 | 利用者 | 「ok」によりInput routing/focus eligibility loss、event lifecycle、key/text、Button pointer/clipのcase oracle全体を承認。test実装・実行状態は別管理 |
 | 2026-11-08 | 1.8全文 | 利用者 | 「ok」によりCore ingressとWindows native message mappingを分離したcase、FIFO/generation/shutdown/failure oracleを含む全文を承認。実装・実行・OS実機確認は別管理 |
+| 2026-11-14 | 2.0改訂案 | — | RQ-09-076のCore初期size/実client area oracleとC ABI feature 10/input validation caseを追加。文書全体レビュー待ち |
+| 2026-11-14 | 2.0全文 | 利用者 | 「ok」によりCore/C ABI試験oracle全文を承認。UNIT-CORE-095の実装と同revision test passは別途記録 |
 
 ## 改訂履歴
 
@@ -313,3 +326,4 @@ UNIT-PLATFORM-003のDocker Debian 12実行結果: `cargo test -p freemvvm-platfo
 | 1.7 | 2026-11-01 | RQ-09-068のhandled route、subscription lifetime、native-neutral keyboard/text/pointer、Focus observationをfake Core test oracleへ具体化 | Codex | 文書全体承認済み。unit inventory登録・試験実装・実行は未開始 |
 | 1.8 | 2026-11-07 | Core Platform input ingressのdispatcher/thread/generation/shutdown/failure testを追加し、承認済みWindows mappingと境界を分離 | Codex | `internal-layers.md` 2.5全文承認を根拠とする。文書全体承認済み。未実装・未実行 |
 | 1.9 | 2026-11-10 | RQ-11-025向けWindow backend selector、C ABI buffer ownership、wrapper parityのtest案を追加 | Codex | 文書全体承認済み。unit inventory登録・実装・実行は未開始 |
+| 2.0 | 2026-11-14 | RQ-09-076向けCore初期size/実client areaとC ABI feature 10/validationのtest oracleを追加 | Codex | 文書全体承認済み。Core unitは実装・test pass、ABI unitは未実装 |

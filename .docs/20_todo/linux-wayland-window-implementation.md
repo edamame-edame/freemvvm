@@ -1,7 +1,7 @@
-# 0.0.1 Linux Wayland Window実装計画案
+# 0.0.1 Linux Wayland Window実装計画
 
 - 計画版: 0.2
-- 状態: 実装計画の改訂案。利用者レビュー待ち・未コミット。実装未着手
+- 状態: 計画版0.2承認済み・push済み。unit実装中。UNIT-CORE-095完了、ABI以降は未着手
 - 対象version: `0.0.1`
 - 対象branch: `change/platform-support-scope`
 - 親計画: [Linux desktop backend scope](linux-desktop-backend-scope-proposal.md) 0.6
@@ -33,7 +33,7 @@ wrapper中にCore/C ABI変更が必要と判明したらwrapper作業を止め�
 
 ## 実装unitと同revision test
 
-以下のIDはレビュー用の仮割当で、台帳登録時に既存台帳と再照合する。source変更と対応test design/catalogは同じrevisionに含める。
+各IDはunit inventoryとの重複確認後に登録済み。source変更と対応test design/catalogは同じrevisionに含め、unit test pass後に該当unitを完了へ更新する。
 
 | Unit | 責務と変更範囲 | 対応test案 |
 | --- | --- | --- |
@@ -44,6 +44,12 @@ wrapper中にCore/C ABI変更が必要と判明したらwrapper作業を止め�
 | `UNIT-WRAP-CPP-WINDOW-SIZE-001` | C++ wrapperでdefaultと明示backend/sizeの生成・idiomatic値型・例外/Result規約 | `UT-WRAP-CPP-WINDOW-SIZE-001` とC++ consumer/package smoke |
 | `UNIT-WRAP-CS-WINDOW-SIZE-001` | C# wrapperでdefaultと明示backend/sizeの生成・値型・例外/Result規約 | `UT-WRAP-CS-WINDOW-SIZE-001` とC# consumer smoke |
 | `UNIT-WRAP-PY-WINDOW-SIZE-001` | Python wrapperでdefaultとkeyword引数等のidiomatic API、native error mapping、built wheelの利用 | `UT-WRAP-PY-WINDOW-SIZE-001` とwheel/import/consumer smoke |
+
+### 進捗（2026-11-14）
+
+- `UNIT-CORE-095` complete: `WindowInitialClientSize`の800×600 DIP defaultと有限・正値検証、Window生成時保持、peer size-aware open受渡し、実client areaでのLayout、close/reopen値保持を実装。Core focused testとCore全206 testsがpass。
+- `UNIT-ABI-024`を次の実装unitとする。ABI API、feature 10、C/C++ header/runtime probesは未実装。
+- Platform peerの既存`open(generation)`は維持し、default `open_with_initial_client_size`へ追加委譲する。旧peerの互換動作を保ち、Wayland unitでサイズ適用を具体化する。
 
 実装台帳 (`tools/units.yaml` と責務別 `tools/units/*.yaml`) にsource/config/test-design path、依存unit、RQ・承認設計、test command、release caseを追加する。ID重複または現在の最大番号更新があれば仮IDを繰り下げる。test IDは既存命名規則と文書全体整合を見て登録する。
 
@@ -58,7 +64,7 @@ wrapper中にCore/C ABI変更が必要と判明したらwrapper作業を止め�
 ## 段階ゲートと順序
 
 1. **設計gate（完了）**: API/build方式を含む7つの正本DD全体が2026-11-14に承認済み。詳細は[API/build承認記録](linux-wayland-window-api-proposal.md)。
-2. **unit/test準備gate**: `.docs/32_unit_test/`のCore・ABI・Platform・wrapper試験設計、要求traceability、実装unit inventoryの既存規則と重複を確認し、今回のunit/test path・command・依存を登録する。登録案は実装計画承認後に準備し、sourceと対応testは同じrevisionに含める。
+2. **unit/test準備gate（完了）**: Core・ABIの試験設計、RQ traceability、unit path・command・依存を登録し、利用者レビュー承認済み。Platform・wrapperの詳細試験設計は各unit着手前に同様に確認する。
 3. **Core/ABI実装gate**: `UNIT-CORE-095`と`UNIT-ABI-024`を順に実装し、focused test、header probes、既存API regression、Rust 1.85 checkを同revisionで通す。これを完了してからLinuxと各wrapperの基点とする。
 4. **Wayland backend gate**: Debian 13 graphical Wayland sessionで`libwayland-dev`等の環境を整え、承認済みprofile `debian-13-vm-wayland-x64`、feature `presentation-backend-linux-wayland-egl-gles`を使う。native Wayland client + wayland-egl +既存GLES rendererを実装し、EGL/GLES依存・thread affinity・frame completionとevent loopを検証する。DRM console profileを壊さない。
 5. **wrapper sibling gates**: Rust → C++ → C# → Pythonの順に更新済みCore APIs branchから兄弟branchを切る。各言語のdefault/explicit creation、invalid input、既存API互換、公開package consumer testを通す。各wrapper間の意味とdefault値を一致させる。
@@ -83,8 +89,8 @@ wrapper中にCore/C ABI変更が必要と判明したらwrapper作業を止め�
 ## 承認境界
 
 - 0.1計画は`ddaeb94`で承認・push済み。今回は、承認済みAPI/ABI・wrapper/build設計を反映した計画0.2をレビュー案として提示する。
-- 0.2計画の承認後にunit/test準備を始める。source実装はunit test設計・traceability・inventory準備が済んでから着手し、各実装unitは対応testと同revisionで検証する。
-- 0.2計画は未コミット。利用者が計画本文を承認する前にcommit/pushしない。対応unitのテスト完了後は日本語commit/pushし、全unit完了後にchange branchへのmerge PRをまとめて提示する。
+- 0.2計画は利用者レビュー承認後、`9f20dfb`で日本語commit/push済み。source実装は承認済みunit/test準備を済ませた範囲から進め、各実装unitを対応testと同revisionで検証する。
+- 対応unitのtest pass後は日本語commit/pushし、全unit完了後にchange branchへのmerge PRをまとめて提示する。
 - 実装はunitと同revisionのtest合格後に日本語commit/pushし、全unit完了後にchange branch向けのmerge PRをまとめて出す。
 
 ## レビュー履歴
@@ -94,3 +100,4 @@ wrapper中にCore/C ABI変更が必要と判明したらwrapper作業を止め�
 | 2026-11-14 | 0.1 | 利用者レビュー待ち | 承認済みRQ-09-076/UI BD/UI DD/Platform BD/Platform DDをCore、C ABI、Linux Wayland、4 wrapper、profile別release testへ展開。API/ABI詳細はimplementation前の別レビューgate。実装・依存追加は未着手 |
 | 2026-11-14 | 0.1 | 承認 | commit `ddaeb94`で承認計画をpush。API/ABI詳細設計承認後に実装を開始するgateを含む |
 | 2026-11-14 | 0.2 | 利用者レビュー待ち | ABI/Platform/build/four wrapperの承認済み改訂を反映し、API設計gate完了、unit/test準備gate、採用済みfeature/profile名を更新。source実装は未着手 |
+| 2026-11-14 | 0.2 | 承認・push済み | 利用者の「ok」により計画全体を承認。commit `9f20dfb`。Core branch `impl-rust/core-linux-wayland-window`から実装開始 |

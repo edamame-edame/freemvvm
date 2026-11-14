@@ -1,7 +1,7 @@
 # 要求テストの観測・oracle
 
-- 文書版: 1.4
-- 状態: 1.4全文承認済み（利用者、2026-11-10）。追加assertionは未実行
+- 文書版: 1.5
+- 状態: 1.5全文承認済み（利用者、2026-11-14）。RQ-09-076 assertionを追加。実装・試験実行状態は別管理
 - 共通契約: [Requirements Test Manifest](requirements-test-manifest.md)
 
 期待結果はリンク先RQを正本とする。代表使用値は要求で決まらず実施に必要な場合に限って個別test計画に用途・選定理由・適用範囲とともに記載する。API/profile未設計のcaseはblockedとして詳細化する。
@@ -2826,12 +2826,23 @@
 - 後始末: Window overrideを解除し、全Window/Runtime ownerを解放する。test profileとbackend fixtureを復元する。
 - 状態: 観測設計済み、文書全体承認済み。実装/実行、実test ID/command/SHA/profile/reportは未登録。
 
+<a id="assert-rq-09-076"></a>
+## RQ-09-076
+
+- 根拠: [RQ-09-076](../11_requirements/RQ-09_ui-scope.md#rq-09-076)（RQ-09 v0.6承認済み）
+- case: [TC-WINDOW-INITIAL-SIZE-01](requirement-test-matrix.md#case-tc-window-initial-size-01)（1.1 case承認済み）
+- 前提・操作・観測: Window初期client sizeを省略した場合と、有限かつ正の幅/高さをDIPで指定した場合を確認する。指定後はpeer/compositorが返す実client areaを取得し、Layoutへ使われる値を記録する。zero、負、NaN、±Infinityを入力し、Window生成状態と出力handleを観測する。
+- 期待結果: 省略時の希望寸法は800×600 DIP。明示値は初回表示時の希望値として保持される。OS/window systemが異なる実client areaを返した場合は、その実寸を取得して使用し、希望値との一致を必須にしない。無効寸法はWindow生成を拒否し、部分状態を公開しない。
+- 後始末: Window、Runtime、peer/fake providerを解放し、生成前後のlive handle/store件数が整合することを確認する。
+- 状態: case/assertion承認済み。実test ID/command/SHA/profile/reportは未登録。
+
 ## 承認履歴（今回）
 
 | 日付 | 対象版 | 承認者 | 結果 |
 | --- | --- | --- | --- |
 | 2026-10-30 | 1.2 / RQ-09-074 assertion | 利用者 | 「ok」によりWindow背景色のassertionを含む全文を承認。実装・実行は別管理 |
 | 2026-11-09 | 1.3全文 / Platform profile・ARM build/runtime gate | 利用者 | 「ok」によりprofile・backend・support status assertion全体を承認。assertion実行は別管理 |
+| 2026-11-14 | 1.5全文 / RQ-09-076 | 利用者 | 「ok」によりdefault・explicit request・actual client area・invalid rejection assertionを含む全文を承認。実装・実行は別管理 |
 
 ## 適用前の受入確認文の移管記録
 
@@ -3033,6 +3044,7 @@
 | 1.2 | 2026-10-30 | RQ-09-074 Window背景色assertionを追加 | Codex |
 | 1.3 | 2026-11-09 | RQ-11/12 profile変更に合わせてprofile・backend・support status assertionを改訂 | Codex |
 | 1.4 | 2026-11-10 | RQ-11-025のWindow backend選択・default・failure/no-fallback assertionを追加 | Codex |
+| 1.5 | 2026-11-14 | RQ-09-076のWindow初期client size caseとassertionを追加 | Codex |
 
 ## 承認履歴（具体化適用）
 

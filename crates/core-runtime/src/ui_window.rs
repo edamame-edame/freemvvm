@@ -15,6 +15,16 @@ use std::sync::Arc;
 /// mutate Core UI state.
 pub trait PlatformWindowPeer: Send + Sync {
     fn open(&self, generation: u64) -> Result<WindowOpenInfo, PlatformOperationError>;
+    /// Opens the peer with the Window's retained initial size request.
+    ///
+    /// Existing peers keep their previous behavior until they opt into the size-aware contract.
+    fn open_with_initial_client_size(
+        &self,
+        generation: u64,
+        _requested_initial_client_size: WindowInitialClientSize,
+    ) -> Result<WindowOpenInfo, PlatformOperationError> {
+        self.open(generation)
+    }
     /// Installs the UI-queue sink used by profiles that can change their client area after open.
     fn set_client_area_sink(&self, _sink: Arc<dyn PlatformWindowClientAreaSink>) {}
     /// Installs the UI-queue sink used by native window close-intent events.
@@ -44,6 +54,33 @@ pub trait PlatformFrameCompletionSink: Send + Sync {
 pub struct WindowClientArea {
     pub width_dip: f64,
     pub height_dip: f64,
+}
+
+/// Immutable initial client-area request retained by one Window object.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WindowInitialClientSize {
+    pub width_dip: f64,
+    pub height_dip: f64,
+}
+
+impl WindowInitialClientSize {
+    pub const DEFAULT: Self = Self {
+        width_dip: 800.0,
+        height_dip: 600.0,
+    };
+
+    pub(crate) fn is_valid(self) -> bool {
+        self.width_dip.is_finite()
+            && self.height_dip.is_finite()
+            && self.width_dip > 0.0
+            && self.height_dip > 0.0
+    }
+}
+
+impl Default for WindowInitialClientSize {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
 }
 
 /// Initial logical client area and environment scale for one Window peer generation.
@@ -193,7 +230,12 @@ pub trait PlatformRuntimeFactory: Send + Sync {
 pub struct PlatformOperationError;
 
 pub(crate) trait WindowPeerAdapter: Send + Sync {
-    fn open(&self, window: ObjectIdentity, generation: u64) -> Result<WindowOpenInfo, ()>;
+    fn open(
+        &self,
+        window: ObjectIdentity,
+        generation: u64,
+        requested_initial_client_size: WindowInitialClientSize,
+    ) -> Result<WindowOpenInfo, ()>;
     fn close(&self, window: ObjectIdentity) -> Result<(), ()>;
     fn submit_frame(&self, ticket: FrameTicket, scene: Arc<SceneSnapshot>) -> Result<(), ()>;
     fn text_service(&self) -> Option<Arc<dyn TextService>> {
@@ -204,8 +246,15 @@ pub(crate) trait WindowPeerAdapter: Send + Sync {
 pub(crate) struct FactoryWindowPeer(pub(crate) Arc<dyn PlatformWindowPeer>);
 
 impl WindowPeerAdapter for FactoryWindowPeer {
-    fn open(&self, _: ObjectIdentity, generation: u64) -> Result<WindowOpenInfo, ()> {
-        self.0.open(generation).map_err(|_| ())
+    fn open(
+        &self,
+        _: ObjectIdentity,
+        generation: u64,
+        requested_initial_client_size: WindowInitialClientSize,
+    ) -> Result<WindowOpenInfo, ()> {
+        self.0
+            .open_with_initial_client_size(generation, requested_initial_client_size)
+            .map_err(|_| ())
     }
 
     fn close(&self, _: ObjectIdentity) -> Result<(), ()> {
@@ -254,11 +303,18 @@ pub(crate) struct WindowLifecycle {
     frames: FrameTracker,
     force_full_damage: bool,
     background_rgb_override: Option<[f32; 3]>,
+    requested_initial_client_size: WindowInitialClientSize,
     client_area: Option<(u64, WindowClientArea)>,
     device_scale: Option<(u64, DeviceScale)>,
     layout_revision: u64,
     layout_snapshot: Option<Arc<LayoutSnapshot>>,
     text_snapshots: Arc<HashMap<ObjectIdentity, Arc<ResolvedTextSnapshot>>>,
+}
+
+pub(crate) struct PreparedWindowOpen {
+    pub(crate) generation: u64,
+    pub(crate) peer: Option<Arc<dyn WindowPeerAdapter>>,
+    pub(crate) requested_initial_client_size: WindowInitialClientSize,
 }
 
 pub(crate) struct PreparedWindowFrame {
@@ -268,6 +324,15 @@ pub(crate) struct PreparedWindowFrame {
 }
 
 impl WindowLifecycle {
+    pub(crate) fn with_initial_client_size(
+        requested_initial_client_size: WindowInitialClientSize,
+    ) -> Self {
+        Self {
+            requested_initial_client_size,
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn background_rgb(&self) -> [f32; 3] {
         self.background_rgb_override.unwrap_or([1.0, 1.0, 1.0])
     }
@@ -378,18 +443,27 @@ impl WindowLifecycle {
 
     #[cfg(test)]
     pub(crate) fn open(&mut self, identity: ObjectIdentity) -> Result<u64, WindowLifecycleError> {
-        let (generation, peer) = self.prepare_open()?;
-        if let Some(peer) = peer {
-            self.finish_open(generation, peer.open(identity, generation))?;
+        let prepared = self.prepare_open()?;
+        if let Some(peer) = prepared.peer {
+            self.finish_open(
+                prepared.generation,
+                peer.open(
+                    identity,
+                    prepared.generation,
+                    prepared.requested_initial_client_size,
+                ),
+            )?;
         }
-        Ok(generation)
+        Ok(prepared.generation)
     }
 
-    pub(crate) fn prepare_open(
-        &mut self,
-    ) -> Result<(u64, Option<Arc<dyn WindowPeerAdapter>>), WindowLifecycleError> {
+    pub(crate) fn prepare_open(&mut self) -> Result<PreparedWindowOpen, WindowLifecycleError> {
         if self.open {
-            return Ok((self.generation, None));
+            return Ok(PreparedWindowOpen {
+                generation: self.generation,
+                peer: None,
+                requested_initial_client_size: self.requested_initial_client_size,
+            });
         }
         if self.opening || self.closing {
             return Err(WindowLifecycleError::InvalidState);
@@ -404,7 +478,11 @@ impl WindowLifecycle {
                 .ok_or(WindowLifecycleError::Unsupported)?,
         );
         self.opening = true;
-        Ok((generation, Some(peer)))
+        Ok(PreparedWindowOpen {
+            generation,
+            peer: Some(peer),
+            requested_initial_client_size: self.requested_initial_client_size,
+        })
     }
 
     pub(crate) fn finish_open(
@@ -686,7 +764,8 @@ impl WindowLifecycle {
 #[cfg(test)]
 mod tests {
     use super::{
-        CloseDecision, WindowClientArea, WindowLifecycle, WindowLifecycleError, WindowOpenInfo,
+        CloseDecision, PlatformOperationError, PlatformWindowPeer, WindowClientArea,
+        WindowInitialClientSize, WindowLifecycle, WindowLifecycleError, WindowOpenInfo,
         WindowPeerAdapter,
     };
     use crate::handle_registry::registry::ObjectIdentity;
@@ -704,7 +783,12 @@ mod tests {
     }
 
     impl WindowPeerAdapter for FakePeer {
-        fn open(&self, _: ObjectIdentity, _: u64) -> Result<WindowOpenInfo, ()> {
+        fn open(
+            &self,
+            _: ObjectIdentity,
+            _: u64,
+            _: super::WindowInitialClientSize,
+        ) -> Result<WindowOpenInfo, ()> {
             self.opens.fetch_add(1, Ordering::Relaxed);
             if self.fail_open {
                 Err(())
@@ -740,6 +824,71 @@ mod tests {
             fail_open,
             fail_close,
         })
+    }
+
+    struct SizeAwarePlatformPeer(std::sync::Mutex<Vec<WindowInitialClientSize>>);
+
+    impl PlatformWindowPeer for SizeAwarePlatformPeer {
+        fn open(&self, _: u64) -> Result<WindowOpenInfo, PlatformOperationError> {
+            unreachable!("FactoryWindowPeer must use the size-aware open method")
+        }
+
+        fn open_with_initial_client_size(
+            &self,
+            _: u64,
+            requested_initial_client_size: WindowInitialClientSize,
+        ) -> Result<WindowOpenInfo, PlatformOperationError> {
+            self.0
+                .lock()
+                .expect("requested size lock")
+                .push(requested_initial_client_size);
+            Ok(WindowOpenInfo {
+                client_area: WindowClientArea {
+                    width_dip: 700.0,
+                    height_dip: 500.0,
+                },
+                device_scale: DeviceScale::new(1.0, 1.0).expect("valid test scale"),
+            })
+        }
+
+        fn close(&self) -> Result<(), PlatformOperationError> {
+            Ok(())
+        }
+
+        fn submit_frame(
+            &self,
+            _: FrameTicket,
+            _: Arc<SceneSnapshot>,
+        ) -> Result<(), PlatformOperationError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn factory_window_peer_forwards_initial_client_size_to_platform_contract() {
+        let platform_peer = Arc::new(SizeAwarePlatformPeer(std::sync::Mutex::new(Vec::new())));
+        let adapter = super::FactoryWindowPeer(platform_peer.clone());
+        let requested = WindowInitialClientSize {
+            width_dip: 900.0,
+            height_dip: 650.0,
+        };
+
+        let opened = adapter
+            .open(identity(), 1, requested)
+            .expect("open through Platform peer adapter");
+
+        assert_eq!(
+            *platform_peer.0.lock().expect("requested size lock"),
+            [requested]
+        );
+        assert_eq!(
+            opened.client_area,
+            WindowClientArea {
+                width_dip: 700.0,
+                height_dip: 500.0,
+            },
+            "actual Platform area may differ from the request"
+        );
     }
 
     #[test]
@@ -804,11 +953,15 @@ mod tests {
     fn invalid_initial_client_area_does_not_commit_open_or_advance_generation() {
         let mut lifecycle = WindowLifecycle::default();
         lifecycle.set_peer(peer(false, false));
-        let (generation, _) = lifecycle.prepare_open().expect("prepare open");
-        assert_eq!(generation, 1);
+        let prepared = lifecycle.prepare_open().expect("prepare open");
+        assert_eq!(prepared.generation, 1);
+        assert_eq!(
+            prepared.requested_initial_client_size,
+            super::WindowInitialClientSize::DEFAULT
+        );
         assert_eq!(
             lifecycle.finish_open(
-                generation,
+                prepared.generation,
                 Ok(WindowOpenInfo {
                     client_area: WindowClientArea {
                         width_dip: f64::INFINITY,

@@ -1650,6 +1650,67 @@
           }
         ]
       }
+    },
+    {
+      "unit_name": "UNIT-ABI-024",
+      "state": "planned",
+      "scope": "additive-window-create-with-initial-client-size-and-feature-10",
+      "path": {
+        "source": [
+          "crates/c-abi/src/lib.rs",
+          "crates/c-abi/include/freemvvm/abi.h",
+          "crates/core-runtime/src/lib.rs",
+          "tools/probes/abi_header_c.c",
+          "tools/probes/abi_header_cpp.cpp",
+          "tools/probes/abi_runtime_smoke.c"
+        ],
+        "config": [
+          "CMakeLists.txt",
+          "Cargo.toml",
+          "Cargo.lock",
+          "crates/c-abi/Cargo.toml",
+          "tools/units.yaml",
+          "tools/units/abi.yaml"
+        ],
+        "test_design": ".docs/32_unit_test/ui.md"
+      },
+      "depends_on": [
+        "UNIT-CORE-095"
+      ],
+      "requirements": [
+        "RQ-04-003",
+        "RQ-04-006",
+        "RQ-04-030",
+        "RQ-09-076"
+      ],
+      "design": [
+        {
+          "path": ".docs/13_detail_design/runtime-objects/abi.md",
+          "version": "1.8 approved",
+          "section": "Window initial client size create ABI and feature ID 10"
+        }
+      ],
+      "cases": {
+        "release": [
+          "TC-WINDOW-INITIAL-SIZE-01",
+          "TC-ABI-REP-01",
+          "TC-ABI-COMP-01",
+          "TC-ERROR-01"
+        ],
+        "unit": [
+          {
+            "id": "UT-ABI-WINDOW-OPTIONS-001",
+            "command": [
+              "cargo",
+              "test",
+              "-p",
+              "freemvvm-c-abi",
+              "window_create_with_initial_client_size",
+              "--locked"
+            ]
+          }
+        ]
+      }
     }
   ]
 }

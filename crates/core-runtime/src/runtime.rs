@@ -2687,7 +2687,7 @@ impl RuntimeCore {
             self.window_set_peer(identity, Arc::new(FactoryWindowPeer(peer)))
                 .map_err(|_| WindowLifecycleError::InvalidState)?;
         }
-        let (generation, peer) = {
+        let prepared = {
             let mut store = self
                 .ui_objects
                 .lock()
@@ -2704,8 +2704,12 @@ impl RuntimeCore {
                 .ok_or(WindowLifecycleError::InvalidState)?
                 .prepare_open()?
         };
-        if let Some(peer) = peer {
-            let mut result = peer.open(identity, generation);
+        if let Some(peer) = prepared.peer {
+            let mut result = peer.open(
+                identity,
+                prepared.generation,
+                prepared.requested_initial_client_size,
+            );
             if result
                 .as_ref()
                 .is_ok_and(|info| !info.client_area.is_valid())
@@ -2727,11 +2731,11 @@ impl RuntimeCore {
                 .window
                 .as_mut()
                 .ok_or(WindowLifecycleError::StaleRequest)?
-                .finish_open(generation, result)?;
+                .finish_open(prepared.generation, result)?;
             drop(store);
             self.mark_layout_subtree_dirty(identity);
         }
-        Ok(generation)
+        Ok(prepared.generation)
     }
 
     pub(crate) fn resolve_window_presentation_backend(
@@ -6852,6 +6856,7 @@ mod tests {
                             owner,
                         }],
                         Some(initial),
+                        None,
                         None,
                     )
                 },

@@ -4,7 +4,7 @@ use crate::handle_registry::registry::{InternalOwner, ObjectIdentity};
 use crate::property::Subscription;
 use crate::runtime::RuntimeIdentity;
 use crate::ui_text_box::TextBoxEditingState;
-use crate::ui_window::WindowLifecycle;
+use crate::ui_window::{WindowInitialClientSize, WindowLifecycle};
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 
@@ -70,6 +70,7 @@ impl UiControlState {
         properties: Vec<UiControlPropertyOwner>,
         text_box_initial: Option<&str>,
         presentation_backend: Option<Arc<str>>,
+        initial_client_size: Option<WindowInitialClientSize>,
     ) -> Self {
         Self {
             kind,
@@ -80,7 +81,9 @@ impl UiControlState {
             layout_dirty: true,
             frame_dirty: false,
             frame_retry_deferred: false,
-            window: (kind == UiControlKind::Window).then(WindowLifecycle::default),
+            window: (kind == UiControlKind::Window).then(|| {
+                WindowLifecycle::with_initial_client_size(initial_client_size.unwrap_or_default())
+            }),
             button_command: None,
             text_box_editing: (kind == UiControlKind::TextBox).then(|| {
                 TextBoxEditingState::new(text_box_initial.unwrap_or_default())
@@ -157,7 +160,7 @@ mod tests {
     use crate::abi_support::{
         Damage, DeviceScale, FramePhase, FrameTicket, PlatformWindowClientAreaSink,
         PlatformWindowCloseRequestSink, PlatformWindowInputEvent, PlatformWindowInputSink, Rect,
-        SceneSnapshot, WindowClientArea, WindowOpenInfo,
+        SceneSnapshot, WindowClientArea, WindowInitialClientSize, WindowOpenInfo,
     };
     use crate::abi_support::{
         UiControlApiError, button_set_command, command_close, command_create_async, handle_release,
@@ -169,11 +172,13 @@ mod tests {
         stack_panel_set_orientation, subscription_cancel, ui_control_accessible_name_property,
         ui_control_button_label_property, ui_control_create_button, ui_control_create_stack_panel,
         ui_control_create_text, ui_control_create_text_box, ui_control_create_window,
-        ui_control_create_window_with_presentation_backend, ui_control_is_enabled_property,
-        ui_control_layout_clean, ui_control_layout_dirty, ui_control_text_box_value_property,
-        ui_control_text_content_property, ui_control_window_title_property, widget_has_focus,
-        widget_input_subscribe, widget_request_focus, window_background_rgb,
-        window_calculate_layout_for_test, window_calculate_layout_with_orientation_change_for_test,
+        ui_control_create_window_with_initial_client_size,
+        ui_control_create_window_with_presentation_backend, ui_control_handle_count_for_test,
+        ui_control_is_enabled_property, ui_control_layout_clean, ui_control_layout_dirty,
+        ui_control_text_box_value_property, ui_control_text_content_property,
+        ui_control_window_title_property, widget_has_focus, widget_input_subscribe,
+        widget_request_focus, window_background_rgb, window_calculate_layout_for_test,
+        window_calculate_layout_with_orientation_change_for_test,
         window_calculate_layout_with_platform_text_for_test, window_clear_content,
         window_client_area_for_test, window_close, window_close_intent,
         window_close_intent_subscribed, window_close_request_current, window_close_request_defer,
@@ -208,15 +213,34 @@ mod tests {
         drop(unsafe { Box::from_raw(userdata as *mut Arc<AtomicUsize>) });
     }
 
-    struct TestWindowPeer(AtomicUsize, AtomicUsize);
+    struct TestWindowPeer(
+        AtomicUsize,
+        AtomicUsize,
+        std::sync::Mutex<Vec<WindowInitialClientSize>>,
+    );
+
+    impl TestWindowPeer {
+        fn new() -> Arc<Self> {
+            Arc::new(Self(
+                AtomicUsize::new(0),
+                AtomicUsize::new(0),
+                std::sync::Mutex::new(Vec::new()),
+            ))
+        }
+    }
 
     impl crate::ui_window::WindowPeerAdapter for TestWindowPeer {
         fn open(
             &self,
             _: crate::handle_registry::registry::ObjectIdentity,
             _: u64,
+            requested_initial_client_size: WindowInitialClientSize,
         ) -> Result<WindowOpenInfo, ()> {
             self.0.fetch_add(1, Ordering::Relaxed);
+            self.2
+                .lock()
+                .expect("requested size lock")
+                .push(requested_initial_client_size);
             Ok(WindowOpenInfo {
                 client_area: WindowClientArea {
                     width_dip: 640.0,
@@ -427,6 +451,110 @@ mod tests {
                 .last(),
             Some(&SelectorTestPlatformFactory::ALTERNATE.to_owned())
         );
+    }
+
+    #[test]
+    fn window_initial_client_size_defaults_validates_and_reaches_peer_without_replacing_actual_area()
+     {
+        let runtime = runtime_create_handle().expect("create Runtime");
+        runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
+        assert_eq!(ui_control_handle_count_for_test(runtime), Ok(0));
+
+        for (width, height) in [
+            (0.0, 1.0),
+            (-1.0, 1.0),
+            (f64::NAN, 1.0),
+            (f64::INFINITY, 1.0),
+            (f64::NEG_INFINITY, 1.0),
+            (1.0, 0.0),
+            (1.0, -1.0),
+            (1.0, f64::NAN),
+            (1.0, f64::INFINITY),
+            (1.0, f64::NEG_INFINITY),
+        ] {
+            assert_eq!(
+                ui_control_create_window_with_initial_client_size(runtime, width, height),
+                Err(UiControlApiError::InvalidArgument),
+                "invalid requested size ({width}, {height}) must be rejected"
+            );
+            assert_eq!(
+                ui_control_handle_count_for_test(runtime),
+                Ok(0),
+                "invalid dimensions must not publish partial Window state"
+            );
+        }
+
+        let default_window = ui_control_create_window(runtime).expect("create default Window");
+        let explicit_window =
+            ui_control_create_window_with_initial_client_size(runtime, 1024.5, 720.25)
+                .expect("create Window with explicit requested size");
+        let integer_window =
+            ui_control_create_window_with_initial_client_size(runtime, 1280.0, 720.0)
+                .expect("create Window with integer DIP size");
+        assert_eq!(ui_control_handle_count_for_test(runtime), Ok(3));
+        let default_peer = TestWindowPeer::new();
+        let explicit_peer = TestWindowPeer::new();
+        let integer_peer = TestWindowPeer::new();
+        window_install_test_peer(default_window, default_peer.clone())
+            .expect("install default-size peer");
+        window_install_test_peer(explicit_window, explicit_peer.clone())
+            .expect("install explicit-size peer");
+        window_install_test_peer(integer_window, integer_peer.clone())
+            .expect("install integer-size peer");
+
+        window_open(default_window).expect("open default Window");
+        window_open(explicit_window).expect("open explicit-size Window");
+        window_open(integer_window).expect("open integer-size Window");
+        assert_eq!(
+            *default_peer.2.lock().expect("default peer request lock"),
+            vec![WindowInitialClientSize::DEFAULT]
+        );
+        let explicit_size = WindowInitialClientSize {
+            width_dip: 1024.5,
+            height_dip: 720.25,
+        };
+        assert_eq!(
+            *explicit_peer.2.lock().expect("explicit peer request lock"),
+            vec![explicit_size]
+        );
+        assert_eq!(
+            *integer_peer.2.lock().expect("integer peer request lock"),
+            vec![WindowInitialClientSize {
+                width_dip: 1280.0,
+                height_dip: 720.0,
+            }]
+        );
+
+        let actual_area = WindowClientArea {
+            width_dip: 640.0,
+            height_dip: 480.0,
+        };
+        assert_eq!(
+            window_client_area_for_test(explicit_window).expect("read client area"),
+            Some((1, actual_area)),
+            "the peer's actual client area remains authoritative"
+        );
+        let layout = window_calculate_layout_for_test(explicit_window, 0.0, 0.0, false)
+            .expect("layout uses peer's client area");
+        assert_eq!(
+            layout.client_area(),
+            crate::ui_layout::Size::new(640.0, 480.0).expect("valid actual client area")
+        );
+
+        window_close(explicit_window).expect("close explicit Window");
+        window_open(explicit_window).expect("reopen explicit Window");
+        assert_eq!(
+            *explicit_peer.2.lock().expect("explicit peer request lock"),
+            vec![explicit_size, explicit_size],
+            "reopen reuses the immutable requested size"
+        );
+
+        for window in [default_window, explicit_window, integer_window] {
+            window_close(window).expect("close Window");
+            handle_release(window).expect("release Window");
+        }
+        runtime_shutdown(runtime).expect("shutdown Runtime");
+        handle_release(runtime).expect("release Runtime");
     }
 
     #[derive(Default)]
@@ -1798,7 +1926,7 @@ mod tests {
         let runtime = runtime_create_handle().expect("create Runtime");
         runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
         let window = ui_control_create_window(runtime).expect("create Window");
-        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        let peer = TestWindowPeer::new();
         window_install_test_peer(window, peer.clone()).expect("install fake peer");
         assert_eq!(window_open(window), Ok(1));
         assert_eq!(
@@ -1876,7 +2004,7 @@ mod tests {
         let window = ui_control_create_window(runtime).expect("create Window");
         let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
         let button = ui_control_create_button(runtime, b"run").expect("create Button");
-        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        let peer = TestWindowPeer::new();
         window_install_test_peer(window, peer).expect("install fake Window peer");
         window_set_content(window, panel).expect("attach content");
         stack_panel_insert(panel, 0, button).expect("attach Button");
@@ -1990,7 +2118,7 @@ mod tests {
         let window = ui_control_create_window(runtime).expect("create Window");
         let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
         let button = ui_control_create_button(runtime, b"run").expect("create Button");
-        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        let peer = TestWindowPeer::new();
         window_install_test_peer(window, peer).expect("install fake Window peer");
         window_set_content(window, panel).expect("attach content");
         stack_panel_insert(panel, 0, button).expect("attach Button");
@@ -2052,7 +2180,7 @@ mod tests {
         let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
         let text_box = ui_control_create_text_box(runtime, b"edit").expect("create TextBox");
         let button = ui_control_create_button(runtime, b"run").expect("create Button");
-        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        let peer = TestWindowPeer::new();
         window_install_test_peer(window, peer).expect("install fake Window peer");
         window_set_content(window, panel).expect("attach content");
         stack_panel_insert(panel, 0, text_box).expect("attach TextBox");
@@ -2155,7 +2283,7 @@ mod tests {
         let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
         let first = ui_control_create_button(runtime, b"first").expect("create first Button");
         let second = ui_control_create_button(runtime, b"second").expect("create second Button");
-        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        let peer = TestWindowPeer::new();
         window_install_test_peer(window, peer).expect("install fake Window peer");
         window_set_content(window, panel).expect("attach content");
         stack_panel_insert(panel, 0, first).expect("attach first Button");
@@ -2266,7 +2394,7 @@ mod tests {
         let window = ui_control_create_window(runtime).expect("create Window");
         let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
         let button = ui_control_create_button(runtime, b"run").expect("create Button");
-        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        let peer = TestWindowPeer::new();
         window_install_test_peer(window, peer).expect("install fake Window peer");
         window_set_content(window, panel).expect("attach content");
         stack_panel_insert(panel, 0, button).expect("attach Button");
@@ -2329,7 +2457,7 @@ mod tests {
         let panel = ui_control_create_stack_panel(runtime).expect("create StackPanel");
         let text_box = ui_control_create_text_box(runtime, b"start").expect("create TextBox");
         let button = ui_control_create_button(runtime, b"run").expect("create Button");
-        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        let peer = TestWindowPeer::new();
         window_install_test_peer(window, peer).expect("install fake Window peer");
         window_set_content(window, panel).expect("attach content");
         stack_panel_insert(panel, 0, text_box).expect("attach TextBox");
@@ -2403,7 +2531,7 @@ mod tests {
         let runtime = runtime_create_handle().expect("create Runtime");
         runtime_set_ui_loop_bridge(runtime, noop_wake, 0, None).expect("install loop bridge");
         let window = ui_control_create_window(runtime).expect("create Window");
-        let peer = Arc::new(TestWindowPeer(AtomicUsize::new(0), AtomicUsize::new(0)));
+        let peer = TestWindowPeer::new();
         window_install_test_peer(window, peer.clone()).expect("install fake peer");
         window_open(window).expect("open Window");
 

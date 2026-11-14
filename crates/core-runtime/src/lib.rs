@@ -75,7 +75,8 @@ pub mod abi_support {
     pub use crate::ui_window::{
         CloseDecision, PlatformFrameCompletionSink, PlatformOperationError, PlatformRuntimeFactory,
         PlatformWindowClientAreaSink, PlatformWindowCloseRequestSink, PlatformWindowInputEvent,
-        PlatformWindowInputSink, PlatformWindowPeer, WindowClientArea, WindowOpenInfo,
+        PlatformWindowInputSink, PlatformWindowPeer, WindowClientArea, WindowInitialClientSize,
+        WindowOpenInfo,
     };
     use crate::value::{
         DecimalValue, OwnedUtf8, OwnedUtf8Error, TypedValue, Utf8CopyOutcome, ValueKind,
@@ -1842,11 +1843,27 @@ pub mod abi_support {
         kind: UiControlKind,
         initial_text: Option<&[u8]>,
         requested_presentation_backend: Option<&str>,
+        requested_initial_client_size: Option<(f64, f64)>,
     ) -> Result<u64, UiControlApiError> {
         let runtime = resolve_runtime(runtime_handle).map_err(map_ui_control_runtime_error)?;
         if !runtime.is_ui_thread() {
             return Err(UiControlApiError::WrongThread);
         }
+        let initial_client_size = match (kind, requested_initial_client_size) {
+            (UiControlKind::Window, Some((width_dip, height_dip))) => {
+                let size = WindowInitialClientSize {
+                    width_dip,
+                    height_dip,
+                };
+                if !size.is_valid() {
+                    return Err(UiControlApiError::InvalidArgument);
+                }
+                Some(size)
+            }
+            (UiControlKind::Window, None) => None,
+            (_, None) => None,
+            (_, Some(_)) => return Err(UiControlApiError::InvalidArgument),
+        };
         let presentation_backend = if kind == UiControlKind::Window {
             runtime
                 .resolve_window_presentation_backend(requested_presentation_backend)
@@ -1931,6 +1948,7 @@ pub mod abi_support {
                         properties,
                         text_box_initial.as_deref(),
                         presentation_backend,
+                        initial_client_size,
                     )
                 },
             )
@@ -3291,33 +3309,77 @@ pub mod abi_support {
     }
 
     pub fn ui_control_create_window(runtime: u64) -> Result<u64, UiControlApiError> {
-        create_ui_control(runtime, UiControlKind::Window, None, None)
+        create_ui_control(runtime, UiControlKind::Window, None, None, None)
     }
 
     pub fn ui_control_create_window_with_presentation_backend(
         runtime: u64,
         backend_identity: &str,
     ) -> Result<u64, UiControlApiError> {
-        create_ui_control(runtime, UiControlKind::Window, None, Some(backend_identity))
+        create_ui_control(
+            runtime,
+            UiControlKind::Window,
+            None,
+            Some(backend_identity),
+            None,
+        )
+    }
+
+    pub fn ui_control_create_window_with_initial_client_size(
+        runtime: u64,
+        width_dip: f64,
+        height_dip: f64,
+    ) -> Result<u64, UiControlApiError> {
+        ui_control_create_window_with_options(runtime, None, width_dip, height_dip)
+    }
+
+    pub fn ui_control_create_window_with_options(
+        runtime: u64,
+        presentation_backend: Option<&str>,
+        width_dip: f64,
+        height_dip: f64,
+    ) -> Result<u64, UiControlApiError> {
+        create_ui_control(
+            runtime,
+            UiControlKind::Window,
+            None,
+            presentation_backend,
+            Some((width_dip, height_dip)),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn ui_control_handle_count_for_test(
+        runtime_handle: u64,
+    ) -> Result<usize, UiControlApiError> {
+        let runtime = resolve_runtime(runtime_handle).map_err(map_ui_control_runtime_error)?;
+        let owners = ui_control_handles()
+            .owners
+            .lock()
+            .map_err(|_| UiControlApiError::Internal)?;
+        Ok(owners
+            .values()
+            .filter(|entry| Arc::ptr_eq(&entry.runtime, &runtime))
+            .count())
     }
 
     pub fn ui_control_create_stack_panel(runtime: u64) -> Result<u64, UiControlApiError> {
-        create_ui_control(runtime, UiControlKind::StackPanel, None, None)
+        create_ui_control(runtime, UiControlKind::StackPanel, None, None, None)
     }
 
     pub fn ui_control_create_text(runtime: u64, content: &[u8]) -> Result<u64, UiControlApiError> {
-        create_ui_control(runtime, UiControlKind::Text, Some(content), None)
+        create_ui_control(runtime, UiControlKind::Text, Some(content), None, None)
     }
 
     pub fn ui_control_create_text_box(
         runtime: u64,
         value: &[u8],
     ) -> Result<u64, UiControlApiError> {
-        create_ui_control(runtime, UiControlKind::TextBox, Some(value), None)
+        create_ui_control(runtime, UiControlKind::TextBox, Some(value), None, None)
     }
 
     pub fn ui_control_create_button(runtime: u64, label: &[u8]) -> Result<u64, UiControlApiError> {
-        create_ui_control(runtime, UiControlKind::Button, Some(label), None)
+        create_ui_control(runtime, UiControlKind::Button, Some(label), None, None)
     }
 
     pub fn ui_control_is_enabled_property(control: u64) -> Result<u64, UiControlApiError> {
